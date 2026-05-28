@@ -320,7 +320,10 @@ func (c sdkZIAClient) legacyService(ctx context.Context) (*zsdk.Service, func(),
 		if service.Client != nil {
 			service.Client.Close()
 		}
-		legacyClient.Close()
+		// zia.Client.Close in zscaler-sdk-go v3.8.37 locks the client and then
+		// calls Logout, whose request path locks the same mutex again. After a
+		// successful legacy request this deadlocks the process during cleanup.
+		// Do not call it here; this CLI process exits after the command.
 	}
 	return service, cleanup, nil
 }
