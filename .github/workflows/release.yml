@@ -48,10 +48,7 @@ jobs:
           if [[ -n "${DISPATCH_BUMP:-}" ]]; then
             bump="$DISPATCH_BUMP"
           else
-            labels="$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-              --jq '.[0].labels[].name')"
+            labels="$(bash scripts/pr-labels-for-commit.sh "$GITHUB_REPOSITORY" "$GITHUB_SHA")"
             ZSCALERCTL_PR_LABELS="$labels" bash scripts/verify-semver-label.sh
             bump="$(printf '%s\n' "$labels" | awk -F: '/^semver:/ {print $2; exit}')"
           fi

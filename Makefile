@@ -51,6 +51,7 @@ verify-actions-pinned:
 verify-release-automation:
 	bash scripts/test-verify-semver-label.sh
 	bash scripts/test-next-version.sh
+	bash scripts/test-pr-labels-for-commit.sh
 
 fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzRedactorPreservesValidJSON -fuzztime=$(FUZZTIME)
