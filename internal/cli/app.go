@@ -361,6 +361,7 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	outDir := fs.String("out", "", "dump output directory")
 	productsFlag := fs.String("products", "", "comma-separated products: zia,zpa")
 	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
+	continueOnError := fs.Bool("continue-on-error", false, "write a partial dump when individual resources fail")
 	if err := fs.Parse(args); err != nil {
 		return UsageError{Message: err.Error()}
 	}
@@ -381,12 +382,18 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if err != nil {
 		return err
 	}
-	entries, err := a.collectDump(ctx, cfg, opts, products, selectedResources)
+	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, *continueOnError)
 	if err != nil {
 		return err
 	}
-	if err := dump.Write(*outDir, cfg.Defaults.Redaction, entries); err != nil {
+	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
 		return err
+	}
+	if len(result.Errors) > 0 {
+		return a.renderer(cfg, opts).WriteText(
+			a.out,
+			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", *outDir, len(result.Errors))),
+		)
 	}
 	return a.renderer(cfg, opts).WriteText(a.out, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
 }
@@ -445,11 +452,12 @@ func (a *App) collectDump(
 	opts globalOptions,
 	products map[resources.Product]bool,
 	selectedResources map[dumpResourceKey]bool,
-) ([]dump.ResourceDump, error) {
-	var entries []dump.ResourceDump
+	continueOnError bool,
+) (dump.Result, error) {
+	result := dump.Result{}
 	catalog := resources.Catalog()
 	if err := resources.AssertReadOnly(catalog...); err != nil {
-		return nil, err
+		return result, err
 	}
 	readers := make(map[resources.Product]ResourceReader)
 	for _, spec := range catalog {
@@ -459,13 +467,16 @@ func (a *App) collectDump(
 		if !dumpResourceSelected(selectedResources, spec) {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		reader, ok := readers[spec.Product]
 		if !ok {
 			var cleanup func()
 			var err error
 			reader, cleanup, err = a.dumpResourceReader(ctx, cfg, opts, spec.Product)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
 			readers[spec.Product] = reader
 			// Register cleanup once per product session, not once per resource.
@@ -473,24 +484,44 @@ func (a *App) collectDump(
 		}
 		records, err := reader.List(ctx, spec.Product, spec.Name)
 		if err != nil {
-			return nil, err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return result, ctxErr
+			}
+			if continueOnError {
+				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed"))
+				continue
+			}
+			return result, fmt.Errorf("dump %s/%s list failed", spec.Product, spec.Name)
 		}
 		projected, reports, err := resources.ProjectRecords(spec, cfg.Defaults.Redaction, records)
 		if err != nil {
-			return nil, err
+			if continueOnError {
+				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "project", "projection_failed"))
+				continue
+			}
+			return result, fmt.Errorf("dump %s/%s project failed", spec.Product, spec.Name)
 		}
+		subsetOK := true
 		for _, record := range projected.Records() {
 			if err := resources.AssertRenderedSubset(spec, cfg.Defaults.Redaction, record.Fields()); err != nil {
-				return nil, err
+				if continueOnError {
+					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "validate", "subset_failed"))
+					subsetOK = false
+					break
+				}
+				return result, fmt.Errorf("dump %s/%s validate failed", spec.Product, spec.Name)
 			}
 		}
-		entries = append(entries, dump.ResourceDump{
+		if !subsetOK {
+			continue
+		}
+		result.Entries = append(result.Entries, dump.ResourceDump{
 			Spec:    spec,
 			Records: projected,
 			Reports: reports,
 		})
 	}
-	return entries, nil
+	return result, nil
 }
 
 func (a *App) writeProjectedRecord(
@@ -531,7 +562,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  auth status")
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  schema list")
-	fmt.Fprintln(w, "  dump --out <dir> [--resources names]")
+	fmt.Fprintln(w, "  dump --out <dir> [--resources names] [--continue-on-error]")
 	fmt.Fprintln(w, "  completion bash|zsh|fish")
 	fmt.Fprintln(w, "  version")
 	fmt.Fprintln(w, "  zia <resource> list|get")
@@ -612,7 +643,7 @@ func requireNoArgs(command string, args []string) error {
 }
 
 func dumpUsage() string {
-	return "usage: zscalerctl dump --out <dir> [--products zia,zpa] [--resources names]"
+	return "usage: zscalerctl dump --out <dir> [--products zia,zpa] [--resources names] [--continue-on-error]"
 }
 
 func credentialStatus(cfg config.Config) string {

@@ -33,6 +33,11 @@ Unqualified names are matched within the selected products. Product-qualified
 names use `product/name` and are the safer form once multiple products expose
 similarly named resources. Unknown resources fail before live API access.
 
+Dump commands fail closed by default. If a selected resource fails, no files are
+written. Use `--continue-on-error` only when a partial dump is acceptable; the
+manifest is marked `partial`, successful resources remain in `resources/`, and
+value-free per-resource failures are written to `errors.ndjson`.
+
 ## ZIA Locations
 
 Commands:

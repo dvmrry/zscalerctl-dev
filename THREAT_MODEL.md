@@ -140,6 +140,8 @@ Dump commands must:
 - Use deterministic structure where possible.
 - Include a manifest and redaction report.
 - Avoid original secret values in reports.
+- Mark partial dumps explicitly and put only value-free failure metadata in
+  `errors.ndjson`.
 - Avoid raw API response archives unless a future design explicitly justifies
   and protects them.
 

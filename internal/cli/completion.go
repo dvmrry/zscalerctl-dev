@@ -64,7 +64,7 @@ _zscalerctl()
     auth) COMPREPLY=( $(compgen -W "status" -- "$cur") ); return ;;
     config) COMPREPLY=( $(compgen -W "show" -- "$cur") ); return ;;
     schema) COMPREPLY=( $(compgen -W "list" -- "$cur") ); return ;;
-    dump) COMPREPLY=( $(compgen -W "--out --products --resources" -- "$cur") ); return ;;
+    dump) COMPREPLY=( $(compgen -W "--out --products --resources --continue-on-error" -- "$cur") ); return ;;
     zia) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
     zpa) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
     %s) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
@@ -105,7 +105,7 @@ _zscalerctl() {
   zia_resources=(%s)
   zpa_resources=(%s)
   operations=(%s)
-  dump_flags=(--out --products --resources)
+  dump_flags=(--out --products --resources --continue-on-error)
 
   case ${words[CURRENT-1]} in
     --format) compadd -- "${formats[@]}"; return ;;
@@ -159,7 +159,7 @@ complete -c zscalerctl -n '__fish_seen_subcommand_from completion' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from auth' -a 'status'
 complete -c zscalerctl -n '__fish_seen_subcommand_from config' -a 'show'
 complete -c zscalerctl -n '__fish_seen_subcommand_from schema' -a 'list'
-complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -a '--out --products --resources'
+complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -a '--out --products --resources --continue-on-error'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -l products -x -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -l resources -x -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from zia' -a '%s'

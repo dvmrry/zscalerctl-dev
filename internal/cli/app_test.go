@@ -225,7 +225,7 @@ func TestCompletionScriptsDoNotReadCredentialFilesOrUseReader(t *testing.T) {
 			if err != nil {
 				t.Fatalf("App.Run(completion %s) error = %v, want nil", shell, err)
 			}
-			for _, want := range []string{"zscalerctl", "locations", "location-groups", "rule-labels", "static-ips", "gre-tunnels", "--resources", "list get"} {
+			for _, want := range []string{"zscalerctl", "locations", "location-groups", "rule-labels", "static-ips", "gre-tunnels", "--resources", "--continue-on-error", "list get"} {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("App.Run(completion %s) stdout = %q, want %q", shell, out.String(), want)
 				}
@@ -782,6 +782,251 @@ func TestDumpResourceFilterRejectsResourceOutsideSelectedProductsBeforeReader(t 
 	}
 }
 
+func TestDumpAbortsWithoutWritingOnResourceErrorByDefault(t *testing.T) {
+	t.Parallel()
+
+	const leakedErrorText = "client_secret=raw-error-value"
+	reader := selectiveErrorResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":          "123",
+			"name":        "HQ",
+			"description": "",
+		})},
+		failures: map[string]error{
+			"zia/rule-labels": errors.New(leakedErrorText),
+		},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{
+		"dump",
+		"--products", "zia",
+		"--resources", "locations,rule-labels",
+		"--out", outDir,
+	})
+	if err == nil {
+		t.Fatal("App.Run(dump resource error default) error = nil, want non-nil")
+	}
+	if _, statErr := os.Stat(outDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", outDir, statErr)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump resource error default) stdout = %q, want empty", out.String())
+	}
+	if strings.Contains(err.Error(), leakedErrorText) || strings.Contains(err.Error(), "client_secret") {
+		t.Errorf("App.Run(dump resource error default) error = %q, want no raw error text", err.Error())
+	}
+	if strings.Contains(errOut.String(), leakedErrorText) {
+		t.Errorf("App.Run(dump resource error default) stderr = %q, want no raw error text", errOut.String())
+	}
+}
+
+func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T) {
+	t.Parallel()
+
+	const leakedErrorText = "client_secret=raw-error-value"
+	reader := selectiveErrorResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":          "123",
+			"name":        "HQ",
+			"description": "",
+		})},
+		failures: map[string]error{
+			"zia/rule-labels": errors.New(leakedErrorText),
+		},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{
+		"dump",
+		"--products", "zia",
+		"--resources", "locations,rule-labels",
+		"--continue-on-error",
+		"--out", outDir,
+	})
+	if err != nil {
+		t.Fatalf("App.Run(dump --continue-on-error) error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), "partial dump written: "+outDir) {
+		t.Errorf("App.Run(dump --continue-on-error) stdout = %q, want partial dump written line", out.String())
+	}
+	if strings.Contains(out.String(), leakedErrorText) {
+		t.Errorf("App.Run(dump --continue-on-error) stdout = %q, want no raw error text", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump --continue-on-error) stderr = %q, want empty", errOut.String())
+	}
+
+	locationPath := filepath.Join(outDir, "resources", "zia", "locations.json")
+	ruleLabelsPath := filepath.Join(outDir, "resources", "zia", "rule-labels.json")
+	errorsPath := filepath.Join(outDir, "errors.ndjson")
+	manifestPath := filepath.Join(outDir, "manifest.json")
+	reportPath := filepath.Join(outDir, "redaction_report.json")
+	if _, err := os.Stat(locationPath); err != nil {
+		t.Errorf("os.Stat(%q) error = %v, want nil", locationPath, err)
+	}
+	if _, err := os.Stat(ruleLabelsPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", ruleLabelsPath, err)
+	}
+	assertFileMode(t, errorsPath, 0o600)
+	assertFileMode(t, manifestPath, 0o600)
+	assertFileMode(t, reportPath, 0o600)
+
+	manifestBody := readFile(t, manifestPath)
+	errorsBody := readFile(t, errorsPath)
+	for _, body := range []string{manifestBody, errorsBody} {
+		if strings.Contains(body, leakedErrorText) || strings.Contains(body, "client_secret") {
+			t.Errorf("partial dump metadata body = %q, want no raw error text", body)
+		}
+	}
+
+	var manifest struct {
+		Status     string `json:"status"`
+		Errors     int    `json:"errors"`
+		ErrorsPath string `json:"errors_path"`
+		Resources  []struct {
+			Product   string `json:"product"`
+			Name      string `json:"name"`
+			Status    string `json:"status"`
+			Path      string `json:"path"`
+			Records   int    `json:"records"`
+			Operation string `json:"operation"`
+			ErrorKind string `json:"error_kind"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal([]byte(manifestBody), &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(partial manifest) error = %v, want nil", err)
+	}
+	if manifest.Status != "partial" {
+		t.Errorf("partial manifest status = %q, want partial", manifest.Status)
+	}
+	if manifest.Errors != 1 {
+		t.Errorf("partial manifest errors = %d, want 1", manifest.Errors)
+	}
+	if manifest.ErrorsPath != "errors.ndjson" {
+		t.Errorf("partial manifest errors_path = %q, want errors.ndjson", manifest.ErrorsPath)
+	}
+	resourcesByName := map[string]struct {
+		Status    string
+		Path      string
+		Records   int
+		Operation string
+		ErrorKind string
+	}{}
+	for _, resource := range manifest.Resources {
+		resourcesByName[resource.Product+"/"+resource.Name] = struct {
+			Status    string
+			Path      string
+			Records   int
+			Operation string
+			ErrorKind string
+		}{
+			Status:    resource.Status,
+			Path:      resource.Path,
+			Records:   resource.Records,
+			Operation: resource.Operation,
+			ErrorKind: resource.ErrorKind,
+		}
+	}
+	if got := resourcesByName["zia/locations"]; got.Status != "complete" || got.Path != "resources/zia/locations.json" || got.Records != 1 {
+		t.Errorf("partial manifest zia/locations = %#v, want complete resource entry", got)
+	}
+	if got := resourcesByName["zia/rule-labels"]; got.Status != "error" || got.Operation != "list" || got.ErrorKind != "list_failed" || got.Path != "" {
+		t.Errorf("partial manifest zia/rule-labels = %#v, want value-free error entry", got)
+	}
+
+	var errorRecord struct {
+		Schema    string `json:"schema"`
+		Product   string `json:"product"`
+		Name      string `json:"name"`
+		Operation string `json:"operation"`
+		Kind      string `json:"kind"`
+	}
+	lines := strings.Split(strings.TrimSpace(errorsBody), "\n")
+	if got, want := len(lines), 1; got != want {
+		t.Fatalf("errors.ndjson lines = %d, want %d; body=%q", got, want, errorsBody)
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &errorRecord); err != nil {
+		t.Fatalf("json.Unmarshal(errors.ndjson line) error = %v, want nil", err)
+	}
+	if errorRecord.Schema != "zscalerctl.dump.error.v1" ||
+		errorRecord.Product != "zia" ||
+		errorRecord.Name != "rule-labels" ||
+		errorRecord.Operation != "list" ||
+		errorRecord.Kind != "list_failed" {
+		t.Errorf("errors.ndjson record = %#v, want value-free list failure", errorRecord)
+	}
+}
+
+func TestDumpContinueOnErrorTreatsContextCancellationAsFatal(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := cancelingResourceReader{cancel: cancel}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(ctx, []string{
+		"dump",
+		"--products", "zia",
+		"--resources", "locations",
+		"--continue-on-error",
+		"--out", outDir,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("App.Run(dump cancelled --continue-on-error) error = %v, want context.Canceled", err)
+	}
+	if _, statErr := os.Stat(outDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", outDir, statErr)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump cancelled --continue-on-error) stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump cancelled --continue-on-error) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestDumpContinueOnErrorTreatsSessionFailureAsFatal(t *testing.T) {
+	t.Parallel()
+
+	reader := &sessionErrorResourceReader{err: zscaler.ErrMissingCredentials}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{
+		"dump",
+		"--products", "zia",
+		"--resources", "locations",
+		"--continue-on-error",
+		"--out", outDir,
+	})
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("App.Run(dump session failure --continue-on-error) error = %v, want ErrMissingCredentials", err)
+	}
+	if _, statErr := os.Stat(outDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", outDir, statErr)
+	}
+	if reader.sessionCalls != 1 {
+		t.Errorf("sessionErrorResourceReader.Session calls = %d, want 1", reader.sessionCalls)
+	}
+	if reader.directListCalls != 0 {
+		t.Errorf("sessionErrorResourceReader.List calls = %d, want 0", reader.directListCalls)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump session failure --continue-on-error) stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump session failure --continue-on-error) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestDumpFallsBackWhenReaderDoesNotSupportProductSession(t *testing.T) {
 	t.Parallel()
 
@@ -928,6 +1173,35 @@ func (f fakeResourceReader) Get(context.Context, resources.Product, string, stri
 	return f.get, nil
 }
 
+type selectiveErrorResourceReader struct {
+	list     []resources.SourceRecord
+	failures map[string]error
+}
+
+func (f selectiveErrorResourceReader) List(_ context.Context, product resources.Product, name string) ([]resources.SourceRecord, error) {
+	if err := f.failures[string(product)+"/"+name]; err != nil {
+		return nil, err
+	}
+	return f.list, nil
+}
+
+func (f selectiveErrorResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("get must not be called")
+}
+
+type cancelingResourceReader struct {
+	cancel context.CancelFunc
+}
+
+func (f cancelingResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	f.cancel()
+	return nil, context.Canceled
+}
+
+func (f cancelingResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("get must not be called")
+}
+
 type sessionProviderResourceReader struct {
 	session         zscaler.ResourceSession
 	sessionCalls    int
@@ -945,6 +1219,26 @@ func (f *sessionProviderResourceReader) List(context.Context, resources.Product,
 }
 
 func (f *sessionProviderResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("direct get must not be called")
+}
+
+type sessionErrorResourceReader struct {
+	err             error
+	sessionCalls    int
+	directListCalls int
+}
+
+func (f *sessionErrorResourceReader) Session(context.Context, resources.Product) (zscaler.ResourceSession, error) {
+	f.sessionCalls++
+	return nil, f.err
+}
+
+func (f *sessionErrorResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	f.directListCalls++
+	return nil, errors.New("direct list must not be called")
+}
+
+func (f *sessionErrorResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
 	return resources.SourceRecord{}, errors.New("direct get must not be called")
 }
 

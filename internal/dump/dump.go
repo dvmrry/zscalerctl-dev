@@ -29,26 +29,58 @@ type safeJSON interface {
 	OutputSafe()
 }
 
+// Result is the safe, projected data set written by a dump.
+type Result struct {
+	Entries []ResourceDump
+	Errors  []ResourceError
+}
+
 type ResourceDump struct {
 	Spec    resources.ResourceSpec
 	Records resources.ProjectedRecords
 	Reports []resources.ProjectionReport
 }
 
+// ResourceError records a value-free per-resource dump failure.
+type ResourceError struct {
+	Schema    string `json:"schema"`
+	Product   string `json:"product"`
+	Name      string `json:"name"`
+	Operation string `json:"operation"`
+	Kind      string `json:"kind"`
+}
+
+// NewResourceError builds a value-free dump failure record.
+func NewResourceError(product resources.Product, name string, operation string, kind string) ResourceError {
+	return ResourceError{
+		Schema:    "zscalerctl.dump.error.v1",
+		Product:   string(product),
+		Name:      name,
+		Operation: operation,
+		Kind:      kind,
+	}
+}
+
 type Manifest struct {
-	Schema    string             `json:"schema"`
-	Redaction string             `json:"redaction"`
-	Warning   string             `json:"warning"`
-	Resources []ManifestResource `json:"resources"`
+	Schema     string             `json:"schema"`
+	Redaction  string             `json:"redaction"`
+	Warning    string             `json:"warning"`
+	Status     string             `json:"status"`
+	Errors     int                `json:"errors,omitempty"`
+	ErrorsPath string             `json:"errors_path,omitempty"`
+	Resources  []ManifestResource `json:"resources"`
 }
 
 func (Manifest) OutputSafe() {}
 
 type ManifestResource struct {
-	Product string `json:"product"`
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Records int    `json:"records"`
+	Product   string `json:"product"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Path      string `json:"path,omitempty"`
+	Records   int    `json:"records"`
+	Operation string `json:"operation,omitempty"`
+	ErrorKind string `json:"error_kind,omitempty"`
 }
 
 type RedactionReport struct {
@@ -77,17 +109,20 @@ type resourceTarget struct {
 	path    string
 }
 
-func Write(dir string, mode redact.Mode, entries []ResourceDump) error {
+func Write(dir string, mode redact.Mode, result Result) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("%w: missing dump directory", ErrUnsafePath)
 	}
 	mode = redact.EffectiveMode(mode)
 
-	targets, err := buildResourceTargets(dir, entries)
+	targets, err := buildResourceTargets(dir, result.Entries)
 	if err != nil {
 		return err
 	}
 	targetPaths := []string{filepath.Join(dir, "manifest.json"), filepath.Join(dir, "redaction_report.json")}
+	if len(result.Errors) > 0 {
+		targetPaths = append(targetPaths, filepath.Join(dir, "errors.ndjson"))
+	}
 	for _, target := range targets {
 		targetPaths = append(targetPaths, target.path)
 	}
@@ -104,6 +139,12 @@ func Write(dir string, mode redact.Mode, entries []ResourceDump) error {
 		Schema:    "zscalerctl.dump.manifest.v1",
 		Redaction: string(mode),
 		Warning:   dumpWarning,
+		Status:    "complete",
+	}
+	if len(result.Errors) > 0 {
+		manifest.Status = "partial"
+		manifest.Errors = len(result.Errors)
+		manifest.ErrorsPath = "errors.ndjson"
 	}
 	report := RedactionReport{Schema: "zscalerctl.redaction_report.v1", Redaction: string(mode)}
 
@@ -118,10 +159,20 @@ func Write(dir string, mode redact.Mode, entries []ResourceDump) error {
 		manifest.Resources = append(manifest.Resources, ManifestResource{
 			Product: target.product,
 			Name:    target.name,
+			Status:  "complete",
 			Path:    filepath.ToSlash(target.relPath),
 			Records: recordCount,
 		})
 		report.Resources = append(report.Resources, buildResourceReport(target.product, target.name, target.relPath, recordCount, target.entry.Reports))
+	}
+	for _, resourceError := range result.Errors {
+		manifest.Resources = append(manifest.Resources, ManifestResource{
+			Product:   resourceError.Product,
+			Name:      resourceError.Name,
+			Status:    "error",
+			Operation: resourceError.Operation,
+			ErrorKind: resourceError.Kind,
+		})
 	}
 
 	if err := writeJSONFile(filepath.Join(dir, "manifest.json"), mode, manifest); err != nil {
@@ -129,6 +180,11 @@ func Write(dir string, mode redact.Mode, entries []ResourceDump) error {
 	}
 	if err := writeJSONFile(filepath.Join(dir, "redaction_report.json"), mode, report); err != nil {
 		return err
+	}
+	if len(result.Errors) > 0 {
+		if err := writeNDJSONFile(filepath.Join(dir, "errors.ndjson"), mode, result.Errors); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -199,6 +255,23 @@ func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
 		return fmt.Errorf("marshal dump json: %w", err)
 	}
 	body = append(body, '\n')
+	body = redact.New(mode).Bytes(body)
+	return writeFileAtomic(path, body)
+}
+
+func writeNDJSONFile(path string, mode redact.Mode, values []ResourceError) error {
+	if err := rejectExisting(path); err != nil {
+		return err
+	}
+	var body []byte
+	for _, value := range values {
+		line, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("marshal dump ndjson: %w", err)
+		}
+		body = append(body, line...)
+		body = append(body, '\n')
+	}
 	body = redact.New(mode).Bytes(body)
 	return writeFileAtomic(path, body)
 }

@@ -275,7 +275,7 @@ dump/
       <resource>.json
     zpa/
       <resource>.json
-  errors.ndjson
+  errors.ndjson        # partial dumps only
 ```
 
 Dump writers should:
@@ -285,6 +285,14 @@ Dump writers should:
 - Write temporary files and rename atomically.
 - Avoid partial successful output looking complete.
 - Include enough manifest data to support review and diff workflows.
+
+By default, dump collection aborts before writing files when any selected
+resource fails. `--continue-on-error` is the explicit opt-in for partial dumps:
+successful resources are written, `manifest.json` is marked `partial`, failed
+resources are represented as `status: error` manifest entries, and
+`errors.ndjson` contains value-free error records with product, resource,
+operation, and error kind. Credential/session creation failures remain fatal
+because they indicate that live read access itself is not trustworthy.
 
 ## Redaction Modes
 

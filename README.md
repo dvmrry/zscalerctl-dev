@@ -83,6 +83,7 @@ zscalerctl completion zsh
 zscalerctl version
 zscalerctl dump --products zia --out ./dump
 zscalerctl dump --products zia --resources locations,static-ips --out ./dump-subset
+zscalerctl dump --products zia --continue-on-error --out ./partial-dump
 ```
 
 Key design docs:
@@ -110,6 +111,10 @@ Version 1 must not include write commands or a generic raw API executor.
 
 Table output is best-effort for quick human inspection. JSON and dump output are
 the primary automation surfaces.
+
+Dump commands fail closed by default: if a selected resource fails, no dump is
+written. `--continue-on-error` is opt-in and writes a clearly marked partial
+dump with `manifest.json` status `partial` and value-free `errors.ndjson`.
 
 ## Development
 

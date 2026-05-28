@@ -550,6 +550,16 @@ if [[ -d "$dump_dir" ]]; then
       else
         fail "dump manifest missing confidentiality warning"
       fi
+      if jq -e '.status == "complete"' "$manifest" >/dev/null; then
+        pass "dump manifest status is complete"
+      else
+        fail "dump manifest status is not complete"
+      fi
+      if jq -e '(.errors // 0) == 0 and (.errors_path // "") == ""' "$manifest" >/dev/null; then
+        pass "dump manifest has no partial-error metadata"
+      else
+        fail "dump manifest includes unexpected partial-error metadata"
+      fi
       validate_manifest_resource_set "$manifest" "$expected_paths_file" "$lists_dir/manifest-zia-dump-paths.txt" "$lists_dir/manifest-zia-dump-paths.diff"
     else
       fail "dump manifest is not valid JSON: $manifest"
@@ -573,6 +583,12 @@ if [[ -d "$dump_dir" ]]; then
     fi
   else
     fail "redaction report missing: $report"
+  fi
+
+  if [[ -e "$dump_dir/errors.ndjson" ]]; then
+    fail "complete dump unexpectedly wrote errors.ndjson"
+  else
+    pass "complete dump did not write errors.ndjson"
   fi
 
   validate_dump_file_set "$dump_dir" "$expected_paths_file" "$lists_dir/actual-zia-dump-paths.txt" "$lists_dir/actual-zia-dump-paths.diff"

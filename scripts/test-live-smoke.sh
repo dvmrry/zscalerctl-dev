@@ -140,10 +140,11 @@ write_dump() {
   "schema": "zscalerctl.dump.manifest.v1",
   "redaction": "standard",
   "warning": "sanitized dumps remain confidential operational data",
+  "status": "complete",
   "resources": [
-    {"product": "zia", "name": "locations", "path": "resources/zia/locations.json", "records": 1},
-    {"product": "zia", "name": "rule-labels", "path": "resources/zia/rule-labels.json", "records": 1},
-    {"product": "zia", "name": "static-ips", "path": "resources/zia/static-ips.json", "records": 1}
+    {"product": "zia", "name": "locations", "status": "complete", "path": "resources/zia/locations.json", "records": 1},
+    {"product": "zia", "name": "rule-labels", "status": "complete", "path": "resources/zia/rule-labels.json", "records": 1},
+    {"product": "zia", "name": "static-ips", "status": "complete", "path": "resources/zia/static-ips.json", "records": 1}
   ]
 }
 JSON
@@ -153,12 +154,13 @@ JSON
   "schema": "zscalerctl.dump.manifest.v1",
   "redaction": "standard",
   "warning": "sanitized dumps remain confidential operational data",
+  "status": "complete",
   "resources": [
-    {"product": "zia", "name": "locations", "path": "resources/zia/locations.json", "records": 1},
-    {"product": "zia", "name": "location-groups", "path": "resources/zia/location-groups.json", "records": 1},
-    {"product": "zia", "name": "rule-labels", "path": "resources/zia/rule-labels.json", "records": 1},
-    {"product": "zia", "name": "static-ips", "path": "resources/zia/static-ips.json", "records": 1},
-    {"product": "zia", "name": "gre-tunnels", "path": "resources/zia/gre-tunnels.json", "records": 1}
+    {"product": "zia", "name": "locations", "status": "complete", "path": "resources/zia/locations.json", "records": 1},
+    {"product": "zia", "name": "location-groups", "status": "complete", "path": "resources/zia/location-groups.json", "records": 1},
+    {"product": "zia", "name": "rule-labels", "status": "complete", "path": "resources/zia/rule-labels.json", "records": 1},
+    {"product": "zia", "name": "static-ips", "status": "complete", "path": "resources/zia/static-ips.json", "records": 1},
+    {"product": "zia", "name": "gre-tunnels", "status": "complete", "path": "resources/zia/gre-tunnels.json", "records": 1}
   ]
 }
 JSON
@@ -277,6 +279,18 @@ fi
 
 if ! grep -q '\[PASS\] manifest count matches resources/zia/locations.json (1 records)' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not validate manifest counts" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] dump manifest status is complete' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not validate manifest complete status" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] complete dump did not write errors.ndjson' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not validate absence of errors.ndjson" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
 fi
