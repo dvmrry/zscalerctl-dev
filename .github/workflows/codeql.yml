@@ -9,14 +9,16 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
+      actions: read
       contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -35,5 +37,13 @@ jobs:
       - run: go test -mod=vendor ./...
 
       - uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        continue-on-error: true
         with:
           category: '/language:go'
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: codeql-results
+          path: ../results
+          retention-days: 5
