@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip"]'
+denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip","lastModUser","dynamicLocationGroupCriteria","locations"]'
 denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential)'
 manifest_warning='sanitized dumps remain confidential operational data'
 
@@ -214,6 +214,49 @@ validate_no_denied_keys() {
     return
   fi
   pass "$label contains no denied field keys"
+}
+
+find_non_catalog_keys() {
+  local resource="$1"
+  local file="$2"
+  local schema="$3"
+
+  jq -r --slurpfile schema "$schema" --arg resource "$resource" '
+    ($schema[0] | map(select(.product == "zia" and .name == $resource)) | .[0]) as $spec
+    | if $spec == null then
+        ["<missing schema resource>"]
+      else
+        ([
+          $spec.fields[]?
+          | select(any(.allowed_modes[]?; . == "standard"))
+          | (.json_name // .name)
+        ]) as $allowed
+        | [
+          .[]?
+          | objects
+          | keys[] as $key
+          | select(($allowed | index($key)) | not)
+          | $key
+        ]
+        | unique
+      end
+    | .[]
+  ' "$file"
+}
+
+validate_catalog_subset() {
+  local label="$1"
+  local resource="$2"
+  local file="$3"
+  local schema="$4"
+  local unexpected
+
+  unexpected="$(find_non_catalog_keys "$resource" "$file" "$schema")"
+  if [[ -n "$unexpected" ]]; then
+    fail "$label contains non-catalog field key(s): $(tr '\n' ' ' <<<"$unexpected")"
+    return
+  fi
+  pass "$label contains only catalog-allowed top-level fields"
 }
 
 redaction_marker_paths() {
@@ -476,6 +519,7 @@ for resource in "${resources[@]}"; do
   if validate_json_array "zia $resource list" "$stdout_file"; then
     jq 'length' "$stdout_file" >"$lists_dir/zia-${resource}.count"
     validate_no_denied_keys "zia $resource list" "$stdout_file"
+    validate_catalog_subset "zia $resource list" "$resource" "$stdout_file" "$schema_file"
     summarize_redaction_markers "zia $resource list" "$stdout_file"
   fi
 done
@@ -543,6 +587,7 @@ if [[ -d "$dump_dir" ]]; then
     if validate_json_array "dump zia $resource" "$file"; then
       jq 'length' "$file" >"$lists_dir/dump-zia-${resource}.count"
       validate_no_denied_keys "dump zia $resource" "$file"
+      validate_catalog_subset "dump zia $resource" "$resource" "$file" "$schema_file"
       summarize_redaction_markers "dump zia $resource" "$file"
       if [[ -f "$lists_dir/zia-${resource}.count" ]]; then
         compare_counts "$resource" "$(cat "$lists_dir/zia-${resource}.count")" "$(cat "$lists_dir/dump-zia-${resource}.count")"

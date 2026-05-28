@@ -39,6 +39,32 @@ Fields:
 | `preSharedKey` | Secret | never | Explicitly modeled so it cannot render. |
 | `vpnCredentials` | Secret | never | SDK nested credentials are mapped into source records and dropped by projection. |
 
+## ZIA Location Groups
+
+Commands:
+
+```sh
+zscalerctl zia location-groups list
+zscalerctl zia location-groups get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Location group identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `deleted` | Operational metadata | `standard`, `share`, `paranoid` | Whether the group is marked deleted. |
+| `groupType` | Operational metadata | `standard`, `share`, `paranoid` | Static or dynamic location group type. |
+| `comments` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `lastModTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+| `predefined` | Operational metadata | `standard`, `share`, `paranoid` | Whether the group is predefined by Zscaler. |
+
+The SDK also returns nested dynamic criteria, member locations, and admin
+references such as `lastModUser`. The reader maps those objects into source
+records, but the catalog does not allow them to render, so projection drops
+them.
+
 ## ZIA Rule Labels
 
 Commands:

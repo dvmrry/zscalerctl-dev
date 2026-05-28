@@ -73,6 +73,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zdx
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels

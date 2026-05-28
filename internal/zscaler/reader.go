@@ -16,6 +16,7 @@ import (
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
@@ -35,10 +36,11 @@ var (
 const defaultTimeout = 30 * time.Second
 
 const (
-	resourceLocations  = "locations"
-	resourceRuleLabels = "rule-labels"
-	resourceStaticIPs  = "static-ips"
-	resourceGRETunnels = "gre-tunnels"
+	resourceLocations      = "locations"
+	resourceLocationGroups = "location-groups"
+	resourceRuleLabels     = "rule-labels"
+	resourceStaticIPs      = "static-ips"
+	resourceGRETunnels     = "gre-tunnels"
 )
 
 type AuthMode string
@@ -76,6 +78,11 @@ type ziaLocationClient interface {
 	GetLocation(context.Context, int) (*locationmanagement.Locations, error)
 }
 
+type ziaLocationGroupsClient interface {
+	ListLocationGroups(context.Context) ([]locationgroups.LocationGroup, error)
+	GetLocationGroup(context.Context, int) (*locationgroups.LocationGroup, error)
+}
+
 type ziaRuleLabelsClient interface {
 	ListRuleLabels(context.Context) ([]rulelabels.RuleLabels, error)
 	GetRuleLabel(context.Context, int) (*rulelabels.RuleLabels, error)
@@ -103,6 +110,7 @@ type resourceHandler interface {
 
 var (
 	_ resourceHandler = ziaLocationsHandler{}
+	_ resourceHandler = ziaLocationGroupsHandler{}
 	_ resourceHandler = ziaRuleLabelsHandler{}
 	_ resourceHandler = ziaStaticIPsHandler{}
 	_ resourceHandler = ziaGRETunnelsHandler{}
@@ -123,6 +131,9 @@ func NewReader(cfg ReaderConfig) (*SDKReader, error) {
 		handlers: map[resourceKey]resourceHandler{
 			{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
 				client: sdkZIALocationClient{sdkZIAClient: ziaClient},
+			},
+			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
+				client: sdkZIALocationGroupsClient{sdkZIAClient: ziaClient},
 			},
 			{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
 				client: sdkZIARuleLabelsClient{sdkZIAClient: ziaClient},
@@ -204,6 +215,37 @@ func (h ziaLocationsHandler) Get(ctx context.Context, id string) (resources.Sour
 		return resources.SourceRecord{}, errors.New("empty sdk location response")
 	}
 	return locationSourceRecord(*location), nil
+}
+
+type ziaLocationGroupsHandler struct {
+	client ziaLocationGroupsClient
+}
+
+func (h ziaLocationGroupsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
+	groups, err := h.client.ListLocationGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]resources.SourceRecord, 0, len(groups))
+	for _, group := range groups {
+		records = append(records, locationGroupSourceRecord(group))
+	}
+	return records, nil
+}
+
+func (h ziaLocationGroupsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
+	groupID, err := parsePositiveIntID(id)
+	if err != nil {
+		return resources.SourceRecord{}, err
+	}
+	group, err := h.client.GetLocationGroup(ctx, groupID)
+	if err != nil {
+		return resources.SourceRecord{}, err
+	}
+	if group == nil {
+		return resources.SourceRecord{}, errors.New("empty sdk location group response")
+	}
+	return locationGroupSourceRecord(*group), nil
 }
 
 type ziaRuleLabelsHandler struct {
@@ -331,6 +373,31 @@ func (c sdkZIALocationClient) GetLocation(ctx context.Context, id int) (*locatio
 	}
 	defer cleanup()
 	return locationmanagement.GetLocation(ctx, service, id)
+}
+
+type sdkZIALocationGroupsClient struct {
+	sdkZIAClient
+}
+
+func (c sdkZIALocationGroupsClient) ListLocationGroups(ctx context.Context) ([]locationgroups.LocationGroup, error) {
+	service, cleanup, err := c.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	fetchLocations := false
+	return locationgroups.GetAll(ctx, service, &locationgroups.GetAllFilterOptions{
+		FetchLocations: &fetchLocations,
+	})
+}
+
+func (c sdkZIALocationGroupsClient) GetLocationGroup(ctx context.Context, id int) (*locationgroups.LocationGroup, error) {
+	service, cleanup, err := c.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	return locationgroups.GetLocationGroup(ctx, service, id)
 }
 
 type sdkZIARuleLabelsClient struct {
@@ -641,6 +708,28 @@ func locationSourceRecord(location locationmanagement.Locations) resources.Sourc
 	return resources.NewSourceRecord(fields)
 }
 
+func locationGroupSourceRecord(group locationgroups.LocationGroup) resources.SourceRecord {
+	fields := map[string]any{
+		"id":          group.ID,
+		"name":        group.Name,
+		"deleted":     group.Deleted,
+		"groupType":   group.GroupType,
+		"comments":    group.Comments,
+		"lastModTime": group.LastModTime,
+		"predefined":  group.Predefined,
+	}
+	if group.DynamicLocationGroupCriteria != nil {
+		fields["dynamicLocationGroupCriteria"] = dynamicLocationGroupCriteriaSource(group.DynamicLocationGroupCriteria)
+	}
+	if len(group.Locations) > 0 {
+		fields["locations"] = idNameExtensionsSliceSource(group.Locations)
+	}
+	if group.LastModUser != nil {
+		fields["lastModUser"] = locationGroupLastModUserSource(group.LastModUser)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func ruleLabelSourceRecord(label rulelabels.RuleLabels) resources.SourceRecord {
 	fields := map[string]any{
 		"id":                  label.ID,
@@ -708,6 +797,74 @@ func greTunnelSourceRecord(tunnel gretunnels.GreTunnels) resources.SourceRecord 
 }
 
 func idNameExtensionsSource(value *ziacommon.IDNameExtensions) map[string]any {
+	fields := map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
+	if len(value.Extensions) > 0 {
+		fields["extensions"] = value.Extensions
+	}
+	return fields
+}
+
+func idNameExtensionsSliceSource(values []ziacommon.IDNameExtensions) []any {
+	out := make([]any, 0, len(values))
+	for i := range values {
+		out = append(out, idNameExtensionsSource(&values[i]))
+	}
+	return out
+}
+
+func dynamicLocationGroupCriteriaSource(value *locationgroups.DynamicLocationGroupCriteria) map[string]any {
+	fields := map[string]any{
+		"enforceAuthentication":  value.EnforceAuthentication,
+		"enforceAup":             value.EnforceAup,
+		"enforceFirewallControl": value.EnforceFirewallControl,
+		"enableXffForwarding":    value.EnableXffForwarding,
+		"enableCaution":          value.EnableCaution,
+		"enableBandwidthControl": value.EnableBandwidthControl,
+	}
+	if value.Name != nil {
+		fields["name"] = locationGroupMatchSource(value.Name.MatchString, value.Name.MatchType)
+	}
+	if len(value.Countries) > 0 {
+		fields["countries"] = append([]string(nil), value.Countries...)
+	}
+	if value.City != nil {
+		fields["city"] = locationGroupMatchSource(value.City.MatchString, value.City.MatchType)
+	}
+	if len(value.ManagedBy) > 0 {
+		fields["managedBy"] = locationGroupManagedBySliceSource(value.ManagedBy)
+	}
+	if len(value.Profiles) > 0 {
+		fields["profiles"] = append([]string(nil), value.Profiles...)
+	}
+	return fields
+}
+
+func locationGroupMatchSource(matchString string, matchType string) map[string]any {
+	return map[string]any{
+		"matchString": matchString,
+		"matchType":   matchType,
+	}
+}
+
+func locationGroupManagedBySliceSource(values []locationgroups.ManagedBy) []any {
+	out := make([]any, 0, len(values))
+	for i := range values {
+		fields := map[string]any{
+			"id":   values[i].ID,
+			"name": values[i].Name,
+		}
+		if len(values[i].Extensions) > 0 {
+			fields["extensions"] = values[i].Extensions
+		}
+		out = append(out, fields)
+	}
+	return out
+}
+
+func locationGroupLastModUserSource(value *locationgroups.LastModUser) map[string]any {
 	fields := map[string]any{
 		"id":   value.ID,
 		"name": value.Name,

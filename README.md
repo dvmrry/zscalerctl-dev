@@ -75,6 +75,7 @@ export ZSCALERCTL_ZIA_CLOUD=zscalerthree
 
 ```sh
 zscalerctl zia locations list
+zscalerctl zia location-groups list
 zscalerctl zia rule-labels list
 zscalerctl zia static-ips list
 zscalerctl zia gre-tunnels list

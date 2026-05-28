@@ -224,7 +224,7 @@ func TestCompletionScriptsDoNotReadCredentialFilesOrUseReader(t *testing.T) {
 			if err != nil {
 				t.Fatalf("App.Run(completion %s) error = %v, want nil", shell, err)
 			}
-			for _, want := range []string{"zscalerctl", "locations", "rule-labels", "static-ips", "gre-tunnels", "list get"} {
+			for _, want := range []string{"zscalerctl", "locations", "location-groups", "rule-labels", "static-ips", "gre-tunnels", "list get"} {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("App.Run(completion %s) stdout = %q, want %q", shell, out.String(), want)
 				}

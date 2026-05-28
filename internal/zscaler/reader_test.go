@@ -11,6 +11,7 @@ import (
 	"time"
 
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
@@ -221,6 +222,106 @@ func TestReaderListLocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected SDK shape) error = %v, want nil", err)
+	}
+}
+
+func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "location-group-psk-canary"
+		adminCanary       = "location-group-admin-canary"
+		locationCanary    = "location-group-member-canary"
+		criteriaCanary    = "location-group-criteria-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
+				client: fakeZIALocationGroupsClient{
+					groups: []locationgroups.LocationGroup{
+						{
+							ID:        987,
+							Name:      "Branch group psk=" + canary,
+							Deleted:   false,
+							GroupType: "DYNAMIC_GROUP",
+							DynamicLocationGroupCriteria: &locationgroups.DynamicLocationGroupCriteria{
+								Name: &locationgroups.Name{
+									MatchString: criteriaCanary,
+									MatchType:   "contains",
+								},
+								Countries: []string{"US"},
+								City: &locationgroups.City{
+									MatchString: criteriaCanary,
+									MatchType:   "contains",
+								},
+								ManagedBy: []locationgroups.ManagedBy{
+									{
+										ID:   1003,
+										Name: adminCanary,
+									},
+								},
+								EnforceAuthentication: true,
+								Profiles:              []string{"Corp"},
+							},
+							Comments: "temporary psk=" + canary + " " + bareFreeTextToken,
+							Locations: []ziacommon.IDNameExtensions{
+								{
+									ID:   123,
+									Name: locationCanary,
+								},
+							},
+							LastModUser: &locationgroups.LastModUser{
+								ID:   1001,
+								Name: adminCanary,
+							},
+							LastModTime: 1712345678,
+							Predefined:  false,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, "location-groups")
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, location-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZIA, "location-groups")
+	if !ok {
+		t.Fatal("FindSpec(zia, location-groups) ok = false, want true")
+	}
+	projected, _, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zia location-groups) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	for _, field := range []string{"name", "comments"} {
+		value := toString(got[field])
+		if strings.Contains(value, canary) {
+			t.Errorf("projected location-groups %s = %v, want no %q", field, got[field], canary)
+		}
+		if field == "comments" && strings.Contains(value, bareFreeTextToken) {
+			t.Errorf("projected location-groups %s = %v, want no bare token", field, got[field])
+		}
+		if !strings.Contains(value, "<REDACTED:SECRET>") {
+			t.Errorf("projected location-groups %s = %v, want typed redaction marker", field, got[field])
+		}
+	}
+	for _, field := range []string{"dynamicLocationGroupCriteria", "locations", "lastModUser"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected location-groups = %#v, want no %s", got, field)
+		}
+	}
+	for _, forbidden := range []string{adminCanary, locationCanary, criteriaCanary} {
+		if strings.Contains(fmt.Sprint(got), forbidden) {
+			t.Errorf("projected location-groups = %#v, want no %q", got, forbidden)
+		}
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected location-groups SDK shape) error = %v, want nil", err)
 	}
 }
 
@@ -517,6 +618,51 @@ func TestReaderGetRuleLabelDispatchesByResource(t *testing.T) {
 	}
 }
 
+func TestReaderGetLocationGroupDispatchesByResource(t *testing.T) {
+	t.Parallel()
+
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
+				client: fakeZIALocationGroupsClient{
+					group: &locationgroups.LocationGroup{
+						ID:        987,
+						Name:      "Branch group",
+						GroupType: "STATIC_GROUP",
+					},
+				},
+			},
+		},
+	}
+
+	record, err := reader.Get(context.Background(), resources.ProductZIA, "location-groups", "987")
+	if err != nil {
+		t.Fatalf("SDKReader.Get(zia, location-groups, 987) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZIA, "location-groups")
+	if !ok {
+		t.Fatal("FindSpec(zia, location-groups) ok = false, want true")
+	}
+	projected, _, err := resources.ProjectRecord(spec, redact.ModeStandard, record)
+	if err != nil {
+		t.Fatalf("ProjectRecord(zia location-groups) error = %v, want nil", err)
+	}
+	got := projected.Fields()
+	if got["id"] != 987 {
+		t.Errorf("projected location-group id = %v, want 987", got["id"])
+	}
+	if got["name"] != "Branch group" {
+		t.Errorf("projected location-group name = %v, want Branch group", got["name"])
+	}
+	if got["groupType"] != "STATIC_GROUP" {
+		t.Errorf("projected location-group groupType = %v, want STATIC_GROUP", got["groupType"])
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected location-group) error = %v, want nil", err)
+	}
+}
+
 func TestReaderGetStaticIPDispatchesByResource(t *testing.T) {
 	t.Parallel()
 
@@ -633,6 +779,26 @@ func (f fakeZIALocationClient) GetLocation(context.Context, int) (*locationmanag
 		return nil, f.err
 	}
 	return f.location, nil
+}
+
+type fakeZIALocationGroupsClient struct {
+	groups []locationgroups.LocationGroup
+	group  *locationgroups.LocationGroup
+	err    error
+}
+
+func (f fakeZIALocationGroupsClient) ListLocationGroups(context.Context) ([]locationgroups.LocationGroup, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.groups, nil
+}
+
+func (f fakeZIALocationGroupsClient) GetLocationGroup(context.Context, int) (*locationgroups.LocationGroup, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.group, nil
 }
 
 type fakeZIARuleLabelsClient struct {

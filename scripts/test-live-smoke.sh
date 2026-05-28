@@ -26,7 +26,31 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(gre-tunnels locations rule-labels static-ips)
+resources=(gre-tunnels location-groups locations rule-labels static-ips)
+
+schema_fields() {
+  case "$1" in
+    gre-tunnels)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"sourceIp","allowed_modes":["standard"]},{"name":"internalIpRange","allowed_modes":["standard"]},{"name":"comment","allowed_modes":["standard"]},{"name":"withinCountry","allowed_modes":["standard"]}]'
+      ;;
+    location-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"comments","allowed_modes":["standard"]},{"name":"groupType","allowed_modes":["standard"]},{"name":"predefined","allowed_modes":["standard"]}]'
+      ;;
+    locations)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"ipAddresses","allowed_modes":["standard"]}]'
+      ;;
+    rule-labels)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"lastModifiedTime","allowed_modes":["standard"]},{"name":"referencedRuleCount","allowed_modes":["standard"]}]'
+      ;;
+    static-ips)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"ipAddress","allowed_modes":["standard"]},{"name":"routableIP","allowed_modes":["standard"]},{"name":"comment","allowed_modes":["standard"]}]'
+      ;;
+    *)
+      echo "unexpected resource: $1" >&2
+      exit 2
+      ;;
+  esac
+}
 
 write_schema() {
   local resource
@@ -36,7 +60,7 @@ write_schema() {
     if [[ "$resource" != "${resources[0]}" ]]; then
       printf ',\n'
     fi
-    printf '  {"product":"zia","name":"%s","operations":[{"name":"list","capability":"read"},{"name":"get","capability":"read"}],"fields":[]}' "$resource"
+    printf '  {"product":"zia","name":"%s","operations":[{"name":"list","capability":"read"},{"name":"get","capability":"read"}],"fields":%s}' "$resource" "$(schema_fields "$resource")"
   done
   printf '\n]\n'
 }
@@ -52,6 +76,15 @@ write_resource() {
       ;;
     *:locations)
       printf '[{"id":1,"name":"HQ","description":"<REDACTED:SECRET>","ipAddresses":["192.0.2.10"]}]\n'
+      ;;
+    leaky-location-groups:location-groups)
+      printf '[{"id":5,"name":"Branch groups","lastModUser":{"id":1,"name":"Admin"},"dynamicLocationGroupCriteria":{"name":{"matchString":"secret branch"}},"locations":[{"id":1,"name":"HQ"}]}]\n'
+      ;;
+    *:location-groups)
+      printf '[{"id":5,"name":"Branch groups","comments":"","groupType":"STATIC_GROUP","predefined":false}]\n'
+      ;;
+    unexpected-field:rule-labels)
+      printf '[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4,"unexpectedField":"not a value to print"}]\n'
       ;;
     *:rule-labels)
       printf '[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4}]\n'
@@ -96,6 +129,7 @@ write_dump() {
   chmod 700 "$out" "$out/resources" "$out/resources/zia"
 
   write_resource locations >"$out/resources/zia/locations.json"
+  write_resource location-groups >"$out/resources/zia/location-groups.json"
   write_resource rule-labels >"$out/resources/zia/rule-labels.json"
   write_resource static-ips >"$out/resources/zia/static-ips.json"
   write_resource gre-tunnels >"$out/resources/zia/gre-tunnels.json"
@@ -121,6 +155,7 @@ JSON
   "warning": "sanitized dumps remain confidential operational data",
   "resources": [
     {"product": "zia", "name": "locations", "path": "resources/zia/locations.json", "records": 1},
+    {"product": "zia", "name": "location-groups", "path": "resources/zia/location-groups.json", "records": 1},
     {"product": "zia", "name": "rule-labels", "path": "resources/zia/rule-labels.json", "records": 1},
     {"product": "zia", "name": "static-ips", "path": "resources/zia/static-ips.json", "records": 1},
     {"product": "zia", "name": "gre-tunnels", "path": "resources/zia/gre-tunnels.json", "records": 1}
@@ -258,6 +293,18 @@ if ! grep -q '\[PASS\] zia locations list and dump counts match (1 records)' "$t
   exit 1
 fi
 
+if ! grep -q '\[PASS\] zia location-groups list contains only catalog-allowed top-level fields' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not validate list catalog subset" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] dump zia location-groups contains only catalog-allowed top-level fields' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not validate dump catalog subset" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
 if ! grep -F -q '[INFO] zia locations list redaction markers at: [].description' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not summarize list redaction marker paths" >&2
   cat "$tmp_dir/stdout-good" >&2
@@ -292,6 +339,32 @@ fi
 if ! grep -q 'preSharedKey' "$tmp_dir/stderr-leaky"; then
   echo "live-smoke denied-key failure did not mention preSharedKey" >&2
   cat "$tmp_dir/stderr-leaky" >&2
+  exit 1
+fi
+
+if run_smoke leaky-location-groups; then
+  echo "live-smoke accepted a fixture with location-group denied keys" >&2
+  cat "$tmp_dir/stdout-leaky-location-groups" >&2
+  cat "$tmp_dir/stderr-leaky-location-groups" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'lastModUser|dynamicLocationGroupCriteria|locations' "$tmp_dir/stderr-leaky-location-groups"; then
+  echo "live-smoke location-group denied-key failure did not mention the denied key" >&2
+  cat "$tmp_dir/stderr-leaky-location-groups" >&2
+  exit 1
+fi
+
+if run_smoke unexpected-field; then
+  echo "live-smoke accepted a fixture with a non-catalog top-level field" >&2
+  cat "$tmp_dir/stdout-unexpected-field" >&2
+  cat "$tmp_dir/stderr-unexpected-field" >&2
+  exit 1
+fi
+
+if ! grep -q 'non-catalog field key(s): unexpectedField' "$tmp_dir/stderr-unexpected-field"; then
+  echo "live-smoke non-catalog field failure did not mention unexpectedField" >&2
+  cat "$tmp_dir/stderr-unexpected-field" >&2
   exit 1
 fi
 

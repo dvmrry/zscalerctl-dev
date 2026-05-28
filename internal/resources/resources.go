@@ -606,6 +606,48 @@ func Catalog() ResourceCatalog {
 		},
 		{
 			Product:    ProductZIA,
+			Name:       "location-groups",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				{
+					Name:           "id",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "name",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "deleted",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "groupType",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "comments",
+					Classification: ClassFreeText,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "lastModTime",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "predefined",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+			},
+		},
+		{
+			Product:    ProductZIA,
 			Name:       "rule-labels",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{
