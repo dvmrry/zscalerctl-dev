@@ -175,26 +175,24 @@ func TestReaderListLocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
-				client: fakeZIALocationClient{
-					locations: []locationmanagement.Locations{
-						{
-							ID:          123,
-							Name:        "HQ",
-							IPAddresses: []string{"192.0.2.10"},
-							Description: "temporary psk=" + psk + " " + bareFreeTextToken,
-							VPNCredentials: []locationmanagement.VPNCredentials{
-								{
-									ID:           456,
-									Type:         "UFQDN",
-									FQDN:         "hq@example.invalid",
-									PreSharedKey: psk,
-								},
+			{product: resources.ProductZIA, name: resourceLocations}: fakeLocationsResourceHandler(fakeZIALocationClient{
+				locations: []locationmanagement.Locations{
+					{
+						ID:          123,
+						Name:        "HQ",
+						IPAddresses: []string{"192.0.2.10"},
+						Description: "temporary psk=" + psk + " " + bareFreeTextToken,
+						VPNCredentials: []locationmanagement.VPNCredentials{
+							{
+								ID:           456,
+								Type:         "UFQDN",
+								FQDN:         "hq@example.invalid",
+								PreSharedKey: psk,
 							},
 						},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -238,50 +236,48 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
-				client: fakeZIALocationGroupsClient{
-					groups: []locationgroups.LocationGroup{
-						{
-							ID:        987,
-							Name:      "Branch group psk=" + canary,
-							Deleted:   false,
-							GroupType: "DYNAMIC_GROUP",
-							DynamicLocationGroupCriteria: &locationgroups.DynamicLocationGroupCriteria{
-								Name: &locationgroups.Name{
-									MatchString: criteriaCanary,
-									MatchType:   "contains",
-								},
-								Countries: []string{"US"},
-								City: &locationgroups.City{
-									MatchString: criteriaCanary,
-									MatchType:   "contains",
-								},
-								ManagedBy: []locationgroups.ManagedBy{
-									{
-										ID:   1003,
-										Name: adminCanary,
-									},
-								},
-								EnforceAuthentication: true,
-								Profiles:              []string{"Corp"},
+			{product: resources.ProductZIA, name: resourceLocationGroups}: fakeLocationGroupsResourceHandler(fakeZIALocationGroupsClient{
+				groups: []locationgroups.LocationGroup{
+					{
+						ID:        987,
+						Name:      "Branch group psk=" + canary,
+						Deleted:   false,
+						GroupType: "DYNAMIC_GROUP",
+						DynamicLocationGroupCriteria: &locationgroups.DynamicLocationGroupCriteria{
+							Name: &locationgroups.Name{
+								MatchString: criteriaCanary,
+								MatchType:   "contains",
 							},
-							Comments: "temporary psk=" + canary + " " + bareFreeTextToken,
-							Locations: []ziacommon.IDNameExtensions{
+							Countries: []string{"US"},
+							City: &locationgroups.City{
+								MatchString: criteriaCanary,
+								MatchType:   "contains",
+							},
+							ManagedBy: []locationgroups.ManagedBy{
 								{
-									ID:   123,
-									Name: locationCanary,
+									ID:   1003,
+									Name: adminCanary,
 								},
 							},
-							LastModUser: &locationgroups.LastModUser{
-								ID:   1001,
-								Name: adminCanary,
-							},
-							LastModTime: 1712345678,
-							Predefined:  false,
+							EnforceAuthentication: true,
+							Profiles:              []string{"Corp"},
 						},
+						Comments: "temporary psk=" + canary + " " + bareFreeTextToken,
+						Locations: []ziacommon.IDNameExtensions{
+							{
+								ID:   123,
+								Name: locationCanary,
+							},
+						},
+						LastModUser: &locationgroups.LastModUser{
+							ID:   1001,
+							Name: adminCanary,
+						},
+						LastModTime: 1712345678,
+						Predefined:  false,
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -336,27 +332,25 @@ func TestReaderListRuleLabelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
-				client: fakeZIARuleLabelsClient{
-					labels: []rulelabels.RuleLabels{
-						{
-							ID:                  789,
-							Name:                "Outbound psk=" + canary,
-							Description:         "temporary psk=" + canary + " " + bareFreeTextToken,
-							LastModifiedTime:    1712345678,
-							ReferencedRuleCount: 3,
-							CreatedBy: &ziacommon.IDNameExtensions{
-								ID:   1001,
-								Name: adminCanary,
-							},
-							LastModifiedBy: &ziacommon.IDNameExtensions{
-								ID:   1002,
-								Name: adminCanary,
-							},
+			{product: resources.ProductZIA, name: resourceRuleLabels}: fakeRuleLabelsResourceHandler(fakeZIARuleLabelsClient{
+				labels: []rulelabels.RuleLabels{
+					{
+						ID:                  789,
+						Name:                "Outbound psk=" + canary,
+						Description:         "temporary psk=" + canary + " " + bareFreeTextToken,
+						LastModifiedTime:    1712345678,
+						ReferencedRuleCount: 3,
+						CreatedBy: &ziacommon.IDNameExtensions{
+							ID:   1001,
+							Name: adminCanary,
+						},
+						LastModifiedBy: &ziacommon.IDNameExtensions{
+							ID:   1002,
+							Name: adminCanary,
 						},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -409,34 +403,32 @@ func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceStaticIPs}: ziaStaticIPsHandler{
-				client: fakeZIAStaticIPsClient{
-					staticIPs: []staticips.StaticIP{
-						{
-							ID:                   321,
-							IpAddress:            "192.0.2.44",
-							GeoOverride:          true,
-							Latitude:             40.7128,
-							Longitude:            -74.0060,
-							RoutableIP:           true,
-							LastModificationTime: 1712345678,
-							Comment:              "temporary psk=" + canary + " " + bareFreeTextToken,
-							City: &staticips.City{
-								ID:   44,
-								Name: "Metropolis",
-							},
-							ManagedBy: &staticips.ManagedBy{
-								ID:   1001,
-								Name: adminCanary,
-							},
-							LastModifiedBy: &staticips.LastModifiedBy{
-								ID:   1002,
-								Name: adminCanary,
-							},
+			{product: resources.ProductZIA, name: resourceStaticIPs}: fakeStaticIPsResourceHandler(fakeZIAStaticIPsClient{
+				staticIPs: []staticips.StaticIP{
+					{
+						ID:                   321,
+						IpAddress:            "192.0.2.44",
+						GeoOverride:          true,
+						Latitude:             40.7128,
+						Longitude:            -74.0060,
+						RoutableIP:           true,
+						LastModificationTime: 1712345678,
+						Comment:              "temporary psk=" + canary + " " + bareFreeTextToken,
+						City: &staticips.City{
+							ID:   44,
+							Name: "Metropolis",
+						},
+						ManagedBy: &staticips.ManagedBy{
+							ID:   1001,
+							Name: adminCanary,
+						},
+						LastModifiedBy: &staticips.LastModifiedBy{
+							ID:   1002,
+							Name: adminCanary,
 						},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -489,34 +481,32 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceGRETunnels}: ziaGRETunnelsHandler{
-				client: fakeZIAGRETunnelsClient{
-					tunnels: []gretunnels.GreTunnels{
-						{
-							ID:                   654,
-							SourceIP:             "192.0.2.10",
-							InternalIpRange:      "10.10.10.0/29",
-							LastModificationTime: 1712345678,
-							WithinCountry:        &withinCountry,
-							Comment:              "temporary psk=" + canary + " " + bareFreeTextToken,
-							IPUnnumbered:         true,
-							SubCloud:             "us-east",
-							ManagedBy: &gretunnels.ManagedBy{
-								ID:   1001,
-								Name: adminCanary,
-							},
-							LastModifiedBy: &gretunnels.LastModifiedBy{
-								ID:   1002,
-								Name: adminCanary,
-							},
-							PrimaryDestVip: &gretunnels.PrimaryDestVip{
-								ID:        901,
-								VirtualIP: virtualIPCanary,
-							},
+			{product: resources.ProductZIA, name: resourceGRETunnels}: fakeGRETunnelsResourceHandler(fakeZIAGRETunnelsClient{
+				tunnels: []gretunnels.GreTunnels{
+					{
+						ID:                   654,
+						SourceIP:             "192.0.2.10",
+						InternalIpRange:      "10.10.10.0/29",
+						LastModificationTime: 1712345678,
+						WithinCountry:        &withinCountry,
+						Comment:              "temporary psk=" + canary + " " + bareFreeTextToken,
+						IPUnnumbered:         true,
+						SubCloud:             "us-east",
+						ManagedBy: &gretunnels.ManagedBy{
+							ID:   1001,
+							Name: adminCanary,
+						},
+						LastModifiedBy: &gretunnels.LastModifiedBy{
+							ID:   1002,
+							Name: adminCanary,
+						},
+						PrimaryDestVip: &gretunnels.PrimaryDestVip{
+							ID:        901,
+							VirtualIP: virtualIPCanary,
 						},
 					},
 				},
-			},
+			}),
 		},
 	}
 
@@ -564,9 +554,7 @@ func TestReaderGetLocationRejectsNonNumericID(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
-				client: fakeZIALocationClient{},
-			},
+			{product: resources.ProductZIA, name: resourceLocations}: fakeLocationsResourceHandler(fakeZIALocationClient{}),
 		},
 	}
 
@@ -582,15 +570,13 @@ func TestReaderGetRuleLabelDispatchesByResource(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
-				client: fakeZIARuleLabelsClient{
-					label: &rulelabels.RuleLabels{
-						ID:                  789,
-						Name:                "Outbound",
-						ReferencedRuleCount: 3,
-					},
+			{product: resources.ProductZIA, name: resourceRuleLabels}: fakeRuleLabelsResourceHandler(fakeZIARuleLabelsClient{
+				label: &rulelabels.RuleLabels{
+					ID:                  789,
+					Name:                "Outbound",
+					ReferencedRuleCount: 3,
 				},
-			},
+			}),
 		},
 	}
 
@@ -624,15 +610,13 @@ func TestReaderGetLocationGroupDispatchesByResource(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
-				client: fakeZIALocationGroupsClient{
-					group: &locationgroups.LocationGroup{
-						ID:        987,
-						Name:      "Branch group",
-						GroupType: "STATIC_GROUP",
-					},
+			{product: resources.ProductZIA, name: resourceLocationGroups}: fakeLocationGroupsResourceHandler(fakeZIALocationGroupsClient{
+				group: &locationgroups.LocationGroup{
+					ID:        987,
+					Name:      "Branch group",
+					GroupType: "STATIC_GROUP",
 				},
-			},
+			}),
 		},
 	}
 
@@ -669,14 +653,12 @@ func TestReaderGetStaticIPDispatchesByResource(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceStaticIPs}: ziaStaticIPsHandler{
-				client: fakeZIAStaticIPsClient{
-					staticIP: &staticips.StaticIP{
-						ID:        321,
-						IpAddress: "192.0.2.44",
-					},
+			{product: resources.ProductZIA, name: resourceStaticIPs}: fakeStaticIPsResourceHandler(fakeZIAStaticIPsClient{
+				staticIP: &staticips.StaticIP{
+					ID:        321,
+					IpAddress: "192.0.2.44",
 				},
-			},
+			}),
 		},
 	}
 
@@ -740,11 +722,9 @@ func TestReaderNormalizesSDKErrors(t *testing.T) {
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
 		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
-				client: fakeZIALocationClient{
-					err: errors.New("raw SDK error containing " + leaked),
-				},
-			},
+			{product: resources.ProductZIA, name: resourceLocations}: fakeLocationsResourceHandler(fakeZIALocationClient{
+				err: errors.New("raw SDK error containing " + leaked),
+			}),
 		},
 	}
 
@@ -877,6 +857,51 @@ func (f fakeZIAGRETunnelsClient) GetGRETunnel(context.Context, int) (*gretunnels
 		return nil, f.err
 	}
 	return f.tunnel, nil
+}
+
+func fakeLocationsResourceHandler(client fakeZIALocationClient) resourceHandler {
+	return newListGetHandler(
+		resourceLocations,
+		client.ListLocations,
+		intIDGetter(client.GetLocation),
+		locationSourceRecord,
+	)
+}
+
+func fakeLocationGroupsResourceHandler(client fakeZIALocationGroupsClient) resourceHandler {
+	return newListGetHandler(
+		resourceLocationGroups,
+		client.ListLocationGroups,
+		intIDGetter(client.GetLocationGroup),
+		locationGroupSourceRecord,
+	)
+}
+
+func fakeRuleLabelsResourceHandler(client fakeZIARuleLabelsClient) resourceHandler {
+	return newListGetHandler(
+		resourceRuleLabels,
+		client.ListRuleLabels,
+		intIDGetter(client.GetRuleLabel),
+		ruleLabelSourceRecord,
+	)
+}
+
+func fakeStaticIPsResourceHandler(client fakeZIAStaticIPsClient) resourceHandler {
+	return newListGetHandler(
+		resourceStaticIPs,
+		client.ListStaticIPs,
+		intIDGetter(client.GetStaticIP),
+		staticIPSourceRecord,
+	)
+}
+
+func fakeGRETunnelsResourceHandler(client fakeZIAGRETunnelsClient) resourceHandler {
+	return newListGetHandler(
+		resourceGRETunnels,
+		client.ListGRETunnels,
+		intIDGetter(client.GetGRETunnel),
+		greTunnelSourceRecord,
+	)
 }
 
 func toString(value any) string {

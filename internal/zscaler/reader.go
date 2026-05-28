@@ -86,31 +86,6 @@ type SDKSession struct {
 	cleanup   func()
 }
 
-type ziaLocationClient interface {
-	ListLocations(context.Context) ([]locationmanagement.Locations, error)
-	GetLocation(context.Context, int) (*locationmanagement.Locations, error)
-}
-
-type ziaLocationGroupsClient interface {
-	ListLocationGroups(context.Context) ([]locationgroups.LocationGroup, error)
-	GetLocationGroup(context.Context, int) (*locationgroups.LocationGroup, error)
-}
-
-type ziaRuleLabelsClient interface {
-	ListRuleLabels(context.Context) ([]rulelabels.RuleLabels, error)
-	GetRuleLabel(context.Context, int) (*rulelabels.RuleLabels, error)
-}
-
-type ziaStaticIPsClient interface {
-	ListStaticIPs(context.Context) ([]staticips.StaticIP, error)
-	GetStaticIP(context.Context, int) (*staticips.StaticIP, error)
-}
-
-type ziaGRETunnelsClient interface {
-	ListGRETunnels(context.Context) ([]gretunnels.GreTunnels, error)
-	GetGRETunnel(context.Context, int) (*gretunnels.GreTunnels, error)
-}
-
 type resourceKey struct {
 	product resources.Product
 	name    string
@@ -126,11 +101,7 @@ type ziaServiceProvider interface {
 }
 
 var (
-	_ resourceHandler = ziaLocationsHandler{}
-	_ resourceHandler = ziaLocationGroupsHandler{}
-	_ resourceHandler = ziaRuleLabelsHandler{}
-	_ resourceHandler = ziaStaticIPsHandler{}
-	_ resourceHandler = ziaGRETunnelsHandler{}
+	_ resourceHandler = listGetHandler[struct{}]{}
 	_ ResourceSession = (*SDKSession)(nil)
 )
 
@@ -258,177 +229,104 @@ func handlerFrom(handlers map[resourceKey]resourceHandler, product resources.Pro
 
 func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler {
 	return map[resourceKey]resourceHandler{
-		{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
-			client: sdkZIALocationClient{sdkZIAClient: ziaClient},
-		},
-		{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
-			client: sdkZIALocationGroupsClient{sdkZIAClient: ziaClient},
-		},
-		{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
-			client: sdkZIARuleLabelsClient{sdkZIAClient: ziaClient},
-		},
-		{product: resources.ProductZIA, name: resourceStaticIPs}: ziaStaticIPsHandler{
-			client: sdkZIAStaticIPsClient{sdkZIAClient: ziaClient},
-		},
-		{product: resources.ProductZIA, name: resourceGRETunnels}: ziaGRETunnelsHandler{
-			client: sdkZIAGRETunnelsClient{sdkZIAClient: ziaClient},
-		},
+		{product: resources.ProductZIA, name: resourceLocations}: newListGetHandler(
+			resourceLocations,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
+				return locationmanagement.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
+				return locationmanagement.GetLocation(ctx, service, id)
+			}),
+			locationSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceLocationGroups}: newListGetHandler(
+			resourceLocationGroups,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
+				fetchLocations := false
+				return locationgroups.GetAll(ctx, service, &locationgroups.GetAllFilterOptions{
+					FetchLocations: &fetchLocations,
+				})
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationgroups.LocationGroup, error) {
+				return locationgroups.GetLocationGroup(ctx, service, id)
+			}),
+			locationGroupSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceRuleLabels}: newListGetHandler(
+			resourceRuleLabels,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]rulelabels.RuleLabels, error) {
+				return rulelabels.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*rulelabels.RuleLabels, error) {
+				return rulelabels.Get(ctx, service, id)
+			}),
+			ruleLabelSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceStaticIPs}: newListGetHandler(
+			resourceStaticIPs,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]staticips.StaticIP, error) {
+				return staticips.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*staticips.StaticIP, error) {
+				return staticips.Get(ctx, service, id)
+			}),
+			staticIPSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceGRETunnels}: newListGetHandler(
+			resourceGRETunnels,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]gretunnels.GreTunnels, error) {
+				return gretunnels.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*gretunnels.GreTunnels, error) {
+				return gretunnels.GetGreTunnels(ctx, service, id)
+			}),
+			greTunnelSourceRecord,
+		),
 	}
 }
 
-type ziaLocationsHandler struct {
-	client ziaLocationClient
+type listGetHandler[T any] struct {
+	resourceName string
+	list         func(context.Context) ([]T, error)
+	get          func(context.Context, string) (*T, error)
+	sourceRecord func(T) resources.SourceRecord
 }
 
-func (h ziaLocationsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
-	locations, err := h.client.ListLocations(ctx)
+func newListGetHandler[T any](
+	resourceName string,
+	list func(context.Context) ([]T, error),
+	get func(context.Context, string) (*T, error),
+	sourceRecord func(T) resources.SourceRecord,
+) listGetHandler[T] {
+	return listGetHandler[T]{
+		resourceName: resourceName,
+		list:         list,
+		get:          get,
+		sourceRecord: sourceRecord,
+	}
+}
+
+func (h listGetHandler[T]) List(ctx context.Context) ([]resources.SourceRecord, error) {
+	items, err := h.list(ctx)
 	if err != nil {
 		return nil, err
 	}
-	records := make([]resources.SourceRecord, 0, len(locations))
-	for _, location := range locations {
-		records = append(records, locationSourceRecord(location))
+	records := make([]resources.SourceRecord, 0, len(items))
+	for _, item := range items {
+		records = append(records, h.sourceRecord(item))
 	}
 	return records, nil
 }
 
-func (h ziaLocationsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
-	locationID, err := parsePositiveIntID(id)
+func (h listGetHandler[T]) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
+	item, err := h.get(ctx, id)
 	if err != nil {
 		return resources.SourceRecord{}, err
 	}
-	location, err := h.client.GetLocation(ctx, locationID)
-	if err != nil {
-		return resources.SourceRecord{}, err
+	if item == nil {
+		return resources.SourceRecord{}, fmt.Errorf("empty sdk %s response", h.resourceName)
 	}
-	if location == nil {
-		return resources.SourceRecord{}, errors.New("empty sdk location response")
-	}
-	return locationSourceRecord(*location), nil
-}
-
-type ziaLocationGroupsHandler struct {
-	client ziaLocationGroupsClient
-}
-
-func (h ziaLocationGroupsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
-	groups, err := h.client.ListLocationGroups(ctx)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]resources.SourceRecord, 0, len(groups))
-	for _, group := range groups {
-		records = append(records, locationGroupSourceRecord(group))
-	}
-	return records, nil
-}
-
-func (h ziaLocationGroupsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
-	groupID, err := parsePositiveIntID(id)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	group, err := h.client.GetLocationGroup(ctx, groupID)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	if group == nil {
-		return resources.SourceRecord{}, errors.New("empty sdk location group response")
-	}
-	return locationGroupSourceRecord(*group), nil
-}
-
-type ziaRuleLabelsHandler struct {
-	client ziaRuleLabelsClient
-}
-
-func (h ziaRuleLabelsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
-	labels, err := h.client.ListRuleLabels(ctx)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]resources.SourceRecord, 0, len(labels))
-	for _, label := range labels {
-		records = append(records, ruleLabelSourceRecord(label))
-	}
-	return records, nil
-}
-
-func (h ziaRuleLabelsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
-	labelID, err := parsePositiveIntID(id)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	label, err := h.client.GetRuleLabel(ctx, labelID)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	if label == nil {
-		return resources.SourceRecord{}, errors.New("empty sdk rule label response")
-	}
-	return ruleLabelSourceRecord(*label), nil
-}
-
-type ziaStaticIPsHandler struct {
-	client ziaStaticIPsClient
-}
-
-func (h ziaStaticIPsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
-	staticIPs, err := h.client.ListStaticIPs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]resources.SourceRecord, 0, len(staticIPs))
-	for _, staticIP := range staticIPs {
-		records = append(records, staticIPSourceRecord(staticIP))
-	}
-	return records, nil
-}
-
-func (h ziaStaticIPsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
-	staticIPID, err := parsePositiveIntID(id)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	staticIP, err := h.client.GetStaticIP(ctx, staticIPID)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	if staticIP == nil {
-		return resources.SourceRecord{}, errors.New("empty sdk static IP response")
-	}
-	return staticIPSourceRecord(*staticIP), nil
-}
-
-type ziaGRETunnelsHandler struct {
-	client ziaGRETunnelsClient
-}
-
-func (h ziaGRETunnelsHandler) List(ctx context.Context) ([]resources.SourceRecord, error) {
-	tunnels, err := h.client.ListGRETunnels(ctx)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]resources.SourceRecord, 0, len(tunnels))
-	for _, tunnel := range tunnels {
-		records = append(records, greTunnelSourceRecord(tunnel))
-	}
-	return records, nil
-}
-
-func (h ziaGRETunnelsHandler) Get(ctx context.Context, id string) (resources.SourceRecord, error) {
-	tunnelID, err := parsePositiveIntID(id)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	tunnel, err := h.client.GetGRETunnel(ctx, tunnelID)
-	if err != nil {
-		return resources.SourceRecord{}, err
-	}
-	if tunnel == nil {
-		return resources.SourceRecord{}, errors.New("empty sdk GRE tunnel response")
-	}
-	return greTunnelSourceRecord(*tunnel), nil
+	return h.sourceRecord(*item), nil
 }
 
 func parsePositiveIntID(id string) (int, error) {
@@ -450,117 +348,42 @@ func (c sdkZIAClient) service(ctx context.Context) (*zsdk.Service, func(), error
 	return c.services.service(ctx)
 }
 
-type sdkZIALocationClient struct {
-	sdkZIAClient
-}
-
-func (c sdkZIALocationClient) ListLocations(ctx context.Context) ([]locationmanagement.Locations, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
+func ziaSDKList[T any](
+	client sdkZIAClient,
+	call func(context.Context, *zsdk.Service) ([]T, error),
+) func(context.Context) ([]T, error) {
+	return func(ctx context.Context) ([]T, error) {
+		service, cleanup, err := client.service(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service)
 	}
-	defer cleanup()
-	return locationmanagement.GetAll(ctx, service)
 }
 
-func (c sdkZIALocationClient) GetLocation(ctx context.Context, id int) (*locationmanagement.Locations, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return locationmanagement.GetLocation(ctx, service, id)
-}
-
-type sdkZIALocationGroupsClient struct {
-	sdkZIAClient
-}
-
-func (c sdkZIALocationGroupsClient) ListLocationGroups(ctx context.Context) ([]locationgroups.LocationGroup, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	fetchLocations := false
-	return locationgroups.GetAll(ctx, service, &locationgroups.GetAllFilterOptions{
-		FetchLocations: &fetchLocations,
+func ziaSDKGet[T any](
+	client sdkZIAClient,
+	call func(context.Context, *zsdk.Service, int) (*T, error),
+) func(context.Context, string) (*T, error) {
+	return intIDGetter(func(ctx context.Context, id int) (*T, error) {
+		service, cleanup, err := client.service(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service, id)
 	})
 }
 
-func (c sdkZIALocationGroupsClient) GetLocationGroup(ctx context.Context, id int) (*locationgroups.LocationGroup, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
+func intIDGetter[T any](get func(context.Context, int) (*T, error)) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		parsed, err := parsePositiveIntID(id)
+		if err != nil {
+			return nil, err
+		}
+		return get(ctx, parsed)
 	}
-	defer cleanup()
-	return locationgroups.GetLocationGroup(ctx, service, id)
-}
-
-type sdkZIARuleLabelsClient struct {
-	sdkZIAClient
-}
-
-func (c sdkZIARuleLabelsClient) ListRuleLabels(ctx context.Context) ([]rulelabels.RuleLabels, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return rulelabels.GetAll(ctx, service)
-}
-
-func (c sdkZIARuleLabelsClient) GetRuleLabel(ctx context.Context, id int) (*rulelabels.RuleLabels, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return rulelabels.Get(ctx, service, id)
-}
-
-type sdkZIAStaticIPsClient struct {
-	sdkZIAClient
-}
-
-func (c sdkZIAStaticIPsClient) ListStaticIPs(ctx context.Context) ([]staticips.StaticIP, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return staticips.GetAll(ctx, service)
-}
-
-func (c sdkZIAStaticIPsClient) GetStaticIP(ctx context.Context, id int) (*staticips.StaticIP, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return staticips.Get(ctx, service, id)
-}
-
-type sdkZIAGRETunnelsClient struct {
-	sdkZIAClient
-}
-
-func (c sdkZIAGRETunnelsClient) ListGRETunnels(ctx context.Context) ([]gretunnels.GreTunnels, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return gretunnels.GetAll(ctx, service)
-}
-
-func (c sdkZIAGRETunnelsClient) GetGRETunnel(ctx context.Context, id int) (*gretunnels.GreTunnels, error) {
-	service, cleanup, err := c.service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	return gretunnels.GetGreTunnels(ctx, service, id)
 }
 
 type perCallZIAService struct {
