@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	sdkcache "github.com/zscaler/zscaler-sdk-go/v3/cache"
@@ -73,6 +74,18 @@ type SDKReader struct {
 	handlers map[resourceKey]resourceHandler
 }
 
+type ResourceSession interface {
+	List(context.Context, resources.Product, string) ([]resources.SourceRecord, error)
+	Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error)
+	Close()
+}
+
+type SDKSession struct {
+	handlers  map[resourceKey]resourceHandler
+	closeOnce sync.Once
+	cleanup   func()
+}
+
 type ziaLocationClient interface {
 	ListLocations(context.Context) ([]locationmanagement.Locations, error)
 	GetLocation(context.Context, int) (*locationmanagement.Locations, error)
@@ -108,12 +121,17 @@ type resourceHandler interface {
 	Get(context.Context, string) (resources.SourceRecord, error)
 }
 
+type ziaServiceProvider interface {
+	service(context.Context) (*zsdk.Service, func(), error)
+}
+
 var (
 	_ resourceHandler = ziaLocationsHandler{}
 	_ resourceHandler = ziaLocationGroupsHandler{}
 	_ resourceHandler = ziaRuleLabelsHandler{}
 	_ resourceHandler = ziaStaticIPsHandler{}
 	_ resourceHandler = ziaGRETunnelsHandler{}
+	_ ResourceSession = (*SDKSession)(nil)
 )
 
 func NewReader(cfg ReaderConfig) (*SDKReader, error) {
@@ -125,31 +143,77 @@ func NewReader(cfg ReaderConfig) (*SDKReader, error) {
 	if err := validateReaderConfig(cfg); err != nil {
 		return nil, err
 	}
-	ziaClient := sdkZIAClient{cfg: cfg}
+	ziaClient := sdkZIAClient{services: perCallZIAService{cfg: cfg}}
 	return &SDKReader{
-		cfg: cfg,
-		handlers: map[resourceKey]resourceHandler{
-			{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
-				client: sdkZIALocationClient{sdkZIAClient: ziaClient},
-			},
-			{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
-				client: sdkZIALocationGroupsClient{sdkZIAClient: ziaClient},
-			},
-			{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
-				client: sdkZIARuleLabelsClient{sdkZIAClient: ziaClient},
-			},
-			{product: resources.ProductZIA, name: resourceStaticIPs}: ziaStaticIPsHandler{
-				client: sdkZIAStaticIPsClient{sdkZIAClient: ziaClient},
-			},
-			{product: resources.ProductZIA, name: resourceGRETunnels}: ziaGRETunnelsHandler{
-				client: sdkZIAGRETunnelsClient{sdkZIAClient: ziaClient},
-			},
-		},
+		cfg:      cfg,
+		handlers: newResourceHandlers(ziaClient),
 	}, nil
 }
 
+func (r *SDKReader) Session(ctx context.Context, product resources.Product) (ResourceSession, error) {
+	if r == nil {
+		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
+	}
+	if product != resources.ProductZIA {
+		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
+	}
+	service, cleanup, err := perCallZIAService{cfg: r.cfg}.service(ctx)
+	if err != nil {
+		return nil, normalizeLiveError(ctx, "authenticate", product, "session")
+	}
+	ziaClient := sdkZIAClient{services: fixedZIAService{sdkService: service}}
+	return &SDKSession{
+		handlers: newResourceHandlers(ziaClient),
+		cleanup:  cleanup,
+	}, nil
+}
+
+func (s *SDKSession) Close() {
+	if s == nil {
+		return
+	}
+	s.closeOnce.Do(func() {
+		if s.cleanup != nil {
+			s.cleanup()
+		}
+	})
+}
+
 func (r *SDKReader) List(ctx context.Context, product resources.Product, name string) ([]resources.SourceRecord, error) {
-	handler, err := r.handler(product, name)
+	if r == nil {
+		return listResource(ctx, nil, product, name)
+	}
+	return listResource(ctx, r.handlers, product, name)
+}
+
+func (r *SDKReader) Get(ctx context.Context, product resources.Product, name string, id string) (resources.SourceRecord, error) {
+	if r == nil {
+		return getResource(ctx, nil, product, name, id)
+	}
+	return getResource(ctx, r.handlers, product, name, id)
+}
+
+func (s *SDKSession) List(ctx context.Context, product resources.Product, name string) ([]resources.SourceRecord, error) {
+	if s == nil {
+		return listResource(ctx, nil, product, name)
+	}
+	return listResource(ctx, s.handlers, product, name)
+}
+
+func (s *SDKSession) Get(ctx context.Context, product resources.Product, name string, id string) (resources.SourceRecord, error) {
+	if s == nil {
+		return getResource(ctx, nil, product, name, id)
+	}
+	return getResource(ctx, s.handlers, product, name, id)
+}
+
+func listResource(
+	ctx context.Context,
+	handlers map[resourceKey]resourceHandler,
+	product resources.Product,
+	name string,
+) ([]resources.SourceRecord, error) {
+	handler, err := handlerFrom(handlers, product, name)
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +224,14 @@ func (r *SDKReader) List(ctx context.Context, product resources.Product, name st
 	return records, nil
 }
 
-func (r *SDKReader) Get(ctx context.Context, product resources.Product, name string, id string) (resources.SourceRecord, error) {
-	handler, err := r.handler(product, name)
+func getResource(
+	ctx context.Context,
+	handlers map[resourceKey]resourceHandler,
+	product resources.Product,
+	name string,
+	id string,
+) (resources.SourceRecord, error) {
+	handler, err := handlerFrom(handlers, product, name)
 	if err != nil {
 		return resources.SourceRecord{}, err
 	}
@@ -175,15 +245,35 @@ func (r *SDKReader) Get(ctx context.Context, product resources.Product, name str
 	return record, nil
 }
 
-func (r *SDKReader) handler(product resources.Product, name string) (resourceHandler, error) {
-	if r == nil {
+func handlerFrom(handlers map[resourceKey]resourceHandler, product resources.Product, name string) (resourceHandler, error) {
+	if handlers == nil {
 		return nil, fmt.Errorf("%w: %s/%s", ErrUnsupportedResource, product, name)
 	}
-	handler, ok := r.handlers[resourceKey{product: product, name: name}]
+	handler, ok := handlers[resourceKey{product: product, name: name}]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s/%s", ErrUnsupportedResource, product, name)
 	}
 	return handler, nil
+}
+
+func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler {
+	return map[resourceKey]resourceHandler{
+		{product: resources.ProductZIA, name: resourceLocations}: ziaLocationsHandler{
+			client: sdkZIALocationClient{sdkZIAClient: ziaClient},
+		},
+		{product: resources.ProductZIA, name: resourceLocationGroups}: ziaLocationGroupsHandler{
+			client: sdkZIALocationGroupsClient{sdkZIAClient: ziaClient},
+		},
+		{product: resources.ProductZIA, name: resourceRuleLabels}: ziaRuleLabelsHandler{
+			client: sdkZIARuleLabelsClient{sdkZIAClient: ziaClient},
+		},
+		{product: resources.ProductZIA, name: resourceStaticIPs}: ziaStaticIPsHandler{
+			client: sdkZIAStaticIPsClient{sdkZIAClient: ziaClient},
+		},
+		{product: resources.ProductZIA, name: resourceGRETunnels}: ziaGRETunnelsHandler{
+			client: sdkZIAGRETunnelsClient{sdkZIAClient: ziaClient},
+		},
+	}
 }
 
 type ziaLocationsHandler struct {
@@ -350,7 +440,14 @@ func parsePositiveIntID(id string) (int, error) {
 }
 
 type sdkZIAClient struct {
-	cfg ReaderConfig
+	services ziaServiceProvider
+}
+
+func (c sdkZIAClient) service(ctx context.Context) (*zsdk.Service, func(), error) {
+	if c.services == nil {
+		return nil, nil, errors.New("missing zia service provider")
+	}
+	return c.services.service(ctx)
 }
 
 type sdkZIALocationClient struct {
@@ -466,11 +563,15 @@ func (c sdkZIAGRETunnelsClient) GetGRETunnel(ctx context.Context, id int) (*gret
 	return gretunnels.GetGreTunnels(ctx, service, id)
 }
 
-func (c sdkZIAClient) service(ctx context.Context) (*zsdk.Service, func(), error) {
-	if c.cfg.AuthMode == AuthModeZIALegacy {
-		return c.legacyService(ctx)
+type perCallZIAService struct {
+	cfg ReaderConfig
+}
+
+func (s perCallZIAService) service(ctx context.Context) (*zsdk.Service, func(), error) {
+	if s.cfg.AuthMode == AuthModeZIALegacy {
+		return s.legacyService(ctx)
 	}
-	cfg := newSDKConfiguration(ctx, c.cfg)
+	cfg := newSDKConfiguration(ctx, s.cfg)
 	// Do not replace this with zsdk.NewConfiguration. That SDK constructor
 	// reads ZSCALER_* environment variables and ~/.zscaler/zscaler.yaml before
 	// setters run. This adapter must only use explicit ZSCALERCTL_* config.
@@ -486,8 +587,8 @@ func (c sdkZIAClient) service(ctx context.Context) (*zsdk.Service, func(), error
 	return service, cleanup, nil
 }
 
-func (c sdkZIAClient) legacyService(ctx context.Context) (*zsdk.Service, func(), error) {
-	ziaCfg, err := newLegacyZIAConfiguration(ctx, c.cfg)
+func (s perCallZIAService) legacyService(ctx context.Context) (*zsdk.Service, func(), error) {
+	ziaCfg, err := newLegacyZIAConfiguration(ctx, s.cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -521,6 +622,20 @@ func (c sdkZIAClient) legacyService(ctx context.Context) (*zsdk.Service, func(),
 		// Do not call it here; this CLI process exits after the command.
 	}
 	return service, cleanup, nil
+}
+
+type fixedZIAService struct {
+	sdkService *zsdk.Service
+}
+
+func (s fixedZIAService) service(ctx context.Context) (*zsdk.Service, func(), error) {
+	if err := effectiveContext(ctx).Err(); err != nil {
+		return nil, nil, err
+	}
+	if s.sdkService == nil {
+		return nil, nil, errors.New("missing zscaler sdk service")
+	}
+	return s.sdkService, func() {}, nil
 }
 
 func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {

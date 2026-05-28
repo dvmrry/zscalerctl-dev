@@ -96,9 +96,10 @@ manually constructed configuration.
 The dependency policy requires vendored modules and a CI check for this SDK
 boundary invariant.
 
-The live reader creates an SDK service per CLI operation and closes it after the
-call. This keeps token lifetime and background renewal simple for the initial
-resource set; revisit client reuse before adding broad dump fan-out.
+The live reader creates an SDK service per single-resource CLI operation and
+closes it after the call. Dump commands create one SDK service per selected
+product that supports sessions and close it when collection finishes, avoiding
+repeated authentication while keeping token lifetime bounded to the command.
 
 ## Data Flow
 

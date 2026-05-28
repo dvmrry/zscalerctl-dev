@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -592,6 +593,144 @@ func TestDumpWritesRestrictedFilesAndReportsWithoutCanaries(t *testing.T) {
 	assertFileMode(t, filepath.Join(outDir, "resources", "zia"), 0o700)
 }
 
+func TestDumpUsesSingleReaderSessionForAllZIAResources(t *testing.T) {
+	t.Parallel()
+
+	session := &countingResourceSession{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":               "123",
+			"name":             "HQ",
+			"description":      "",
+			"comments":         "",
+			"comment":          "",
+			"groupType":        "STATIC_GROUP",
+			"ipAddresses":      []any{"192.0.2.10"},
+			"lastModTime":      1712345678,
+			"lastModifiedTime": 1712345678,
+		})},
+	}
+	reader := &sessionProviderResourceReader{session: session}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--products", "zia", "--out", outDir})
+	if err != nil {
+		t.Fatalf("App.Run(dump --products zia --out) error = %v, want nil", err)
+	}
+	if reader.sessionCalls != 1 {
+		t.Errorf("sessionProviderResourceReader.Session calls = %d, want 1", reader.sessionCalls)
+	}
+	if reader.directListCalls != 0 {
+		t.Errorf("sessionProviderResourceReader.List calls = %d, want 0", reader.directListCalls)
+	}
+	if got, want := session.listCalls, len(ziaListResourceSpecs(t)); got != want {
+		t.Errorf("countingResourceSession.List calls = %d, want %d", got, want)
+	}
+	if session.closeCalls != 1 {
+		t.Errorf("countingResourceSession.Close calls = %d, want 1", session.closeCalls)
+	}
+	if !strings.Contains(out.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump --products zia --out) stdout = %q, want dump written line", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump --products zia --out) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestDumpFallsBackWhenReaderDoesNotSupportProductSession(t *testing.T) {
+	t.Parallel()
+
+	reader := &unsupportedSessionResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--products", "zia", "--out", outDir})
+	if err != nil {
+		t.Fatalf("App.Run(dump with unsupported session --out) error = %v, want nil", err)
+	}
+	if reader.sessionCalls != 1 {
+		t.Errorf("unsupportedSessionResourceReader.Session calls = %d, want 1", reader.sessionCalls)
+	}
+	if got, want := reader.directListCalls, len(ziaListResourceSpecs(t)); got != want {
+		t.Errorf("unsupportedSessionResourceReader.List calls = %d, want %d", got, want)
+	}
+	if !strings.Contains(out.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump with unsupported session --out) stdout = %q, want dump written line", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump with unsupported session --out) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestDumpClosesReaderSessionOnListError(t *testing.T) {
+	t.Parallel()
+
+	session := &countingResourceSession{err: errors.New("session list failed")}
+	reader := &sessionProviderResourceReader{session: session}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--products", "zia", "--out", outDir})
+	if err == nil {
+		t.Fatal("App.Run(dump with session list error) error = nil, want non-nil")
+	}
+	if reader.sessionCalls != 1 {
+		t.Errorf("sessionProviderResourceReader.Session calls = %d, want 1", reader.sessionCalls)
+	}
+	if session.closeCalls != 1 {
+		t.Errorf("countingResourceSession.Close calls = %d, want 1", session.closeCalls)
+	}
+	if reader.directListCalls != 0 {
+		t.Errorf("sessionProviderResourceReader.List calls = %d, want 0", reader.directListCalls)
+	}
+}
+
+func TestDumpRejectsNilReaderSession(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: nilSessionResourceReader{}})
+
+	err := app.Run(context.Background(), []string{"dump", "--products", "zia", "--out", outDir})
+	if err == nil {
+		t.Fatal("App.Run(dump with nil session) error = nil, want non-nil")
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump with nil session) stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump with nil session) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestDumpWithNoSelectedResourcesDoesNotOpenReader(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+
+	err := app.Run(context.Background(), []string{"dump", "--products", "zpa", "--out", outDir})
+	if err != nil {
+		t.Fatalf("App.Run(dump --products zpa --out) error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump --products zpa --out) stdout = %q, want dump written line", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump --products zpa --out) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 	t.Parallel()
 
@@ -643,6 +782,83 @@ func (f fakeResourceReader) List(context.Context, resources.Product, string) ([]
 
 func (f fakeResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
 	return f.get, nil
+}
+
+type sessionProviderResourceReader struct {
+	session         zscaler.ResourceSession
+	sessionCalls    int
+	directListCalls int
+}
+
+func (f *sessionProviderResourceReader) Session(context.Context, resources.Product) (zscaler.ResourceSession, error) {
+	f.sessionCalls++
+	return f.session, nil
+}
+
+func (f *sessionProviderResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	f.directListCalls++
+	return nil, errors.New("direct list must not be called")
+}
+
+func (f *sessionProviderResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("direct get must not be called")
+}
+
+type unsupportedSessionResourceReader struct {
+	list            []resources.SourceRecord
+	sessionCalls    int
+	directListCalls int
+}
+
+func (f *unsupportedSessionResourceReader) Session(_ context.Context, product resources.Product) (zscaler.ResourceSession, error) {
+	f.sessionCalls++
+	return nil, fmt.Errorf("%w: %s/session", zscaler.ErrUnsupportedResource, product)
+}
+
+func (f *unsupportedSessionResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	f.directListCalls++
+	return f.list, nil
+}
+
+func (f *unsupportedSessionResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("direct get must not be called")
+}
+
+type countingResourceSession struct {
+	list       []resources.SourceRecord
+	err        error
+	listCalls  int
+	closeCalls int
+}
+
+func (s *countingResourceSession) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	s.listCalls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.list, nil
+}
+
+func (s *countingResourceSession) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("session get must not be called")
+}
+
+func (s *countingResourceSession) Close() {
+	s.closeCalls++
+}
+
+type nilSessionResourceReader struct{}
+
+func (nilSessionResourceReader) Session(context.Context, resources.Product) (zscaler.ResourceSession, error) {
+	return nil, nil
+}
+
+func (nilSessionResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	return nil, errors.New("direct list must not be called")
+}
+
+func (nilSessionResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("direct get must not be called")
 }
 
 type failingResourceReader struct{}

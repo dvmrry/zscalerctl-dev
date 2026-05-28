@@ -715,6 +715,24 @@ func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {
 	}
 }
 
+func TestSDKSessionCloseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	session := &SDKSession{
+		cleanup: func() {
+			calls++
+		},
+	}
+
+	session.Close()
+	session.Close()
+
+	if calls != 1 {
+		t.Fatalf("SDKSession.Close cleanup calls = %d, want 1", calls)
+	}
+}
+
 func TestReaderNormalizesSDKErrors(t *testing.T) {
 	t.Parallel()
 

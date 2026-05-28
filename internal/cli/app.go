@@ -51,6 +51,10 @@ type ResourceReader interface {
 	Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error)
 }
 
+type resourceSessionProvider interface {
+	Session(context.Context, resources.Product) (zscaler.ResourceSession, error)
+}
+
 type Options struct {
 	StdoutTTY bool
 	Reader    ResourceReader
@@ -403,6 +407,33 @@ func (a *App) resourceReader(cfg config.Config, opts globalOptions) (ResourceRea
 	})
 }
 
+func (a *App) dumpResourceReader(
+	ctx context.Context,
+	cfg config.Config,
+	opts globalOptions,
+	product resources.Product,
+) (ResourceReader, func(), error) {
+	reader, err := a.resourceReader(cfg, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	provider, ok := reader.(resourceSessionProvider)
+	if !ok {
+		return reader, func() {}, nil
+	}
+	session, err := provider.Session(ctx, product)
+	if err != nil {
+		if errors.Is(err, zscaler.ErrUnsupportedResource) {
+			return reader, func() {}, nil
+		}
+		return nil, nil, err
+	}
+	if session == nil {
+		return nil, nil, errors.New("reader session provider returned nil session")
+	}
+	return session, session.Close, nil
+}
+
 func (a *App) collectDump(
 	ctx context.Context,
 	cfg config.Config,
@@ -414,13 +445,22 @@ func (a *App) collectDump(
 	if err := resources.AssertReadOnly(catalog...); err != nil {
 		return nil, err
 	}
+	readers := make(map[resources.Product]ResourceReader)
 	for _, spec := range catalog {
 		if !products[spec.Product] {
 			continue
 		}
-		reader, err := a.resourceReader(cfg, opts)
-		if err != nil {
-			return nil, err
+		reader, ok := readers[spec.Product]
+		if !ok {
+			var cleanup func()
+			var err error
+			reader, cleanup, err = a.dumpResourceReader(ctx, cfg, opts, spec.Product)
+			if err != nil {
+				return nil, err
+			}
+			readers[spec.Product] = reader
+			// Register cleanup once per product session, not once per resource.
+			defer cleanup()
 		}
 		records, err := reader.List(ctx, spec.Product, spec.Name)
 		if err != nil {
