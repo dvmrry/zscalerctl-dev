@@ -107,6 +107,10 @@ The primary leak-prevention model is allow-list projection into safe view
 structs. Output redaction and secret scanning are defense-in-depth, not an
 excuse to render raw API responses.
 
+Administrator-controlled free-text fields are standard-only catalog exceptions:
+each one must be justified in the schema, scanner-backed, and excluded from
+`share` and `paranoid` output.
+
 Version 1 must not include write commands or a generic raw API executor.
 
 Table output is best-effort for quick human inspection. JSON and dump output are

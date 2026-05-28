@@ -135,6 +135,10 @@ The default output rule is fail closed:
 - Free-text fields receive an additional high-entropy token scan because they
   are the most likely place for arbitrary unlabeled credential material to be
   pasted by an administrator.
+- Free-text fields may be emitted only in `standard` mode, and every such field
+  must carry a `standard_free_text_reason` in the catalog. They are rejected in
+  `share` and `paranoid` unless a future tokenization design explicitly changes
+  the policy.
 - The high-entropy scan preserves canonical UUIDs and contextual git commit
   SHAs, but may redact other long hashes or thumbprints. It will not catch a
   UUID-shaped secret pasted without a labeling keyword. It is a backstop, not

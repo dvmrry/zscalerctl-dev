@@ -298,7 +298,10 @@ because they indicate that live read access itself is not trustworthy.
 
 `standard` is for local operational use. It emits allow-listed fields and uses
 secret redaction, free-text high-entropy token scanning, and final byte scanning
-as backstops.
+as backstops. Free-text fields are standard-only catalog exceptions: each one
+must include a `standard_free_text_reason`, keep catalog-driven canary coverage,
+and stay out of `share` and `paranoid` unless a future tokenization design
+explicitly changes that policy.
 
 `share` is for sharing with an authorized recipient outside the immediate admin
 context. It removes or masks sensitive identifiers and high-risk free text.
@@ -319,9 +322,6 @@ the command layer.
 - First supported products and resources.
 - OneAPI-first versus legacy-auth support in version 1.
 - Exact `ZSCALERCTL_*` credential variable names.
-- Which future free-text fields, beyond currently modeled descriptions, may be
-  emitted in `standard` mode. New free-text fields must retain scanner backstop
-  coverage and catalog-driven canaries.
 - Whether `paranoid` mode supports diffs in version 1.
 - Required CI gates before public release.
 - License.

@@ -151,7 +151,8 @@ Initial modes:
 
 - `standard`: intended for local operational use. Emits only allow-listed fields
   and redacts secret-shaped values, including bare high-entropy tokens in
-  emitted free-text fields.
+  emitted free-text fields. Free-text fields are standard-only catalog
+  exceptions and must carry a `standard_free_text_reason`.
 - `share`: intended for sharing outside the immediate admin context. Adds
   stronger removal or masking of identifiers such as users, emails, IPs,
   domains, tenant identifiers, and free-text fields.
@@ -164,9 +165,6 @@ There is no `off` mode.
 
 - Exact resource catalog for the first release.
 - Whether `paranoid` mode supports cross-dump diffs in version 1.
-- Which future free-text fields, beyond currently modeled descriptions, may be
-  emitted in `standard` mode. New free-text fields must keep the scanner
-  backstop and catalog-driven canary coverage.
 
 ## Mandatory CI Checks
 

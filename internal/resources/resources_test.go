@@ -497,6 +497,52 @@ func TestResourceSpecValidationAllowsSensitiveNameWithDocumentedReason(t *testin
 	}
 }
 
+func TestResourceSpecValidationRequiresStandardFreeTextReason(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "bad-free-text",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "description",
+			Classification: resources.ClassFreeText,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
+	}
+	err := spec.Validate()
+	if !errors.Is(err, resources.ErrInvalidResourceSpec) {
+		t.Errorf("ResourceSpec.Validate(free-text without reason) error = %v, want ErrInvalidResourceSpec", err)
+	}
+}
+
+func TestResourceSpecValidationRejectsFreeTextOutsideStandard(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			spec := resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "bad-free-text-mode",
+				Operations: resources.ReadOperations(),
+				Fields: []resources.FieldSpec{{
+					Name:                   "description",
+					Classification:         resources.ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard, mode},
+					StandardFreeTextReason: "local operator note",
+				}},
+			}
+			err := spec.Validate()
+			if !errors.Is(err, resources.ErrInvalidResourceSpec) {
+				t.Errorf("ResourceSpec.Validate(free-text in %s) error = %v, want ErrInvalidResourceSpec", mode, err)
+			}
+		})
+	}
+}
+
 func TestResourceSpecValidationRejectsUnsafeCatalogNames(t *testing.T) {
 	t.Parallel()
 
@@ -544,6 +590,17 @@ func TestCatalogIsValidAndReadOnly(t *testing.T) {
 	for _, spec := range catalog {
 		if err := spec.Validate(); err != nil {
 			t.Errorf("Catalog spec %s/%s Validate() error = %v, want nil", spec.Product, spec.Name, err)
+		}
+		for _, fieldPath := range freeTextFieldPaths(spec.Fields) {
+			field := fieldPath.Field()
+			if strings.TrimSpace(field.StandardFreeTextReason) == "" {
+				t.Errorf("Catalog spec %s/%s free-text field %s reason = %q, want non-empty", spec.Product, spec.Name, fieldPath.Path, field.StandardFreeTextReason)
+			}
+			for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+				if fieldPath.AllowedIn(mode) {
+					t.Errorf("Catalog spec %s/%s free-text field %s allowed in %s, want standard-only", spec.Product, spec.Name, fieldPath.Path, mode)
+				}
+			}
 		}
 	}
 }
@@ -619,9 +676,10 @@ func testSpec() resources.ResourceSpec {
 				AllowedModes:   []redact.Mode{redact.ModeStandard},
 			},
 			{
-				Name:           "description",
-				Classification: resources.ClassFreeText,
-				AllowedModes:   []redact.Mode{redact.ModeStandard},
+				Name:                   "description",
+				Classification:         resources.ClassFreeText,
+				AllowedModes:           []redact.Mode{redact.ModeStandard},
+				StandardFreeTextReason: "test free text is standard-only and scanned",
 			},
 			{
 				Name:           "client_secret",

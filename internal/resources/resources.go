@@ -41,12 +41,13 @@ func (o Operation) Mutates() bool {
 }
 
 type FieldSpec struct {
-	Name                string              `json:"name"`
-	JSONName            string              `json:"json_name,omitempty"`
-	Classification      FieldClassification `json:"classification"`
-	AllowedModes        []redact.Mode       `json:"allowed_modes,omitempty"`
-	Fields              []FieldSpec         `json:"fields,omitempty"`
-	SensitiveNameReason string              `json:"sensitive_name_reason,omitempty"`
+	Name                   string              `json:"name"`
+	JSONName               string              `json:"json_name,omitempty"`
+	Classification         FieldClassification `json:"classification"`
+	AllowedModes           []redact.Mode       `json:"allowed_modes,omitempty"`
+	Fields                 []FieldSpec         `json:"fields,omitempty"`
+	SensitiveNameReason    string              `json:"sensitive_name_reason,omitempty"`
+	StandardFreeTextReason string              `json:"standard_free_text_reason,omitempty"`
 }
 
 type FieldClassification string
@@ -59,6 +60,12 @@ const (
 	ClassFreeText            FieldClassification = "free_text"
 	ClassSecret              FieldClassification = "secret"
 )
+
+const standardFreeTextControls = "standard-only local operator context; scanned with free-text backstops and excluded from share/paranoid"
+
+func standardFreeTextReason(subject string) string {
+	return subject + "; " + standardFreeTextControls
+}
 
 func (f FieldSpec) JSONField() string {
 	if f.JSONName != "" {
@@ -546,6 +553,11 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		if field.Classification != ClassSecret && len(field.AllowedModes) == 0 {
 			return fmt.Errorf("%w: %s/%s field %s has no allowed modes", ErrInvalidResourceSpec, product, resource, path)
 		}
+		if field.Classification == ClassFreeText {
+			if err := validateFreeTextField(product, resource, path, field); err != nil {
+				return err
+			}
+		}
 		if len(field.Fields) > 0 {
 			if field.Classification == ClassSecret {
 				return fmt.Errorf("%w: %s/%s secret field %s cannot have nested fields", ErrInvalidResourceSpec, product, resource, path)
@@ -554,6 +566,24 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func validateFreeTextField(product Product, resource string, path string, field FieldSpec) error {
+	standardAllowed := false
+	for _, allowed := range field.AllowedModes {
+		switch redact.EffectiveMode(allowed) {
+		case redact.ModeStandard:
+			standardAllowed = true
+		case redact.ModeShare, redact.ModeParanoid:
+			return fmt.Errorf("%w: %s/%s free-text field %s cannot be allowed in %s mode", ErrInvalidResourceSpec, product, resource, path, allowed)
+		default:
+			return fmt.Errorf("%w: %s/%s free-text field %s has unknown mode %s", ErrInvalidResourceSpec, product, resource, path, allowed)
+		}
+	}
+	if standardAllowed && strings.TrimSpace(field.StandardFreeTextReason) == "" {
+		return fmt.Errorf("%w: %s/%s free-text field %s needs standard free-text reason", ErrInvalidResourceSpec, product, resource, path)
 	}
 	return nil
 }
@@ -590,9 +620,10 @@ func Catalog() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard},
 				},
 				{
-					Name:           "description",
-					Classification: ClassFreeText,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Name:                   "description",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA location description"),
 				},
 				{
 					Name:           "preSharedKey",
@@ -630,9 +661,10 @@ func Catalog() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
 				{
-					Name:           "comments",
-					Classification: ClassFreeText,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Name:                   "comments",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA location group comments"),
 				},
 				{
 					Name:           "lastModTime",
@@ -662,9 +694,10 @@ func Catalog() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 				},
 				{
-					Name:           "description",
-					Classification: ClassFreeText,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Name:                   "description",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA rule label description"),
 				},
 				{
 					Name:           "lastModifiedTime",
@@ -714,9 +747,10 @@ func Catalog() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard},
 				},
 				{
-					Name:           "comment",
-					Classification: ClassFreeText,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Name:                   "comment",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA static IP comment"),
 				},
 				{
 					Name:           "lastModificationTime",
@@ -756,9 +790,10 @@ func Catalog() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
 				{
-					Name:           "comment",
-					Classification: ClassFreeText,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Name:                   "comment",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA GRE tunnel comment"),
 				},
 				{
 					Name:           "ipUnnumbered",

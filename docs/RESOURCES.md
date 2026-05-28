@@ -169,6 +169,9 @@ Before enabling another resource:
 - Classify every candidate output field in the catalog.
 - Mark known secret-bearing fields as `secret`, even when they are expected to
   be dropped.
+- Treat free-text fields as standard-only exceptions. Each emitted free-text
+  field must carry a catalog `standard_free_text_reason`, must not be allowed in
+  `share` or `paranoid`, and must retain scanner backstop coverage.
 - Add canary tests proving secret-looking names or descriptions are redacted,
   including bare high-entropy tokens for any emitted free-text field.
 - Add nested drop tests for any SDK object that contains user, admin, key,
