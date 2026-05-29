@@ -16,9 +16,12 @@ import (
 	sdklogger "github.com/zscaler/zscaler-sdk-go/v3/logger"
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
+	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
+	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	applicationservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/applicationservices"
 	appservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/appservicegroups"
+	dnsgateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/dns_gateways"
 	filteringrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/filteringrules"
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
@@ -30,8 +33,10 @@ import (
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
+	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
+	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
@@ -73,6 +78,11 @@ const (
 	resourceProxies          = "proxies"
 	resourceProxyGateways    = "proxy-gateways"
 	resourceDedicatedIPGWs   = "dedicated-ip-gateways"
+	resourceTimeIntervals    = "time-intervals"
+	resourceBandwidthClasses = "bandwidth-classes"
+	resourceBandwidthRules   = "bandwidth-control-rules"
+	resourceDNSGateways      = "dns-gateways"
+	resourceNATRules         = "nat-control-rules"
 )
 
 type AuthMode string
@@ -498,6 +508,56 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 				func(item proxies.DedicatedIPGateways) int { return item.Id },
 			),
 			dedicatedIPGatewaySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceTimeIntervals}: newListGetHandler(
+			resourceTimeIntervals,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]timeintervals.TimeInterval, error) {
+				return timeintervals.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*timeintervals.TimeInterval, error) {
+				return timeintervals.Get(ctx, service, id)
+			}),
+			timeIntervalSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceBandwidthClasses}: newListGetHandler(
+			resourceBandwidthClasses,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]bandwidthclasses.BandwidthClasses, error) {
+				return bandwidthclasses.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthclasses.BandwidthClasses, error) {
+				return bandwidthclasses.Get(ctx, service, id)
+			}),
+			bandwidthClassSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceBandwidthRules}: newListGetHandler(
+			resourceBandwidthRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]bandwidthcontrolrules.BandwidthControlRules, error) {
+				return bandwidthcontrolrules.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthcontrolrules.BandwidthControlRules, error) {
+				return bandwidthcontrolrules.Get(ctx, service, id)
+			}),
+			bandwidthControlRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDNSGateways}: newListGetHandler(
+			resourceDNSGateways,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dnsgateways.DNSGateways, error) {
+				return dnsgateways.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dnsgateways.DNSGateways, error) {
+				return dnsgateways.Get(ctx, service, id)
+			}),
+			dnsGatewaySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceNATRules}: newListGetHandler(
+			resourceNATRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]natcontrol.NatControlPolicies, error) {
+				return natcontrol.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*natcontrol.NatControlPolicies, error) {
+				return natcontrol.Get(ctx, service, id)
+			}),
+			natControlRuleSourceRecord,
 		),
 	}
 }
@@ -1479,9 +1539,134 @@ func dedicatedIPGatewaySourceRecord(gateway proxies.DedicatedIPGateways) resourc
 	return resources.NewSourceRecord(fields)
 }
 
+func timeIntervalSourceRecord(interval timeintervals.TimeInterval) resources.SourceRecord {
+	fields := map[string]any{
+		"id":        interval.ID,
+		"name":      interval.Name,
+		"startTime": interval.StartTime,
+		"endTime":   interval.EndTime,
+	}
+	addStringSlice(fields, "daysOfWeek", interval.DaysOfWeek)
+	return resources.NewSourceRecord(fields)
+}
+
+func bandwidthClassSourceRecord(class bandwidthclasses.BandwidthClasses) resources.SourceRecord {
+	fields := map[string]any{
+		"id":            class.ID,
+		"isNameL10nTag": class.IsNameL10nTag,
+		"name":          class.Name,
+		"getfileSize":   class.GetfileSize,
+		"fileSize":      class.FileSize,
+		"type":          class.Type,
+	}
+	addStringSlice(fields, "webApplications", class.WebApplications)
+	addStringSlice(fields, "urls", class.Urls)
+	addStringSlice(fields, "applicationServiceGroups", class.ApplicationServiceGroups)
+	addStringSlice(fields, "networkApplications", class.NetworkApplications)
+	addStringSlice(fields, "networkServices", class.NetworkServices)
+	addStringSlice(fields, "urlCategories", class.UrlCategories)
+	addStringSlice(fields, "applications", class.Applications)
+	return resources.NewSourceRecord(fields)
+}
+
+func bandwidthControlRuleSourceRecord(rule bandwidthcontrolrules.BandwidthControlRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":               rule.ID,
+		"name":             rule.Name,
+		"order":            rule.Order,
+		"state":            rule.State,
+		"description":      rule.Description,
+		"maxBandwidth":     rule.MaxBandwidth,
+		"minBandwidth":     rule.MinBandwidth,
+		"rank":             rule.Rank,
+		"lastModifiedTime": rule.LastModifiedTime,
+		"accessControl":    rule.AccessControl,
+		"defaultRule":      rule.DefaultRule,
+	}
+	addStringSlice(fields, "protocols", rule.Protocols)
+	addStringSlice(fields, "deviceTrustLevels", rule.DeviceTrustLevels)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
+	addIDNameExtensionsSlice(fields, "bandwidthClasses", rule.BandwidthClasses)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	return resources.NewSourceRecord(fields)
+}
+
+func dnsGatewaySourceRecord(gateway dnsgateways.DNSGateways) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                gateway.ID,
+		"name":              gateway.Name,
+		"dnsGatewayType":    gateway.DnsGatewayType,
+		"primaryIpOrFqdn":   gateway.PrimaryIpOrFqdn,
+		"secondaryIpOrFqdn": gateway.SecondaryIpOrFqdn,
+		"failureBehavior":   gateway.FailureBehavior,
+		"lastModifiedTime":  gateway.LastModifiedTime,
+		"autoCreated":       gateway.AutoCreated,
+		"natZtrGateway":     gateway.NatZtrGateway,
+	}
+	addIntSlice(fields, "primaryPorts", gateway.PrimaryPorts)
+	addIntSlice(fields, "secondaryPorts", gateway.SecondaryPorts)
+	addStringSlice(fields, "protocols", gateway.Protocols)
+	addStringSlice(fields, "dnsGatewayProtocols", gateway.DnsGatewayProtocols)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", gateway.LastModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
+func natControlRuleSourceRecord(rule natcontrol.NatControlPolicies) resources.SourceRecord {
+	fields := map[string]any{
+		"accessControl":       rule.AccessControl,
+		"id":                  rule.ID,
+		"name":                rule.Name,
+		"order":               rule.Order,
+		"rank":                rule.Rank,
+		"description":         rule.Description,
+		"state":               rule.State,
+		"redirectFqdn":        rule.RedirectFqdn,
+		"redirectIp":          rule.RedirectIp,
+		"redirectPort":        rule.RedirectPort,
+		"lastModifiedTime":    rule.LastModifiedTime,
+		"trustedResolverRule": rule.TrustedResolverRule,
+		"enableFullLogging":   rule.EnableFullLogging,
+		"predefined":          rule.Predefined,
+		"defaultRule":         rule.DefaultRule,
+	}
+	addStringSlice(fields, "destAddresses", rule.DestAddresses)
+	addStringSlice(fields, "srcIps", rule.SrcIps)
+	addStringSlice(fields, "destCountries", rule.DestCountries)
+	addStringSlice(fields, "destIpCategories", rule.DestIpCategories)
+	addStringSlice(fields, "resCategories", rule.ResCategories)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
+	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
+	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
+	addIDNameExtensionsSlice(fields, "users", rule.Users)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "srcIpGroups", rule.SrcIpGroups)
+	addIDNameExtensionsSlice(fields, "srcIpv6Groups", rule.SrcIpv6Groups)
+	addIDNameExtensionsSlice(fields, "destIpGroups", rule.DestIpGroups)
+	addIDNameExtensionsSlice(fields, "destIpv6Groups", rule.DestIpv6Groups)
+	addIDNameExtensionsSlice(fields, "nwServices", rule.NwServices)
+	addIDNameExtensionsSlice(fields, "nwServiceGroups", rule.NwServiceGroups)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	return resources.NewSourceRecord(fields)
+}
+
 func addStringSlice(fields map[string]any, name string, values []string) {
 	if len(values) > 0 {
 		fields[name] = append([]string(nil), values...)
+	}
+}
+
+func addIntSlice(fields map[string]any, name string, values []int) {
+	if len(values) > 0 {
+		fields[name] = append([]int(nil), values...)
 	}
 }
 

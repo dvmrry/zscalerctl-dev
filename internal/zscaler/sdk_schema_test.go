@@ -8,9 +8,12 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
+	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
+	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	applicationservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/applicationservices"
 	appservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/appservicegroups"
+	dnsgateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/dns_gateways"
 	filteringrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/filteringrules"
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
@@ -22,8 +25,10 @@ import (
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
+	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
+	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
@@ -1064,6 +1069,144 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"createTime",
 				"lastModifiedTime",
 				"default",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name:         "timeintervals.TimeInterval",
+			resource:     resources.ProductZIA,
+			resourceName: resourceTimeIntervals,
+			typ:          reflect.TypeOf(timeintervals.TimeInterval{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"startTime",
+				"endTime",
+				"daysOfWeek",
+			},
+		},
+		{
+			name:         "bandwidthclasses.BandwidthClasses",
+			resource:     resources.ProductZIA,
+			resourceName: resourceBandwidthClasses,
+			typ:          reflect.TypeOf(bandwidthclasses.BandwidthClasses{}),
+			catalogFields: []string{
+				"id",
+				"isNameL10nTag",
+				"name",
+				"getfileSize",
+				"fileSize",
+				"type",
+				"webApplications",
+				"urls",
+				"applicationServiceGroups",
+				"networkApplications",
+				"networkServices",
+				"urlCategories",
+				"applications",
+			},
+		},
+		{
+			name:         "bandwidthcontrolrules.BandwidthControlRules",
+			resource:     resources.ProductZIA,
+			resourceName: resourceBandwidthRules,
+			typ:          reflect.TypeOf(bandwidthcontrolrules.BandwidthControlRules{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"order",
+				"state",
+				"description",
+				"maxBandwidth",
+				"minBandwidth",
+				"rank",
+				"lastModifiedTime",
+				"accessControl",
+				"defaultRule",
+				"protocols",
+				"deviceTrustLevels",
+				"bandwidthClasses",
+				"locationGroups",
+				"labels",
+				"devices",
+				"deviceGroups",
+				"locations",
+				"timeWindows",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name:         "dnsgateways.DNSGateways",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDNSGateways,
+			typ:          reflect.TypeOf(dnsgateways.DNSGateways{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"dnsGatewayType",
+				"primaryIpOrFqdn",
+				"primaryPorts",
+				"secondaryIpOrFqdn",
+				"secondaryPorts",
+				"protocols",
+				"failureBehavior",
+				"lastModifiedTime",
+				"autoCreated",
+				"natZtrGateway",
+				"dnsGatewayProtocols",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name:         "natcontrol.NatControlPolicies",
+			resource:     resources.ProductZIA,
+			resourceName: resourceNATRules,
+			typ:          reflect.TypeOf(natcontrol.NatControlPolicies{}),
+			catalogFields: []string{
+				"accessControl",
+				"id",
+				"name",
+				"order",
+				"rank",
+				"description",
+				"state",
+				"redirectFqdn",
+				"redirectIp",
+				"redirectPort",
+				"lastModifiedTime",
+				"trustedResolverRule",
+				"enableFullLogging",
+				"predefined",
+				"defaultRule",
+				"destAddresses",
+				"srcIps",
+				"destCountries",
+				"destIpCategories",
+				"resCategories",
+				"locations",
+				"locationGroups",
+				"groups",
+				"departments",
+				"users",
+				"timeWindows",
+				"srcIpGroups",
+				"srcIpv6Groups",
+				"destIpGroups",
+				"destIpv6Groups",
+				"nwServices",
+				"nwServiceGroups",
+				"devices",
+				"deviceGroups",
+				"labels",
 			},
 			ignoredFields: ignoredBecause(
 				"admin references are mapped then dropped by projection",

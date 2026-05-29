@@ -406,7 +406,7 @@ load_zia_resources() {
         fail "requested resource is not a ZIA read/list resource: zia/$requested"
         return 1
       fi
-      if ! resource_in_list "$requested" "${resources[@]}"; then
+      if ((${#resources[@]} == 0)) || ! resource_in_list "$requested" "${resources[@]}"; then
         resources+=("$requested")
       fi
     done

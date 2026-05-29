@@ -544,6 +544,112 @@ Fields:
 Dedicated IP gateways use the SDK lite endpoint and list-derived `get`. The
 SDK also returns `lastModifiedBy`; projection drops it.
 
+## ZIA Time Intervals
+
+Commands:
+
+```sh
+zscalerctl zia time-intervals list
+zscalerctl zia time-intervals get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Time interval identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `startTime`, `endTime`, `daysOfWeek` | Tenant configuration | `standard`, `share` | Scheduled matching criteria. |
+
+## ZIA Bandwidth Classes
+
+Commands:
+
+```sh
+zscalerctl zia bandwidth-classes list
+zscalerctl zia bandwidth-classes get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Bandwidth class identifier. |
+| `isNameL10nTag`, `type` | Operational metadata | `standard`, `share`, `paranoid` | Localization flag and class type. |
+| `name`, `getfileSize`, `fileSize`, `webApplications`, `applicationServiceGroups`, `networkApplications`, `networkServices`, `urlCategories`, `applications` | Tenant configuration | `standard`, `share` | Reviewed class matching and sizing metadata. |
+| `urls` | Sensitive identifier | `standard` | Local-only URL criteria; values are scanned before output. |
+
+## ZIA Bandwidth Control Rules
+
+Commands:
+
+```sh
+zscalerctl zia bandwidth-control-rules list
+zscalerctl zia bandwidth-control-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Bandwidth rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `order`, `state`, `rank`, `defaultRule` | Operational metadata | `standard`, `share`, `paranoid` | Rule ordering, state, and default metadata. |
+| `lastModifiedTime`, `accessControl` | Operational metadata | `standard`, `share` | SDK timestamp and access metadata. |
+| `maxBandwidth`, `minBandwidth`, `protocols`, `deviceTrustLevels`, `bandwidthClasses`, `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Reviewed bandwidth and rule criteria. |
+| `locations`, `locationGroups`, `devices`, `deviceGroups` | Tenant configuration | `standard` | Local-only scope references. Nested unreviewed fields are dropped. |
+
+The SDK also returns `lastModifiedBy`. The reader maps it into source records,
+but the catalog does not allow it to render, so projection drops it.
+
+## ZIA Dns Gateways
+
+Commands:
+
+```sh
+zscalerctl zia dns-gateways list
+zscalerctl zia dns-gateways get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | DNS gateway identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `dnsGatewayType`, `autoCreated`, `natZtrGateway` | Operational metadata | `standard`, `share`, `paranoid` | Gateway type and flags. |
+| `primaryIpOrFqdn`, `secondaryIpOrFqdn` | Sensitive identifier | `standard` | Local-only gateway endpoints. |
+| `primaryPorts`, `secondaryPorts`, `protocols`, `failureBehavior`, `dnsGatewayProtocols` | Tenant configuration | `standard`, `share` | Reviewed DNS gateway connectivity settings. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+
+The SDK also returns `lastModifiedBy`. The reader maps it into source records,
+but the catalog does not allow it to render, so projection drops it.
+
+## ZIA Nat Control Rules
+
+Commands:
+
+```sh
+zscalerctl zia nat-control-rules list
+zscalerctl zia nat-control-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | NAT control rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `order`, `rank`, `state`, `trustedResolverRule`, `enableFullLogging`, `predefined`, `defaultRule` | Operational metadata | `standard`, `share`, `paranoid` | Rule state, order, logging, and default/predefined metadata. |
+| `accessControl`, `redirectPort`, `destCountries`, `labels`, `timeWindows` | Tenant configuration or operational metadata | `standard`, `share` | Reviewed non-secret rule configuration. |
+| `redirectFqdn`, `redirectIp`, `destAddresses`, `srcIps`, `destIpCategories`, `resCategories` | Sensitive identifier | `standard` | Local-only NAT endpoints and criteria. |
+| `locations`, `locationGroups`, `srcIpGroups`, `srcIpv6Groups`, `destIpGroups`, `destIpv6Groups`, `nwServices`, `nwServiceGroups`, `groups`, `departments`, `users`, `devices`, `deviceGroups` | Tenant configuration | `standard` | Local-only scope, principal, service, and device references. Nested unreviewed fields are dropped. |
+
+The SDK also returns `lastModifiedBy`. The reader maps it into source records,
+but the catalog does not allow it to render, so projection drops it.
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

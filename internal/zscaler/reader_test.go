@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
+	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	applicationservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/applicationservices"
 	appservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/appservicegroups"
+	dnsgateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/dns_gateways"
 	filteringrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/filteringrules"
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
@@ -24,8 +27,10 @@ import (
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
+	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
+	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
@@ -1644,6 +1649,296 @@ func TestReaderListDedicatedIPGatewaysProjectsSDKShapeThroughAllowList(t *testin
 	assertNoCanaries(t, "dedicated-ip-gateways", got, canary, bareFreeTextToken)
 	if got["default"] != true {
 		t.Errorf("projected dedicated-ip-gateways default = %v, want true", got["default"])
+	}
+}
+
+func TestReaderListTimeIntervalsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const canary = "time-interval-psk-canary"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceTimeIntervals}: newListGetHandler(
+				resourceTimeIntervals,
+				func(context.Context) ([]timeintervals.TimeInterval, error) {
+					return []timeintervals.TimeInterval{
+						{
+							ID:         701,
+							Name:       "Business hours psk=" + canary,
+							StartTime:  800,
+							EndTime:    1700,
+							DaysOfWeek: []string{"MON", "TUE", "psk=" + canary},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*timeintervals.TimeInterval, error) { return nil, nil }),
+				timeIntervalSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceTimeIntervals)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, time-intervals) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceTimeIntervals, records)
+	assertNoCanaries(t, "time-intervals", got, canary)
+	if got["startTime"] != 800 {
+		t.Errorf("projected time-intervals startTime = %v, want 800", got["startTime"])
+	}
+}
+
+func TestReaderListBandwidthClassesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const canary = "bandwidth-class-psk-canary"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceBandwidthClasses}: newListGetHandler(
+				resourceBandwidthClasses,
+				func(context.Context) ([]bandwidthclasses.BandwidthClasses, error) {
+					return []bandwidthclasses.BandwidthClasses{
+						{
+							ID:                       702,
+							IsNameL10nTag:            true,
+							Name:                     "Streaming psk=" + canary,
+							GetfileSize:              "10MB",
+							FileSize:                 "20MB",
+							Type:                     "WEB_APPLICATION",
+							WebApplications:          []string{"YOUTUBE"},
+							Urls:                     []string{"https://operator:" + canary + "@example.invalid"},
+							ApplicationServiceGroups: []string{"app-service-group"},
+							NetworkApplications:      []string{"HTTP"},
+							NetworkServices:          []string{"service"},
+							UrlCategories:            []string{"CUSTOM_01"},
+							Applications:             []string{"app"},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*bandwidthclasses.BandwidthClasses, error) { return nil, nil }),
+				bandwidthClassSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceBandwidthClasses)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, bandwidth-classes) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceBandwidthClasses, records)
+	assertNoCanaries(t, "bandwidth-classes", got, canary)
+	if got["type"] != "WEB_APPLICATION" {
+		t.Errorf("projected bandwidth-classes type = %v, want WEB_APPLICATION", got["type"])
+	}
+}
+
+func TestReaderListBandwidthControlRulesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "bandwidth-rule-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+		adminCanary       = "bandwidth-rule-admin-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceBandwidthRules}: newListGetHandler(
+				resourceBandwidthRules,
+				func(context.Context) ([]bandwidthcontrolrules.BandwidthControlRules, error) {
+					return []bandwidthcontrolrules.BandwidthControlRules{
+						{
+							ID:                703,
+							Name:              "Bandwidth rule psk=" + canary,
+							Description:       "temporary psk=" + canary + " " + bareFreeTextToken,
+							Order:             1,
+							State:             "ENABLED",
+							MaxBandwidth:      100,
+							MinBandwidth:      10,
+							Rank:              7,
+							LastModifiedTime:  1700000000,
+							AccessControl:     "READ_WRITE",
+							DefaultRule:       false,
+							Protocols:         []string{"ANY_RULE"},
+							DeviceTrustLevels: []string{"ANY"},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   9001,
+								Name: adminCanary,
+							},
+							BandwidthClasses: []ziacommon.IDNameExtensions{
+								{ID: 31, Name: "Streaming psk=" + canary},
+							},
+							LocationGroups: []ziacommon.IDNameExtensions{
+								{ID: 32, Name: "Location group"},
+							},
+							Labels: []ziacommon.IDNameExtensions{
+								{ID: 33, Name: "Security"},
+							},
+							Devices: []ziacommon.IDNameExtensions{
+								{ID: 34, Name: "Device"},
+							},
+							DeviceGroups: []ziacommon.IDNameExtensions{
+								{ID: 35, Name: "Device group"},
+							},
+							Locations: []ziacommon.IDNameExtensions{
+								{ID: 36, Name: "Location"},
+							},
+							TimeWindows: []ziacommon.IDNameExtensions{
+								{ID: 37, Name: "Business hours"},
+							},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*bandwidthcontrolrules.BandwidthControlRules, error) { return nil, nil }),
+				bandwidthControlRuleSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceBandwidthRules)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, bandwidth-control-rules) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceBandwidthRules, records)
+	assertNoCanaries(t, "bandwidth-control-rules", got, canary, bareFreeTextToken, adminCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected bandwidth-control-rules = %#v, want no lastModifiedBy", got)
+	}
+	if got["maxBandwidth"] != 100 {
+		t.Errorf("projected bandwidth-control-rules maxBandwidth = %v, want 100", got["maxBandwidth"])
+	}
+}
+
+func TestReaderListDNSGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary      = "dns-gateway-psk-canary"
+		adminCanary = "dns-gateway-admin-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceDNSGateways}: newListGetHandler(
+				resourceDNSGateways,
+				func(context.Context) ([]dnsgateways.DNSGateways, error) {
+					return []dnsgateways.DNSGateways{
+						{
+							ID:                  704,
+							Name:                "DNS gateway psk=" + canary,
+							DnsGatewayType:      "IP",
+							PrimaryIpOrFqdn:     "https://operator:" + canary + "@example.invalid",
+							PrimaryPorts:        []int{53},
+							SecondaryIpOrFqdn:   "secondary.example.invalid",
+							SecondaryPorts:      []int{853},
+							Protocols:           []string{"UDP", "TCP"},
+							FailureBehavior:     "ALLOW",
+							LastModifiedTime:    1700000000,
+							AutoCreated:         false,
+							NatZtrGateway:       true,
+							DnsGatewayProtocols: []string{"DNS", "DNS_OVER_TLS"},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   9002,
+								Name: adminCanary,
+							},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*dnsgateways.DNSGateways, error) { return nil, nil }),
+				dnsGatewaySourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceDNSGateways)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, dns-gateways) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceDNSGateways, records)
+	assertNoCanaries(t, "dns-gateways", got, canary, adminCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected dns-gateways = %#v, want no lastModifiedBy", got)
+	}
+	if got["natZtrGateway"] != true {
+		t.Errorf("projected dns-gateways natZtrGateway = %v, want true", got["natZtrGateway"])
+	}
+}
+
+func TestReaderListNATControlRulesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "nat-rule-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+		adminCanary       = "nat-rule-admin-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceNATRules}: newListGetHandler(
+				resourceNATRules,
+				func(context.Context) ([]natcontrol.NatControlPolicies, error) {
+					return []natcontrol.NatControlPolicies{
+						{
+							AccessControl:       "READ_WRITE",
+							ID:                  705,
+							Name:                "NAT rule psk=" + canary,
+							Order:               2,
+							Rank:                8,
+							Description:         "temporary psk=" + canary + " " + bareFreeTextToken,
+							State:               "ENABLED",
+							RedirectFqdn:        "https://operator:" + canary + "@example.invalid",
+							RedirectIp:          "203.0.113.10",
+							RedirectPort:        443,
+							LastModifiedTime:    1700000000,
+							TrustedResolverRule: true,
+							EnableFullLogging:   true,
+							Predefined:          false,
+							DefaultRule:         false,
+							DestAddresses:       []string{"example.invalid"},
+							SrcIps:              []string{"192.0.2.10"},
+							DestCountries:       []string{"US"},
+							DestIpCategories:    []string{"COUNTRY_US"},
+							ResCategories:       []string{"COUNTRY_CA"},
+							Locations:           []ziacommon.IDNameExtensions{{ID: 41, Name: "Location"}},
+							LocationGroups:      []ziacommon.IDNameExtensions{{ID: 42, Name: "Location group"}},
+							Groups:              []ziacommon.IDNameExtensions{{ID: 43, Name: "Group"}},
+							Departments:         []ziacommon.IDNameExtensions{{ID: 44, Name: "Department"}},
+							Users:               []ziacommon.IDNameExtensions{{ID: 45, Name: "User"}},
+							TimeWindows:         []ziacommon.IDNameExtensions{{ID: 46, Name: "Time window"}},
+							SrcIpGroups:         []ziacommon.IDNameExtensions{{ID: 47, Name: "Source group"}},
+							DestIpGroups:        []ziacommon.IDNameExtensions{{ID: 48, Name: "Destination group"}},
+							NwServices:          []ziacommon.IDNameExtensions{{ID: 49, Name: "Service"}},
+							NwServiceGroups:     []ziacommon.IDNameExtensions{{ID: 50, Name: "Service group"}},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   9003,
+								Name: adminCanary,
+							},
+							Devices:      []ziacommon.IDNameExtensions{{ID: 51, Name: "Device"}},
+							DeviceGroups: []ziacommon.IDNameExtensions{{ID: 52, Name: "Device group"}},
+							Labels:       []ziacommon.IDNameExtensions{{ID: 53, Name: "Security"}},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*natcontrol.NatControlPolicies, error) { return nil, nil }),
+				natControlRuleSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceNATRules)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, nat-control-rules) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceNATRules, records)
+	assertNoCanaries(t, "nat-control-rules", got, canary, bareFreeTextToken, adminCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected nat-control-rules = %#v, want no lastModifiedBy", got)
+	}
+	if got["redirectPort"] != 443 {
+		t.Errorf("projected nat-control-rules redirectPort = %v, want 443", got["redirectPort"])
 	}
 }
 
