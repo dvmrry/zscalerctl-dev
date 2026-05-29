@@ -23,9 +23,9 @@ jobs:
           - name: redact-json
             package: ./internal/redact
             target: FuzzRedactorPreservesValidJSON
-          - name: redact-free-text
+          - name: redact-rendered-string
             package: ./internal/redact
-            target: FuzzScanFreeTextRedactsBareHighEntropyCanary
+            target: FuzzScanRenderedStringRedactsBareHighEntropyCanary
           - name: resources-projection
             package: ./internal/resources
             target: FuzzProjectRecordSubsetAndCanaryRedaction

@@ -74,8 +74,8 @@ Handling:
 - Free-text fields are high risk because administrators may paste credentials,
   ticket data, incident details, or internal hostnames into them.
 - If emitted in `standard` mode, they must be explicitly allowed per resource
-  and scanned before output, including a free-text-only high-entropy token
-  backstop for bare unlabeled secret material.
+  and scanned before output. All rendered string values receive a high-entropy
+  token backstop for bare unlabeled secret material.
 
 ### Class 4: Secrets And Credential Material
 
@@ -132,17 +132,22 @@ The default output rule is fail closed:
 - Per-value scanning catches self-describing secret shapes. It does not have
   enough context to guarantee that an arbitrary unlabeled string is safe, so
   field classification remains the primary control.
-- Free-text fields receive an additional high-entropy token scan because they
-  are the most likely place for arbitrary unlabeled credential material to be
-  pasted by an administrator.
+- All rendered string values receive an additional high-entropy token scan
+  because broad name-based rendering otherwise increases reliance on
+  self-describing secret shapes.
 - Free-text fields may be emitted only in `standard` mode, and every such field
   must carry a `standard_free_text_reason` in the catalog. They are rejected in
   `share` and `paranoid` unless a future tokenization design explicitly changes
   the policy.
-- The high-entropy scan preserves canonical UUIDs and contextual git commit
-  SHAs, but may redact other long hashes or thumbprints. It will not catch a
-  UUID-shaped secret pasted without a labeling keyword. It is a backstop, not
-  proof that every unlabeled secret is detectable.
+- The high-entropy scan preserves canonical UUIDs everywhere, contextual git
+  commit SHAs in prose, and compact UUID or 40/64-character hex fingerprint
+  values in structured rendered strings only in `standard` mode. `share` and
+  `paranoid` redact fingerprint-shaped hex values. Free-text prose remains
+  stricter and may redact bare hashes without context. A hex-encoded secret of
+  those lengths in a rendering `standard` field can survive the entropy
+  backstop; name deny-lists, ambiguous-name holdouts, and fail-closed unknown
+  names are the controls there. The scan is a backstop, not proof that every
+  unlabeled secret is detectable.
 - Context-sensitive generic field names, such as `value`, must be classified per
   resource. They must not be allowed merely because the name is generic.
 
@@ -197,7 +202,7 @@ Security tests should prove:
 - Known canary values do not reach stdout, stderr, logs, or files.
 - Rendered output is a subset of declared allow-listed fields.
 - Free-text fields are handled according to the active redaction mode.
-- Bare high-entropy canaries in emitted free-text fields are redacted.
+- Bare high-entropy canaries in emitted string fields are redacted.
 - Secret-safe types do not reveal values through string formatting, JSON
   marshaling, or structured logging.
 

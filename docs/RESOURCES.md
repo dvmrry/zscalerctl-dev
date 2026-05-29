@@ -7,17 +7,19 @@ records, and projection decides which fields can render for each redaction mode.
 ## Redaction Modes
 
 - `standard`: local operational use. Allows explicitly reviewed tenant
-  configuration and free-text fields, with secret scanning and free-text
+  configuration and free-text fields, with secret scanning and rendered-string
   high-entropy token scanning still applied.
 - `share`: lower-detail output for tickets, reviews, and chat. Drops free text
   and sensitive identifiers.
 - `paranoid`: minimal identifiers and counts only.
 
 All fields, including allowed strings, pass through the final redaction backstop
-before stdout or dump files. Free-text fields also receive a conservative
+before stdout or dump files. Rendered string values also receive a conservative
 high-entropy token scan for bare unlabeled secret material. Canonical UUIDs and
-contextual git commit SHAs are preserved; other long hashes or thumbprints may
-be redacted in free text.
+contextual git commit SHAs are preserved. In `standard` mode, structured
+rendered strings also preserve compact UUIDs and 40/64-character hex
+fingerprints; `share` and `paranoid` redact those fingerprint-shaped values.
+Free-text prose may redact bare hashes without context.
 
 ## Selective Dumps
 
@@ -164,6 +166,13 @@ them.
 
 Before enabling another resource:
 
+- Start with `go run ./scripts/catalog-draft.go --package <sdk-package> --type
+  <sdk-type> --product <zia|zpa> --resource <name>` to generate a classified
+  catalog and SDK shape-review scaffold from the SDK struct.
+- Treat the generated scaffold as a fail-closed starting point: only approved
+  global field names render by default, while ambiguous names such as `value`,
+  `key`, `data`, `content`, and `metadata` stay `secret` unless modeled with
+  resource-specific context.
 - Map the SDK response shape into source records without using the reader as a
   second safety allow-list.
 - Classify every candidate output field in the catalog.
@@ -173,7 +182,7 @@ Before enabling another resource:
   field must carry a catalog `standard_free_text_reason`, must not be allowed in
   `share` or `paranoid`, and must retain scanner backstop coverage.
 - Add canary tests proving secret-looking names or descriptions are redacted,
-  including bare high-entropy tokens for any emitted free-text field.
+  including bare high-entropy tokens for emitted string fields.
 - Add nested drop tests for any SDK object that contains user, admin, key,
   token, credential, or free-text data.
 - Confirm `AssertRenderedSubset` runs before rendering and dump writing.

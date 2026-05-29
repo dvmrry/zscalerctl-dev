@@ -21,9 +21,11 @@ paths = [
 ]
 regexes = [
   '''^A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v$''',
+  '''^0123456789abcdef0123456789abcdef01234567$''',
   '''^abcdefghiJKLMNOP1234567890$''',
   '''^tok_1234567890$''',
   '''^abc123secretkeymaterial$''',
   '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.signaturexyz$''',
+  '''^eyJhbGciOiJIUzI1NiJ9\.eyJzY29wZSI6InJlc291cmNlcyJ9\.shapeTestJWTCanary$''',
   '''(?s)-----BEGIN PRIVATE KEY-----.*key-material.*-----END PRIVATE KEY-----''',
 ]

@@ -358,7 +358,7 @@ func scanStringValue(r redact.Redactor, field FieldSpec, value string) (string, 
 	if field.Classification == ClassFreeText {
 		return r.ScanFreeText(value)
 	}
-	return r.ScanString(value)
+	return r.ScanRenderedString(value)
 }
 
 func hasStructuredValue(value any) bool {
@@ -544,7 +544,7 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		if field.Classification == "" {
 			return fmt.Errorf("%w: %s/%s field %s missing classification", ErrInvalidResourceSpec, product, resource, path)
 		}
-		if secretLikeFieldName(jsonName) && field.Classification != ClassSecret && field.SensitiveNameReason == "" {
+		if SecretLikeFieldName(jsonName) && field.Classification != ClassSecret && field.SensitiveNameReason == "" {
 			return fmt.Errorf("%w: %s/%s field %s has sensitive-looking name but is not secret", ErrInvalidResourceSpec, product, resource, path)
 		}
 		if field.Classification == ClassSecret && len(field.AllowedModes) != 0 {
@@ -852,7 +852,10 @@ func copyAny(value any) any {
 	}
 }
 
-func secretLikeFieldName(name string) bool {
+// SecretLikeFieldName reports whether a JSON field name looks likely to carry
+// secret material. Keep resource validators and draft-generation tooling on
+// this single predicate so generated scaffolds match catalog enforcement.
+func SecretLikeFieldName(name string) bool {
 	normalized := normalizeFieldName(name)
 	switch normalized {
 	case "jwt", "otp", "psk", "secret", "token":

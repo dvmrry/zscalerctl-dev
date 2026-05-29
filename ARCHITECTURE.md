@@ -171,11 +171,14 @@ values use typed markers such as `<REDACTED:SECRET>` and
 `<REDACTED:PROVISIONING_KEY>` so the operator can tell that data was
 intentionally obscured. This scanner is a backstop for self-describing secret
 shapes; it must not be treated as a substitute for field allow-list projection.
-Free-text fields receive one extra backstop: a conservative high-entropy token
-scan for bare unlabeled secret material pasted into administrator-controlled
-text. Canonical UUIDs and contextual git commit SHAs are preserved, but other
-long hashes or thumbprints may be redacted; the scan does not guarantee
-detection of every short unlabeled secret.
+Rendered string values receive one extra backstop: a conservative high-entropy
+token scan for bare unlabeled secret material. Canonical UUIDs are preserved
+everywhere. In `standard` mode, structured rendered strings also preserve compact
+UUIDs and 40/64 character hex fingerprints; `share` and `paranoid` redact those
+fingerprint-shaped values. Free-text prose preserves git commit SHAs only when
+nearby words identify them as git revisions. The scan does not guarantee
+detection of every short unlabeled secret, or of every hex-shaped secret in a
+rendering `standard` field.
 
 ## Secret-Safe Types
 
@@ -297,7 +300,7 @@ because they indicate that live read access itself is not trustworthy.
 ## Redaction Modes
 
 `standard` is for local operational use. It emits allow-listed fields and uses
-secret redaction, free-text high-entropy token scanning, and final byte scanning
+secret redaction, rendered-string high-entropy token scanning, and final byte scanning
 as backstops. Free-text fields are standard-only catalog exceptions: each one
 must include a `standard_free_text_reason`, keep catalog-driven canary coverage,
 and stay out of `share` and `paranoid` unless a future tokenization design

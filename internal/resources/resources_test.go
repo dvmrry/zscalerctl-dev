@@ -1,6 +1,7 @@
 package resources_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -183,7 +184,13 @@ func TestProjectRecordRedactsBareHighEntropyFreeText(t *testing.T) {
 func TestCatalogFreeTextFieldsRedactBareHighEntropyCanary(t *testing.T) {
 	t.Parallel()
 
-	const canary = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	canaries := []struct {
+		name  string
+		value string
+	}{
+		{name: "mixed_token", value: "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"},
+		{name: "bare_hex", value: "0123456789abcdef0123456789abcdef01234567"},
+	}
 	for _, spec := range resources.Catalog() {
 		spec := spec
 		for _, fieldPath := range freeTextFieldPaths(spec.Fields) {
@@ -193,27 +200,125 @@ func TestCatalogFreeTextFieldsRedactBareHighEntropyCanary(t *testing.T) {
 				if !fieldPath.AllowedIn(mode) {
 					continue
 				}
-				t.Run(string(spec.Product)+"/"+spec.Name+"/"+fieldPath.Path+"/"+string(mode), func(t *testing.T) {
-					t.Parallel()
+				for _, canary := range canaries {
+					canary := canary
+					t.Run(string(spec.Product)+"/"+spec.Name+"/"+fieldPath.Path+"/"+string(mode)+"/"+canary.name, func(t *testing.T) {
+						t.Parallel()
 
-					record := resources.NewSourceRecord(fieldPath.SourceRecord("operator note " + canary))
-					got, report, err := resources.ProjectRecord(spec, mode, record)
-					if err != nil {
-						t.Fatalf("ProjectRecord(%s/%s %s) error = %v, want nil", spec.Product, spec.Name, mode, err)
-					}
-					value := fieldPath.ProjectedString(t, got.Fields(), spec, mode)
-					if strings.Contains(value, canary) {
-						t.Errorf("ProjectRecord(%s/%s %s)[%s] = %q, want no bare token", spec.Product, spec.Name, mode, fieldPath.Path, value)
-					}
-					if !strings.Contains(value, "<REDACTED:SECRET>") {
-						t.Errorf("ProjectRecord(%s/%s %s)[%s] = %q, want typed secret marker", spec.Product, spec.Name, mode, fieldPath.Path, value)
-					}
-					if !containsString(report.RedactedFields, fieldPath.Path) {
-						t.Errorf("ProjectRecord(%s/%s %s).RedactedFields = %#v, want %q", spec.Product, spec.Name, mode, report.RedactedFields, fieldPath.Path)
-					}
-				})
+						record := resources.NewSourceRecord(fieldPath.SourceRecord("operator note " + canary.value))
+						got, report, err := resources.ProjectRecord(spec, mode, record)
+						if err != nil {
+							t.Fatalf("ProjectRecord(%s/%s %s) error = %v, want nil", spec.Product, spec.Name, mode, err)
+						}
+						value := fieldPath.ProjectedString(t, got.Fields(), spec, mode)
+						if strings.Contains(value, canary.value) {
+							t.Errorf("ProjectRecord(%s/%s %s)[%s] = %q, want no bare token", spec.Product, spec.Name, mode, fieldPath.Path, value)
+						}
+						if !strings.Contains(value, "<REDACTED:SECRET>") {
+							t.Errorf("ProjectRecord(%s/%s %s)[%s] = %q, want typed secret marker", spec.Product, spec.Name, mode, fieldPath.Path, value)
+						}
+						if !containsString(report.RedactedFields, fieldPath.Path) {
+							t.Errorf("ProjectRecord(%s/%s %s).RedactedFields = %#v, want %q", spec.Product, spec.Name, mode, report.RedactedFields, fieldPath.Path)
+						}
+					})
+				}
 			}
 		}
+	}
+}
+
+func TestCatalogRenderedFieldsRedactSecretShapes(t *testing.T) {
+	t.Parallel()
+
+	secretShapes := []struct {
+		name      string
+		value     string
+		forbidden []string
+	}{
+		{
+			name:      "bare_high_entropy",
+			value:     "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v",
+			forbidden: []string{"A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"},
+		},
+		{
+			name:      "secret_assignment",
+			value:     "psk=shape-test-psk-canary-value",
+			forbidden: []string{"shape-test-psk-canary-value"},
+		},
+		{
+			name:      "authorization_header",
+			value:     "Authorization: Bearer shape-test-bearer-canary-value",
+			forbidden: []string{"shape-test-bearer-canary-value"},
+		},
+		{
+			name:      "credential_url",
+			value:     "https://user:shape-test-url-password@example.invalid/private",
+			forbidden: []string{"shape-test-url-password"},
+		},
+		{
+			name:      "jwt",
+			value:     "eyJhbGciOiJIUzI1NiJ9.eyJzY29wZSI6InJlc291cmNlcyJ9.shapeTestJWTCanary",
+			forbidden: []string{"eyJhbGci", "shapeTestJWTCanary"},
+		},
+		{
+			name:      "provisioning_key",
+			value:     "1|api.private.example.net|68F0AOEgpcG8McLmwdborq2m6v2A5oNEpSztJ==",
+			forbidden: []string{"68F0AOEgpcG8McLmwdborq2m6v2A5oNEpSztJ"},
+		},
+		{
+			name:      "private_key",
+			value:     "-----BEGIN PRIVATE KEY-----\nshape-test-private-key-canary\n-----END PRIVATE KEY-----",
+			forbidden: []string{"shape-test-private-key-canary"},
+		},
+	}
+
+	// This net proves the scanner catches known self-describing secret shapes
+	// plus high-entropy rendered tokens. Low-entropy unlabeled secrets remain a
+	// naming/classification problem, not something a value scanner can infer.
+	cases := 0
+	for _, spec := range resources.Catalog() {
+		spec := spec
+		for _, fieldPath := range catalogLeafFieldPaths(spec.Fields) {
+			fieldPath := fieldPath
+			for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+				mode := mode
+				if !fieldPath.AllowedIn(mode) {
+					continue
+				}
+				for _, shape := range secretShapes {
+					shape := shape
+					cases++
+					t.Run(string(spec.Product)+"/"+spec.Name+"/"+fieldPath.Path+"/"+string(mode)+"/"+shape.name, func(t *testing.T) {
+						t.Parallel()
+
+						record := resources.NewSourceRecord(fieldPath.SourceRecord(shape.value))
+						got, report, err := resources.ProjectRecord(spec, mode, record)
+						if err != nil {
+							t.Fatalf("ProjectRecord(%s/%s %s %s) error = %v, want nil", spec.Product, spec.Name, mode, fieldPath.Path, err)
+						}
+						value := fieldPath.ProjectedString(t, got.Fields(), spec, mode)
+						if !containsString(report.RedactedFields, fieldPath.Path) {
+							t.Errorf("ProjectRecord(%s/%s %s).RedactedFields = %#v, want %q", spec.Product, spec.Name, mode, report.RedactedFields, fieldPath.Path)
+						}
+						body, err := json.Marshal(got.Fields())
+						if err != nil {
+							t.Fatalf("json.Marshal(ProjectRecord(%s/%s %s)) error = %v, want nil", spec.Product, spec.Name, mode, err)
+						}
+						if !strings.Contains(value, "<REDACTED:") {
+							t.Errorf("ProjectRecord(%s/%s %s %s) redaction marker absent for %s shape", spec.Product, spec.Name, mode, fieldPath.Path, shape.name)
+						}
+						for _, forbidden := range shape.forbidden {
+							if strings.Contains(string(body), forbidden) {
+								t.Errorf("ProjectRecord(%s/%s %s %s) JSON contains %s canary material, want redacted", spec.Product, spec.Name, mode, fieldPath.Path, shape.name)
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+	if cases == 0 {
+		t.Fatal("catalog rendered field secret-shape cases = 0, want at least one")
 	}
 }
 
@@ -254,6 +359,64 @@ func TestProjectRecordDropsContextSensitiveValueWhenClassifiedSecret(t *testing.
 	}
 	if !reflect.DeepEqual(report.DroppedFields, []string{"value"}) {
 		t.Errorf("ProjectRecord(secret value field).DroppedFields = %#v, want [value]", report.DroppedFields)
+	}
+}
+
+func TestProjectRecordPreservesStructuredHexFingerprintOnlyInStandard(t *testing.T) {
+	t.Parallel()
+
+	const fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "fingerprint-test",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+			AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+		}},
+	}
+
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			got, report, err := resources.ProjectRecord(spec, mode, resources.NewSourceRecord(map[string]any{
+				"id": fingerprint,
+			}))
+			if err != nil {
+				t.Fatalf("ProjectRecord(%s) error = %v, want nil", mode, err)
+			}
+			value, ok := got.Value("id")
+			if !ok {
+				t.Fatalf("ProjectRecord(%s).Value(id) ok = false, want true", mode)
+			}
+			gotString, ok := value.(string)
+			if !ok {
+				t.Fatalf("ProjectRecord(%s).Value(id) = %T, want string", mode, value)
+			}
+
+			if mode == redact.ModeStandard {
+				if gotString != fingerprint {
+					t.Errorf("ProjectRecord(%s).Value(id) = %q, want structured fingerprint preserved", mode, gotString)
+				}
+				if containsString(report.RedactedFields, "id") {
+					t.Errorf("ProjectRecord(%s).RedactedFields = %#v, want no id redaction", mode, report.RedactedFields)
+				}
+				return
+			}
+
+			if strings.Contains(gotString, fingerprint) {
+				t.Errorf("ProjectRecord(%s).Value(id) = %q, want fingerprint-shaped value redacted outside standard", mode, gotString)
+			}
+			if !strings.Contains(gotString, "<REDACTED:SECRET>") {
+				t.Errorf("ProjectRecord(%s).Value(id) = %q, want secret marker", mode, gotString)
+			}
+			if !containsString(report.RedactedFields, "id") {
+				t.Errorf("ProjectRecord(%s).RedactedFields = %#v, want id", mode, report.RedactedFields)
+			}
+		})
 	}
 }
 
@@ -819,6 +982,34 @@ func freeTextFieldPathsWithPrefix(
 			})
 		}
 		paths = append(paths, freeTextFieldPathsWithPrefix(current, fieldPath, field.Fields)...)
+	}
+	return paths
+}
+
+func catalogLeafFieldPaths(fields []resources.FieldSpec) []freeTextFieldPath {
+	return catalogLeafFieldPathsWithPrefix(nil, "", fields)
+}
+
+func catalogLeafFieldPathsWithPrefix(
+	prefix []resources.FieldSpec,
+	pathPrefix string,
+	fields []resources.FieldSpec,
+) []freeTextFieldPath {
+	var paths []freeTextFieldPath
+	for _, field := range fields {
+		fieldPath := field.JSONField()
+		if pathPrefix != "" {
+			fieldPath = pathPrefix + "." + fieldPath
+		}
+		current := append(append([]resources.FieldSpec(nil), prefix...), field)
+		if len(field.Fields) == 0 {
+			paths = append(paths, freeTextFieldPath{
+				Path:   fieldPath,
+				Fields: current,
+			})
+			continue
+		}
+		paths = append(paths, catalogLeafFieldPathsWithPrefix(current, fieldPath, field.Fields)...)
 	}
 	return paths
 }

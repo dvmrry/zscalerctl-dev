@@ -88,9 +88,27 @@ func (r Redactor) ScanString(in string) (string, Report) {
 	return out, report
 }
 
-// ScanFreeText applies the standard scanners plus a conservative high-entropy
-// token check for administrator-controlled text fields.
+// ScanRenderedString applies the standard scanners plus a conservative
+// high-entropy token check for strings that are about to be rendered.
+func (r Redactor) ScanRenderedString(in string) (string, Report) {
+	return r.scanStringWithEntropy(in, highEntropyStructured)
+}
+
+// ScanFreeText applies rendered-string scanning to administrator-controlled
+// text fields. Kept as a named API because free-text fields remain the highest
+// risk place for accidental bare credential paste.
 func (r Redactor) ScanFreeText(in string) (string, Report) {
+	return r.scanStringWithEntropy(in, highEntropyFreeText)
+}
+
+type highEntropyContext int
+
+const (
+	highEntropyFreeText highEntropyContext = iota
+	highEntropyStructured
+)
+
+func (r Redactor) scanStringWithEntropy(in string, context highEntropyContext) (string, Report) {
 	out, report := r.ScanString(in)
 	matches := highEntropyFreeTextTokenRE.FindAllStringIndex(out, -1)
 	if len(matches) == 0 {
@@ -101,7 +119,7 @@ func (r Redactor) ScanFreeText(in string) (string, Report) {
 	last := 0
 	count := 0
 	for _, match := range matches {
-		if !shouldRedactHighEntropyFreeTextToken(out, match[0], match[1]) {
+		if !shouldRedactHighEntropyToken(out, match[0], match[1], context, r.mode) {
 			continue
 		}
 		b.WriteString(out[last:match[0]])
@@ -116,7 +134,7 @@ func (r Redactor) ScanFreeText(in string) (string, Report) {
 	if report.Counts == nil {
 		report.Counts = make(map[string]int)
 	}
-	report.Counts["high_entropy_free_text_token"] += count
+	report.Counts["high_entropy_rendered_token"] += count
 	return b.String(), report
 }
 
@@ -142,6 +160,8 @@ var baseRules = buildBaseRules()
 
 var highEntropyFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}\b`)
 var canonicalUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var compactUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
+var publicHexFingerprintRE = regexp.MustCompile(`(?i)^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var gitSHARE = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
 var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b[\s:=#-]*)$`)
 
@@ -223,10 +243,15 @@ var shareRules = []rule{
 	},
 }
 
-func shouldRedactHighEntropyFreeTextToken(text string, start, end int) bool {
+func shouldRedactHighEntropyToken(text string, start, end int, context highEntropyContext, mode Mode) bool {
 	token := text[start:end]
 	if canonicalUUIDRE.MatchString(token) {
 		return false
+	}
+	if context == highEntropyStructured {
+		if compactUUIDRE.MatchString(token) || publicHexFingerprintRE.MatchString(token) {
+			return mode != ModeStandard
+		}
 	}
 	if gitSHARE.MatchString(token) && hasGitSHAContext(text, start) {
 		return false

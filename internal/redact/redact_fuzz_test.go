@@ -43,7 +43,7 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 	})
 }
 
-func FuzzScanFreeTextRedactsBareHighEntropyCanary(f *testing.F) {
+func FuzzScanRenderedStringRedactsBareHighEntropyCanary(f *testing.F) {
 	for _, seed := range []struct {
 		prefix string
 		suffix string
@@ -65,15 +65,15 @@ func FuzzScanFreeTextRedactsBareHighEntropyCanary(f *testing.F) {
 		}
 
 		input := prefix + " " + canary + " " + suffix
-		got, report := redact.New(redact.ModeStandard).ScanFreeText(input)
+		got, report := redact.New(redact.ModeStandard).ScanRenderedString(input)
 		if strings.Contains(got, canary) {
-			t.Fatalf("Redactor.ScanFreeText(%q) = %q, want no canary", input, got)
+			t.Fatalf("Redactor.ScanRenderedString(%q) = %q, want no canary", input, got)
 		}
 		if !strings.Contains(got, "<REDACTED:SECRET>") {
-			t.Fatalf("Redactor.ScanFreeText(%q) = %q, want secret marker", input, got)
+			t.Fatalf("Redactor.ScanRenderedString(%q) = %q, want secret marker", input, got)
 		}
-		if report.Counts["high_entropy_free_text_token"] == 0 {
-			t.Fatalf("Redactor.ScanFreeText(%q) report = %#v, want high entropy finding", input, report)
+		if report.Counts["high_entropy_rendered_token"] == 0 {
+			t.Fatalf("Redactor.ScanRenderedString(%q) report = %#v, want high entropy finding", input, report)
 		}
 	})
 }

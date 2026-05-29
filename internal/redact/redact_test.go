@@ -189,39 +189,119 @@ func TestRedactorDoesNotBlankOperationalSecretWords(t *testing.T) {
 	}
 }
 
-func TestScanFreeTextRemovesBareHighEntropyTokens(t *testing.T) {
+func TestScanRenderedStringRemovesBareHighEntropyTokens(t *testing.T) {
 	t.Parallel()
 
 	for _, token := range []string{
 		"A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v",
-		"0123456789abcdef0123456789abcdef01234567",
+		"eyJhbGciOiJIUzI1NiJ9_payload_signature_canary",
 	} {
 		token := token
 		t.Run(token, func(t *testing.T) {
 			t.Parallel()
 
 			input := "temporary admin note " + token + " should not survive"
-			got, report := redact.New(redact.ModeStandard).ScanFreeText(input)
+			got, report := redact.New(redact.ModeStandard).ScanRenderedString(input)
 			if strings.Contains(got, token) {
-				t.Errorf("Redactor.ScanFreeText(%q) = %q, want no bare token", input, got)
+				t.Errorf("Redactor.ScanRenderedString(%q) = %q, want no bare token", input, got)
 			}
 			if !strings.Contains(got, "<REDACTED:SECRET>") {
-				t.Errorf("Redactor.ScanFreeText(%q) = %q, want typed secret marker", input, got)
+				t.Errorf("Redactor.ScanRenderedString(%q) = %q, want typed secret marker", input, got)
 			}
-			if report.Counts["high_entropy_free_text_token"] != 1 {
-				t.Errorf("Redactor.ScanFreeText(%q) report count = %d, want 1", input, report.Counts["high_entropy_free_text_token"])
+			if report.Counts["high_entropy_rendered_token"] != 1 {
+				t.Errorf("Redactor.ScanRenderedString(%q) report count = %d, want 1", input, report.Counts["high_entropy_rendered_token"])
 			}
 		})
 	}
 }
 
-func TestScanStringDoesNotApplyFreeTextEntropyHeuristic(t *testing.T) {
+func TestScanRenderedStringPreservesStructuredPublicIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		input    string
+		allModes bool
+	}{
+		{
+			name:     "canonical UUID",
+			input:    "550e8400-e29b-41d4-a716-446655440000",
+			allModes: true,
+		},
+		{
+			name:  "compact UUID",
+			input: "550e8400e29b41d4a716446655440000",
+		},
+		{
+			name:  "SHA1 fingerprint",
+			input: "0123456789abcdef0123456789abcdef01234567",
+		},
+		{
+			name:  "SHA256 fingerprint",
+			input: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, report := redact.New(redact.ModeStandard).ScanRenderedString(tt.input)
+			if got != tt.input {
+				t.Errorf("Redactor.ScanRenderedString(%q, standard) = %q, want unchanged structured identifier", tt.input, got)
+			}
+			if !report.Empty() {
+				t.Errorf("Redactor.ScanRenderedString(%q, standard) report = %#v, want empty", tt.input, report)
+			}
+
+			for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+				got, report := redact.New(mode).ScanRenderedString(tt.input)
+				if tt.allModes {
+					if got != tt.input {
+						t.Errorf("Redactor.ScanRenderedString(%q, %s) = %q, want unchanged structured identifier", tt.input, mode, got)
+					}
+					if !report.Empty() {
+						t.Errorf("Redactor.ScanRenderedString(%q, %s) report = %#v, want empty", tt.input, mode, report)
+					}
+					continue
+				}
+				if strings.Contains(got, tt.input) {
+					t.Errorf("Redactor.ScanRenderedString(%q, %s) = %q, want fingerprint-shaped value redacted outside standard", tt.input, mode, got)
+				}
+				if !strings.Contains(got, "<REDACTED:SECRET>") {
+					t.Errorf("Redactor.ScanRenderedString(%q, %s) = %q, want secret marker", tt.input, mode, got)
+				}
+				if report.Counts["high_entropy_rendered_token"] != 1 {
+					t.Errorf("Redactor.ScanRenderedString(%q, %s) report count = %d, want 1", tt.input, mode, report.Counts["high_entropy_rendered_token"])
+				}
+			}
+		})
+	}
+}
+
+func TestScanFreeTextRedactsBareHexFingerprintWithoutContext(t *testing.T) {
+	t.Parallel()
+
+	const token = "0123456789abcdef0123456789abcdef01234567"
+	input := "temporary admin note " + token + " should not survive"
+	got, report := redact.New(redact.ModeStandard).ScanFreeText(input)
+	if strings.Contains(got, token) {
+		t.Errorf("Redactor.ScanFreeText(%q) = %q, want no bare hex token", input, got)
+	}
+	if !strings.Contains(got, "<REDACTED:SECRET>") {
+		t.Errorf("Redactor.ScanFreeText(%q) = %q, want typed secret marker", input, got)
+	}
+	if report.Counts["high_entropy_rendered_token"] != 1 {
+		t.Errorf("Redactor.ScanFreeText(%q) report count = %d, want 1", input, report.Counts["high_entropy_rendered_token"])
+	}
+}
+
+func TestScanStringDoesNotApplyRenderedStringEntropyHeuristic(t *testing.T) {
 	t.Parallel()
 
 	const token = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
 	got := redact.New(redact.ModeStandard).String("resource name " + token)
 	if !strings.Contains(got, token) {
-		t.Errorf("Redactor.String() = %q, want high-entropy heuristic limited to free text", got)
+		t.Errorf("Redactor.String() = %q, want high-entropy heuristic limited to rendered field values", got)
 	}
 }
 
