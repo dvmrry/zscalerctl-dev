@@ -76,8 +76,10 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
 # golang.org/x/sys v0.44.0

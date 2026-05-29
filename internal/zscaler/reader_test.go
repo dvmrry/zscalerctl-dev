@@ -14,8 +14,10 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -545,6 +547,322 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected gre-tunnels SDK shape) error = %v, want nil", err)
+	}
+}
+
+func TestReaderListSublocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "sublocation-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+		scopeCanary       = "subLocAcc-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceSublocations}: newListGetHandler(
+				resourceSublocations,
+				func(context.Context) ([]locationmanagement.Locations, error) {
+					return []locationmanagement.Locations{
+						{
+							ID:                 222,
+							ParentID:           111,
+							Name:               "Floor 1 psk=" + canary,
+							Description:        "temporary psk=" + canary + " " + bareFreeTextToken,
+							IPAddresses:        []string{"10.10.10.0/24"},
+							Ports:              []int{80, 443},
+							Profile:            "Workload",
+							Country:            "US",
+							State:              "NY",
+							TZ:                 "America/New_York",
+							AuthRequired:       true,
+							SSLScanEnabled:     true,
+							OFWEnabled:         true,
+							IPSControl:         true,
+							SubLocScopeValues:  []string{scopeCanary},
+							SubLocAccIDs:       []string{scopeCanary},
+							SubLocScopeEnabled: true,
+							VPNCredentials: []locationmanagement.VPNCredentials{
+								{
+									ID:           456,
+									Type:         "UFQDN",
+									PreSharedKey: canary,
+								},
+							},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*locationmanagement.Locations, error) { return nil, nil }),
+				sublocationSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, "sublocations")
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, sublocations) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZIA, "sublocations")
+	if !ok {
+		t.Fatal("FindSpec(zia, sublocations) ok = false, want true")
+	}
+	projected, _, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zia sublocations) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	for _, field := range []string{"name", "description"} {
+		value := toString(got[field])
+		if strings.Contains(value, canary) {
+			t.Errorf("projected sublocations %s = %v, want no %q", field, got[field], canary)
+		}
+		if field == "description" && strings.Contains(value, bareFreeTextToken) {
+			t.Errorf("projected sublocations %s = %v, want no bare token", field, got[field])
+		}
+	}
+	for _, field := range []string{"vpnCredentials", "subLocScopeValues", "subLocAccIds", "subLocScopeEnabled"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected sublocations = %#v, want no %s", got, field)
+		}
+	}
+	for _, forbidden := range []string{canary, scopeCanary} {
+		if strings.Contains(fmt.Sprint(got), forbidden) {
+			t.Errorf("projected sublocations = %#v, want no %q", got, forbidden)
+		}
+	}
+	if got["parentId"] != 111 {
+		t.Errorf("projected sublocations parentId = %v, want 111", got["parentId"])
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected sublocations SDK shape) error = %v, want nil", err)
+	}
+}
+
+func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "ssl-rule-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+		adminCanary       = "ssl-rule-admin-canary"
+		certCanary        = "ssl-rule-cert-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceSSLRules}: newListGetHandler(
+				resourceSSLRules,
+				func(context.Context) ([]sslinspection.SSLInspectionRules, error) {
+					return []sslinspection.SSLInspectionRules{
+						{
+							ID:          333,
+							Name:        "Decrypt psk=" + canary,
+							Description: "temporary psk=" + canary + " " + bareFreeTextToken,
+							Action: sslinspection.Action{
+								Type: "DECRYPT",
+								SSLInterceptionCert: &sslinspection.SSLInterceptionCert{
+									ID:   44,
+									Name: certCanary,
+								},
+							},
+							State:             "ENABLED",
+							Order:             10,
+							Rank:              7,
+							URLCategories:     []string{"ANY"},
+							Platforms:         []string{"WINDOWS"},
+							CloudApplications: []string{"OFFICE365"},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   1001,
+								Name: adminCanary,
+							},
+							Users: []ziacommon.IDNameExtensions{
+								{
+									ID:   1002,
+									Name: adminCanary,
+								},
+							},
+							LastModifiedTime: 1712345678,
+							DefaultRule:      false,
+							Predefined:       false,
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*sslinspection.SSLInspectionRules, error) { return nil, nil }),
+				sslInspectionRuleSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, "ssl-inspection-rules")
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, ssl-inspection-rules) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZIA, "ssl-inspection-rules")
+	if !ok {
+		t.Fatal("FindSpec(zia, ssl-inspection-rules) ok = false, want true")
+	}
+	projected, _, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zia ssl-inspection-rules) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	for _, field := range []string{"name", "description"} {
+		value := toString(got[field])
+		if strings.Contains(value, canary) {
+			t.Errorf("projected ssl-inspection-rules %s = %v, want no %q", field, got[field], canary)
+		}
+		if field == "description" && strings.Contains(value, bareFreeTextToken) {
+			t.Errorf("projected ssl-inspection-rules %s = %v, want no bare token", field, got[field])
+		}
+	}
+	action, ok := got["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules action = %T, want map[string]any", got["action"])
+	}
+	if action["type"] != "DECRYPT" {
+		t.Errorf("projected ssl-inspection-rules action.type = %v, want DECRYPT", action["type"])
+	}
+	for _, field := range []string{"sslInterceptionCert", "users", "lastModifiedBy"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected ssl-inspection-rules = %#v, want no %s", got, field)
+		}
+	}
+	if _, ok := action["sslInterceptionCert"]; ok {
+		t.Errorf("projected ssl-inspection-rules action = %#v, want no sslInterceptionCert", action)
+	}
+	for _, forbidden := range []string{canary, adminCanary, certCanary} {
+		if strings.Contains(fmt.Sprint(got), forbidden) {
+			t.Errorf("projected ssl-inspection-rules = %#v, want no %q", got, forbidden)
+		}
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected ssl-inspection-rules SDK shape) error = %v, want nil", err)
+	}
+}
+
+func TestReaderListURLCategoriesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "url-category-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+		urlCanary         = "https://operator:url-category-secret@example.invalid"
+		scopeCanary       = "url-category-scope-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceURLCategories}: newListGetHandler(
+				resourceURLCategories,
+				func(context.Context) ([]urlcategories.URLCategory, error) {
+					return []urlcategories.URLCategory{
+						{
+							ID:                                   "CUSTOM_01",
+							ConfiguredName:                       "Category psk=" + canary,
+							Description:                          "temporary psk=" + canary + " " + bareFreeTextToken,
+							Type:                                 "URL_CATEGORY",
+							CustomCategory:                       true,
+							Editable:                             true,
+							CustomUrlsCount:                      1,
+							CustomIpRangesCount:                  2,
+							UrlsRetainingParentCategoryCount:     3,
+							IPRangesRetainingParentCategoryCount: 4,
+							CategoryGroup:                        "User Defined",
+							SuperCategory:                        "CUSTOM",
+							UrlType:                              "EXACT",
+							Urls:                                 []string{"example.invalid/path", urlCanary},
+							DBCategorizedUrls:                    []string{"retained.example.invalid"},
+							Keywords:                             []string{"finance", "psk=" + canary},
+							KeywordsRetainingParentCategory:      []string{"retained-keyword"},
+							IPRanges:                             []string{"203.0.113.0/24"},
+							IPRangesRetainingParentCategory:      []string{"198.51.100.0/24"},
+							RegexPatterns:                        []string{"^https://example\\.invalid/.*", "token=" + canary},
+							RegexPatternsRetainingParentCategory: []string{"^https://retained\\.example\\.invalid/.*"},
+							Scopes: []urlcategories.Scopes{
+								{
+									Type: "LOCATION",
+									ScopeEntities: []ziacommon.IDNameExtensions{
+										{
+											ID:   1001,
+											Name: scopeCanary,
+										},
+									},
+								},
+							},
+							URLKeywordCounts: &urlcategories.URLKeywordCounts{
+								TotalURLCount:            10,
+								RetainParentURLCount:     1,
+								TotalKeywordCount:        5,
+								RetainParentKeywordCount: 2,
+							},
+						},
+					}, nil
+				},
+				func(context.Context, string) (*urlcategories.URLCategory, error) { return nil, nil },
+				urlCategorySourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, "url-categories")
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, url-categories) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZIA, "url-categories")
+	if !ok {
+		t.Fatal("FindSpec(zia, url-categories) ok = false, want true")
+	}
+	projected, _, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zia url-categories) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	for _, field := range []string{"configuredName", "description"} {
+		value := toString(got[field])
+		if strings.Contains(value, canary) {
+			t.Errorf("projected url-categories %s = %v, want no %q", field, got[field], canary)
+		}
+		if field == "description" && strings.Contains(value, bareFreeTextToken) {
+			t.Errorf("projected url-categories %s = %v, want no bare token", field, got[field])
+		}
+	}
+	for _, field := range []string{"urls", "keywords", "regexPatterns"} {
+		values, ok := got[field].([]string)
+		if !ok || len(values) == 0 {
+			t.Fatalf("projected url-categories %s = %T %#v, want non-empty []string", field, got[field], got[field])
+		}
+	}
+	for _, field := range []string{"dbCategorizedUrls", "keywordsRetainingParentCategory", "ipRanges", "ipRangesRetainingParentCategory", "regexPatternsRetainingParentCategory"} {
+		values, ok := got[field].([]string)
+		if !ok || len(values) == 0 {
+			t.Fatalf("projected url-categories %s = %T %#v, want non-empty []string", field, got[field], got[field])
+		}
+	}
+	if _, ok := got["scopes"]; ok {
+		t.Errorf("projected url-categories = %#v, want no scopes", got)
+	}
+	for _, field := range []string{"urls", "keywords", "regexPatterns"} {
+		if _, ok := got[field]; ok {
+			if strings.Contains(fmt.Sprint(got[field]), canary) || strings.Contains(fmt.Sprint(got[field]), "url-category-secret") {
+				t.Errorf("projected url-categories %s = %#v, want secret-shaped values redacted", field, got[field])
+			}
+		}
+	}
+	for _, forbidden := range []string{canary, urlCanary, scopeCanary} {
+		if strings.Contains(fmt.Sprint(got), forbidden) {
+			t.Errorf("projected url-categories = %#v, want no %q", got, forbidden)
+		}
+	}
+	counts, ok := got["urlKeywordCounts"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected url-categories urlKeywordCounts = %T, want map[string]any", got["urlKeywordCounts"])
+	}
+	if counts["totalUrlCount"] != 10 {
+		t.Errorf("projected url-categories urlKeywordCounts.totalUrlCount = %v, want 10", counts["totalUrlCount"])
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected url-categories SDK shape) error = %v, want nil", err)
 	}
 }
 

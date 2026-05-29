@@ -162,6 +162,92 @@ and `secondaryDestVip` objects. The reader maps those objects into source
 records, but the catalog does not allow them to render, so projection drops
 them.
 
+## ZIA Sublocations
+
+Commands:
+
+```sh
+zscalerctl zia sublocations list
+zscalerctl zia sublocations get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Sublocation identifier. |
+| `parentId` | Operational metadata | `standard`, `share`, `paranoid` | Parent location identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `ipAddresses` | Sensitive identifier | `standard` | Sublocation egress/internal/GRE tunnel IP entries; dropped from `share` and `paranoid`. |
+| `ports` | Sensitive identifier | `standard` | Associated ports; dropped from `share` and `paranoid`. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `profile` | Tenant configuration | `standard`, `share` | Location traffic profile tag. |
+| `country`, `state` | Sensitive identifier | `standard` | Geographic placement; dropped from `share` and `paranoid`. |
+| `tz` | Operational metadata | `standard`, `share` | Time zone. |
+| `authRequired`, `sslScanEnabled`, `ofwEnabled`, `ipsControl` | Tenant configuration | `standard`, `share` | Selected inherited/enforced policy controls. |
+| `vpnCredentials` | Secret | never | SDK nested credentials are mapped into source records and dropped by projection. |
+
+The SDK also returns additional auth, scope, group, extranet, IPv6, and policy
+control fields. The reader maps reviewed high-risk parents such as
+`vpnCredentials`, but the catalog keeps the first sublocation surface narrow.
+
+## ZIA Ssl Inspection Rules
+
+Commands:
+
+```sh
+zscalerctl zia ssl-inspection-rules list
+zscalerctl zia ssl-inspection-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | SSL inspection rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `action.type` | Operational metadata | `standard`, `share`, `paranoid` | Rule action such as decrypt or do-not-decrypt. |
+| `state` | Operational metadata | `standard`, `share`, `paranoid` | Rule state. |
+| `order`, `rank` | Operational metadata | `standard`, `share`, `paranoid` | Rule ordering metadata. |
+| `urlCategories` | Tenant configuration | `standard`, `share` | URL category identifiers referenced by the rule. |
+| `platforms`, `cloudApplications` | Tenant configuration | `standard`, `share` | Selected non-principal criteria lists. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+| `defaultRule`, `predefined` | Operational metadata | `standard`, `share`, `paranoid` | Whether the rule is a default or predefined rule. |
+
+The SDK also returns users, groups, departments, locations, device references,
+labels, time windows, certificates, sub-actions, and admin references. The
+reader maps these structures, but the catalog does not allow them to render in
+this first surface.
+
+## ZIA Url Categories
+
+Commands:
+
+```sh
+zscalerctl zia url-categories list
+zscalerctl zia url-categories get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | URL category identifier. |
+| `configuredName` | Tenant configuration | `standard`, `share` | Custom category display name when present. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `type` | Operational metadata | `standard`, `share`, `paranoid` | Category type. |
+| `customCategory` | Operational metadata | `standard`, `share`, `paranoid` | Whether the category is custom. |
+| `editable` | Operational metadata | `standard`, `share` | Whether the caller can edit the category. |
+| `customUrlsCount`, `customIpRangesCount`, `urlsRetainingParentCategoryCount`, `ipRangesRetainingParentCategoryCount` | Operational metadata | `standard`, `share`, `paranoid` | Category member counts. |
+| `categoryGroup`, `superCategory` | Tenant configuration | `standard`, `share` | Category grouping metadata. |
+| `urlType` | Operational metadata | `standard`, `share` | Match type such as exact or regex. |
+| `urlKeywordCounts.*` | Operational metadata | `standard`, `share`, `paranoid` | URL and keyword counts only. |
+| `urls`, `dbCategorizedUrls`, `ipRanges`, `ipRangesRetainingParentCategory`, `keywords`, `keywordsRetainingParentCategory`, `regexPatterns`, `regexPatternsRetainingParentCategory` | Sensitive identifier | `standard` | Raw category members. Values are scanned before output. |
+
+The SDK also returns scope details. The reader maps those fields, but the
+catalog drops `scopes` until they are separately classified.
+
 ## Adding A Resource
 
 Before enabling another resource:

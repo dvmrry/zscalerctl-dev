@@ -20,8 +20,10 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/secret"
@@ -42,6 +44,9 @@ const (
 	resourceRuleLabels     = "rule-labels"
 	resourceStaticIPs      = "static-ips"
 	resourceGRETunnels     = "gre-tunnels"
+	resourceSublocations   = "sublocations"
+	resourceSSLRules       = "ssl-inspection-rules"
+	resourceURLCategories  = "url-categories"
 )
 
 type AuthMode string
@@ -282,6 +287,36 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 			}),
 			greTunnelSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceSublocations}: newListGetHandler(
+			resourceSublocations,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
+				return locationmanagement.GetAllSublocations(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
+				return locationmanagement.GetSubLocationBySubID(ctx, service, id)
+			}),
+			sublocationSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceSSLRules}: newListGetHandler(
+			resourceSSLRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]sslinspection.SSLInspectionRules, error) {
+				return sslinspection.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*sslinspection.SSLInspectionRules, error) {
+				return sslinspection.Get(ctx, service, id)
+			}),
+			sslInspectionRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceURLCategories}: newListGetHandler(
+			resourceURLCategories,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]urlcategories.URLCategory, error) {
+				return urlcategories.GetAll(ctx, service, false, true, "")
+			}),
+			ziaSDKStringGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id string) (*urlcategories.URLCategory, error) {
+				return urlcategories.Get(ctx, service, id)
+			}),
+			urlCategorySourceRecord,
+		),
 	}
 }
 
@@ -374,6 +409,24 @@ func ziaSDKGet[T any](
 		defer cleanup()
 		return call(ctx, service, id)
 	})
+}
+
+func ziaSDKStringGet[T any](
+	client sdkZIAClient,
+	call func(context.Context, *zsdk.Service, string) (*T, error),
+) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("%w: empty", ErrInvalidResourceID)
+		}
+		service, cleanup, err := client.service(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service, id)
+	}
 }
 
 func intIDGetter[T any](get func(context.Context, int) (*T, error)) func(context.Context, string) (*T, error) {
@@ -734,6 +787,182 @@ func greTunnelSourceRecord(tunnel gretunnels.GreTunnels) resources.SourceRecord 
 	return resources.NewSourceRecord(fields)
 }
 
+func sublocationSourceRecord(location locationmanagement.Locations) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                       location.ID,
+		"name":                     location.Name,
+		"parentId":                 location.ParentID,
+		"description":              location.Description,
+		"country":                  location.Country,
+		"state":                    location.State,
+		"tz":                       location.TZ,
+		"profile":                  location.Profile,
+		"childCount":               location.ChildCount,
+		"authRequired":             location.AuthRequired,
+		"basicAuthEnabled":         location.BasicAuthEnabled,
+		"digestAuthEnabled":        location.DigestAuthEnabled,
+		"kerberosAuth":             location.KerberosAuth,
+		"sslScanEnabled":           location.SSLScanEnabled,
+		"zappSSLScanEnabled":       location.ZappSSLScanEnabled,
+		"xffForwardEnabled":        location.XFFForwardEnabled,
+		"surrogateIP":              location.SurrogateIP,
+		"ofwEnabled":               location.OFWEnabled,
+		"ipsControl":               location.IPSControl,
+		"aupEnabled":               location.AUPEnabled,
+		"cautionEnabled":           location.CautionEnabled,
+		"otherSubLocation":         location.OtherSubLocation,
+		"other6SubLocation":        location.Other6SubLocation,
+		"subLocScopeEnabled":       location.SubLocScopeEnabled,
+		"subLocScope":              location.SubLocScope,
+		"excludeFromManualGroups":  location.ExcludeFromManualGroups,
+		"excludeFromDynamicGroups": location.ExcludeFromDynamicGroups,
+	}
+	if len(location.IPAddresses) > 0 {
+		fields["ipAddresses"] = append([]string(nil), location.IPAddresses...)
+	}
+	if len(location.Ports) > 0 {
+		fields["ports"] = append([]int(nil), location.Ports...)
+	}
+	if len(location.SubLocScopeValues) > 0 {
+		fields["subLocScopeValues"] = append([]string(nil), location.SubLocScopeValues...)
+	}
+	if len(location.SubLocAccIDs) > 0 {
+		fields["subLocAccIds"] = append([]string(nil), location.SubLocAccIDs...)
+	}
+	if len(location.VPNCredentials) > 0 {
+		fields["vpnCredentials"] = vpnCredentialsSource(location.VPNCredentials)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func sslInspectionRuleSourceRecord(rule sslinspection.SSLInspectionRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                     rule.ID,
+		"name":                   rule.Name,
+		"description":            rule.Description,
+		"action":                 sslInspectionActionSource(rule.Action),
+		"state":                  rule.State,
+		"accessControl":          rule.AccessControl,
+		"order":                  rule.Order,
+		"rank":                   rule.Rank,
+		"roadWarriorForKerberos": rule.RoadWarriorForKerberos,
+		"lastModifiedTime":       rule.LastModifiedTime,
+		"defaultRule":            rule.DefaultRule,
+		"predefined":             rule.Predefined,
+	}
+	if len(rule.URLCategories) > 0 {
+		fields["urlCategories"] = append([]string(nil), rule.URLCategories...)
+	}
+	if len(rule.Platforms) > 0 {
+		fields["platforms"] = append([]string(nil), rule.Platforms...)
+	}
+	if len(rule.CloudApplications) > 0 {
+		fields["cloudApplications"] = append([]string(nil), rule.CloudApplications...)
+	}
+	if len(rule.UserAgentTypes) > 0 {
+		fields["userAgentTypes"] = append([]string(nil), rule.UserAgentTypes...)
+	}
+	if len(rule.DeviceTrustLevels) > 0 {
+		fields["deviceTrustLevels"] = append([]string(nil), rule.DeviceTrustLevels...)
+	}
+	if len(rule.Locations) > 0 {
+		fields["locations"] = idNameExtensionsSliceSource(rule.Locations)
+	}
+	if len(rule.LocationGroups) > 0 {
+		fields["locationGroups"] = idNameExtensionsSliceSource(rule.LocationGroups)
+	}
+	if len(rule.Groups) > 0 {
+		fields["groups"] = idNameExtensionsSliceSource(rule.Groups)
+	}
+	if len(rule.Departments) > 0 {
+		fields["departments"] = idNameExtensionsSliceSource(rule.Departments)
+	}
+	if len(rule.Users) > 0 {
+		fields["users"] = idNameExtensionsSliceSource(rule.Users)
+	}
+	if len(rule.DeviceGroups) > 0 {
+		fields["deviceGroups"] = idNameExtensionsSliceSource(rule.DeviceGroups)
+	}
+	if len(rule.Devices) > 0 {
+		fields["devices"] = idNameExtensionsSliceSource(rule.Devices)
+	}
+	if rule.LastModifiedBy != nil {
+		fields["lastModifiedBy"] = idNameExtensionsSource(rule.LastModifiedBy)
+	}
+	if len(rule.DestIpGroups) > 0 {
+		fields["destIpGroups"] = idNameExtensionsSliceSource(rule.DestIpGroups)
+	}
+	if len(rule.SourceIPGroups) > 0 {
+		fields["sourceIpGroups"] = idNameExtensionsSliceSource(rule.SourceIPGroups)
+	}
+	if len(rule.ProxyGateways) > 0 {
+		fields["proxyGateways"] = idNameExtensionsSliceSource(rule.ProxyGateways)
+	}
+	if len(rule.Labels) > 0 {
+		fields["labels"] = idNameExtensionsSliceSource(rule.Labels)
+	}
+	if len(rule.TimeWindows) > 0 {
+		fields["timeWindows"] = idNameExtensionsSliceSource(rule.TimeWindows)
+	}
+	if len(rule.ZPAAppSegments) > 0 {
+		fields["zpaAppSegments"] = zpaAppSegmentsSource(rule.ZPAAppSegments)
+	}
+	if len(rule.WorkloadGroups) > 0 {
+		fields["workloadGroups"] = idNameSliceSource(rule.WorkloadGroups)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func urlCategorySourceRecord(category urlcategories.URLCategory) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                                   category.ID,
+		"configuredName":                       category.ConfiguredName,
+		"description":                          category.Description,
+		"type":                                 category.Type,
+		"customCategory":                       category.CustomCategory,
+		"editable":                             category.Editable,
+		"customUrlsCount":                      category.CustomUrlsCount,
+		"customIpRangesCount":                  category.CustomIpRangesCount,
+		"urlsRetainingParentCategoryCount":     category.UrlsRetainingParentCategoryCount,
+		"ipRangesRetainingParentCategoryCount": category.IPRangesRetainingParentCategoryCount,
+		"categoryGroup":                        category.CategoryGroup,
+		"superCategory":                        category.SuperCategory,
+		"urlType":                              category.UrlType,
+		"val":                                  category.Val,
+	}
+	if len(category.Keywords) > 0 {
+		fields["keywords"] = append([]string(nil), category.Keywords...)
+	}
+	if len(category.KeywordsRetainingParentCategory) > 0 {
+		fields["keywordsRetainingParentCategory"] = append([]string(nil), category.KeywordsRetainingParentCategory...)
+	}
+	if len(category.Urls) > 0 {
+		fields["urls"] = append([]string(nil), category.Urls...)
+	}
+	if len(category.DBCategorizedUrls) > 0 {
+		fields["dbCategorizedUrls"] = append([]string(nil), category.DBCategorizedUrls...)
+	}
+	if len(category.IPRanges) > 0 {
+		fields["ipRanges"] = append([]string(nil), category.IPRanges...)
+	}
+	if len(category.IPRangesRetainingParentCategory) > 0 {
+		fields["ipRangesRetainingParentCategory"] = append([]string(nil), category.IPRangesRetainingParentCategory...)
+	}
+	if len(category.RegexPatterns) > 0 {
+		fields["regexPatterns"] = append([]string(nil), category.RegexPatterns...)
+	}
+	if len(category.RegexPatternsRetainingParentCategory) > 0 {
+		fields["regexPatternsRetainingParentCategory"] = append([]string(nil), category.RegexPatternsRetainingParentCategory...)
+	}
+	if len(category.Scopes) > 0 {
+		fields["scopes"] = urlCategoryScopesSource(category.Scopes)
+	}
+	if category.URLKeywordCounts != nil {
+		fields["urlKeywordCounts"] = urlKeywordCountsSource(category.URLKeywordCounts)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func idNameExtensionsSource(value *ziacommon.IDNameExtensions) map[string]any {
 	fields := map[string]any{
 		"id":   value.ID,
@@ -751,6 +980,111 @@ func idNameExtensionsSliceSource(values []ziacommon.IDNameExtensions) []any {
 		out = append(out, idNameExtensionsSource(&values[i]))
 	}
 	return out
+}
+
+func idNameSliceSource(values []ziacommon.IDName) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		fields := map[string]any{
+			"id":   value.ID,
+			"name": value.Name,
+		}
+		if value.Parent != "" {
+			fields["parent"] = value.Parent
+		}
+		out = append(out, fields)
+	}
+	return out
+}
+
+func zpaAppSegmentsSource(values []ziacommon.ZPAAppSegments) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		fields := map[string]any{
+			"id":   value.ID,
+			"name": value.Name,
+		}
+		if value.ExternalID != "" {
+			fields["externalId"] = value.ExternalID
+		}
+		out = append(out, fields)
+	}
+	return out
+}
+
+func sslInspectionActionSource(value sslinspection.Action) map[string]any {
+	fields := map[string]any{
+		"type":                       value.Type,
+		"showEUN":                    value.ShowEUN,
+		"showEUNATP":                 value.ShowEUNATP,
+		"overrideDefaultCertificate": value.OverrideDefaultCertificate,
+	}
+	if value.SSLInterceptionCert != nil {
+		fields["sslInterceptionCert"] = sslInterceptionCertSource(value.SSLInterceptionCert)
+	}
+	if value.DecryptSubActions != nil {
+		fields["decryptSubActions"] = decryptSubActionsSource(value.DecryptSubActions)
+	}
+	if value.DoNotDecryptSubActions != nil {
+		fields["doNotDecryptSubActions"] = doNotDecryptSubActionsSource(value.DoNotDecryptSubActions)
+	}
+	return fields
+}
+
+func sslInterceptionCertSource(value *sslinspection.SSLInterceptionCert) map[string]any {
+	return map[string]any{
+		"id":                 value.ID,
+		"name":               value.Name,
+		"defaultCertificate": value.DefaultCertificate,
+	}
+}
+
+func decryptSubActionsSource(value *sslinspection.DecryptSubActions) map[string]any {
+	return map[string]any{
+		"serverCertificates":              value.ServerCertificates,
+		"ocspCheck":                       value.OcspCheck,
+		"blockSslTrafficWithNoSniEnabled": value.BlockSslTrafficWithNoSniEnabled,
+		"minClientTLSVersion":             value.MinClientTLSVersion,
+		"minServerTLSVersion":             value.MinServerTLSVersion,
+		"blockUndecrypt":                  value.BlockUndecrypt,
+		"http2Enabled":                    value.HTTP2Enabled,
+	}
+}
+
+func doNotDecryptSubActionsSource(value *sslinspection.DoNotDecryptSubActions) map[string]any {
+	return map[string]any{
+		"bypassOtherPolicies":             value.BypassOtherPolicies,
+		"serverCertificates":              value.ServerCertificates,
+		"ocspCheck":                       value.OcspCheck,
+		"blockSslTrafficWithNoSniEnabled": value.BlockSslTrafficWithNoSniEnabled,
+		"minTLSVersion":                   value.MinTLSVersion,
+	}
+}
+
+func urlCategoryScopesSource(values []urlcategories.Scopes) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		fields := map[string]any{
+			"Type": value.Type,
+		}
+		if len(value.ScopeEntities) > 0 {
+			fields["ScopeEntities"] = idNameExtensionsSliceSource(value.ScopeEntities)
+		}
+		if len(value.ScopeGroupMemberEntities) > 0 {
+			fields["scopeGroupMemberEntities"] = idNameExtensionsSliceSource(value.ScopeGroupMemberEntities)
+		}
+		out = append(out, fields)
+	}
+	return out
+}
+
+func urlKeywordCountsSource(value *urlcategories.URLKeywordCounts) map[string]any {
+	return map[string]any{
+		"totalUrlCount":            value.TotalURLCount,
+		"retainParentUrlCount":     value.RetainParentURLCount,
+		"totalKeywordCount":        value.TotalKeywordCount,
+		"retainParentKeywordCount": value.RetainParentKeywordCount,
+	}
 }
 
 func dynamicLocationGroupCriteriaSource(value *locationgroups.DynamicLocationGroupCriteria) map[string]any {

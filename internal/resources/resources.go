@@ -807,6 +807,308 @@ func Catalog() ResourceCatalog {
 				},
 			},
 		},
+		{
+			Product:    ProductZIA,
+			Name:       "sublocations",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				{
+					Name:           "id",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "parentId",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "name",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "ipAddresses",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "ports",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:                   "description",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA sublocation description"),
+				},
+				{
+					Name:           "profile",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "country",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "state",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "tz",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "authRequired",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "sslScanEnabled",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "ofwEnabled",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "ipsControl",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "vpnCredentials",
+					Classification: ClassSecret,
+				},
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "ssl-inspection-rules",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				{
+					Name:           "id",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "name",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:                   "description",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA SSL inspection rule description"),
+				},
+				{
+					Name:           "action",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+					Fields: []FieldSpec{
+						{
+							Name:           "type",
+							Classification: ClassOperational,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+						},
+					},
+				},
+				{
+					Name:           "state",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "order",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "rank",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "urlCategories",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "platforms",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "cloudApplications",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "lastModifiedTime",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "defaultRule",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "predefined",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "url-categories",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				{
+					Name:           "id",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "configuredName",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:                   "description",
+					Classification:         ClassFreeText,
+					AllowedModes:           []redact.Mode{redact.ModeStandard},
+					StandardFreeTextReason: standardFreeTextReason("ZIA URL category description"),
+				},
+				{
+					Name:           "type",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "customCategory",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "editable",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "customUrlsCount",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "urlsRetainingParentCategoryCount",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "customIpRangesCount",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "ipRangesRetainingParentCategoryCount",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+				},
+				{
+					Name:           "categoryGroup",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "superCategory",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "urlType",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				},
+				{
+					Name:           "urlKeywordCounts",
+					Classification: ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+					Fields: []FieldSpec{
+						{
+							Name:           "totalUrlCount",
+							Classification: ClassOperational,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+						},
+						{
+							Name:           "retainParentUrlCount",
+							Classification: ClassOperational,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+						},
+						{
+							Name:           "totalKeywordCount",
+							Classification: ClassOperational,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+						},
+						{
+							Name:           "retainParentKeywordCount",
+							Classification: ClassOperational,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
+						},
+					},
+				},
+				{
+					Name:           "keywords",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "keywordsRetainingParentCategory",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "urls",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "dbCategorizedUrls",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "ipRanges",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "ipRangesRetainingParentCategory",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "regexPatterns",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "regexPatternsRetainingParentCategory",
+					Classification: ClassSensitiveIdentifier,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+			},
+		},
 	}
 }
 
