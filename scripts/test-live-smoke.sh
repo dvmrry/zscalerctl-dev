@@ -26,7 +26,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(gre-tunnels location-groups locations rule-labels static-ips)
+resources=(gre-tunnels location-groups locations rule-labels static-ips url-filtering-rules)
 
 schema_fields() {
   case "$1" in
@@ -44,6 +44,9 @@ schema_fields() {
       ;;
     static-ips)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"ipAddress","allowed_modes":["standard"]},{"name":"routableIP","allowed_modes":["standard"]},{"name":"comment","allowed_modes":["standard"]}]'
+      ;;
+    url-filtering-rules)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"locations","allowed_modes":["standard"]}]'
       ;;
     *)
       echo "unexpected resource: $1" >&2
@@ -94,6 +97,9 @@ write_resource() {
       ;;
     *:gre-tunnels)
       printf '[{"id":4,"sourceIp":"203.0.113.10","internalIpRange":"10.0.0.0/24","comment":"","withinCountry":true}]\n'
+      ;;
+    *:url-filtering-rules)
+      printf '[{"id":6,"name":"URL rule","locations":[{"id":1,"name":"HQ"}]}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2
@@ -330,6 +336,12 @@ fi
 
 if ! grep -q '\[PASS\] dump zia location-groups contains only catalog-allowed top-level fields' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not validate dump catalog subset" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] zia url-filtering-rules list contains no denied field keys' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not allow policy-rule locations field" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
 fi

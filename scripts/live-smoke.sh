@@ -4,7 +4,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip","lastModUser","dynamicLocationGroupCriteria","locations"]'
+denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip"]'
+denied_resource_exact_keys_json='{"location-groups":["lastModUser","dynamicLocationGroupCriteria","locations"]}'
 denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential)'
 manifest_warning='sanitized dumps remain confidential operational data'
 
@@ -229,9 +230,14 @@ mode_of() {
 }
 
 find_denied_keys() {
-  jq -r --argjson exact "$denied_exact_keys_json" --arg pattern "$denied_key_pattern" '
+  local resource="$1"
+  local file="$2"
+
+  jq -r --argjson global_exact "$denied_exact_keys_json" --argjson resource_exact "$denied_resource_exact_keys_json" --arg resource "$resource" --arg pattern "$denied_key_pattern" '
+    ($global_exact + ($resource_exact[$resource] // [])) as $exact
+    |
     [.. | objects | keys[] | select((. as $k | $exact | index($k)) or test($pattern))] | unique | .[]
-  ' "$1"
+  ' "$file"
 }
 
 validate_json_array() {
@@ -261,10 +267,11 @@ validate_json_array() {
 
 validate_no_denied_keys() {
   local label="$1"
-  local file="$2"
+  local resource="$2"
+  local file="$3"
   local denied
 
-  denied="$(find_denied_keys "$file")"
+  denied="$(find_denied_keys "$resource" "$file")"
   if [[ -n "$denied" ]]; then
     fail "$label contains denied field key(s): $(tr '\n' ' ' <<<"$denied")"
     return
@@ -618,7 +625,7 @@ for resource in "${resources[@]}"; do
 
   if validate_json_array "zia $resource list" "$stdout_file"; then
     jq 'length' "$stdout_file" >"$lists_dir/zia-${resource}.count"
-    validate_no_denied_keys "zia $resource list" "$stdout_file"
+    validate_no_denied_keys "zia $resource list" "$resource" "$stdout_file"
     validate_catalog_subset "zia $resource list" "$resource" "$stdout_file" "$schema_file"
     summarize_redaction_markers "zia $resource list" "$stdout_file"
   fi
@@ -707,7 +714,7 @@ if [[ -d "$dump_dir" ]]; then
     validate_file_mode "dump zia $resource file" "$file" "600"
     if validate_json_array "dump zia $resource" "$file"; then
       jq 'length' "$file" >"$lists_dir/dump-zia-${resource}.count"
-      validate_no_denied_keys "dump zia $resource" "$file"
+      validate_no_denied_keys "dump zia $resource" "$resource" "$file"
       validate_catalog_subset "dump zia $resource" "$resource" "$file" "$schema_file"
       summarize_redaction_markers "dump zia $resource" "$file"
       if [[ -f "$lists_dir/zia-${resource}.count" ]]; then
