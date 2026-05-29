@@ -358,7 +358,25 @@ func scanStringValue(r redact.Redactor, field FieldSpec, value string) (string, 
 	if field.Classification == ClassFreeText {
 		return r.ScanFreeText(value)
 	}
+	if r.Mode() == redact.ModeStandard && IsStructuredDisplayNameField(field) {
+		return r.ScanString(value)
+	}
 	return r.ScanRenderedString(value)
+}
+
+// IsStructuredDisplayNameField reports whether field is a human-readable
+// display name where standard-mode output should preserve long operational
+// identifiers while still applying self-describing secret scanners.
+func IsStructuredDisplayNameField(field FieldSpec) bool {
+	if field.Classification != ClassTenantConfig {
+		return false
+	}
+	switch normalizeFieldName(field.JSONField()) {
+	case "name", "configuredname", "displayname":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasStructuredValue(value any) bool {

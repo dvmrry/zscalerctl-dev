@@ -287,6 +287,11 @@ func TestCatalogRenderedFieldsRedactSecretShapes(t *testing.T) {
 				}
 				for _, shape := range secretShapes {
 					shape := shape
+					if shape.name == "bare_high_entropy" &&
+						mode == redact.ModeStandard &&
+						resources.IsStructuredDisplayNameField(fieldPath.Field()) {
+						continue
+					}
 					cases++
 					t.Run(string(spec.Product)+"/"+spec.Name+"/"+fieldPath.Path+"/"+string(mode)+"/"+shape.name, func(t *testing.T) {
 						t.Parallel()
@@ -319,6 +324,112 @@ func TestCatalogRenderedFieldsRedactSecretShapes(t *testing.T) {
 	}
 	if cases == 0 {
 		t.Fatal("catalog rendered field secret-shape cases = 0, want at least one")
+	}
+}
+
+func TestProjectRecordPreservesLongStructuredDisplayNames(t *testing.T) {
+	t.Parallel()
+
+	const longAzureName = "location-company-cloud-zscaler-edge-prod-usw2-vnet-company-cloud-zscaler-edge-prod-usw2-resource-group-rg01"
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "display-name-test",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+			{
+				Name:           "configuredName",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+		},
+	}
+
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			got, report, err := resources.ProjectRecord(spec, mode, resources.NewSourceRecord(map[string]any{
+				"name":           longAzureName,
+				"configuredName": longAzureName,
+			}))
+			if err != nil {
+				t.Fatalf("ProjectRecord(structured display name %s) error = %v, want nil", mode, err)
+			}
+			for _, field := range []string{"name", "configuredName"} {
+				value, ok := got.Value(field)
+				if !ok {
+					t.Fatalf("ProjectRecord(structured display name %s).Value(%s) ok = false, want true", mode, field)
+				}
+				valueString, ok := value.(string)
+				if !ok {
+					t.Fatalf("ProjectRecord(structured display name %s).Value(%s) = %T, want string", mode, field, value)
+				}
+				if mode == redact.ModeStandard {
+					if valueString != longAzureName {
+						t.Errorf("ProjectRecord(structured display name %s).Value(%s) = %q, want %q", mode, field, valueString, longAzureName)
+					}
+					if containsString(report.RedactedFields, field) {
+						t.Errorf("ProjectRecord(structured display name %s).RedactedFields = %#v, want no %s redaction", mode, report.RedactedFields, field)
+					}
+					continue
+				}
+				if strings.Contains(valueString, longAzureName) {
+					t.Errorf("ProjectRecord(structured display name %s).Value(%s) = %q, want long name redacted outside standard", mode, field, valueString)
+				}
+				if !strings.Contains(valueString, "<REDACTED:SECRET>") {
+					t.Errorf("ProjectRecord(structured display name %s).Value(%s) = %q, want secret marker outside standard", mode, field, valueString)
+				}
+				if !containsString(report.RedactedFields, field) {
+					t.Errorf("ProjectRecord(structured display name %s).RedactedFields = %#v, want %s redaction", mode, report.RedactedFields, field)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectRecordRedactsSelfDescribingSecretInStructuredDisplayName(t *testing.T) {
+	t.Parallel()
+
+	const canary = "structured-display-name-secret"
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "display-name-secret-test",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "name",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
+	}
+
+	got, report, err := resources.ProjectRecord(spec, redact.ModeStandard, resources.NewSourceRecord(map[string]any{
+		"name": "psk=" + canary,
+	}))
+	if err != nil {
+		t.Fatalf("ProjectRecord(structured display name secret) error = %v, want nil", err)
+	}
+	value, ok := got.Value("name")
+	if !ok {
+		t.Fatal("ProjectRecord(structured display name secret).Value(name) ok = false, want true")
+	}
+	valueString, ok := value.(string)
+	if !ok {
+		t.Fatalf("ProjectRecord(structured display name secret).Value(name) = %T, want string", value)
+	}
+	if strings.Contains(valueString, canary) {
+		t.Errorf("ProjectRecord(structured display name secret).Value(name) = %q, want no canary", valueString)
+	}
+	if !strings.Contains(valueString, "<REDACTED:SECRET>") {
+		t.Errorf("ProjectRecord(structured display name secret).Value(name) = %q, want secret marker", valueString)
+	}
+	if !containsString(report.RedactedFields, "name") {
+		t.Errorf("ProjectRecord(structured display name secret).RedactedFields = %#v, want name", report.RedactedFields)
 	}
 }
 

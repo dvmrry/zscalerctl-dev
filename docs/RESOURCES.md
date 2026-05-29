@@ -8,18 +8,25 @@ records, and projection decides which fields can render for each redaction mode.
 
 - `standard`: local operational use. Allows explicitly reviewed tenant
   configuration and free-text fields, with secret scanning and rendered-string
-  high-entropy token scanning still applied.
+  high-entropy token scanning still applied. Structured display-name fields
+  skip only the high-entropy heuristic in this local mode.
 - `share`: lower-detail output for tickets, reviews, and chat. Drops free text
   and sensitive identifiers.
 - `paranoid`: minimal identifiers and counts only.
 
 All fields, including allowed strings, pass through the final redaction backstop
-before stdout or dump files. Rendered string values also receive a conservative
-high-entropy token scan for bare unlabeled secret material. Canonical UUIDs and
-contextual git commit SHAs are preserved. In `standard` mode, structured
-rendered strings also preserve compact UUIDs and 40/64-character hex
-fingerprints; `share` and `paranoid` redact those fingerprint-shaped values.
-Free-text prose may redact bare hashes without context.
+before stdout or dump files. Rendered string values usually receive a
+conservative high-entropy token scan for bare unlabeled secret material.
+Structured display-name fields such as `name`, `configuredName`, and
+`displayName` skip only the high-entropy heuristic in `standard` mode so long
+cloud-style identifiers remain readable during local operation. `share` and
+`paranoid` redact high-entropy display-name values. Self-describing secrets such
+as `psk=...`, credential URLs, JWTs, and private keys still redact in display
+names in every mode. Canonical UUIDs and contextual git commit SHAs are
+preserved. In `standard` mode, structured rendered strings also preserve
+compact UUIDs and 40/64-character hex fingerprints; `share` and `paranoid`
+redact those fingerprint-shaped values. Free-text prose may redact bare hashes
+without context.
 
 ## Selective Dumps
 
