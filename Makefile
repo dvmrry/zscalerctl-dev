@@ -1,7 +1,7 @@
 STATICCHECK_VERSION ?= v0.7.0
 SEMGREP_VERSION ?= 1.164.0
 FUZZTIME ?= 5s
-LIVE_SMOKE_OUT ?= ./scratch-live-smoke
+LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 
 .PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-live-smoke-script verify-release-automation verify-catalog-draft verify-resource-scaffold scaffold-resource live-smoke fuzz-smoke check release-check
@@ -72,7 +72,7 @@ scaffold-resource:
 	bash scripts/scaffold-resource.sh --product "$(PRODUCT)" --resource "$(RESOURCE)" --package "$(PACKAGE)" --type "$(TYPE)" $(if $(OUT),--out "$(OUT)") $(if $(FORCE),--force)
 
 live-smoke:
-	scripts/live-smoke.sh $(LIVE_SMOKE_FLAGS) $(if $(LIVE_SMOKE_BIN),--bin "$(LIVE_SMOKE_BIN)") $(if $(LIVE_SMOKE_RESOURCES),--resources "$(LIVE_SMOKE_RESOURCES)") --out "$(LIVE_SMOKE_OUT)"
+	scripts/live-smoke.sh $(LIVE_SMOKE_FLAGS) $(if $(LIVE_SMOKE_BIN),--bin "$(LIVE_SMOKE_BIN)") $(if $(LIVE_SMOKE_RESOURCES),--resources "$(LIVE_SMOKE_RESOURCES)") $(if $(LIVE_SMOKE_OUT),--out "$(LIVE_SMOKE_OUT)")
 
 fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzRedactorPreservesValidJSON -fuzztime=$(FUZZTIME)

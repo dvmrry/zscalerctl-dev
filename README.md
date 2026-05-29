@@ -102,6 +102,10 @@ zscalerctl dump --products zia --continue-on-error --out ./partial-dump
 make live-smoke
 ```
 
+`make live-smoke` validates every current ZIA live-smoke resource and writes
+artifacts to a secure temporary directory. Set `LIVE_SMOKE_OUT=./scratch-live-smoke`
+only when you want a predictable artifact path.
+
 Key design docs:
 
 - [THREAT_MODEL.md](THREAT_MODEL.md)

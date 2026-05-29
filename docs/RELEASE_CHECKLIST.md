@@ -64,9 +64,10 @@ make live-smoke
 ```
 
 By default this validates every current ZIA read/list resource in the current
-source checkout with `go run -mod=vendor ./cmd/zscalerctl`. For release artifact
-validation, pass the unpacked candidate binary so the smoke runs against what
-will ship:
+source checkout with `go run -mod=vendor ./cmd/zscalerctl` and writes artifacts
+to a secure temporary directory printed in the final `[PASS]` or `[FAIL]`
+marker. For release artifact validation, pass the unpacked candidate binary so
+the smoke runs against what will ship:
 
 ```sh
 make live-smoke LIVE_SMOKE_BIN=./bin/zscalerctl
@@ -79,7 +80,9 @@ make live-smoke LIVE_SMOKE_RESOURCES=zia/locations,zia/rule-labels
 ```
 
 `./scratch-live-smoke` is gitignored because live smoke artifacts remain
-confidential operational data even after projection and redaction.
+confidential operational data even after projection and redaction. Use
+`LIVE_SMOKE_OUT=./scratch-live-smoke` only when you want a predictable artifact
+path; remove the directory or choose a new one before reusing it.
 
 The script prints explicit `[PASS]`, `[FAIL]`, and `[INFO]` markers, captures
 list and dump artifacts under the output directory, validates JSON shape,
