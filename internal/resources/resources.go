@@ -699,6 +699,20 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 	}
 }
 
+func idNameExternalIDField(name string, allowed []redact.Mode) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allowed,
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			tenantConfigField("name", standardShareModes()),
+			secretField("externalId"),
+			secretField("extensions"),
+		},
+	}
+}
+
 func networkPortsField(name string, allowed []redact.Mode) FieldSpec {
 	return FieldSpec{
 		Name:           name,
@@ -1411,6 +1425,65 @@ func Catalog() ResourceCatalog {
 				tenantConfigField("name", standardShareModes()),
 				freeTextField("description", "ZIA network application group description"),
 				tenantConfigField("networkApplications", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "time-windows",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				tenantConfigField("startTime", standardShareModes()),
+				tenantConfigField("endTime", standardShareModes()),
+				tenantConfigField("dayOfWeek", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "proxies",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("type", allModes()),
+				sensitiveIdentifierField("address"),
+				operationalField("port", standardShareModes()),
+				freeTextField("description", "ZIA proxy description"),
+				tenantConfigField("insertXauHeader", standardShareModes()),
+				tenantConfigField("base64EncodeXauHeader", standardShareModes()),
+				idNameExternalIDField("cert", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "proxy-gateways",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA proxy gateway description"),
+				operationalField("failClosed", allModes()),
+				operationalField("type", allModes()),
+				idNameExternalIDField("primaryProxy", standardShareModes()),
+				idNameExternalIDField("secondaryProxy", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "dedicated-ip-gateways",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA dedicated IP gateway description"),
+				idNameExtensionsField("primaryDataCenter", standardShareModes()),
+				idNameExtensionsField("secondaryDataCenter", standardShareModes()),
+				operationalField("createTime", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+				operationalField("default", allModes()),
 			},
 		},
 	}

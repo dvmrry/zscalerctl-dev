@@ -24,7 +24,10 @@ import (
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
+	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
@@ -66,6 +69,10 @@ const (
 	resourceAppServices      = "application-services"
 	resourceAppServiceGroups = "application-service-groups"
 	resourceNetworkAppGroups = "network-application-groups"
+	resourceTimeWindows      = "time-windows"
+	resourceProxies          = "proxies"
+	resourceProxyGateways    = "proxy-gateways"
+	resourceDedicatedIPGWs   = "dedicated-ip-gateways"
 )
 
 type AuthMode string
@@ -439,6 +446,58 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 				return networkapplicationgroups.GetNetworkApplicationGroups(ctx, service, id)
 			}),
 			networkApplicationGroupSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceTimeWindows}: newListGetHandler(
+			resourceTimeWindows,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]timewindow.TimeWindow, error) {
+				return timewindow.GetAll(ctx, service)
+			}),
+			ziaSDKListGetByIntID(
+				ziaClient,
+				func(ctx context.Context, service *zsdk.Service) ([]timewindow.TimeWindow, error) {
+					return timewindow.GetAll(ctx, service)
+				},
+				func(item timewindow.TimeWindow) int { return item.ID },
+			),
+			timeWindowSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceProxies}: newListGetHandler(
+			resourceProxies,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxies.Proxies, error) {
+				return proxies.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*proxies.Proxies, error) {
+				return proxies.Get(ctx, service, id)
+			}),
+			proxySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceProxyGateways}: newListGetHandler(
+			resourceProxyGateways,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
+				return proxygateways.GetAll(ctx, service)
+			}),
+			ziaSDKListGetByIntID(
+				ziaClient,
+				func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
+					return proxygateways.GetAll(ctx, service)
+				},
+				func(item proxygateways.ProxyGateways) int { return item.ID },
+			),
+			proxyGatewaySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDedicatedIPGWs}: newListGetHandler(
+			resourceDedicatedIPGWs,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
+				return proxies.GetDedicatedIPGWLite(ctx, service)
+			}),
+			ziaSDKListGetByIntID(
+				ziaClient,
+				func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
+					return proxies.GetDedicatedIPGWLite(ctx, service)
+				},
+				func(item proxies.DedicatedIPGateways) int { return item.Id },
+			),
+			dedicatedIPGatewaySourceRecord,
 		),
 	}
 }
@@ -1362,9 +1421,73 @@ func networkApplicationGroupSourceRecord(group networkapplicationgroups.NetworkA
 	return resources.NewSourceRecord(fields)
 }
 
+func timeWindowSourceRecord(window timewindow.TimeWindow) resources.SourceRecord {
+	fields := map[string]any{
+		"id":        window.ID,
+		"name":      window.Name,
+		"startTime": window.StartTime,
+		"endTime":   window.EndTime,
+	}
+	addStringSlice(fields, "dayOfWeek", window.DayOfWeek)
+	return resources.NewSourceRecord(fields)
+}
+
+func proxySourceRecord(proxy proxies.Proxies) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                    proxy.ID,
+		"name":                  proxy.Name,
+		"type":                  proxy.Type,
+		"address":               proxy.Address,
+		"port":                  proxy.Port,
+		"description":           proxy.Description,
+		"insertXauHeader":       proxy.InsertXauHeader,
+		"base64EncodeXauHeader": proxy.Base64EncodeXauHeader,
+		"lastModifiedTime":      proxy.LastModifiedTime,
+	}
+	addIDNameExternalIDPtr(fields, "cert", proxy.Cert)
+	addIDNameExternalIDPtr(fields, "lastModifiedBy", proxy.LastModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
+func proxyGatewaySourceRecord(gateway proxygateways.ProxyGateways) resources.SourceRecord {
+	fields := map[string]any{
+		"id":               gateway.ID,
+		"name":             gateway.Name,
+		"description":      gateway.Description,
+		"failClosed":       gateway.FailClosed,
+		"type":             gateway.Type,
+		"lastModifiedTime": gateway.LastModifiedTime,
+	}
+	addIDNameExternalIDPtr(fields, "primaryProxy", gateway.PrimaryProxy)
+	addIDNameExternalIDPtr(fields, "secondaryProxy", gateway.SecondaryProxy)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", gateway.LastModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
+func dedicatedIPGatewaySourceRecord(gateway proxies.DedicatedIPGateways) resources.SourceRecord {
+	fields := map[string]any{
+		"id":               gateway.Id,
+		"name":             gateway.Name,
+		"description":      gateway.Description,
+		"createTime":       gateway.CreateTime,
+		"lastModifiedTime": gateway.LastModifiedTime,
+		"default":          gateway.Default,
+	}
+	addIDNameExtensionsPtr(fields, "primaryDataCenter", gateway.PrimaryDataCenter)
+	addIDNameExtensionsPtr(fields, "secondaryDataCenter", gateway.SecondaryDataCenter)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", gateway.LastModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
 func addStringSlice(fields map[string]any, name string, values []string) {
 	if len(values) > 0 {
 		fields[name] = append([]string(nil), values...)
+	}
+}
+
+func addIDNameExternalIDPtr(fields map[string]any, name string, value *ziacommon.IDNameExternalID) {
+	if value != nil {
+		fields[name] = idNameExternalIDSource(value)
 	}
 }
 
@@ -1416,6 +1539,20 @@ func idNameSource(value *ziacommon.IDName) map[string]any {
 	}
 	if value.Parent != "" {
 		fields["parent"] = value.Parent
+	}
+	return fields
+}
+
+func idNameExternalIDSource(value *ziacommon.IDNameExternalID) map[string]any {
+	fields := map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
+	if value.ExternalID != "" {
+		fields["externalId"] = value.ExternalID
+	}
+	if len(value.Extensions) > 0 {
+		fields["extensions"] = value.Extensions
 	}
 	return fields
 }

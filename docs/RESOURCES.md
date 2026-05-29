@@ -451,6 +451,99 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `networkApplications` | Tenant configuration | `standard`, `share` | Network application identifiers included in the group. |
 
+## ZIA Time Windows
+
+Commands:
+
+```sh
+zscalerctl zia time-windows list
+zscalerctl zia time-windows get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Time-window identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `startTime`, `endTime`, `dayOfWeek` | Tenant configuration | `standard`, `share` | Scheduled matching criteria. |
+
+The ZIA SDK does not expose a direct get-by-id helper for time windows, so
+`get` uses the list endpoint and returns the matching identifier.
+
+## ZIA Proxies
+
+Commands:
+
+```sh
+zscalerctl zia proxies list
+zscalerctl zia proxies get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Proxy identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `type` | Operational metadata | `standard`, `share`, `paranoid` | Proxy type. |
+| `address` | Sensitive identifier | `standard` | Proxy address or FQDN. |
+| `port` | Operational metadata | `standard`, `share` | Proxy listener port. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `insertXauHeader`, `base64EncodeXauHeader` | Tenant configuration | `standard`, `share` | X-Authenticated-User header controls. |
+| `cert` | Tenant configuration | `standard`, `share` | Certificate reference; `externalId` and `extensions` are dropped. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+
+The SDK also returns `lastModifiedBy`. The reader maps it into source records,
+but the catalog does not allow it to render, so projection drops it.
+
+## ZIA Proxy Gateways
+
+Commands:
+
+```sh
+zscalerctl zia proxy-gateways list
+zscalerctl zia proxy-gateways get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Proxy gateway identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `failClosed`, `type` | Operational metadata | `standard`, `share`, `paranoid` | Gateway behavior and type. |
+| `primaryProxy`, `secondaryProxy` | Tenant configuration | `standard`, `share` | Proxy references; `externalId` and `extensions` are dropped. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+
+The ZIA SDK does not expose a direct get-by-id helper for proxy gateways, so
+`get` uses the list endpoint and returns the matching identifier. The SDK also
+returns `lastModifiedBy`; projection drops it.
+
+## ZIA Dedicated IP Gateways
+
+Commands:
+
+```sh
+zscalerctl zia dedicated-ip-gateways list
+zscalerctl zia dedicated-ip-gateways get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Dedicated IP gateway identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `primaryDataCenter`, `secondaryDataCenter` | Tenant configuration | `standard`, `share` | Data-center references; `extensions` is dropped. |
+| `createTime`, `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp values. |
+| `default` | Operational metadata | `standard`, `share`, `paranoid` | Whether this is the default gateway. |
+
+Dedicated IP gateways use the SDK lite endpoint and list-derived `get`. The
+SDK also returns `lastModifiedBy`; projection drops it.
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

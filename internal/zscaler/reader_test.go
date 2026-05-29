@@ -18,7 +18,10 @@ import (
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
+	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
@@ -1442,6 +1445,205 @@ func TestReaderListNetworkApplicationGroupsProjectsSDKShapeThroughAllowList(t *t
 	apps, ok := got["networkApplications"].([]string)
 	if !ok || len(apps) != 2 {
 		t.Fatalf("projected network-application-groups networkApplications = %T %#v, want two applications", got["networkApplications"], got["networkApplications"])
+	}
+}
+
+func TestReaderListTimeWindowsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const canary = "time-window-psk-canary"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceTimeWindows}: newListGetHandler(
+				resourceTimeWindows,
+				func(context.Context) ([]timewindow.TimeWindow, error) {
+					return []timewindow.TimeWindow{
+						{
+							ID:        601,
+							Name:      "Time window psk=" + canary,
+							StartTime: 800,
+							EndTime:   1700,
+							DayOfWeek: []string{"MON", "psk=" + canary},
+						},
+					}, nil
+				},
+				func(context.Context, string) (*timewindow.TimeWindow, error) { return nil, nil },
+				timeWindowSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceTimeWindows)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, time-windows) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceTimeWindows, records)
+	assertNoCanaries(t, "time-windows", got, canary)
+	if got["startTime"] != int32(800) {
+		t.Errorf("projected time-windows startTime = %v, want 800", got["startTime"])
+	}
+}
+
+func TestReaderListProxiesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "proxy-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceProxies}: newListGetHandler(
+				resourceProxies,
+				func(context.Context) ([]proxies.Proxies, error) {
+					return []proxies.Proxies{
+						{
+							ID:                    602,
+							Name:                  "Proxy psk=" + canary,
+							Type:                  "PROXYCHAIN",
+							Address:               "proxy.example.invalid",
+							Port:                  8080,
+							Description:           "temporary psk=" + canary + " " + bareFreeTextToken,
+							InsertXauHeader:       true,
+							Base64EncodeXauHeader: true,
+							Cert: &ziacommon.IDNameExternalID{
+								ID:         11,
+								Name:       "Cert psk=" + canary,
+								ExternalID: canary,
+							},
+							LastModifiedBy: &ziacommon.IDNameExternalID{
+								ID:         12,
+								Name:       "Admin psk=" + canary,
+								ExternalID: canary,
+							},
+							LastModifiedTime: 12345,
+						},
+					}, nil
+				},
+				func(context.Context, string) (*proxies.Proxies, error) { return nil, nil },
+				proxySourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceProxies)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, proxies) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceProxies, records)
+	assertNoCanaries(t, "proxies", got, canary, bareFreeTextToken)
+	if got["port"] != 8080 {
+		t.Errorf("projected proxies port = %v, want 8080", got["port"])
+	}
+}
+
+func TestReaderListProxyGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "proxy-gateway-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceProxyGateways}: newListGetHandler(
+				resourceProxyGateways,
+				func(context.Context) ([]proxygateways.ProxyGateways, error) {
+					return []proxygateways.ProxyGateways{
+						{
+							ID:          603,
+							Name:        "Proxy gateway psk=" + canary,
+							Description: "temporary psk=" + canary + " " + bareFreeTextToken,
+							FailClosed:  true,
+							Type:        "PROXYCHAIN",
+							PrimaryProxy: &ziacommon.IDNameExternalID{
+								ID:         21,
+								Name:       "Primary psk=" + canary,
+								ExternalID: canary,
+							},
+							SecondaryProxy: &ziacommon.IDNameExternalID{
+								ID:         22,
+								Name:       "Secondary psk=" + canary,
+								ExternalID: canary,
+							},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   23,
+								Name: "Admin psk=" + canary,
+							},
+							LastModifiedTime: 12346,
+						},
+					}, nil
+				},
+				func(context.Context, string) (*proxygateways.ProxyGateways, error) { return nil, nil },
+				proxyGatewaySourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceProxyGateways)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, proxy-gateways) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceProxyGateways, records)
+	assertNoCanaries(t, "proxy-gateways", got, canary, bareFreeTextToken)
+	if got["failClosed"] != true {
+		t.Errorf("projected proxy-gateways failClosed = %v, want true", got["failClosed"])
+	}
+}
+
+func TestReaderListDedicatedIPGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "dedicated-ip-gateway-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceDedicatedIPGWs}: newListGetHandler(
+				resourceDedicatedIPGWs,
+				func(context.Context) ([]proxies.DedicatedIPGateways, error) {
+					return []proxies.DedicatedIPGateways{
+						{
+							Id:          604,
+							Name:        "Dedicated IP gateway psk=" + canary,
+							Description: "temporary psk=" + canary + " " + bareFreeTextToken,
+							PrimaryDataCenter: &ziacommon.IDNameExtensions{
+								ID:   31,
+								Name: "Primary DC psk=" + canary,
+							},
+							SecondaryDataCenter: &ziacommon.IDNameExtensions{
+								ID:   32,
+								Name: "Secondary DC psk=" + canary,
+							},
+							LastModifiedBy: &ziacommon.IDNameExtensions{
+								ID:   33,
+								Name: "Admin psk=" + canary,
+							},
+							CreateTime:       12340,
+							LastModifiedTime: 12347,
+							Default:          true,
+						},
+					}, nil
+				},
+				func(context.Context, string) (*proxies.DedicatedIPGateways, error) { return nil, nil },
+				dedicatedIPGatewaySourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceDedicatedIPGWs)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, dedicated-ip-gateways) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceDedicatedIPGWs, records)
+	assertNoCanaries(t, "dedicated-ip-gateways", got, canary, bareFreeTextToken)
+	if got["default"] != true {
+		t.Errorf("projected dedicated-ip-gateways default = %v, want true", got["default"])
 	}
 }
 

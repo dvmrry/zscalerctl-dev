@@ -16,7 +16,10 @@ import (
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
+	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
@@ -991,6 +994,92 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"networkApplications",
 				"description",
 			},
+		},
+		{
+			name:         "timewindow.TimeWindow",
+			resource:     resources.ProductZIA,
+			resourceName: resourceTimeWindows,
+			typ:          reflect.TypeOf(timewindow.TimeWindow{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"startTime",
+				"endTime",
+				"dayOfWeek",
+			},
+		},
+		{
+			name:         "proxies.Proxies",
+			resource:     resources.ProductZIA,
+			resourceName: resourceProxies,
+			typ:          reflect.TypeOf(proxies.Proxies{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"type",
+				"address",
+				"port",
+				"description",
+				"insertXauHeader",
+				"base64EncodeXauHeader",
+				"cert",
+				"lastModifiedTime",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name:         "proxygateways.ProxyGateways",
+			resource:     resources.ProductZIA,
+			resourceName: resourceProxyGateways,
+			typ:          reflect.TypeOf(proxygateways.ProxyGateways{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"failClosed",
+				"type",
+				"primaryProxy",
+				"secondaryProxy",
+				"lastModifiedTime",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name:         "proxies.DedicatedIPGateways",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDedicatedIPGWs,
+			typ:          reflect.TypeOf(proxies.DedicatedIPGateways{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"primaryDataCenter",
+				"secondaryDataCenter",
+				"createTime",
+				"lastModifiedTime",
+				"default",
+			},
+			ignoredFields: ignoredBecause(
+				"admin references are mapped then dropped by projection",
+				"lastModifiedBy",
+			),
+		},
+		{
+			name: "ziacommon.IDNameExternalID",
+			typ:  reflect.TypeOf(ziacommon.IDNameExternalID{}),
+			ignoredFields: ignoredBecause(
+				"currently used inside explicitly modeled nested references; this entry catches SDK additions",
+				"id",
+				"name",
+				"externalId",
+				"extensions",
+			),
 		},
 	}
 }
