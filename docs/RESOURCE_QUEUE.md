@@ -23,6 +23,8 @@ available. Queue entries are not validation evidence.
 - Do not commit generated scaffold bundles from `scratch/resource-drafts/`.
 - Regenerate scaffolds from current SDK source and current generator code when a
   batch is ready to apply. Do not replay stale commands blindly.
+- For non-ZIA or unclear surfaces, run `make sdk-surface-inventory` first and
+  record the category from `docs/SDK_SURFACE_INVENTORY.md` before queueing.
 - Keep failed live-smoke endpoints in the deferred list until their endpoint or
   auth-mode behavior is understood.
 - Do not use dev-tenant OneAPI availability to demote resources already proven

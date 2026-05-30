@@ -115,6 +115,7 @@ Key design docs:
 - [docs/INSTALL.md](docs/INSTALL.md)
 - [docs/RESOURCES.md](docs/RESOURCES.md)
 - [docs/RESOURCE_QUEUE.md](docs/RESOURCE_QUEUE.md)
+- [docs/SDK_SURFACE_INVENTORY.md](docs/SDK_SURFACE_INVENTORY.md)
 - [docs/VERSIONING.md](docs/VERSIONING.md)
 - [docs/DEPENDENCY_POLICY.md](docs/DEPENDENCY_POLICY.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)

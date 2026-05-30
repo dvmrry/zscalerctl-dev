@@ -5,7 +5,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-live-smoke-script verify-release-automation verify-catalog-draft verify-resource-scaffold scaffold-resource live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-live-smoke-script verify-release-automation verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory scaffold-resource sdk-surface-inventory live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(find . -path ./vendor -prune -o -name '*.go' -print0 | xargs -0 gofmt -l)"; \
@@ -65,12 +65,18 @@ verify-catalog-draft:
 verify-resource-scaffold:
 	bash scripts/test-scaffold-resource.sh
 
+verify-sdk-surface-inventory:
+	bash scripts/test-sdk-surface-inventory.sh
+
 scaffold-resource:
 	@test -n "$(PRODUCT)" || (echo "PRODUCT is required" >&2; exit 2)
 	@test -n "$(RESOURCE)" || (echo "RESOURCE is required" >&2; exit 2)
 	@test -n "$(PACKAGE)" || (echo "PACKAGE is required" >&2; exit 2)
 	@test -n "$(TYPE)" || (echo "TYPE is required" >&2; exit 2)
 	bash scripts/scaffold-resource.sh --product "$(PRODUCT)" --resource "$(RESOURCE)" --package "$(PACKAGE)" --type "$(TYPE)" $(if $(OUT),--out "$(OUT)") $(if $(FORCE),--force)
+
+sdk-surface-inventory:
+	@go run ./scripts/sdk-surface-inventory.go $(if $(SDK_DIR),--sdk-dir "$(SDK_DIR)") $(if $(FORMAT),--format "$(FORMAT)")
 
 live-smoke:
 	scripts/live-smoke.sh $(LIVE_SMOKE_FLAGS) $(if $(LIVE_SMOKE_BIN),--bin "$(LIVE_SMOKE_BIN)") $(if $(LIVE_SMOKE_RESOURCES),--resources "$(LIVE_SMOKE_RESOURCES)") $(if $(LIVE_SMOKE_MANIFEST),--manifest "$(LIVE_SMOKE_MANIFEST)") $(if $(LIVE_SMOKE_OUT),--out "$(LIVE_SMOKE_OUT)")
@@ -80,6 +86,6 @@ fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzScanRenderedStringRedactsBareHighEntropyCanary -fuzztime=$(FUZZTIME)
 	go test -mod=vendor ./internal/resources -run '^$$' -fuzz FuzzProjectRecordSubsetAndCanaryRedaction -fuzztime=$(FUZZTIME)
 
-check: fmt-check test race vet vuln staticcheck docs-check semgrep-check verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-live-smoke-script verify-release-automation verify-catalog-draft verify-resource-scaffold
+check: fmt-check test race vet vuln staticcheck docs-check semgrep-check verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-live-smoke-script verify-release-automation verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory
 
 release-check: verify-vendor check
