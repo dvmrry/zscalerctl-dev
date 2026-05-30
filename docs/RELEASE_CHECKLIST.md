@@ -97,8 +97,9 @@ After the script passes, inspect the captured output for unexpected empty
 projections, over-redaction, unknown fields, and any secret-shaped or
 high-entropy rendered-string value that should have been dropped or redacted. Where
 the API exposes total counts, compare returned records against the total so a
-successful but incomplete page cannot look like a complete dump. Delete live
-dump artifacts after review.
+successful but incomplete page cannot look like a complete dump. Handle live
+smoke artifacts according to the operator's approved records and evidence
+retention policy; do not commit or share the artifact directory.
 
 This smoke is intentionally manual and blocking because fixtures cannot prove
 that real SDK response keys and pagination behavior match the catalog for a
