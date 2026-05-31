@@ -88,7 +88,7 @@ Open draft PR:
 
 | PR | Resources | Status | Smoke command |
 | --- | --- | --- | --- |
-| `#39` | `zia/file-type-rules`, `zia/sandbox-rules`, `zia/firewall-dns-rules`, `zia/risk-profiles`, `zia/nss-servers`, `zia/custom-file-types`, `zia/traffic-capture-rules`, `zia/zpa-gateways`, `zia/extranets` | Smoke-lab draft; non-release-track until work-machine live smoke trims or promotes resources | `make live-smoke` |
+| `#39` | `zia/file-type-rules`, `zia/sandbox-rules`, `zia/firewall-dns-rules`, `zia/risk-profiles`, `zia/nss-servers`, `zia/c2c-incident-receivers`, `zia/dlp-edm-schemas`, `zia/dlp-idm-profile-lite`, `zia/dlp-idm-profiles`, `zia/custom-file-types`, `zia/traffic-capture-rules`, `zia/zpa-gateways`, `zia/extranets` | Smoke-lab draft; non-release-track until work-machine live smoke trims or promotes resources | `make live-smoke` |
 
 Do not merge this branch as-is. Use it as a broad smoke-lab surface, record
 outcomes for each resource independently, and promote only resources that pass
@@ -198,6 +198,21 @@ separate secret-material decision.
 | --- | --- | --- | --- | --- | --- |
 | `zia/zpa-gateways` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/zpa_gateways` | `ZPAGateways` | `GetAll` | `Get` | ZPA gateway references used by forwarding policy. |
 | `zia/extranets` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/extranet` | `Extranet` | `GetAll` | `Get` | External connectivity metadata; inspect nested refs conservatively. |
+
+### Batch F: C2C And DLP Metadata
+
+These are metadata-oriented read surfaces that may still depend on DLP/C2C
+entitlements. Keep the first smoke-lab pass conservative: render identity,
+status, counts, and schedule metadata; drop authorization payloads, admin
+references, EDM token definitions, and user/path details unless separately
+modeled.
+
+| Resource | SDK package | SDK type | List | Get | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `zia/c2c-incident-receivers` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver` | `C2CIncidentReceiver` | `GetAll` | `Get` | Cloud-to-cloud receiver metadata; authorization payloads must remain dropped. |
+| `zia/dlp-edm-schemas` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match` | `DLPEDMSchema` | `GetAll` | `GetDLPEDMSchemaID` | EDM schema metadata; token definitions remain dropped. |
+| `zia/dlp-idm-profile-lite` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profile_lite` | `DLPIDMProfileLite` | `GetAll` | `GetDLPProfileLiteID` | Lite IDM template metadata. |
+| `zia/dlp-idm-profiles` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profiles` | `DLPIDMProfile` | `GetAll` | `Get` | IDM template metadata; host/path/user details stay local-only or dropped. |
 
 ### Future Non-ZIA Tracks
 

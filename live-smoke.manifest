@@ -6,6 +6,10 @@ zia/sandbox-rules
 zia/firewall-dns-rules
 zia/risk-profiles
 zia/nss-servers
+zia/c2c-incident-receivers
+zia/dlp-edm-schemas
+zia/dlp-idm-profile-lite
+zia/dlp-idm-profiles
 zia/custom-file-types
 zia/traffic-capture-rules
 zia/zpa-gateways

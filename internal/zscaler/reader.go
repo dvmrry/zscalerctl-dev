@@ -19,12 +19,16 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
+	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	nssservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/nss_servers"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
+	dlpedm "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
+	dlpidmlite "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profile_lite"
+	dlpidmprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profiles"
 	filetypecontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol"
 	customfiletypes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol/custom_file_types"
 	firewalldnscontrolpolicies "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewalldnscontrolpolicies"
@@ -112,6 +116,10 @@ const (
 	resourceDLPICAPServers   = "dlp-icap-servers"
 	resourceRiskProfiles     = "risk-profiles"
 	resourceNSSServers       = "nss-servers"
+	resourceC2CReceivers     = "c2c-incident-receivers"
+	resourceDLPEDMSchemas    = "dlp-edm-schemas"
+	resourceDLPIDMLite       = "dlp-idm-profile-lite"
+	resourceDLPIDMProfiles   = "dlp-idm-profiles"
 	resourceFileTypeRules    = "file-type-rules"
 	resourceSandboxRules     = "sandbox-rules"
 	resourceFirewallDNSRules = "firewall-dns-rules"
@@ -708,6 +716,46 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 				return nssservers.Get(ctx, service, id)
 			}),
 			nssServerSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceC2CReceivers}: newListGetHandler(
+			resourceC2CReceivers,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]c2cincidentreceiver.C2CIncidentReceiver, error) {
+				return c2cincidentreceiver.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*c2cincidentreceiver.C2CIncidentReceiver, error) {
+				return c2cincidentreceiver.Get(ctx, service, id)
+			}),
+			c2cIncidentReceiverSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDLPEDMSchemas}: newListGetHandler(
+			resourceDLPEDMSchemas,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpedm.DLPEDMSchema, error) {
+				return dlpedm.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpedm.DLPEDMSchema, error) {
+				return dlpedm.GetDLPEDMSchemaID(ctx, service, id)
+			}),
+			dlpEDMSchemaSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDLPIDMLite}: newListGetHandler(
+			resourceDLPIDMLite,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpidmlite.DLPIDMProfileLite, error) {
+				return dlpidmlite.GetAll(ctx, service, false)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmlite.DLPIDMProfileLite, error) {
+				return dlpidmlite.GetDLPProfileLiteID(ctx, service, id, false)
+			}),
+			dlpIDMProfileLiteSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDLPIDMProfiles}: newListGetHandler(
+			resourceDLPIDMProfiles,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofiles.DLPIDMProfile, error) {
+				return dlpidmprofiles.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmprofiles.DLPIDMProfile, error) {
+				return dlpidmprofiles.Get(ctx, service, id)
+			}),
+			dlpIDMProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceFileTypeRules}: newListGetHandler(
 			resourceFileTypeRules,
@@ -2067,6 +2115,88 @@ func nssServerSourceRecord(server nssservers.NSSServers) resources.SourceRecord 
 	})
 }
 
+func c2cIncidentReceiverSourceRecord(receiver c2cincidentreceiver.C2CIncidentReceiver) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                       receiver.ID,
+		"name":                     receiver.Name,
+		"modifiedTime":             receiver.ModifiedTime,
+		"lastTenantValidationTime": receiver.LastTenantValidationTime,
+	}
+	addStringSlice(fields, "status", receiver.Status)
+	if receiver.LastValidationMsg != nil {
+		fields["lastValidationMsg"] = c2cLastValidationMsgSource(*receiver.LastValidationMsg)
+	}
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", receiver.LastModifiedBy)
+	if receiver.OnboardableEntity != nil {
+		fields["onboardableEntity"] = c2cOnboardableEntitySource(*receiver.OnboardableEntity)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func dlpEDMSchemaSourceRecord(schema dlpedm.DLPEDMSchema) resources.SourceRecord {
+	fields := map[string]any{
+		"schemaId":         schema.SchemaID,
+		"projectName":      schema.ProjectName,
+		"revision":         schema.Revision,
+		"filename":         schema.Filename,
+		"originalFileName": schema.OriginalFileName,
+		"fileUploadStatus": schema.FileUploadStatus,
+		"schemaStatus":     schema.SchemaStatus,
+		"origColCount":     schema.OrigColCount,
+		"lastModifiedTime": schema.LastModifiedTime,
+		"cellsUsed":        schema.CellsUsed,
+		"schemaActive":     schema.SchemaActive,
+		"schedulePresent":  schema.SchedulePresent,
+		"schedule":         dlpEDMScheduleSource(schema.Schedule),
+	}
+	addIDNameExtensionsPtr(fields, "edmClient", schema.EDMClient)
+	addIDNameExtensionsPtr(fields, "modifiedBy", schema.ModifiedBy)
+	addIDNameExtensionsPtr(fields, "createdBy", schema.CreatedBy)
+	if len(schema.TokenList) > 0 {
+		fields["tokenList"] = dlpEDMTokenListSource(schema.TokenList)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func dlpIDMProfileLiteSourceRecord(profile dlpidmlite.DLPIDMProfileLite) resources.SourceRecord {
+	fields := map[string]any{
+		"profileId":        profile.ProfileID,
+		"templateName":     profile.TemplateName,
+		"numDocuments":     profile.NumDocuments,
+		"lastModifiedTime": profile.LastModifiedTime,
+	}
+	addIDNameExtensionsPtr(fields, "clientVm", profile.ClientVM)
+	addIDNameExtensionsPtr(fields, "modifiedBy", profile.ModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
+func dlpIDMProfileSourceRecord(profile dlpidmprofiles.DLPIDMProfile) resources.SourceRecord {
+	fields := map[string]any{
+		"profileId":         profile.ProfileID,
+		"profileName":       profile.ProfileName,
+		"profileDesc":       profile.ProfileDesc,
+		"profileType":       profile.ProfileType,
+		"host":              profile.Host,
+		"port":              profile.Port,
+		"profileDirPath":    profile.ProfileDirPath,
+		"scheduleType":      profile.ScheduleType,
+		"scheduleDay":       profile.ScheduleDay,
+		"scheduleTime":      profile.ScheduleTime,
+		"scheduleDisabled":  profile.ScheduleDisabled,
+		"uploadStatus":      profile.UploadStatus,
+		"userName":          profile.UserName,
+		"version":           profile.Version,
+		"volumeOfDocuments": profile.VolumeOfDocuments,
+		"numDocuments":      profile.NumDocuments,
+		"lastModifiedTime":  profile.LastModifiedTime,
+	}
+	addStringSlice(fields, "scheduleDayOfMonth", profile.ScheduleDayOfMonth)
+	addStringSlice(fields, "scheduleDayOfWeek", profile.ScheduleDayOfWeek)
+	addIDNameExtensionsPtr(fields, "idmClient", profile.IDMClient)
+	addIDNameExtensionsPtr(fields, "modifiedBy", profile.ModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
 func fileTypeRuleSourceRecord(rule filetypecontrol.FileTypeRules) resources.SourceRecord {
 	fields := map[string]any{
 		"id":                   rule.ID,
@@ -2533,6 +2663,111 @@ func extranetIPPoolListSource(values []extranet.ExtranetPoolList) []any {
 		})
 	}
 	return out
+}
+
+func c2cLastValidationMsgSource(value c2cincidentreceiver.LastValidationMsg) map[string]any {
+	return map[string]any{
+		"errorMsg":  value.ErrorMsg,
+		"errorCode": value.ErrorCode,
+	}
+}
+
+func c2cOnboardableEntitySource(value c2cincidentreceiver.OnboardableEntity) map[string]any {
+	fields := map[string]any{
+		"id":                      value.ID,
+		"name":                    value.Name,
+		"type":                    value.Type,
+		"enterpriseTenantId":      value.EnterpriseTenantID,
+		"application":             value.Application,
+		"lastValidationMsg":       c2cLastValidationMsgSource(value.LastValidationMsg),
+		"tenantAuthorizationInfo": c2cTenantAuthorizationInfoSource(value.TenantAuthorizationInfo),
+	}
+	addIDNameExtensionsPtr(fields, "zscalerAppTenantId", value.ZscalerAppTenantID)
+	return fields
+}
+
+func c2cTenantAuthorizationInfoSource(value c2cincidentreceiver.TenantAuthorizationInfo) map[string]any {
+	fields := map[string]any{
+		"accessToken":          value.AccessToken,
+		"botToken":             value.BotToken,
+		"redirectUrl":          value.RedirectUrl,
+		"type":                 value.Type,
+		"env":                  value.Env,
+		"tempAuthCode":         value.TempAuthCode,
+		"subdomain":            value.Subdomain,
+		"apicp":                value.Apicp,
+		"clientId":             value.ClientID,
+		"clientSecret":         value.ClientSecret,
+		"secretToken":          value.SecretToken,
+		"userName":             value.UserName,
+		"userPwd":              value.UserPwd,
+		"instanceUrl":          value.InstanceUrl,
+		"roleArn":              value.RoleArn,
+		"quarantineBucketName": value.QuarantineBucketName,
+		"cloudTrailBucketName": value.CloudTrailBucketName,
+		"botId":                value.BotID,
+		"orgApiKey":            value.OrgApiKey,
+		"externalId":           value.ExternalID,
+		"enterpriseId":         value.EnterpriseID,
+		"credJson":             value.CredJson,
+		"role":                 value.Role,
+		"organizationId":       value.OrganizationID,
+		"workspaceName":        value.WorkspaceName,
+		"workspaceId":          value.WorkspaceID,
+		"qtnChannelUrl":        value.QtnChannelUrl,
+		"malQtnLibName":        value.MalQtnLibName,
+		"dlpQtnLibName":        value.DlpQtnLibName,
+		"credentials":          value.Credentials,
+		"tokenEndpoint":        value.TokenEndpoint,
+		"restApiEndpoint":      value.RestApiEndpoint,
+		"qtnInfoCleared":       value.QtnInfoCleared,
+	}
+	addStringSlice(fields, "featuresSupported", value.FeaturesSupported)
+	if len(value.SmirBucketConfig) > 0 {
+		fields["smirBucketConfig"] = c2cSMIRBucketConfigSource(value.SmirBucketConfig)
+	}
+	if len(value.QtnInfo) > 0 {
+		fields["qtnInfo"] = append([]any(nil), value.QtnInfo...)
+	}
+	return fields
+}
+
+func c2cSMIRBucketConfigSource(values []c2cincidentreceiver.SmirBucketConfig) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"configName":         value.ConfigName,
+			"metadataBucketName": value.MetadataBucketName,
+			"dataBucketName":     value.DataBucketName,
+			"id":                 value.ID,
+		})
+	}
+	return out
+}
+
+func dlpEDMTokenListSource(values []dlpedm.TokenList) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"name":                value.Name,
+			"type":                value.Type,
+			"primaryKey":          value.PrimaryKey,
+			"originalColumn":      value.OriginalColumn,
+			"hashfileColumnOrder": value.HashfileColumnOrder,
+			"colLengthBitmap":     value.ColLengthBitmap,
+		})
+	}
+	return out
+}
+
+func dlpEDMScheduleSource(value dlpedm.Schedule) map[string]any {
+	return map[string]any{
+		"scheduleType":       value.ScheduleType,
+		"scheduleDayOfMonth": append([]string(nil), value.ScheduleDayOfMonth...),
+		"scheduleDayOfWeek":  append([]string(nil), value.ScheduleDayOfWeek...),
+		"scheduleTime":       value.ScheduleTime,
+		"scheduleDisabled":   value.ScheduleDisabled,
+	}
 }
 
 func cbiProfileSource(value *ziacommon.CBIProfile) map[string]any {
