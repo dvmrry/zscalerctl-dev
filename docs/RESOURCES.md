@@ -819,6 +819,64 @@ Fields:
 | `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `url` | Sensitive identifier | `standard` | Local-only ICAP server endpoint. |
 
+## ZIA File Type Rules
+
+Commands:
+
+```sh
+zscalerctl zia file-type-rules list
+zscalerctl zia file-type-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `state`, `order`, `rank`, `timeQuota`, `sizeQuota`, `accessControl`, `capturePCAP`, `activeContent`, `unscannable`, `minSize`, `maxSize`, `lastModifiedTime` | Operational metadata | varies | Rule identity, ordering, quota, and status metadata. |
+| `name`, `filteringAction`, `passwordProtected`, `operation`, `cloudApplications`, `fileTypes`, `protocols`, `urlCategories`, `deviceTrustLevels` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `browserEunTemplateId`, scope references such as `locations`, `groups`, and `devices` | Sensitive identifier / tenant configuration | `standard` | Local-only rule target and notification references. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Sandbox Rules
+
+Commands:
+
+```sh
+zscalerctl zia sandbox-rules list
+zscalerctl zia sandbox-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `state`, `order`, `rank`, `firstTimeEnable`, `mlActionEnabled`, `byThreatScore`, `accessControl`, `lastModifiedTime`, `defaultRule` | Operational metadata | varies | Rule identity, ordering, status, and behavior metadata. |
+| `name`, `baRuleAction`, `firstTimeOperation`, `protocols`, `baPolicyCategories`, `fileTypes`, `urlCategories` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| Scope references such as `locations`, `groups`, `devices`, and `zpaAppSegments` | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Firewall Dns Rules
+
+Commands:
+
+```sh
+zscalerctl zia firewall-dns-rules list
+zscalerctl zia firewall-dns-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `order`, `rank`, `accessControl`, `state`, `lastModifiedTime`, `defaultRule`, `capturePCAP`, `predefined`, `isWebEunEnabled`, `defaultDnsRuleNameUsed` | Operational metadata | varies | Rule identity, ordering, status, and predefined/default metadata. |
+| `name`, `action`, `blockResponseCode`, `applications`, `dnsRuleRequestTypes`, `protocols` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `redirectIp`, `srcIps`, `destAddresses`, `destIpCategories`, `resCategories` | Sensitive identifier | `standard` | Local-only DNS and network targeting data. |
+| Scope references such as `locations`, `groups`, `dnsGateway`, and IP groups | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

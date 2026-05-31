@@ -1,7 +1,6 @@
-# zscalerctl live smoke manifest
-#
-# scripts/live-smoke.sh auto-uses this file on feature branches when it differs
-# from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
-# Keep this focused on the resources changed by the current branch.
+# Smoke-lab resources for broad work-machine validation.
+# This branch is not release-track until live smoke trims or promotes it.
 
-zia/dlp-icap-servers
+zia/file-type-rules
+zia/sandbox-rules
+zia/firewall-dns-rules

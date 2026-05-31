@@ -20,9 +20,10 @@ available. Queue entries are not validation evidence.
   trim failed resources instead of blocking proven ones.
 - Do not merge resource PRs without a focused `make live-smoke` pass.
 - Do not stack un-smoked resource branches behind an unmerged resource PR.
-- While live-smoke access is unavailable, do not apply queued resource
-  scaffolds to production files. Use the time for SDK scouting, queue
-  refinement, and shape-decision notes only.
+- While live-smoke access is unavailable, do not open merge-track resource PRs
+  behind the current live-smoke gate. A single disposable smoke-lab branch may
+  wire queued resources for future broad live smoke, but it must remain
+  clearly non-release-track until live validation trims or promotes it.
 - Do not commit generated scaffold bundles from `scratch/resource-drafts/`.
 - Regenerate scaffolds from current SDK source and current generator code when a
   batch is ready to apply. Do not replay stale commands blindly.
@@ -97,8 +98,8 @@ they diverge.
 ## No-Live Work Mode
 
 When read-only tenant credentials are unavailable, do not create more
-production resource branches behind the open draft PR. Safe work during this
-period:
+merge-track production resource PRs behind the open draft PR. Safe work during
+this period:
 
 - refresh this queue from `make sdk-surface-inventory`;
 - scout the full SDK module cache with:
@@ -109,9 +110,11 @@ period:
   ```
 
 - add or refine batch notes, shape-decision notes, and deferred-resource notes;
-- regenerate scratch scaffolds locally for review, but do not commit
-  `scratch/resource-drafts/` or apply them to production files until live smoke
-  is available again.
+- regenerate scratch scaffolds locally for review;
+- optionally maintain one disposable smoke-lab branch that applies reviewed
+  queued scaffolds to production files and carries a `live-smoke.manifest` for
+  broad later testing. Do not mark that branch ready, merge it, or release from
+  it until live smoke has identified which resources survive.
 
 ## Next Apply Batches
 

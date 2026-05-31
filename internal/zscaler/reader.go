@@ -23,6 +23,8 @@ import (
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
+	filetypecontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol"
+	firewalldnscontrolpolicies "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewalldnscontrolpolicies"
 	applicationservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/applicationservices"
 	appservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/appservicegroups"
 	dnsgateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/dns_gateways"
@@ -39,6 +41,7 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	sandboxrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_rules"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	tenancyrestriction "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction"
 	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
@@ -101,6 +104,9 @@ const (
 	resourceVZENClusters     = "vzen-clusters"
 	resourceVZENNodes        = "vzen-nodes"
 	resourceDLPICAPServers   = "dlp-icap-servers"
+	resourceFileTypeRules    = "file-type-rules"
+	resourceSandboxRules     = "sandbox-rules"
+	resourceFirewallDNSRules = "firewall-dns-rules"
 )
 
 type AuthMode string
@@ -670,6 +676,36 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 				return dlpicapservers.Get(ctx, service, id)
 			}),
 			dlpICAPServerSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceFileTypeRules}: newListGetHandler(
+			resourceFileTypeRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]filetypecontrol.FileTypeRules, error) {
+				return filetypecontrol.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*filetypecontrol.FileTypeRules, error) {
+				return filetypecontrol.Get(ctx, service, id)
+			}),
+			fileTypeRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceSandboxRules}: newListGetHandler(
+			resourceSandboxRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]sandboxrules.SandboxRules, error) {
+				return sandboxrules.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*sandboxrules.SandboxRules, error) {
+				return sandboxrules.Get(ctx, service, id)
+			}),
+			sandboxRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceFirewallDNSRules}: newListGetHandler(
+			resourceFirewallDNSRules,
+			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]firewalldnscontrolpolicies.FirewallDNSRules, error) {
+				return firewalldnscontrolpolicies.GetAll(ctx, service)
+			}),
+			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*firewalldnscontrolpolicies.FirewallDNSRules, error) {
+				return firewalldnscontrolpolicies.Get(ctx, service, id)
+			}),
+			firewallDNSRuleSourceRecord,
 		),
 	}
 }
@@ -1903,6 +1939,135 @@ func dlpICAPServerSourceRecord(server dlpicapservers.DLPICAPServers) resources.S
 		"url":    server.URL,
 		"status": server.Status,
 	})
+}
+
+func fileTypeRuleSourceRecord(rule filetypecontrol.FileTypeRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                   rule.ID,
+		"name":                 rule.Name,
+		"description":          rule.Description,
+		"state":                rule.State,
+		"order":                rule.Order,
+		"filteringAction":      rule.FilteringAction,
+		"timeQuota":            rule.TimeQuota,
+		"sizeQuota":            rule.SizeQuota,
+		"accessControl":        rule.AccessControl,
+		"rank":                 rule.Rank,
+		"capturePCAP":          rule.CapturePCAP,
+		"passwordProtected":    rule.PasswordProtected,
+		"operation":            rule.Operation,
+		"activeContent":        rule.ActiveContent,
+		"unscannable":          rule.Unscannable,
+		"browserEunTemplateId": rule.BrowserEunTemplateID,
+		"minSize":              rule.MinSize,
+		"maxSize":              rule.MaxSize,
+		"lastModifiedTime":     rule.LastModifiedTime,
+	}
+	addStringSlice(fields, "cloudApplications", rule.CloudApplications)
+	addStringSlice(fields, "fileTypes", rule.FileTypes)
+	addStringSlice(fields, "protocols", rule.Protocols)
+	addStringSlice(fields, "urlCategories", rule.URLCategories)
+	addStringSlice(fields, "deviceTrustLevels", rule.DeviceTrustLevels)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
+	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
+	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
+	addIDNameExtensionsSlice(fields, "users", rule.Users)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	if len(rule.ZPAAppSegments) > 0 {
+		fields["zpaAppSegments"] = zpaAppSegmentsSource(rule.ZPAAppSegments)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func sandboxRuleSourceRecord(rule sandboxrules.SandboxRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                 rule.ID,
+		"name":               rule.Name,
+		"description":        rule.Description,
+		"state":              rule.State,
+		"order":              rule.Order,
+		"baRuleAction":       rule.BaRuleAction,
+		"firstTimeEnable":    rule.FirstTimeEnable,
+		"firstTimeOperation": rule.FirstTimeOperation,
+		"mlActionEnabled":    rule.MLActionEnabled,
+		"byThreatScore":      rule.ByThreatScore,
+		"accessControl":      rule.AccessControl,
+		"rank":               rule.Rank,
+		"lastModifiedTime":   rule.LastModifiedTime,
+		"defaultRule":        rule.DefaultRule,
+	}
+	addStringSlice(fields, "protocols", rule.Protocols)
+	addStringSlice(fields, "baPolicyCategories", rule.BaPolicyCategories)
+	addStringSlice(fields, "fileTypes", rule.FileTypes)
+	addStringSlice(fields, "urlCategories", rule.URLCategories)
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
+	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
+	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
+	addIDNameExtensionsSlice(fields, "users", rule.Users)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	if len(rule.ZPAAppSegments) > 0 {
+		fields["zpaAppSegments"] = zpaAppSegmentsSource(rule.ZPAAppSegments)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func firewallDNSRuleSourceRecord(rule firewalldnscontrolpolicies.FirewallDNSRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                     rule.ID,
+		"name":                   rule.Name,
+		"order":                  rule.Order,
+		"rank":                   rule.Rank,
+		"accessControl":          rule.AccessControl,
+		"action":                 rule.Action,
+		"state":                  rule.State,
+		"description":            rule.Description,
+		"redirectIp":             rule.RedirectIP,
+		"blockResponseCode":      rule.BlockResponseCode,
+		"lastModifiedTime":       rule.LastModifiedTime,
+		"defaultRule":            rule.DefaultRule,
+		"capturePCAP":            rule.CapturePCAP,
+		"predefined":             rule.Predefined,
+		"isWebEunEnabled":        rule.IsWebEUNEnabled,
+		"defaultDnsRuleNameUsed": rule.DefaultDNSRuleNameUsed,
+	}
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
+	addStringSlice(fields, "srcIps", rule.SrcIps)
+	addStringSlice(fields, "destAddresses", rule.DestAddresses)
+	addStringSlice(fields, "destIpCategories", rule.DestIpCategories)
+	addStringSlice(fields, "destCountries", rule.DestCountries)
+	addStringSlice(fields, "sourceCountries", rule.SourceCountries)
+	addStringSlice(fields, "resCategories", rule.ResCategories)
+	addStringSlice(fields, "applications", rule.Applications)
+	addStringSlice(fields, "dnsRuleRequestTypes", rule.DNSRuleRequestTypes)
+	addStringSlice(fields, "protocols", rule.Protocols)
+	addIDNameExtensionsSlice(fields, "applicationGroups", rule.ApplicationGroups)
+	addIDNamePtr(fields, "dnsGateway", rule.DNSGateway)
+	addIDNamePtr(fields, "zpaIpGroup", rule.ZPAIPGroup)
+	addIDNamePtr(fields, "ednsEcsObject", rule.EDNSEcsObject)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationsGroups)
+	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
+	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
+	addIDNameExtensionsSlice(fields, "users", rule.Users)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "destIpGroups", rule.DestIpGroups)
+	addIDNameExtensionsSlice(fields, "destIpv6Groups", rule.DestIpv6Groups)
+	addIDNameExtensionsSlice(fields, "srcIpGroups", rule.SrcIpGroups)
+	addIDNameExtensionsSlice(fields, "srcIpv6Groups", rule.SrcIpv6Groups)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	return resources.NewSourceRecord(fields)
 }
 
 func addStringSlice(fields map[string]any, name string, values []string) {
