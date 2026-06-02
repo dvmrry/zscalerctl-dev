@@ -47,6 +47,8 @@ import (
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
+	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
+	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -2899,6 +2901,153 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 	}
 	assertReportContains(t, reports[0].DroppedFields, "applications")
 	assertReportContains(t, reports[0].DroppedFields, "configSpace")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-service-edge-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServiceGrps}: newListGetHandler(
+				resourceZPAServiceGrps,
+				func(context.Context) ([]zpaserviceedgegroup.ServiceEdgeGroup, error) {
+					return []zpaserviceedgegroup.ServiceEdgeGroup{{
+						ID:          "seg-1",
+						Name:        "Service edge group",
+						Description: "psk=service-edge-group-canary-value",
+						Enabled:     true,
+						ServiceEdges: []zpaserviceedgecontroller.ServiceEdgeController{{
+							ID:                  "edge-1",
+							Name:                nestedCanary,
+							ProvisioningKeyName: nestedCanary,
+						}},
+						EnrollmentCertID: nestedCanary,
+					}}, nil
+				},
+				func(context.Context, string) (*zpaserviceedgegroup.ServiceEdgeGroup, error) { return nil, nil },
+				jsonSourceRecord[zpaserviceedgegroup.ServiceEdgeGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServiceGrps)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, service-edge-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServiceGrps)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServiceGrps)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "seg-1" {
+		t.Errorf("projected service-edge-group id = %v, want seg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-group-canary-value") {
+		t.Errorf("projected service-edge-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"serviceEdges", "enrollmentCertId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected service-edge-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected service-edge-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected service-edge-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "serviceEdges")
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCertId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-service-edge-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServiceEdges}: newListGetHandler(
+				resourceZPAServiceEdges,
+				func(context.Context) ([]zpaserviceedgecontroller.ServiceEdgeController, error) {
+					return []zpaserviceedgecontroller.ServiceEdgeController{{
+						ID:                  "edge-1",
+						Name:                "Service edge",
+						Description:         "psk=service-edge-canary-value",
+						Enabled:             true,
+						ProvisioningKeyName: nestedCanary,
+						EnrollmentCert: map[string]interface{}{
+							"name": nestedCanary,
+						},
+						PrivateBrokerVersion: zpaserviceedgecontroller.PrivateBrokerVersion{
+							ID:       "broker-1",
+							TunnelId: nestedCanary,
+						},
+					}}, nil
+				},
+				func(context.Context, string) (*zpaserviceedgecontroller.ServiceEdgeController, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaserviceedgecontroller.ServiceEdgeController],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServiceEdges)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, service-edges) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServiceEdges)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServiceEdges)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa service-edges) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edges) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "edge-1" {
+		t.Errorf("projected service-edge id = %v, want edge-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-canary-value") {
+		t.Errorf("projected service-edge description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"enrollmentCert", "privateBrokerVersion", "provisioningKeyName"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected service-edge includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected service-edge = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected service-edge) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edges) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
+	assertReportContains(t, reports[0].DroppedFields, "privateBrokerVersion")
+	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 

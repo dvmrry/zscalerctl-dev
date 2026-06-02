@@ -10,3 +10,5 @@ zpa/app-connector-groups
 zpa/app-servers
 zpa/machine-groups
 zpa/trusted-networks
+zpa/service-edge-groups
+zpa/service-edges

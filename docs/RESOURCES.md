@@ -1264,6 +1264,46 @@ Fields:
 | `name`, `domain` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `masterCustomerId`, `networkId`, `zscalerCloud` | Secret or unmodeled nested structure | none | Dropped until tenant and cloud identifiers are separately reviewed. |
 
+## ZPA Service Edge Groups
+
+Commands:
+
+```sh
+zscalerctl zpa service-edge-groups list
+zscalerctl zpa service-edge-groups get <id>
+zscalerctl dump --products zpa --resources zpa/service-edge-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `isPublic`, `objectType`, `overrideVersionProfile`, `readOnly`, `restrictedEntity`, `restrictionType`, `graceDistanceEnabled`, `exclusiveForBusinessContinuity`, `upgradeDay`, `upgradeTimeInSecs`, `useInDrMode` | Operational metadata | `standard`, `share`, `paranoid` | Service edge group identity, state, lifecycle, and operational flags. |
+| `name`, `microtenantName`, `scopeName`, `siteName`, `versionProfileName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cityCountry`, `countryCode`, `latitude`, `location`, `longitude` | Sensitive identifier | `standard` | Local-only placement metadata. |
+| `altCloud`, `city`, `enrollmentCertId`, `geoLocationId`, `graceDistanceValue`, `graceDistanceValueUnit`, `microtenantId`, `nameWithoutTrim`, `serviceEdges`, `siteId`, `trustedNetworks`, `versionProfileId`, `versionProfileVisibilityScope`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until service edge, trusted network, certificate, and tenant sub-shapes are separately reviewed. |
+
+## ZPA Service Edges
+
+Commands:
+
+```sh
+zscalerctl zpa service-edges list
+zscalerctl zpa service-edges get <id>
+zscalerctl dump --products zpa --resources zpa/service-edges --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `applicationStartTime`, `controlChannelStatus`, `creationTime`, `expectedUpgradeTime`, `lastBrokerConnectTime`, `lastBrokerConnectTimeDuration`, `lastBrokerDisconnectTime`, `lastBrokerDisconnectTimeDuration`, `lastUpgradeTime`, `modifiedBy`, `modifiedTime`, `publishIpv6`, `runtimeOS`, `upgradeStatus` | Operational metadata | `standard`, `share`, `paranoid` | Service edge identity, state, lifecycle, connection, runtime, and upgrade metadata. |
+| `name`, `ctrlBrokerName`, `currentVersion`, `expectedVersion`, `microtenantName`, `platform`, `platformDetail`, `previousVersion`, `sargeVersion`, `serviceEdgeGroupName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `ipAcl`, `latitude`, `listenIps`, `location`, `longitude`, `privateIp`, `publicIp`, `publishIps` | Sensitive identifier | `standard` | Local-only placement and network metadata. |
+| `enrollmentCert`, `fingerprint`, `issuedCertId`, `microtenantId`, `privateBrokerVersion`, `provisioningKeyId`, `provisioningKeyName`, `serviceEdgeGroupId`, `upgradeAttempt` | Secret or unmodeled nested structure | none | Dropped until broker, certificate, provisioning, and tenant sub-shapes are separately reviewed. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

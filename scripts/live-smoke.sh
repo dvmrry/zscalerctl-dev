@@ -7,7 +7,7 @@ cd "$repo_root"
 denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip"]'
 denied_resource_exact_keys_json='{"location-groups":["lastModUser","dynamicLocationGroupCriteria","locations"]}'
 allowed_resource_denied_keys_json='{"atp-malware-policy":["blockPasswordProtectedArchiveFiles"],"mobile-threat-settings":["blockAppsSendingUnencryptedUserCredentials"],"org-information":["city"]}'
-denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential)'
+denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential|cert|fingerprint)'
 manifest_warning='sanitized dumps remain confidential operational data'
 
 out_dir=""

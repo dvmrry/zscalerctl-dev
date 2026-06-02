@@ -131,6 +131,8 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
 # golang.org/x/sys v0.44.0

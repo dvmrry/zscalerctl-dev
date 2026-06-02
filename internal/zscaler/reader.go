@@ -74,6 +74,8 @@ import (
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
+	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
+	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -156,6 +158,8 @@ const (
 	resourceZPAAppServers              = "app-servers"
 	resourceZPAMachineGroups           = "machine-groups"
 	resourceZPATrustedNets             = "trusted-networks"
+	resourceZPAServiceEdges            = "service-edges"
+	resourceZPAServiceGrps             = "service-edge-groups"
 )
 
 type AuthMode string
@@ -979,6 +983,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpatrustednetwork.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpatrustednetwork.TrustedNetwork],
+		),
+		{product: resources.ProductZPA, name: resourceZPAServiceGrps}: newListGetHandler(
+			resourceZPAServiceGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
+				return zpaserviceedgegroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
+				return zpaserviceedgegroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaserviceedgegroup.ServiceEdgeGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAServiceEdges}: newListGetHandler(
+			resourceZPAServiceEdges,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
+				return zpaserviceedgecontroller.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
+				return zpaserviceedgecontroller.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaserviceedgecontroller.ServiceEdgeController],
 		),
 	}
 }
