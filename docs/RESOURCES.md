@@ -1342,6 +1342,26 @@ Fields:
 | `domain` | Sensitive identifier | `standard` | Local-only posture domain metadata. |
 | `masterCustomerId`, `nonExportablePrivateKeyEnabled`, `postureUdid`, `rootCert`, `zscalerCloud`, `zscalerCustomerId` | Secret or unmodeled nested structure | none | Dropped until certificate, tenant, cloud, and device-posture identifiers are separately reviewed. |
 
+## ZPA Cbi Zpa Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa cbi-zpa-profiles list
+zscalerctl zpa cbi-zpa-profiles get <id>
+zscalerctl dump --products zpa --resources zpa/cbi-zpa-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | CBI ZPA profile identity, state, and lifecycle metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cbiProfileId`, `cbiUrl` | Sensitive identifier | `standard` | Local-only CBI profile and tenant URL metadata. |
+| `cbiTenantId` | Secret or unmodeled nested structure | none | Dropped until tenant identifiers are separately reviewed. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

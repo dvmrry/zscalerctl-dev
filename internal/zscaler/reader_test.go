@@ -47,6 +47,7 @@ import (
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -3200,6 +3201,79 @@ func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing
 	assertReportContains(t, reports[0].DroppedFields, "postureUdid")
 	assertReportContains(t, reports[0].DroppedFields, "rootCert")
 	assertReportContains(t, reports[0].DroppedFields, "zscalerCustomerId")
+}
+
+func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-cbi-zpa-profile-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPACBIZPAProfs}: newListGetHandler(
+				resourceZPACBIZPAProfs,
+				func(context.Context) ([]zpacbizpaprofile.ZPAProfiles, error) {
+					return []zpacbizpaprofile.ZPAProfiles{{
+						ID:           "cbi-zpa-profile-1",
+						Name:         "CBI ZPA profile",
+						Description:  "psk=cbi-zpa-profile-canary-value",
+						Enabled:      true,
+						CreationTime: "1700000000000",
+						ModifiedBy:   "admin-1",
+						ModifiedTime: "1700000100000",
+						CBIProfileID: "cbi-profile-1",
+						CBITenantID:  nestedCanary,
+						CBIURL:       "https://cbi.example.invalid/profile",
+					}}, nil
+				},
+				func(context.Context, string) (*zpacbizpaprofile.ZPAProfiles, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpacbizpaprofile.ZPAProfiles],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPACBIZPAProfs)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, cbi-zpa-profiles) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPACBIZPAProfs)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPACBIZPAProfs)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "cbi-zpa-profile-1" {
+		t.Errorf("projected cbi-zpa-profile id = %v, want cbi-zpa-profile-1", got["id"])
+	}
+	if got["cbiProfileId"] != "cbi-profile-1" {
+		t.Errorf("projected cbi-zpa-profile cbiProfileId = %v, want cbi-profile-1", got["cbiProfileId"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cbi-zpa-profile-canary-value") {
+		t.Errorf("projected cbi-zpa-profile description = %v, want redacted canary value", got["description"])
+	}
+	if _, ok := got["cbiTenantId"]; ok {
+		t.Errorf("projected cbi-zpa-profile includes cbiTenantId, want dropped")
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected cbi-zpa-profile = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected cbi-zpa-profile) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "cbiTenantId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
 func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {

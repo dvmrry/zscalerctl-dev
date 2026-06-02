@@ -128,6 +128,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile

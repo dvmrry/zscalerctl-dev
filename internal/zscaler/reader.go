@@ -72,6 +72,7 @@ import (
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
@@ -164,6 +165,7 @@ const (
 	resourceZPAServiceGrps             = "service-edge-groups"
 	resourceZPACloudConnGrps           = "cloud-connector-groups"
 	resourceZPAPostureProfs            = "posture-profiles"
+	resourceZPACBIZPAProfs             = "cbi-zpa-profiles"
 )
 
 type AuthMode string
@@ -1027,6 +1029,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpapostureprofile.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpapostureprofile.PostureProfile],
+		),
+		{product: resources.ProductZPA, name: resourceZPACBIZPAProfs}: newListGetHandler(
+			resourceZPACBIZPAProfs,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
+				return zpacbizpaprofile.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
+				return zpacbizpaprofile.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpacbizpaprofile.ZPAProfiles],
 		),
 	}
 }

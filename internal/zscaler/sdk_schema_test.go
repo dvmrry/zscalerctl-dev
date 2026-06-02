@@ -62,6 +62,7 @@ import (
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
@@ -2235,6 +2236,24 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"rootCert",
 				"zscalerCloud",
 				"zscalerCustomerId",
+			},
+		},
+		{
+			name:         "zpacbizpaprofile.ZPAProfiles",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPACBIZPAProfs,
+			typ:          reflect.TypeOf(zpacbizpaprofile.ZPAProfiles{}),
+			catalogFields: []string{
+				"cbiProfileId",
+				"cbiTenantId",
+				"cbiUrl",
+				"creationTime",
+				"description",
+				"enabled",
+				"id",
+				"modifiedBy",
+				"modifiedTime",
+				"name",
 			},
 		},
 		{

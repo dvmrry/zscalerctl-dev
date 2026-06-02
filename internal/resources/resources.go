@@ -2896,6 +2896,23 @@ func Catalog() ResourceCatalog {
 				secretField("zscalerCustomerId"),
 			},
 		},
+		{
+			Product:    ProductZPA,
+			Name:       "cbi-zpa-profiles",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				sensitiveIdentifierField("cbiProfileId"),
+				secretField("cbiTenantId"),
+				sensitiveIdentifierField("cbiUrl"),
+				operationalField("creationTime", allModes()),
+				freeTextField("description", "ZPA CBI ZPA profile description"),
+				operationalField("enabled", allModes()),
+				operationalField("id", allModes()),
+				operationalField("modifiedBy", allModes()),
+				operationalField("modifiedTime", allModes()),
+				tenantConfigField("name", standardShareModes()),
+			},
+		},
 	}
 }
 
