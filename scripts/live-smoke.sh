@@ -33,15 +33,16 @@ usage: scripts/live-smoke.sh [--out DIR] [--bin PATH] [--resources LIST] [--mani
 
 Runs a read-only live smoke against the currently configured zscalerctl
 credentials and prints PASS/FAIL markers for pre-PR validation.
-By default, all current ZIA read resources are validated.
+By default, all current ZIA read resources are validated. A manifest or
+--resources value may select qualified ZPA resources such as zpa/server-groups.
 
 Options:
   --out DIR            Write validation artifacts under DIR. Defaults to a
                        secure temporary directory that is kept for inspection.
   --bin PATH           zscalerctl binary to run. Defaults to
                        "go run -mod=vendor ./cmd/zscalerctl".
-  --resources LIST     Optional comma-separated ZIA resource filter, using
-                       bare names or zia/name. Defaults to all ZIA resources.
+  --resources LIST     Optional comma-separated resource filter, using bare ZIA
+                       names or product/name. Defaults to all ZIA resources.
   --manifest FILE      Read the resource filter from a line-oriented manifest.
                        Comments, Markdown bullets, and comma-separated entries
                        are accepted.
@@ -58,7 +59,9 @@ Options:
 
 This script does not print credential values or live resource payloads. It
 recognizes explicit zscalerctl OneAPI credentials and explicit ZIA legacy
-credentials; raw SDK env vars such as ZIA_USERNAME are intentionally ignored.
+credentials; selected ZPA resources require OneAPI credentials plus
+ZSCALERCTL_ZPA_CUSTOMER_ID. Raw SDK env vars such as ZIA_USERNAME are
+intentionally ignored.
 EOF
 }
 
@@ -79,16 +82,18 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*)
-      resource="${resource#zia/}"
+    zia/*|zpa/*)
       ;;
     */*)
-      echo "--resources only supports ZIA resources; got: $resource" >&2
+      echo "--resources supports only zia/ or zpa/ qualified resources; got: $resource" >&2
       exit 2
+      ;;
+    *)
+      resource="zia/$resource"
       ;;
   esac
 
-  if [[ -z "$resource" ]]; then
+  if [[ -z "${resource#*/}" ]]; then
     echo "--resources contains an empty resource name" >&2
     exit 2
   fi
@@ -580,12 +585,13 @@ validate_no_denied_keys() {
 }
 
 find_non_catalog_keys() {
-  local resource="$1"
-  local file="$2"
-  local schema="$3"
+  local product="$1"
+  local resource="$2"
+  local file="$3"
+  local schema="$4"
 
-  jq -r --slurpfile schema "$schema" --arg resource "$resource" '
-    ($schema[0] | map(select(.product == "zia" and .name == $resource)) | .[0]) as $spec
+  jq -r --slurpfile schema "$schema" --arg product "$product" --arg resource "$resource" '
+    ($schema[0] | map(select(.product == $product and .name == $resource)) | .[0]) as $spec
     | if $spec == null then
         ["<missing schema resource>"]
       else
@@ -609,12 +615,13 @@ find_non_catalog_keys() {
 
 validate_catalog_subset() {
   local label="$1"
-  local resource="$2"
-  local file="$3"
-  local schema="$4"
+  local product="$2"
+  local resource="$3"
+  local file="$4"
+  local schema="$5"
   local unexpected
 
-  unexpected="$(find_non_catalog_keys "$resource" "$file" "$schema")"
+  unexpected="$(find_non_catalog_keys "$product" "$resource" "$file" "$schema")"
   if [[ -n "$unexpected" ]]; then
     fail "$label contains non-catalog field key(s): $(tr '\n' ' ' <<<"$unexpected")"
     return
@@ -660,12 +667,14 @@ summarize_redaction_markers() {
   pass "$label has no redaction markers"
 }
 
-load_zia_resources() {
+load_smoke_resources() {
   local schema_file="$1"
   local stderr_file="$2"
+  local product
   local resource
   local requested
   local all_resources=()
+  local default_resources=()
 
   if "${cli[@]}" --format json schema list >"$schema_file" 2>"$stderr_file"; then
     pass "schema list command completed"
@@ -682,30 +691,34 @@ load_zia_resources() {
   fi
   pass "schema list returned a JSON array"
 
-  while IFS= read -r resource; do
-    all_resources+=("$resource")
+  while IFS=$'\t' read -r product resource; do
+    all_resources+=("$product/$resource")
+    if [[ "$product" == "zia" ]]; then
+      default_resources+=("$product/$resource")
+    fi
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia")
+      | select(.product == "zia" or .product == "zpa")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
-      | .name
+      | [.product, .name]
     ]
-    | sort
+    | sort_by(.[0], .[1])
     | .[]
+    | @tsv
   ' "$schema_file")
 
-  if ((${#all_resources[@]} == 0)); then
-    fail "schema list contains no ZIA read resources"
+  if ((${#default_resources[@]} == 0)); then
+    fail "schema list contains no default ZIA read resources"
     return 1
   fi
 
   if ((${#requested_resources[@]} == 0)); then
-    resources=("${all_resources[@]}")
+    resources=("${default_resources[@]}")
   else
     for requested in "${requested_resources[@]}"; do
       if ! resource_in_list "$requested" "${all_resources[@]}"; then
-        fail "requested resource is not a ZIA read resource: zia/$requested"
+        fail "requested resource is not a read resource: $requested"
         return 1
       fi
       if ((${#resources[@]} == 0)) || ! resource_in_list "$requested" "${resources[@]}"; then
@@ -714,19 +727,61 @@ load_zia_resources() {
     done
   fi
 
-  pass "schema list found ${#all_resources[@]} ZIA read resource(s)"
-  pass "live smoke selected ${#resources[@]} ZIA resource(s): ${resources[*]}"
-  record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} ZIA resources"
+  pass "schema list found ${#all_resources[@]} ZIA/ZPA read resource(s)"
+  pass "live smoke selected ${#resources[@]} resource(s): ${resources[*]}"
+  record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} resources"
   return 0
 }
 
-resource_operation() {
-  local resource="$1"
-  local schema="$2"
+resource_product() {
+  printf '%s' "${1%%/*}"
+}
 
-  jq -r --arg resource "$resource" '
+resource_name() {
+  printf '%s' "${1#*/}"
+}
+
+resource_artifact_name() {
+  printf '%s' "${1//\//-}"
+}
+
+selected_products() {
+  local seen=""
+  local qualified
+  local product
+
+  for qualified in "${resources[@]}"; do
+    product="$(resource_product "$qualified")"
+    if [[ " $seen " != *" $product "* ]]; then
+      printf '%s\n' "$product"
+      seen+=" $product"
+    fi
+  done
+}
+
+selected_has_product() {
+  local want="$1"
+  local qualified
+
+  for qualified in "${resources[@]}"; do
+    if [[ "$(resource_product "$qualified")" == "$want" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+resource_operation() {
+  local qualified="$1"
+  local schema="$2"
+  local product
+  local resource
+
+  product="$(resource_product "$qualified")"
+  resource="$(resource_name "$qualified")"
+  jq -r --arg product "$product" --arg resource "$resource" '
     .[]
-    | select(.product == "zia" and .name == $resource)
+    | select(.product == $product and .name == $resource)
     | if any(.operations[]?; .name == "list" and .capability == "read") then
         "list"
       elif any(.operations[]?; .name == "show" and .capability == "read") then
@@ -765,29 +820,29 @@ join_csv() {
 }
 
 compare_counts() {
-  local resource="$1"
+  local qualified="$1"
   local operation="$2"
   local list_count="$3"
   local dump_count="$4"
 
   if [[ "$list_count" == "$dump_count" ]]; then
-    pass "zia $resource $operation and dump counts match ($list_count records)"
+    pass "$qualified $operation and dump counts match ($list_count records)"
     return
   fi
   if ((strict_counts)); then
-    fail "zia $resource $operation count = $list_count, dump count = $dump_count"
+    fail "$qualified $operation count = $list_count, dump count = $dump_count"
   else
-    info "zia $resource $operation count = $list_count, dump count = $dump_count; live data may have changed between reads"
+    info "$qualified $operation count = $list_count, dump count = $dump_count; live data may have changed between reads"
   fi
 }
 
 write_expected_dump_paths() {
   local output="$1"
-  local resource
+  local qualified
 
   : >"$output"
-  for resource in "${resources[@]}"; do
-    printf 'resources/zia/%s.json\n' "$resource" >>"$output"
+  for qualified in "${resources[@]}"; do
+    printf 'resources/%s/%s.json\n' "$(resource_product "$qualified")" "$(resource_name "$qualified")" >>"$output"
   done
   sort -o "$output" "$output"
 }
@@ -798,17 +853,11 @@ validate_manifest_resource_set() {
   local actual="$3"
   local diff_file="$4"
 
-  jq -r '.resources[]? | select(.product == "zia") | .path' "$manifest" | sort >"$actual"
+  jq -r '.resources[]? | .path' "$manifest" | sort >"$actual"
   if diff -u "$expected" "$actual" >"$diff_file"; then
-    pass "dump manifest resource set matches ZIA catalog"
+    pass "dump manifest resource set matches selected resources"
   else
-    fail "dump manifest resource set differs from ZIA catalog; diff captured at $diff_file"
-  fi
-
-  if jq -e '[.resources[]? | select(.product != "zia")] | length == 0' "$manifest" >/dev/null; then
-    pass "dump manifest contains only ZIA resources"
-  else
-    fail "dump manifest contains non-ZIA resources"
+    fail "dump manifest resource set differs from selected resources; diff captured at $diff_file"
   fi
 }
 
@@ -818,20 +867,20 @@ validate_dump_file_set() {
   local actual="$3"
   local diff_file="$4"
 
-  if [[ ! -d "$dump_dir/resources/zia" ]]; then
-    fail "dump ZIA resources directory missing: $dump_dir/resources/zia"
+  if [[ ! -d "$dump_dir/resources" ]]; then
+    fail "dump resources directory missing: $dump_dir/resources"
     return
   fi
 
-  find "$dump_dir/resources/zia" -maxdepth 1 -type f -name '*.json' -print |
+  find "$dump_dir/resources" -mindepth 2 -maxdepth 2 -type f -name '*.json' -print |
     while IFS= read -r path; do
       printf '%s\n' "${path#"$dump_dir/"}"
     done | sort >"$actual"
 
   if diff -u "$expected" "$actual" >"$diff_file"; then
-    pass "dump resource files match ZIA catalog"
+    pass "dump resource files match selected resources"
   else
-    fail "dump resource files differ from ZIA catalog; diff captured at $diff_file"
+    fail "dump resource files differ from selected resources; diff captured at $diff_file"
   fi
 }
 
@@ -925,7 +974,7 @@ info "using CLI: ${cli[*]}"
 
 schema_file="$lists_dir/schema.json"
 schema_stderr="$lists_dir/schema.stderr"
-if ! load_zia_resources "$schema_file" "$schema_stderr"; then
+if ! load_smoke_resources "$schema_file" "$schema_stderr"; then
   fail "live smoke cannot continue without a valid schema resource set"
   print_result_table >&2
   summary_file="$(write_failure_summary "$failures")"
@@ -933,47 +982,82 @@ if ! load_zia_resources "$schema_file" "$schema_stderr"; then
   exit 1
 fi
 
-expected_paths_file="$lists_dir/expected-zia-dump-paths.txt"
+if ((skip_credential_check == 0)) && selected_has_product zpa; then
+  if [[ "${ZSCALERCTL_AUTH_MODE:-}" == "zia-legacy" ]]; then
+    fail "selected ZPA resources require OneAPI credentials"
+    print_result_table >&2
+    summary_file="$(write_failure_summary "$failures")"
+    print_failure_summary "$summary_file"
+    exit 1
+  fi
+  if ! is_set ZSCALERCTL_CLIENT_ID ||
+    (! is_set ZSCALERCTL_CLIENT_SECRET && ! is_set ZSCALERCTL_CLIENT_SECRET_FILE) ||
+    ! is_set ZSCALERCTL_VANITY_DOMAIN; then
+    fail "selected ZPA resources require OneAPI credentials"
+    print_result_table >&2
+    summary_file="$(write_failure_summary "$failures")"
+    print_failure_summary "$summary_file"
+    exit 1
+  fi
+  if ! is_set ZSCALERCTL_ZPA_CUSTOMER_ID; then
+    fail "selected ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
+    print_result_table >&2
+    summary_file="$(write_failure_summary "$failures")"
+    print_failure_summary "$summary_file"
+    exit 1
+  fi
+fi
+
+expected_paths_file="$lists_dir/expected-dump-paths.txt"
 write_expected_dump_paths "$expected_paths_file"
 
-for resource in "${resources[@]}"; do
-  stdout_file="$lists_dir/zia-${resource}.json"
-  stderr_file="$lists_dir/zia-${resource}.stderr"
+products=()
+while IFS= read -r product; do
+  products+=("$product")
+done < <(selected_products)
+products_csv="$(join_csv "${products[@]}")"
+
+for qualified in "${resources[@]}"; do
+  product="$(resource_product "$qualified")"
+  resource="$(resource_name "$qualified")"
+  artifact="$(resource_artifact_name "$qualified")"
+  stdout_file="$lists_dir/${artifact}.json"
+  stderr_file="$lists_dir/${artifact}.stderr"
   list_start_failures="$failures"
   list_records="-"
-  operation="$(resource_operation "$resource" "$schema_file")"
+  operation="$(resource_operation "$qualified" "$schema_file")"
 
   if [[ -z "$operation" ]]; then
-    fail "schema list does not expose a supported read operation for zia/$resource"
-    record_result "zia/$resource" "schema" "FAIL" "-" "no supported read operation"
+    fail "schema list does not expose a supported read operation for $qualified"
+    record_result "$qualified" "schema" "FAIL" "-" "no supported read operation"
     continue
   fi
 
-  if "${cli[@]}" --format json zia "$resource" "$operation" >"$stdout_file" 2>"$stderr_file"; then
-    pass "zia $resource $operation command completed"
+  if "${cli[@]}" --format json "$product" "$resource" "$operation" >"$stdout_file" 2>"$stderr_file"; then
+    pass "$product $resource $operation command completed"
   else
-    fail "zia $resource $operation command failed; stderr captured at $stderr_file"
-    record_result "zia/$resource" "$operation" "FAIL" "-" "command failed; see $(artifact_note "$stderr_file")"
+    fail "$product $resource $operation command failed; stderr captured at $stderr_file"
+    record_result "$qualified" "$operation" "FAIL" "-" "command failed; see $(artifact_note "$stderr_file")"
     continue
   fi
 
   if [[ "$operation" == "show" ]]; then
-    if validate_json_object "zia $resource show" "$stdout_file"; then
+    if validate_json_object "$product $resource show" "$stdout_file"; then
       list_records="1"
-      printf '1\n' >"$lists_dir/zia-${resource}.count"
-      validate_no_denied_keys "zia $resource show" "$resource" "$stdout_file"
-      validate_catalog_subset "zia $resource show" "$resource" "$stdout_file" "$schema_file"
-      summarize_redaction_markers "zia $resource show" "$stdout_file"
+      printf '1\n' >"$lists_dir/${artifact}.count"
+      validate_no_denied_keys "$product $resource show" "$resource" "$stdout_file"
+      validate_catalog_subset "$product $resource show" "$product" "$resource" "$stdout_file" "$schema_file"
+      summarize_redaction_markers "$product $resource show" "$stdout_file"
     fi
-  elif validate_json_array "zia $resource list" "$stdout_file"; then
+  elif validate_json_array "$product $resource list" "$stdout_file"; then
     list_records="$(jq 'length' "$stdout_file")"
-    printf '%s\n' "$list_records" >"$lists_dir/zia-${resource}.count"
-    validate_no_denied_keys "zia $resource list" "$resource" "$stdout_file"
-    validate_catalog_subset "zia $resource list" "$resource" "$stdout_file" "$schema_file"
-    summarize_redaction_markers "zia $resource list" "$stdout_file"
+    printf '%s\n' "$list_records" >"$lists_dir/${artifact}.count"
+    validate_no_denied_keys "$product $resource list" "$resource" "$stdout_file"
+    validate_catalog_subset "$product $resource list" "$product" "$resource" "$stdout_file" "$schema_file"
+    summarize_redaction_markers "$product $resource list" "$stdout_file"
   fi
   record_result_from_failures \
-    "zia/$resource" \
+    "$qualified" \
     "$operation" \
     "$list_start_failures" \
     "$list_records" \
@@ -985,16 +1069,16 @@ dump_dir="$out_dir/dump"
 dump_stdout="$out_dir/dump.stdout"
 dump_stderr="$out_dir/dump.stderr"
 dump_command_start_failures="$failures"
-dump_args=(dump --products zia)
+dump_args=(dump --products "$products_csv")
 if ((${#requested_resources[@]} != 0)); then
   dump_args+=(--resources "$(join_csv "${resources[@]}")")
 fi
 dump_args+=(--out "$dump_dir")
 
 if "${cli[@]}" "${dump_args[@]}" >"$dump_stdout" 2>"$dump_stderr"; then
-  pass "zia dump command completed"
+  pass "$products_csv dump command completed"
 else
-  fail "zia dump command failed; stderr captured at $dump_stderr"
+  fail "$products_csv dump command failed; stderr captured at $dump_stderr"
 fi
 record_result_from_failures \
   "dump" \
@@ -1008,7 +1092,9 @@ if [[ -d "$dump_dir" ]]; then
   manifest_start_failures="$failures"
   validate_file_mode "dump root directory" "$dump_dir" "700"
   validate_file_mode "dump resources directory" "$dump_dir/resources" "700"
-  validate_file_mode "dump zia directory" "$dump_dir/resources/zia" "700"
+  for product in "${products[@]}"; do
+    validate_file_mode "dump $product directory" "$dump_dir/resources/$product" "700"
+  done
 
   manifest="$dump_dir/manifest.json"
   report="$dump_dir/redaction_report.json"
@@ -1031,7 +1117,7 @@ if [[ -d "$dump_dir" ]]; then
       else
         fail "dump manifest includes unexpected partial-error metadata"
       fi
-      validate_manifest_resource_set "$manifest" "$expected_paths_file" "$lists_dir/manifest-zia-dump-paths.txt" "$lists_dir/manifest-zia-dump-paths.diff"
+      validate_manifest_resource_set "$manifest" "$expected_paths_file" "$lists_dir/manifest-dump-paths.txt" "$lists_dir/manifest-dump-paths.diff"
     else
       fail "dump manifest is not valid JSON: $manifest"
     fi
@@ -1070,49 +1156,52 @@ if [[ -d "$dump_dir" ]]; then
     "see $(artifact_note "$dump_dir")"
 
   dump_files_start_failures="$failures"
-  validate_dump_file_set "$dump_dir" "$expected_paths_file" "$lists_dir/actual-zia-dump-paths.txt" "$lists_dir/actual-zia-dump-paths.diff"
+  validate_dump_file_set "$dump_dir" "$expected_paths_file" "$lists_dir/actual-dump-paths.txt" "$lists_dir/actual-dump-paths.diff"
   record_result_from_failures \
     "dump" \
     "files" \
     "$dump_files_start_failures" \
     "${#resources[@]}" \
     "resource set matches" \
-    "see $(artifact_note "$lists_dir/actual-zia-dump-paths.diff")"
+    "see $(artifact_note "$lists_dir/actual-dump-paths.diff")"
 
-  for resource in "${resources[@]}"; do
-    file="$dump_dir/resources/zia/${resource}.json"
+  for qualified in "${resources[@]}"; do
+    product="$(resource_product "$qualified")"
+    resource="$(resource_name "$qualified")"
+    artifact="$(resource_artifact_name "$qualified")"
+    file="$dump_dir/resources/$product/${resource}.json"
     dump_resource_start_failures="$failures"
     dump_records="-"
-    operation="$(resource_operation "$resource" "$schema_file")"
+    operation="$(resource_operation "$qualified" "$schema_file")"
     if [[ ! -f "$file" ]]; then
       fail "dump resource file missing: $file"
-      record_result "zia/$resource" "dump" "FAIL" "-" "missing $(artifact_note "$file")"
+      record_result "$qualified" "dump" "FAIL" "-" "missing $(artifact_note "$file")"
       continue
     fi
-    validate_file_mode "dump zia $resource file" "$file" "600"
+    validate_file_mode "dump $product $resource file" "$file" "600"
     if [[ "$operation" == "show" ]]; then
-      if validate_json_object "dump zia $resource" "$file"; then
+      if validate_json_object "dump $product $resource" "$file"; then
         dump_records="1"
-        printf '1\n' >"$lists_dir/dump-zia-${resource}.count"
-        validate_no_denied_keys "dump zia $resource" "$resource" "$file"
-        validate_catalog_subset "dump zia $resource" "$resource" "$file" "$schema_file"
-        summarize_redaction_markers "dump zia $resource" "$file"
-        if [[ -f "$lists_dir/zia-${resource}.count" ]]; then
-          compare_counts "$resource" "$operation" "$(cat "$lists_dir/zia-${resource}.count")" "$(cat "$lists_dir/dump-zia-${resource}.count")"
+        printf '1\n' >"$lists_dir/dump-${artifact}.count"
+        validate_no_denied_keys "dump $product $resource" "$resource" "$file"
+        validate_catalog_subset "dump $product $resource" "$product" "$resource" "$file" "$schema_file"
+        summarize_redaction_markers "dump $product $resource" "$file"
+        if [[ -f "$lists_dir/${artifact}.count" ]]; then
+          compare_counts "$qualified" "$operation" "$(cat "$lists_dir/${artifact}.count")" "$(cat "$lists_dir/dump-${artifact}.count")"
         fi
       fi
-    elif validate_json_array "dump zia $resource" "$file"; then
+    elif validate_json_array "dump $product $resource" "$file"; then
       dump_records="$(jq 'length' "$file")"
-      printf '%s\n' "$dump_records" >"$lists_dir/dump-zia-${resource}.count"
-      validate_no_denied_keys "dump zia $resource" "$resource" "$file"
-      validate_catalog_subset "dump zia $resource" "$resource" "$file" "$schema_file"
-      summarize_redaction_markers "dump zia $resource" "$file"
-      if [[ -f "$lists_dir/zia-${resource}.count" ]]; then
-        compare_counts "$resource" "$operation" "$(cat "$lists_dir/zia-${resource}.count")" "$(cat "$lists_dir/dump-zia-${resource}.count")"
+      printf '%s\n' "$dump_records" >"$lists_dir/dump-${artifact}.count"
+      validate_no_denied_keys "dump $product $resource" "$resource" "$file"
+      validate_catalog_subset "dump $product $resource" "$product" "$resource" "$file" "$schema_file"
+      summarize_redaction_markers "dump $product $resource" "$file"
+      if [[ -f "$lists_dir/${artifact}.count" ]]; then
+        compare_counts "$qualified" "$operation" "$(cat "$lists_dir/${artifact}.count")" "$(cat "$lists_dir/dump-${artifact}.count")"
       fi
     fi
     record_result_from_failures \
-      "zia/$resource" \
+      "$qualified" \
       "dump" \
       "$dump_resource_start_failures" \
       "$dump_records" \

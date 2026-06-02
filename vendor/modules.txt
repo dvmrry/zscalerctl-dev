@@ -124,6 +124,14 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
 # golang.org/x/sys v0.44.0
 ## explicit; go 1.25.0

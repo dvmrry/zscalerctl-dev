@@ -13,6 +13,8 @@ without_live_creds=(
   -u ZSCALERCTL_CLIENT_SECRET
   -u ZSCALERCTL_CLIENT_SECRET_FILE
   -u ZSCALERCTL_VANITY_DOMAIN
+  -u ZSCALERCTL_ZPA_CUSTOMER_ID
+  -u ZSCALERCTL_ZPA_MICROTENANT_ID
   -u ZSCALERCTL_ZIA_USERNAME
   -u ZSCALERCTL_ZIA_PASSWORD
   -u ZSCALERCTL_ZIA_PASSWORD_FILE
@@ -26,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(advanced-settings atp-malware-policy gre-tunnels location-groups locations mobile-threat-settings org-information rule-labels static-ips url-filtering-rules)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/private-cloud-groups zpa/config-overrides zpa/private-cloud-controllers)
 
 schema_fields() {
   case "$1" in
@@ -60,6 +62,42 @@ schema_fields() {
     url-filtering-rules)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"locations","allowed_modes":["standard"]}]'
       ;;
+    server-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]}]'
+      ;;
+    app-connectors)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"assistantVersion","allowed_modes":[]}]'
+      ;;
+    service-edge-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"serviceEdges","allowed_modes":[]}]'
+      ;;
+    service-edges)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"provisioningKeyName","allowed_modes":[]}]'
+      ;;
+    cloud-connector-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"cloudConnectors","allowed_modes":[]},{"name":"geoLocationId","allowed_modes":[]}]'
+      ;;
+    cloud-connectors)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"edgeConnectorGroupName","allowed_modes":["standard"]},{"name":"enrollmentCert","allowed_modes":[]},{"name":"fingerprint","allowed_modes":[]}]'
+      ;;
+    posture-profiles)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"domain","allowed_modes":["standard"]},{"name":"postureType","allowed_modes":["standard"]},{"name":"rootCert","allowed_modes":[]}]'
+      ;;
+    cbi-zpa-profiles)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"cbiProfileId","allowed_modes":["standard"]},{"name":"cbiTenantId","allowed_modes":[]}]'
+      ;;
+    c2c-ip-ranges)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"subnetCidr","allowed_modes":["standard"]},{"name":"customerId","allowed_modes":[]}]'
+      ;;
+    private-cloud-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"microtenantId","allowed_modes":[]}]'
+      ;;
+    config-overrides)
+      printf '[{"name":"brokerName","allowed_modes":["standard"]},{"name":"customerName","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"targetName","allowed_modes":["standard"]},{"name":"targetType","allowed_modes":["standard"]},{"name":"configValue","allowed_modes":[]}]'
+      ;;
+    private-cloud-controllers)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"enrollmentCert","allowed_modes":[]}]'
+      ;;
     *)
       echo "unexpected resource: $1" >&2
       exit 2
@@ -67,7 +105,22 @@ schema_fields() {
   esac
 }
 
+schema_operations() {
+  case "$1" in
+    advanced-settings|atp-malware-policy|mobile-threat-settings|org-information)
+      printf '[{"name":"show","capability":"read"}]'
+      ;;
+    cloud-connectors|config-overrides)
+      printf '[{"name":"list","capability":"read"}]'
+      ;;
+    *)
+      printf '[{"name":"list","capability":"read"},{"name":"get","capability":"read"}]'
+      ;;
+  esac
+}
+
 write_schema() {
+  local product
   local resource
 
   printf '[\n'
@@ -75,47 +128,46 @@ write_schema() {
     if [[ "$resource" != "${resources[0]}" ]]; then
       printf ',\n'
     fi
-    if [[ "$resource" == "advanced-settings" || "$resource" == "atp-malware-policy" || "$resource" == "mobile-threat-settings" || "$resource" == "org-information" ]]; then
-      printf '  {"product":"zia","name":"%s","operations":[{"name":"show","capability":"read"}],"fields":%s}' "$resource" "$(schema_fields "$resource")"
-    else
-      printf '  {"product":"zia","name":"%s","operations":[{"name":"list","capability":"read"},{"name":"get","capability":"read"}],"fields":%s}' "$resource" "$(schema_fields "$resource")"
-    fi
+    product="${resource%%/*}"
+    resource="${resource#*/}"
+    printf '  {"product":"%s","name":"%s","operations":%s,"fields":%s}' "$product" "$resource" "$(schema_operations "$resource")" "$(schema_fields "$resource")"
   done
   printf '\n]\n'
 }
 
 write_resource() {
-  local resource="$1"
-  case "$mode:$resource" in
-    empty-object:advanced-settings)
+  local product="$1"
+  local resource="$2"
+  case "$mode:$product:$resource" in
+    empty-object:zia:advanced-settings)
       printf '{}\n'
       ;;
-    *:advanced-settings)
+    *:zia:advanced-settings)
       printf '{"apiSessionTimeout":30,"authBypassUrls":["admin.internal.example"]}\n'
       ;;
-    leaky-settings:mobile-threat-settings)
-      printf '{"blockAppsSendingUnencryptedUserCredentials":true,"clientCredential":"should-fail"}\n'
-      ;;
-    *:atp-malware-policy)
+    *:zia:atp-malware-policy)
       printf '{"blockPasswordProtectedArchiveFiles":true,"blockUnscannableFiles":false}\n'
       ;;
-    *:mobile-threat-settings)
+    leaky-settings:zia:mobile-threat-settings)
+      printf '{"blockAppsSendingUnencryptedUserCredentials":true,"clientCredential":"should-fail"}\n'
+      ;;
+    *:zia:mobile-threat-settings)
       printf '{"blockAppsSendingUnencryptedUserCredentials":true,"blockAppsSendingDeviceIdentifier":false}\n'
       ;;
-    *:org-information)
+    *:zia:org-information)
       printf '{"name":"Example tenant","city":"New York"}\n'
       ;;
-    leaky:locations)
+    leaky:zia:locations)
       printf '[{"id":1,"name":"HQ","preSharedKey":"plain-secret"}]\n'
       ;;
-    invalid-json:gre-tunnels)
+    invalid-json:zia:gre-tunnels)
       printf '{"broken":'
       ;;
-    list-fails:gre-tunnels)
+    list-fails:zia:gre-tunnels)
       echo "mock API 404 not entitled" >&2
       exit 7
       ;;
-    json-list-fails:gre-tunnels)
+    json-list-fails:zia:gre-tunnels)
       cat >&2 <<'JSON'
 {
   "error": {
@@ -126,29 +178,65 @@ write_resource() {
 JSON
       exit 7
       ;;
-    *:locations)
+    *:zia:locations)
       printf '[{"id":1,"name":"HQ","description":"<REDACTED:SECRET>","ipAddresses":["192.0.2.10"]}]\n'
       ;;
-    leaky-location-groups:location-groups)
+    leaky-location-groups:zia:location-groups)
       printf '[{"id":5,"name":"Branch groups","lastModUser":{"id":1,"name":"Admin"},"dynamicLocationGroupCriteria":{"name":{"matchString":"secret branch"}},"locations":[{"id":1,"name":"HQ"}]}]\n'
       ;;
-    *:location-groups)
+    *:zia:location-groups)
       printf '[{"id":5,"name":"Branch groups","comments":"","groupType":"STATIC_GROUP","predefined":false}]\n'
       ;;
-    unexpected-field:rule-labels)
+    unexpected-field:zia:rule-labels)
       printf '[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4,"unexpectedField":"not a value to print"}]\n'
       ;;
-    *:rule-labels)
+    *:zia:rule-labels)
       printf '[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4}]\n'
       ;;
-    *:static-ips)
+    *:zia:static-ips)
       printf '[{"id":3,"ipAddress":"198.51.100.10","routableIP":true,"comment":""}]\n'
       ;;
-    *:gre-tunnels)
+    *:zia:gre-tunnels)
       printf '[{"id":4,"sourceIp":"203.0.113.10","internalIpRange":"10.0.0.0/24","comment":"","withinCountry":true}]\n'
       ;;
-    *:url-filtering-rules)
+    *:zia:url-filtering-rules)
       printf '[{"id":6,"name":"URL rule","locations":[{"id":1,"name":"HQ"}]}]\n'
+      ;;
+    *:zpa:server-groups)
+      printf '[{"id":"sg-1","name":"Server group","description":"","enabled":true}]\n'
+      ;;
+    *:zpa:app-connectors)
+      printf '[{"id":"app-connector-1","name":"App connector","description":"","enabled":true,"location":"San Jose, CA"}]\n'
+      ;;
+    *:zpa:service-edge-groups)
+      printf '[{"id":"seg-1","name":"Service edge group","description":"","enabled":true}]\n'
+      ;;
+    *:zpa:service-edges)
+      printf '[{"id":"se-1","name":"Service edge","description":"","enabled":true}]\n'
+      ;;
+    *:zpa:cloud-connector-groups)
+      printf '[{"id":"ccg-1","name":"Cloud connector group","description":"","enabled":true}]\n'
+      ;;
+    *:zpa:cloud-connectors)
+      printf '[{"id":"cloud-connector-1","name":"Cloud connector","description":"","enabled":true,"edgeConnectorGroupName":"Cloud connector group"}]\n'
+      ;;
+    *:zpa:posture-profiles)
+      printf '[{"id":"posture-1","name":"Posture profile","domain":"example.internal","postureType":"cert"}]\n'
+      ;;
+    *:zpa:cbi-zpa-profiles)
+      printf '[{"id":"cbi-zpa-profile-1","name":"CBI ZPA profile","description":"","enabled":true,"cbiProfileId":"cbi-profile-1"}]\n'
+      ;;
+    *:zpa:c2c-ip-ranges)
+      printf '[{"id":"c2c-ip-range-1","name":"C2C IP range","description":"","enabled":true,"subnetCidr":"198.51.100.0/24"}]\n'
+      ;;
+    *:zpa:private-cloud-groups)
+      printf '[{"id":"private-cloud-group-1","name":"Private cloud group","description":"","enabled":true,"location":"San Jose, CA"}]\n'
+      ;;
+    *:zpa:config-overrides)
+      printf '[{"brokerName":"Broker","customerName":"Customer","description":"","targetName":"Target","targetType":"BROKER"}]\n'
+      ;;
+    *:zpa:private-cloud-controllers)
+      printf '[{"id":"private-cloud-controller-1","name":"Private cloud controller","description":"","enabled":true,"location":"San Jose, CA"}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2
@@ -159,15 +247,19 @@ JSON
 
 write_dump() {
   local out=""
+  local selected_products=(zia)
   local selected_resources=("${resources[@]}")
+  local explicit_resources=0
   shift
   while (($#)); do
     case "$1" in
       --products)
+        IFS=',' read -r -a selected_products <<<"$2"
         shift 2
         ;;
       --resources)
         IFS=',' read -r -a selected_resources <<<"$2"
+        explicit_resources=1
         shift 2
         ;;
       --out)
@@ -177,21 +269,34 @@ write_dump() {
       *)
         echo "unexpected dump arg: $1" >&2
         exit 2
-        ;;
+      ;;
     esac
   done
+  if ((explicit_resources == 0)); then
+    selected_resources=()
+    local candidate
+    for candidate in "${resources[@]}"; do
+      if product_in_list "${candidate%%/*}" "${selected_products[@]}"; then
+        selected_resources+=("$candidate")
+      fi
+    done
+  fi
   if [[ -z "$out" ]]; then
     echo "missing --out" >&2
     exit 2
   fi
 
-  mkdir -p "$out/resources/zia"
-  chmod 700 "$out" "$out/resources" "$out/resources/zia"
+  mkdir -p "$out/resources"
+  chmod 700 "$out" "$out/resources"
 
+  local product
   local resource
   for resource in "${selected_resources[@]}"; do
-    resource="${resource#zia/}"
-    write_resource "$resource" >"$out/resources/zia/$resource.json"
+    product="${resource%%/*}"
+    resource="${resource#*/}"
+    mkdir -p "$out/resources/$product"
+    chmod 700 "$out/resources/$product"
+    write_resource "$product" "$resource" >"$out/resources/$product/$resource.json"
   done
 
   if [[ "$mode" == "missing-manifest-resource" ]]; then
@@ -220,13 +325,14 @@ JSON
 JSON
       local first=1
       for resource in "${selected_resources[@]}"; do
-        resource="${resource#zia/}"
+        product="${resource%%/*}"
+        resource="${resource#*/}"
         if ((first)); then
           first=0
         else
           printf ',\n'
         fi
-        printf '    {"product": "zia", "name": "%s", "status": "complete", "path": "resources/zia/%s.json", "records": 1}' "$resource" "$resource"
+        printf '    {"product": "%s", "name": "%s", "status": "complete", "path": "resources/%s/%s.json", "records": 1}' "$product" "$resource" "$product" "$resource"
       done
       cat <<'JSON'
 
@@ -254,8 +360,22 @@ JSON
 }
 JSON
 
-  chmod 600 "$out"/manifest.json "$out"/redaction_report.json "$out"/resources/zia/*.json
+  find "$out/resources" -type f -name '*.json' -exec chmod 600 {} +
+  chmod 600 "$out"/manifest.json "$out"/redaction_report.json
   echo "dump written: $out"
+}
+
+product_in_list() {
+  local needle="$1"
+  shift
+  local item
+
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 if [[ "${1:-}" == "--format" && "${2:-}" == "json" && "${3:-}" == "schema" && "${4:-}" == "list" ]]; then
@@ -264,11 +384,11 @@ if [[ "${1:-}" == "--format" && "${2:-}" == "json" && "${3:-}" == "schema" && "$
 fi
 
 if [[ "${1:-}" == "--format" ]]; then
-  if [[ "${2:-}" != "json" || "${3:-}" != "zia" || ("${5:-}" != "list" && "${5:-}" != "show") ]]; then
+  if [[ "${2:-}" != "json" || ("${5:-}" != "list" && "${5:-}" != "show") ]]; then
     echo "unexpected resource args: $*" >&2
     exit 2
   fi
-  write_resource "$4"
+  write_resource "$3" "$4"
   exit 0
 fi
 
@@ -318,6 +438,27 @@ fi
 if ! grep -q '\[FAIL\] no supported live credentials configured' "$tmp_dir/stderr-require-creds"; then
   echo "live-smoke --require-credentials did not print missing-credentials failure" >&2
   cat "$tmp_dir/stderr-require-creds" >&2
+  exit 1
+fi
+
+if env \
+  -u ZSCALERCTL_AUTH_MODE \
+  -u ZSCALERCTL_ZPA_CUSTOMER_ID \
+  -u ZSCALERCTL_ZPA_MICROTENANT_ID \
+  ZSCALERCTL_CLIENT_ID=client-id \
+  ZSCALERCTL_CLIENT_SECRET=client-secret \
+  ZSCALERCTL_VANITY_DOMAIN=vanity \
+  ZSCALERCTL_BIN="$fake_bin" \
+  "$repo_root/scripts/live-smoke.sh" --no-manifest --require-credentials --resources zpa/server-groups --out "$tmp_dir/out-zpa-missing-customer" >"$tmp_dir/stdout-zpa-missing-customer" 2>"$tmp_dir/stderr-zpa-missing-customer"; then
+  echo "live-smoke accepted selected ZPA resources without ZPA customer ID" >&2
+  cat "$tmp_dir/stdout-zpa-missing-customer" >&2
+  cat "$tmp_dir/stderr-zpa-missing-customer" >&2
+  exit 1
+fi
+
+if ! grep -q '\[FAIL\] selected ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID' "$tmp_dir/stderr-zpa-missing-customer"; then
+  echo "live-smoke missing-customer failure did not mention ZSCALERCTL_ZPA_CUSTOMER_ID" >&2
+  cat "$tmp_dir/stderr-zpa-missing-customer" >&2
   exit 1
 fi
 
@@ -401,13 +542,13 @@ if ! grep -q '\[INFO\] redaction report zia locations: dropped fields \[vpnCrede
   exit 1
 fi
 
-if ! grep -q '\[PASS\] zia locations list and dump counts match (1 records)' "$tmp_dir/stdout-good"; then
+if ! grep -q '\[PASS\] zia/locations list and dump counts match (1 records)' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not compare list and dump counts" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
 fi
 
-if ! grep -q '\[PASS\] zia advanced-settings show and dump counts match (1 records)' "$tmp_dir/stdout-good"; then
+if ! grep -q '\[PASS\] zia/advanced-settings show and dump counts match (1 records)' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not compare show and dump counts" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
@@ -461,13 +602,13 @@ if ! grep -F -q '[INFO] dump zia locations redaction markers at: [].description'
   exit 1
 fi
 
-if ! grep -q '\[PASS\] dump manifest resource set matches ZIA catalog' "$tmp_dir/stdout-good"; then
+if ! grep -q '\[PASS\] dump manifest resource set matches selected resources' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not validate manifest resource set" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
 fi
 
-if ! grep -q '\[PASS\] dump resource files match ZIA catalog' "$tmp_dir/stdout-good"; then
+if ! grep -q '\[PASS\] dump resource files match selected resources' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not validate dump file set" >&2
   cat "$tmp_dir/stdout-good" >&2
   exit 1
@@ -480,7 +621,7 @@ if ! ZSCALERCTL_BIN="$fake_bin" "$repo_root/scripts/live-smoke.sh" --skip-creden
   exit 1
 fi
 
-if ! grep -q '\[PASS\] live smoke selected 2 ZIA resource(s): locations rule-labels' "$tmp_dir/stdout-subset"; then
+if ! grep -q '\[PASS\] live smoke selected 2 resource(s): zia/locations zia/rule-labels' "$tmp_dir/stdout-subset"; then
   echo "live-smoke subset fixture did not report selected resources" >&2
   cat "$tmp_dir/stdout-subset" >&2
   exit 1
@@ -512,7 +653,7 @@ if ! grep -q '\[INFO\] using live smoke manifest:' "$tmp_dir/stdout-manifest"; t
   exit 1
 fi
 
-if ! grep -q '\[PASS\] live smoke selected 2 ZIA resource(s): locations rule-labels' "$tmp_dir/stdout-manifest"; then
+if ! grep -q '\[PASS\] live smoke selected 2 resource(s): zia/locations zia/rule-labels' "$tmp_dir/stdout-manifest"; then
   echo "live-smoke manifest fixture did not report selected resources" >&2
   cat "$tmp_dir/stdout-manifest" >&2
   exit 1
@@ -521,6 +662,36 @@ fi
 if grep -q 'zia static-ips list command completed' "$tmp_dir/stdout-manifest"; then
   echo "live-smoke manifest fixture listed an unselected resource" >&2
   cat "$tmp_dir/stdout-manifest" >&2
+  exit 1
+fi
+
+zpa_manifest="$tmp_dir/zpa-live-smoke.manifest"
+cat >"$zpa_manifest" <<'EOF'
+zpa/server-groups
+EOF
+
+if ! ZSCALERCTL_BIN="$fake_bin" "$repo_root/scripts/live-smoke.sh" --skip-credential-check --manifest "$zpa_manifest" --out "$tmp_dir/out-zpa-manifest" >"$tmp_dir/stdout-zpa-manifest" 2>"$tmp_dir/stderr-zpa-manifest"; then
+  echo "live-smoke rejected a valid ZPA manifest resource subset" >&2
+  cat "$tmp_dir/stdout-zpa-manifest" >&2
+  cat "$tmp_dir/stderr-zpa-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] live smoke selected 1 resource(s): zpa/server-groups' "$tmp_dir/stdout-zpa-manifest"; then
+  echo "live-smoke ZPA manifest fixture did not report selected resources" >&2
+  cat "$tmp_dir/stdout-zpa-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] zpa server-groups list command completed' "$tmp_dir/stdout-zpa-manifest"; then
+  echo "live-smoke ZPA manifest fixture did not run the ZPA list command" >&2
+  cat "$tmp_dir/stdout-zpa-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] manifest count matches resources/zpa/server-groups.json (1 records)' "$tmp_dir/stdout-zpa-manifest"; then
+  echo "live-smoke ZPA manifest fixture did not validate ZPA manifest counts" >&2
+  cat "$tmp_dir/stdout-zpa-manifest" >&2
   exit 1
 fi
 
@@ -544,7 +715,7 @@ if ZSCALERCTL_BIN="$fake_bin" "$repo_root/scripts/live-smoke.sh" --skip-credenti
   exit 1
 fi
 
-if ! grep -q 'requested resource is not a ZIA read resource: zia/not-real' "$tmp_dir/stderr-unknown-resource"; then
+if ! grep -q 'requested resource is not a read resource: zia/not-real' "$tmp_dir/stderr-unknown-resource"; then
   echo "live-smoke unknown-resource failure did not mention the requested resource" >&2
   cat "$tmp_dir/stderr-unknown-resource" >&2
   exit 1
@@ -697,7 +868,7 @@ if run_smoke missing-manifest-resource; then
   exit 1
 fi
 
-if ! grep -q 'dump manifest resource set differs from ZIA catalog' "$tmp_dir/stderr-missing-manifest-resource"; then
+if ! grep -q 'dump manifest resource set differs from selected resources' "$tmp_dir/stderr-missing-manifest-resource"; then
   echo "live-smoke missing-manifest-resource failure did not mention resource-set drift" >&2
   cat "$tmp_dir/stderr-missing-manifest-resource" >&2
   exit 1

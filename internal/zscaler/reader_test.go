@@ -46,6 +46,7 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -181,6 +182,16 @@ func TestNewReaderRequiresZIALegacyCredentials(t *testing.T) {
 	cfg.ZIALegacy.APIKey = secret.Secret{}
 	if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
 		t.Fatalf("NewReader(missing ZIA legacy API key) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
+func TestZPALegacyAuthFailsClosedBeforeServiceConstruction(t *testing.T) {
+	t.Parallel()
+
+	service := perCallZIAService{cfg: validLegacyReaderConfig()}
+	_, _, err := service.service(context.Background(), resources.ProductZPA)
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("perCallZIAService.service(zpa with legacy auth) error = %v, want ErrMissingCredentials", err)
 	}
 }
 
@@ -2816,6 +2827,81 @@ func TestReaderGetStaticIPDispatchesByResource(t *testing.T) {
 	}
 }
 
+func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		freeTextCanary = "psk=server-group-canary-value"
+		nestedCanary   = "server-group-nested-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
+				resourceZPAServerGroups,
+				func(context.Context) ([]zpaservergroup.ServerGroup, error) {
+					return []zpaservergroup.ServerGroup{{
+						ID:               "sg-1",
+						Name:             "server-group",
+						Description:      freeTextCanary,
+						Enabled:          true,
+						ConfigSpace:      "DEFAULT",
+						DynamicDiscovery: true,
+						Applications: []zpaservergroup.Applications{{
+							ID:   "app-1",
+							Name: nestedCanary,
+						}},
+					}}, nil
+				},
+				func(context.Context, string) (*zpaservergroup.ServerGroup, error) { return nil, nil },
+				jsonSourceRecord[zpaservergroup.ServerGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServerGroups)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, server-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServerGroups)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServerGroups)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa server-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa server-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "sg-1" {
+		t.Errorf("projected server-group id = %v, want sg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "server-group-canary-value") {
+		t.Errorf("projected server-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"applications", "configSpace", "dynamicDiscovery"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected server-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected server-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected server-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa server-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "applications")
+	assertReportContains(t, reports[0].DroppedFields, "configSpace")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
 func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -3130,6 +3216,17 @@ func assertNoCanaries(t *testing.T, resource string, record map[string]any, cana
 			t.Errorf("projected %s = %#v, want no %q", resource, record, canary)
 		}
 	}
+}
+
+func assertReportContains(t *testing.T, got []string, want string) {
+	t.Helper()
+
+	for _, item := range got {
+		if item == want {
+			return
+		}
+	}
+	t.Errorf("projection report fields = %v, want %q", got, want)
 }
 
 func toString(value any) string {

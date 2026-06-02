@@ -1844,22 +1844,6 @@ func TestDumpRejectsNilReaderSession(t *testing.T) {
 	}
 }
 
-func TestDumpWithUnsupportedProductDoesNotOpenReader(t *testing.T) {
-	t.Parallel()
-
-	var out, errOut bytes.Buffer
-	outDir := filepath.Join(t.TempDir(), "dump")
-	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
-
-	// zpa has no enabled resources on this build, so it is not a known product.
-	// Selecting it must fail fast WITHOUT opening the reader (failingResourceReader
-	// would error if it were ever opened).
-	err := app.Run(context.Background(), []string{"dump", "--products", "zpa", "--out", outDir})
-	if err == nil || !strings.Contains(err.Error(), "unsupported product") {
-		t.Fatalf("App.Run(dump --products zpa --out) error = %v, want unsupported product error", err)
-	}
-}
-
 func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 	t.Parallel()
 
