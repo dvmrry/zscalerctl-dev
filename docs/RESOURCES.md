@@ -1382,6 +1382,26 @@ Fields:
 | `countryCode`, `ipRangeBegin`, `ipRangeEnd`, `latitudeInDb`, `location`, `locationHint`, `longitudeInDb`, `subnetCidr` | Sensitive identifier | `standard` | Local-only network range and placement metadata. |
 | `customerId` | Secret or unmodeled nested structure | none | Dropped until tenant identifiers are separately reviewed. |
 
+## ZPA Private Cloud Groups
+
+Commands:
+
+```sh
+zscalerctl zpa private-cloud-groups list
+zscalerctl zpa private-cloud-groups get <id>
+zscalerctl dump --products zpa --resources zpa/private-cloud-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `isPublic`, `overrideVersionProfile`, `readOnly`, `restrictionType`, `upgradeDay`, `upgradeTimeInSecs` | Operational metadata | `standard`, `share`, `paranoid` | Private cloud group identity, lifecycle, state, visibility, and upgrade metadata. |
+| `name`, `microtenantName`, `siteName`, `versionProfileName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `city`, `cityCountry`, `countryCode`, `latitude`, `location`, `longitude` | Sensitive identifier | `standard` | Local-only placement metadata. |
+| `geoLocationId`, `microtenantId`, `siteId`, `versionProfileId`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until placement, tenant, site, version-profile, and management-scope identifiers are separately reviewed. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

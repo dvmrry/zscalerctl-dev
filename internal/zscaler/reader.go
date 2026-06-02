@@ -76,6 +76,7 @@ import (
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpaprivatecloudgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/private_cloud_group"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -168,6 +169,7 @@ const (
 	resourceZPAPostureProfs            = "posture-profiles"
 	resourceZPACBIZPAProfs             = "cbi-zpa-profiles"
 	resourceZPAC2CIPRanges             = "c2c-ip-ranges"
+	resourceZPAPrivateClGrps           = "private-cloud-groups"
 )
 
 type AuthMode string
@@ -1061,6 +1063,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpac2cipranges.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpac2cipranges.IPRanges],
+		),
+		{product: resources.ProductZPA, name: resourceZPAPrivateClGrps}: newListGetHandler(
+			resourceZPAPrivateClGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaprivatecloudgroup.PrivateCloudGroup, *http.Response, error) {
+				return zpaprivatecloudgroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaprivatecloudgroup.PrivateCloudGroup, *http.Response, error) {
+				return zpaprivatecloudgroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaprivatecloudgroup.PrivateCloudGroup],
 		),
 	}
 }

@@ -50,6 +50,7 @@ import (
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpaprivatecloudgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/private_cloud_group"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
@@ -3361,6 +3362,102 @@ func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) 
 		t.Fatalf("ProjectRecords(zpa c2c-ip-ranges) reports length = %d, want 1", len(reports))
 	}
 	assertReportContains(t, reports[0].DroppedFields, "customerId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAPrivateCloudGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-private-cloud-group-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAPrivateClGrps}: newListGetHandler(
+				resourceZPAPrivateClGrps,
+				func(context.Context) ([]zpaprivatecloudgroup.PrivateCloudGroup, error) {
+					return []zpaprivatecloudgroup.PrivateCloudGroup{{
+						ID:                     "private-cloud-group-1",
+						Name:                   "Private cloud group",
+						Description:            "psk=private-cloud-group-canary-value",
+						Enabled:                true,
+						City:                   "San Jose",
+						CityCountry:            "San Jose, US",
+						CountryCode:            "US",
+						CreationTime:           "1700000000000",
+						GeoLocationID:          nestedCanary,
+						IsPublic:               "false",
+						Latitude:               "37.3387",
+						Location:               "San Jose, CA",
+						Longitude:              "-121.8853",
+						MicrotenantID:          nestedCanary,
+						MicrotenantName:        "Microtenant",
+						ModifiedBy:             "admin-1",
+						ModifiedTime:           "1700000100000",
+						OverrideVersionProfile: true,
+						ReadOnly:               true,
+						RestrictionType:        "CUSTOMER",
+						SiteID:                 nestedCanary,
+						SiteName:               "Site",
+						UpgradeDay:             "SUNDAY",
+						UpgradeTimeInSecs:      "66600",
+						VersionProfileID:       nestedCanary,
+						VersionProfileName:     "Default",
+						ZscalerManaged:         true,
+					}}, nil
+				},
+				func(context.Context, string) (*zpaprivatecloudgroup.PrivateCloudGroup, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaprivatecloudgroup.PrivateCloudGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAPrivateClGrps)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, private-cloud-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAPrivateClGrps)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAPrivateClGrps)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa private-cloud-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa private-cloud-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "private-cloud-group-1" {
+		t.Errorf("projected private-cloud-group id = %v, want private-cloud-group-1", got["id"])
+	}
+	if got["location"] != "San Jose, CA" {
+		t.Errorf("projected private-cloud-group location = %v, want San Jose, CA", got["location"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "private-cloud-group-canary-value") {
+		t.Errorf("projected private-cloud-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"geoLocationId", "microtenantId", "siteId", "versionProfileId", "zscalerManaged"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected private-cloud-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected private-cloud-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected private-cloud-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa private-cloud-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "geoLocationId")
+	assertReportContains(t, reports[0].DroppedFields, "microtenantId")
+	assertReportContains(t, reports[0].DroppedFields, "siteId")
+	assertReportContains(t, reports[0].DroppedFields, "versionProfileId")
+	assertReportContains(t, reports[0].DroppedFields, "zscalerManaged")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 

@@ -66,6 +66,7 @@ import (
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpaprivatecloudgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/private_cloud_group"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -2284,6 +2285,41 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"subnetCidr",
 				"totalIps",
 				"usedIps",
+			},
+		},
+		{
+			name:         "zpaprivatecloudgroup.PrivateCloudGroup",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAPrivateClGrps,
+			typ:          reflect.TypeOf(zpaprivatecloudgroup.PrivateCloudGroup{}),
+			catalogFields: []string{
+				"city",
+				"cityCountry",
+				"countryCode",
+				"creationTime",
+				"description",
+				"enabled",
+				"geoLocationId",
+				"id",
+				"isPublic",
+				"latitude",
+				"location",
+				"longitude",
+				"microtenantId",
+				"microtenantName",
+				"modifiedBy",
+				"modifiedTime",
+				"name",
+				"overrideVersionProfile",
+				"readOnly",
+				"restrictionType",
+				"siteId",
+				"siteName",
+				"upgradeDay",
+				"upgradeTimeInSecs",
+				"versionProfileId",
+				"versionProfileName",
+				"zscalerManaged",
 			},
 		},
 		{
