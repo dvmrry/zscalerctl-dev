@@ -46,6 +46,8 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
@@ -3049,6 +3051,155 @@ func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T)
 	assertReportContains(t, reports[0].DroppedFields, "privateBrokerVersion")
 	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPACloudConnectorGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-cloud-connector-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPACloudConnGrps}: newListGetHandler(
+				resourceZPACloudConnGrps,
+				func(context.Context) ([]zpacloudconnectorgroup.CloudConnectorGroup, error) {
+					return []zpacloudconnectorgroup.CloudConnectorGroup{{
+						ID:            "ccg-1",
+						Name:          "Cloud connector group",
+						Description:   "psk=cloud-connector-group-canary-value",
+						Enabled:       true,
+						GeolocationID: nestedCanary,
+						CloudConnectors: []zpacloudconnectorgroup.CloudConnectors{{
+							ID:          "connector-1",
+							Name:        nestedCanary,
+							Fingerprint: nestedCanary,
+							SigningCert: map[string]any{
+								"name": nestedCanary,
+							},
+						}},
+					}}, nil
+				},
+				func(context.Context, string) (*zpacloudconnectorgroup.CloudConnectorGroup, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpacloudconnectorgroup.CloudConnectorGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPACloudConnGrps)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, cloud-connector-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPACloudConnGrps)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPACloudConnGrps)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "ccg-1" {
+		t.Errorf("projected cloud-connector-group id = %v, want ccg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cloud-connector-group-canary-value") {
+		t.Errorf("projected cloud-connector-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"cloudConnectors", "geoLocationId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected cloud-connector-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected cloud-connector-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected cloud-connector-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "cloudConnectors")
+	assertReportContains(t, reports[0].DroppedFields, "geoLocationId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-posture-profile-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
+				resourceZPAPostureProfs,
+				func(context.Context) ([]zpapostureprofile.PostureProfile, error) {
+					return []zpapostureprofile.PostureProfile{{
+						ID:                             "posture-1",
+						Name:                           "Posture profile",
+						Domain:                         "example.internal",
+						ApplyToMachineTunnelEnabled:    true,
+						CRLCheckEnabled:                true,
+						NonExportablePrivateKeyEnabled: true,
+						PostureType:                    "cert",
+						PostureudID:                    nestedCanary,
+						RootCert:                       nestedCanary,
+						ZscalerCustomerID:              nestedCanary,
+					}}, nil
+				},
+				func(context.Context, string) (*zpapostureprofile.PostureProfile, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpapostureprofile.PostureProfile],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAPostureProfs)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, posture-profiles) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAPostureProfs)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAPostureProfs)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "posture-1" {
+		t.Errorf("projected posture-profile id = %v, want posture-1", got["id"])
+	}
+	if got["domain"] != "example.internal" {
+		t.Errorf("projected posture-profile domain = %v, want example.internal", got["domain"])
+	}
+	for _, field := range []string{"nonExportablePrivateKeyEnabled", "postureUdid", "rootCert", "zscalerCustomerId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected posture-profile includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected posture-profile = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected posture-profile) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "nonExportablePrivateKeyEnabled")
+	assertReportContains(t, reports[0].DroppedFields, "postureUdid")
+	assertReportContains(t, reports[0].DroppedFields, "rootCert")
+	assertReportContains(t, reports[0].DroppedFields, "zscalerCustomerId")
 }
 
 func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {

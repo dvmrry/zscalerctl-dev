@@ -1304,6 +1304,44 @@ Fields:
 | `ipAcl`, `latitude`, `listenIps`, `location`, `longitude`, `privateIp`, `publicIp`, `publishIps` | Sensitive identifier | `standard` | Local-only placement and network metadata. |
 | `enrollmentCert`, `fingerprint`, `issuedCertId`, `microtenantId`, `privateBrokerVersion`, `provisioningKeyId`, `provisioningKeyName`, `serviceEdgeGroupId`, `upgradeAttempt` | Secret or unmodeled nested structure | none | Dropped until broker, certificate, provisioning, and tenant sub-shapes are separately reviewed. |
 
+## ZPA Cloud Connector Groups
+
+Commands:
+
+```sh
+zscalerctl zpa cloud-connector-groups list
+zscalerctl zpa cloud-connector-groups get <id>
+zscalerctl dump --products zpa --resources zpa/cloud-connector-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `znfGroupType` | Operational metadata | `standard`, `share`, `paranoid` | Cloud connector group identity, state, lifecycle, and operational type metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cloudConnectors`, `geoLocationId`, `ziaCloud`, `ziaOrgId` | Secret or unmodeled nested structure | none | Dropped until cloud connector, geolocation, cloud, and tenant sub-shapes are separately reviewed. |
+
+## ZPA Posture Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa posture-profiles list
+zscalerctl zpa posture-profiles get <id>
+zscalerctl dump --products zpa --resources zpa/posture-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `applyToMachineTunnelEnabled`, `creationTime`, `crlCheckEnabled`, `modifiedBy`, `modifiedTime`, `postureType` | Operational metadata | `standard`, `share`, `paranoid` | Posture profile identity, lifecycle, posture type, and certificate-check flags. |
+| `name`, `platform` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `domain` | Sensitive identifier | `standard` | Local-only posture domain metadata. |
+| `masterCustomerId`, `nonExportablePrivateKeyEnabled`, `postureUdid`, `rootCert`, `zscalerCloud`, `zscalerCustomerId` | Secret or unmodeled nested structure | none | Dropped until certificate, tenant, cloud, and device-posture identifiers are separately reviewed. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

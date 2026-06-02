@@ -61,7 +61,9 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
+	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
+	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -2190,6 +2192,73 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"upgradeAttempt",
 				"upgradeStatus",
 			},
+		},
+		{
+			name:         "zpacloudconnectorgroup.CloudConnectorGroup",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPACloudConnGrps,
+			typ:          reflect.TypeOf(zpacloudconnectorgroup.CloudConnectorGroup{}),
+			catalogFields: []string{
+				"cloudConnectors",
+				"creationTime",
+				"description",
+				"enabled",
+				"geoLocationId",
+				"id",
+				"modifiedBy",
+				"modifiedTime",
+				"name",
+				"ziaCloud",
+				"ziaOrgId",
+				"znfGroupType",
+			},
+		},
+		{
+			name:         "zpapostureprofile.PostureProfile",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAPostureProfs,
+			typ:          reflect.TypeOf(zpapostureprofile.PostureProfile{}),
+			catalogFields: []string{
+				"applyToMachineTunnelEnabled",
+				"creationTime",
+				"crlCheckEnabled",
+				"domain",
+				"id",
+				"masterCustomerId",
+				"modifiedBy",
+				"modifiedTime",
+				"name",
+				"nonExportablePrivateKeyEnabled",
+				"platform",
+				"postureType",
+				"postureUdid",
+				"rootCert",
+				"zscalerCloud",
+				"zscalerCustomerId",
+			},
+		},
+		{
+			name: "zpacloudconnectorgroup.CloudConnectors",
+			typ:  reflect.TypeOf(zpacloudconnectorgroup.CloudConnectors{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped cloudConnectors parent",
+				"creationTime",
+				"description",
+				"enabled",
+				"fingerprint",
+				"id",
+				"ipAcl",
+				"issuedCertId",
+				"microtenantId",
+				"microtenantName",
+				"modifiedBy",
+				"modifiedTime",
+				"name",
+				"readOnly",
+				"restrictionType",
+				"signingCert",
+				"zscalerManaged",
+			),
 		},
 		{
 			name: "workloadgroups.WorkloadTagExpression",

@@ -71,7 +71,9 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
+	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
+	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -160,6 +162,8 @@ const (
 	resourceZPATrustedNets             = "trusted-networks"
 	resourceZPAServiceEdges            = "service-edges"
 	resourceZPAServiceGrps             = "service-edge-groups"
+	resourceZPACloudConnGrps           = "cloud-connector-groups"
+	resourceZPAPostureProfs            = "posture-profiles"
 )
 
 type AuthMode string
@@ -1003,6 +1007,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpaserviceedgecontroller.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpaserviceedgecontroller.ServiceEdgeController],
+		),
+		{product: resources.ProductZPA, name: resourceZPACloudConnGrps}: newListGetHandler(
+			resourceZPACloudConnGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
+				return zpacloudconnectorgroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
+				return zpacloudconnectorgroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpacloudconnectorgroup.CloudConnectorGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
+			resourceZPAPostureProfs,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpapostureprofile.PostureProfile, *http.Response, error) {
+				return zpapostureprofile.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpapostureprofile.PostureProfile, *http.Response, error) {
+				return zpapostureprofile.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpapostureprofile.PostureProfile],
 		),
 	}
 }
