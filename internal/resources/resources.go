@@ -2975,6 +2975,23 @@ func Catalog() ResourceCatalog {
 				secretField("zscalerManaged"),
 			},
 		},
+		{
+			Product:    ProductZPA,
+			Name:       "config-overrides",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				tenantConfigField("brokerName", standardShareModes()),
+				secretField("configKey"),
+				secretField("configValue"),
+				secretField("configValueInt"),
+				secretField("customerId"),
+				tenantConfigField("customerName", standardShareModes()),
+				freeTextField("description", "ZPA config override description"),
+				secretField("targetGid"),
+				tenantConfigField("targetName", standardShareModes()),
+				operationalField("targetType", allModes()),
+			},
+		},
 	}
 }
 

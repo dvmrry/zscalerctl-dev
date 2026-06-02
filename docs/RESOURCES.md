@@ -1402,6 +1402,25 @@ Fields:
 | `city`, `cityCountry`, `countryCode`, `latitude`, `location`, `longitude` | Sensitive identifier | `standard` | Local-only placement metadata. |
 | `geoLocationId`, `microtenantId`, `siteId`, `versionProfileId`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until placement, tenant, site, version-profile, and management-scope identifiers are separately reviewed. |
 
+## ZPA Config Overrides
+
+Commands:
+
+```sh
+zscalerctl zpa config-overrides list
+zscalerctl zpa config-overrides get <id>
+zscalerctl dump --products zpa --resources zpa/config-overrides --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `targetType` | Operational metadata | `standard`, `share`, `paranoid` | Override target type. |
+| `brokerName`, `customerName`, `targetName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `configKey`, `configValue`, `configValueInt`, `customerId`, `targetGid` | Secret or unmodeled nested structure | none | Dropped because override keys, values, and tenant/target identifiers require resource-specific review before exposure. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

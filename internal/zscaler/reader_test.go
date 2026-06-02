@@ -49,6 +49,7 @@ import (
 	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpaprivatecloudgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/private_cloud_group"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
@@ -3458,6 +3459,85 @@ func TestReaderListZPAPrivateCloudGroupsProjectsSDKShapeThroughAllowList(t *test
 	assertReportContains(t, reports[0].DroppedFields, "siteId")
 	assertReportContains(t, reports[0].DroppedFields, "versionProfileId")
 	assertReportContains(t, reports[0].DroppedFields, "zscalerManaged")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-config-override-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAConfigOvrds}: newListGetHandler(
+				resourceZPAConfigOvrds,
+				func(context.Context) ([]zpaconfigoverride.ConfigOverrides, error) {
+					return []zpaconfigoverride.ConfigOverrides{{
+						BrokerName:     "Broker",
+						ConfigKey:      nestedCanary,
+						ConfigValue:    "psk=" + nestedCanary,
+						ConfigValueInt: "12345",
+						CustomerId:     nestedCanary,
+						CustomerName:   "Customer",
+						Description:    "psk=config-override-canary-value",
+						TargetGid:      nestedCanary,
+						TargetName:     "Target",
+						TargetType:     "BROKER",
+					}}, nil
+				},
+				func(context.Context, string) (*zpaconfigoverride.ConfigOverrides, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaconfigoverride.ConfigOverrides],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAConfigOvrds)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, config-overrides) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAConfigOvrds)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAConfigOvrds)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa config-overrides) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa config-overrides) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["brokerName"] != "Broker" {
+		t.Errorf("projected config-overrides brokerName = %v, want Broker", got["brokerName"])
+	}
+	if got["targetType"] != "BROKER" {
+		t.Errorf("projected config-overrides targetType = %v, want BROKER", got["targetType"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "config-override-canary-value") {
+		t.Errorf("projected config-overrides description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"configKey", "configValue", "configValueInt", "customerId", "targetGid"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected config-overrides includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected config-overrides = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected config-overrides) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa config-overrides) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "configKey")
+	assertReportContains(t, reports[0].DroppedFields, "configValue")
+	assertReportContains(t, reports[0].DroppedFields, "configValueInt")
+	assertReportContains(t, reports[0].DroppedFields, "customerId")
+	assertReportContains(t, reports[0].DroppedFields, "targetGid")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 

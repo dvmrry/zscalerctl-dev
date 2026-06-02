@@ -64,6 +64,7 @@ import (
 	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpaprivatecloudgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/private_cloud_group"
@@ -2320,6 +2321,24 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"versionProfileId",
 				"versionProfileName",
 				"zscalerManaged",
+			},
+		},
+		{
+			name:         "zpaconfigoverride.ConfigOverrides",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAConfigOvrds,
+			typ:          reflect.TypeOf(zpaconfigoverride.ConfigOverrides{}),
+			catalogFields: []string{
+				"brokerName",
+				"configKey",
+				"configValue",
+				"configValueInt",
+				"customerId",
+				"customerName",
+				"description",
+				"targetGid",
+				"targetName",
+				"targetType",
 			},
 		},
 		{
