@@ -82,7 +82,7 @@ and artifact handling governed by the operator's records policy. Treat any
 required change ticket or authorization record as an external operational
 control, not as repository content.
 
-## Current Gate
+## Current Gates
 
 The legacy-ZIA smoke gate is closed for the current queued work: PRs `#39` and
 `#58` were live-smoked from the work machine and merged after trimming or

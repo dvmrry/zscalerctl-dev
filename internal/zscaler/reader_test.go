@@ -188,10 +188,10 @@ func TestNewReaderRequiresZIALegacyCredentials(t *testing.T) {
 func TestZPALegacyAuthFailsClosedBeforeServiceConstruction(t *testing.T) {
 	t.Parallel()
 
-	service := perCallZIAService{cfg: validLegacyReaderConfig()}
+	service := perCallService{cfg: validLegacyReaderConfig()}
 	_, _, err := service.service(context.Background(), resources.ProductZPA)
 	if !errors.Is(err, ErrMissingCredentials) {
-		t.Fatalf("perCallZIAService.service(zpa with legacy auth) error = %v, want ErrMissingCredentials", err)
+		t.Fatalf("perCallService.service(zpa with legacy auth) error = %v, want ErrMissingCredentials", err)
 	}
 }
 
