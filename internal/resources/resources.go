@@ -3030,7 +3030,7 @@ func Catalog() ResourceCatalog {
 		{
 			Product:    ProductZPA,
 			Name:       "config-overrides",
-			Operations: ReadOperations(),
+			Operations: ListOperations(),
 			Fields: []FieldSpec{
 				tenantConfigField("brokerName", standardShareModes()),
 				secretField("configKey"),

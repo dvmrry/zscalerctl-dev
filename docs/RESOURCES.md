@@ -1428,7 +1428,6 @@ Commands:
 
 ```sh
 zscalerctl zpa config-overrides list
-zscalerctl zpa config-overrides get <id>
 zscalerctl dump --products zpa --resources zpa/config-overrides --out ./scratch-live-smoke
 ```
 
