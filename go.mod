@@ -2,7 +2,7 @@ module github.com/dvmrry/zscalerctl
 
 go 1.26
 
-toolchain go1.26.3
+toolchain go1.26.4
 
 require github.com/zscaler/zscaler-sdk-go/v3 v3.8.37
 
