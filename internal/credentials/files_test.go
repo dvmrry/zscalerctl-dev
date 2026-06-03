@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/credentials"
@@ -11,6 +12,7 @@ import (
 
 func TestValidateOwnerOnlyFileRejectsGroupReadableFile(t *testing.T) {
 	t.Parallel()
+	skipOwnerOnlySecretFileTestOnWindows(t)
 
 	path := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(path, []byte("fake-secret"), 0o644); err != nil {
@@ -25,6 +27,7 @@ func TestValidateOwnerOnlyFileRejectsGroupReadableFile(t *testing.T) {
 
 func TestValidateOwnerOnlyFileAcceptsOwnerOnlyFile(t *testing.T) {
 	t.Parallel()
+	skipOwnerOnlySecretFileTestOnWindows(t)
 
 	path := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(path, []byte("fake-secret"), 0o600); err != nil {
@@ -38,6 +41,7 @@ func TestValidateOwnerOnlyFileAcceptsOwnerOnlyFile(t *testing.T) {
 
 func TestReadOwnerOnlySecretFile(t *testing.T) {
 	t.Parallel()
+	skipOwnerOnlySecretFileTestOnWindows(t)
 
 	path := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(path, []byte("fake-secret\n"), 0o600); err != nil {
@@ -50,5 +54,13 @@ func TestReadOwnerOnlySecretFile(t *testing.T) {
 	}
 	if got.Reveal() != "fake-secret" {
 		t.Errorf("ReadOwnerOnlySecretFile(%q).Reveal() = %q, want %q", path, got.Reveal(), "fake-secret")
+	}
+}
+
+func skipOwnerOnlySecretFileTestOnWindows(t *testing.T) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("owner-only secret files are unsupported on Windows until ACL checks are implemented")
 	}
 }

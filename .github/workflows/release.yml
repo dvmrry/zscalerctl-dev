@@ -18,6 +18,8 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -76,6 +78,16 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_VERSION: 8.30.1
 
+      - name: Install SBOM tool
+        if: steps.version.outputs.release == 'true'
+        env:
+          CYCLONEDX_GOMOD_VERSION: v1.10.0
+        run: |
+          set -euo pipefail
+          mkdir -p .release-tools
+          GOBIN="$PWD/.release-tools" go install -mod=mod "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}"
+          echo "$PWD/.release-tools" >>"$GITHUB_PATH"
+
       - name: Build release artifacts
         if: steps.version.outputs.release == 'true'
         env:
@@ -88,6 +100,28 @@ jobs:
           date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           ldflags="-s -w -X github.com/dvmrry/zscalerctl/internal/version.version=${VERSION_NO_V} -X github.com/dvmrry/zscalerctl/internal/version.commit=${commit} -X github.com/dvmrry/zscalerctl/internal/version.date=${date}"
 
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            tagged_commit="$(git rev-list -n 1 "$VERSION")"
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "tag $VERSION already exists at $tagged_commit, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+          fi
+          # cyclonedx-gomod v1.10.0 detects the main module version from Git.
+          # Keep the release runner's remote tags untouched, but remove local
+          # semver tags so annotated historical tags cannot confuse the detector.
+          local_semver_tags="$(git tag --list 'v[0-9]*')"
+          if [[ -n "$local_semver_tags" ]]; then
+            while IFS= read -r tag; do
+              git tag -d "$tag" >/dev/null
+            done <<<"$local_semver_tags"
+          fi
+          git tag "$VERSION"
+          cleanup() {
+            git tag -d "$VERSION" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             goos="${target%/*}"
             goarch="${target#*/}"
@@ -98,12 +132,20 @@ jobs:
             name="zscalerctl_${VERSION_NO_V}_${goos}_${goarch}"
             mkdir -p "dist/$name"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -mod=vendor -trimpath -ldflags "$ldflags" -o "dist/$name/zscalerctl$ext" ./cmd/zscalerctl
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" cyclonedx-gomod app -json -licenses -main cmd/zscalerctl -output "dist/$name.sbom.cdx.json" .
+            cp "dist/$name.sbom.cdx.json" "dist/$name/sbom.cdx.json"
             cp LICENSE README.md "dist/$name/"
             tar -C dist -czf "dist/$name.tar.gz" "$name"
             rm -rf "dist/$name"
           done
 
-          (cd dist && shasum -a 256 *.tar.gz > SHA256SUMS)
+          (cd dist && shasum -a 256 *.tar.gz *.sbom.cdx.json > SHA256SUMS)
+
+      - name: Attest release artifacts
+        if: steps.version.outputs.release == 'true'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: dist/SHA256SUMS
 
       - name: Publish release
         if: steps.version.outputs.release == 'true'

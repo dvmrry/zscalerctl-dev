@@ -12,6 +12,7 @@ satisfied for the exact release commit.
 | Git author identity and public attribution are intentional before first public push. | Manual project decision. `LICENSE` uses legal attribution `David Murray <github@mrry.io>`; git/signing identity may use common-name attribution `Dave Murray <github@mrry.io>` intentionally. |
 | Security reporting policy is committed. | Must have a committed `SECURITY.md` before public release. |
 | Versioning policy is committed and semver labels are enforced. | `docs/VERSIONING.md`, `.github/workflows/semver-label.yml`, `.github/workflows/release.yml`, and local `bash scripts/test-verify-semver-label.sh` plus `bash scripts/test-next-version.sh`. |
+| Release artifacts are verifiable. | `.github/workflows/release.yml` publishes release archives, per-target CycloneDX SBOMs, `SHA256SUMS`, and GitHub build provenance attestations over the checksum subject list; CI and local `make check` run `bash scripts/verify-release-artifacts.sh` plus `bash scripts/test-verify-release-artifacts.sh`. |
 | Vendored dependency tree is current. | CI and local `make release-check`: `go mod tidy`, `go mod vendor`, then `git diff --exit-code -- go.mod go.sum vendor`. |
 | Dependency policy checks pass. | CI and local `make check`, including tests, race tests, vet, staticcheck, govulncheck, docs scan, Semgrep invariant checks, SDK-boundary scripts, workflow credential scan, GitHub Actions pinning scan, and live-smoke script self-test. |
 | GitHub Actions remain SHA-pinned and Renovate-managed. | CI and local `bash scripts/verify-actions-pinned.sh` plus `bash scripts/test-verify-actions-pinned.sh`; `renovate.json` extends `helpers:pinGitHubActionDigests`. |
@@ -52,7 +53,10 @@ in required modules require a written review note before release.
 
 Release tags are created by `.github/workflows/release.yml` after merge to
 `main` when the merged pull request has `semver:patch`, `semver:minor`, or
-`semver:major`. `semver:none` intentionally skips release creation.
+`semver:major`. `semver:none` intentionally skips release creation. Release
+assets include the platform archives, per-target CycloneDX SBOMs,
+`SHA256SUMS`, and GitHub provenance attestations for the subjects listed in
+`SHA256SUMS`.
 
 ## Required Live Smoke
 

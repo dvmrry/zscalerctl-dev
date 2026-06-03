@@ -19,6 +19,21 @@
     "gomodTidy",
     "gomodVendor"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Keep the release SBOM generator pinned and updated.",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/release\\.yml$/"
+      ],
+      "matchStrings": [
+        "CYCLONEDX_GOMOD_VERSION:\\s*(?<currentValue>v?\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "github.com/CycloneDX/cyclonedx-gomod",
+      "datasourceTemplate": "go",
+      "versioningTemplate": "semver"
+    }
+  ],
   "packageRules": [
     {
       "description": "SDK bumps change the credentialed trust boundary and require the upgrade runbook.",

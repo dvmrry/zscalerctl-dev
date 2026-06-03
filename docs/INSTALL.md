@@ -4,6 +4,38 @@
 `zscalerctl`; short local aliases such as `zctl` are intentionally left to the
 operator's shell.
 
+## Supported Platforms
+
+Release artifacts are published for macOS and Linux on amd64 and arm64, and for
+Windows on amd64.
+
+On macOS and Linux, file-backed secrets are supported when the secret file is
+owner-only. On Windows, file-backed secrets are not supported yet because the
+permission model needs an explicit ACL design and test coverage. Windows users
+must use protected inline environment variables such as
+`ZSCALERCTL_CLIENT_SECRET`, `ZSCALERCTL_ZIA_PASSWORD`, and
+`ZSCALERCTL_ZIA_API_KEY`; `*_FILE` variables fail closed on Windows until ACL
+support lands.
+
+## Verify Release Artifacts
+
+GitHub releases include platform archives, per-target CycloneDX SBOMs,
+`SHA256SUMS`, and GitHub provenance attestations for the subjects listed in the
+checksum file.
+
+After downloading release assets, verify the checksums from the directory that
+contains the archives:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+```
+
+Verify the provenance attestation for the archive you plan to run:
+
+```sh
+gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz --repo dvmrry/zscalerctl
+```
+
 ## Build From A Checkout
 
 ```sh
