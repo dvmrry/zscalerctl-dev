@@ -509,6 +509,100 @@ func TestReaderListRuleLabelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 }
 
+func TestSourceRecordReferenceHelpersStripExtensions(t *testing.T) {
+	t.Parallel()
+
+	const canary = "client_secret=extension-canary"
+	extensions := map[string]any{"raw": canary}
+	managedBy := locationGroupManagedBySliceSource([]locationgroups.ManagedBy{{
+		ID:         1,
+		Name:       "admin",
+		Extensions: extensions,
+	}})
+	locationGroupManagedBy, ok := managedBy[0].(map[string]any)
+	if !ok {
+		t.Fatalf("locationGroupManagedBySliceSource()[0] = %T, want map[string]any", managedBy[0])
+	}
+	tests := []struct {
+		name string
+		got  map[string]any
+	}{
+		{
+			name: "IDNameExtensions",
+			got: idNameExtensionsSource(&ziacommon.IDNameExtensions{
+				ID:         1,
+				Name:       "reference",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "IDNameExternalID",
+			got: idNameExternalIDSource(&ziacommon.IDNameExternalID{
+				ID:         1,
+				Name:       "reference",
+				ExternalID: "external",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "LocationGroupManagedBy",
+			got:  locationGroupManagedBy,
+		},
+		{
+			name: "LocationGroupLastModUser",
+			got: locationGroupLastModUserSource(&locationgroups.LastModUser{
+				ID:         1,
+				Name:       "admin",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "StaticIPManagedBy",
+			got: staticIPManagedBySource(&staticips.ManagedBy{
+				ID:         1,
+				Name:       "admin",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "StaticIPLastModifiedBy",
+			got: staticIPLastModifiedBySource(&staticips.LastModifiedBy{
+				ID:         1,
+				Name:       "admin",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "GREManagedBy",
+			got: greManagedBySource(&gretunnels.ManagedBy{
+				ID:         1,
+				Name:       "admin",
+				Extensions: extensions,
+			}),
+		},
+		{
+			name: "GRELastModifiedBy",
+			got: greLastModifiedBySource(&gretunnels.LastModifiedBy{
+				ID:         1,
+				Name:       "admin",
+				Extensions: extensions,
+			}),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := tt.got["extensions"]; ok {
+				t.Errorf("%s source = %#v, want no extensions key", tt.name, tt.got)
+			}
+			if strings.Contains(fmt.Sprint(tt.got), canary) {
+				t.Errorf("%s source = %#v, want no extension canary", tt.name, tt.got)
+			}
+		})
+	}
+}
+
 func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 

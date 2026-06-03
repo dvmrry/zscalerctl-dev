@@ -1978,9 +1978,6 @@ func idNameExtensionsSource(value *ziacommon.IDNameExtensions) map[string]any {
 		"id":   value.ID,
 		"name": value.Name,
 	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
-	}
 	return fields
 }
 
@@ -2002,9 +1999,6 @@ func idNameExternalIDSource(value *ziacommon.IDNameExternalID) map[string]any {
 	}
 	if value.ExternalID != "" {
 		fields["externalId"] = value.ExternalID
-	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
 	}
 	return fields
 }
@@ -2253,9 +2247,6 @@ func locationGroupManagedBySliceSource(values []locationgroups.ManagedBy) []any 
 			"id":   values[i].ID,
 			"name": values[i].Name,
 		}
-		if len(values[i].Extensions) > 0 {
-			fields["extensions"] = values[i].Extensions
-		}
 		out = append(out, fields)
 	}
 	return out
@@ -2265,9 +2256,6 @@ func locationGroupLastModUserSource(value *locationgroups.LastModUser) map[strin
 	fields := map[string]any{
 		"id":   value.ID,
 		"name": value.Name,
-	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
 	}
 	return fields
 }
@@ -2284,9 +2272,6 @@ func staticIPManagedBySource(value *staticips.ManagedBy) map[string]any {
 		"id":   value.ID,
 		"name": value.Name,
 	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
-	}
 	return fields
 }
 
@@ -2294,9 +2279,6 @@ func staticIPLastModifiedBySource(value *staticips.LastModifiedBy) map[string]an
 	fields := map[string]any{
 		"id":   value.ID,
 		"name": value.Name,
-	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
 	}
 	return fields
 }
@@ -2306,9 +2288,6 @@ func greManagedBySource(value *gretunnels.ManagedBy) map[string]any {
 		"id":   value.ID,
 		"name": value.Name,
 	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
-	}
 	return fields
 }
 
@@ -2316,9 +2295,6 @@ func greLastModifiedBySource(value *gretunnels.LastModifiedBy) map[string]any {
 	fields := map[string]any{
 		"id":   value.ID,
 		"name": value.Name,
-	}
-	if len(value.Extensions) > 0 {
-		fields["extensions"] = value.Extensions
 	}
 	return fields
 }

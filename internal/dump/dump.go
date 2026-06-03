@@ -256,7 +256,7 @@ func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
 	}
 	body = append(body, '\n')
 	body = redact.New(mode).Bytes(body)
-	return writeFileAtomic(path, body)
+	return writeFileExclusive(path, body)
 }
 
 func writeNDJSONFile(path string, mode redact.Mode, values []ResourceError) error {
@@ -273,7 +273,7 @@ func writeNDJSONFile(path string, mode redact.Mode, values []ResourceError) erro
 		body = append(body, '\n')
 	}
 	body = redact.New(mode).Bytes(body)
-	return writeFileAtomic(path, body)
+	return writeFileExclusive(path, body)
 }
 
 func rejectExisting(path string) error {
@@ -285,46 +285,50 @@ func rejectExisting(path string) error {
 	return nil
 }
 
-func writeFileAtomic(path string, body []byte) error {
+func writeFileExclusive(path string, body []byte) error {
 	if err := ensureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
 	if err != nil {
-		return fmt.Errorf("create temp dump file: %w", err)
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, path)
+		}
+		return fmt.Errorf("create dump file: %w", err)
 	}
-	tmpName := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpName)
+			_ = os.Remove(path)
 		}
 	}()
-	if err := tmp.Chmod(filePerm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("chmod temp dump file: %w", err)
+	if _, err := file.Write(body); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write dump file: %w", err)
 	}
-	if _, err := tmp.Write(body); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write temp dump file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp dump file: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("commit dump file: %w", err)
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close dump file: %w", err)
 	}
 	cleanup = false
 	return nil
 }
 
 func ensureDir(dir string) error {
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return fmt.Errorf("create dump directory: %w", err)
-	}
-	info, err := os.Stat(dir)
+	info, err := os.Lstat(dir)
 	if err != nil {
-		return fmt.Errorf("stat dump directory: %w", err)
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect dump directory: %w", err)
+		}
+		if err := os.MkdirAll(dir, dirPerm); err != nil {
+			return fmt.Errorf("create dump directory: %w", err)
+		}
+		info, err = os.Lstat(dir)
+		if err != nil {
+			return fmt.Errorf("inspect dump directory: %w", err)
+		}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: %s is a symlink", ErrUnsafePath, dir)
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrUnsafePath, dir)

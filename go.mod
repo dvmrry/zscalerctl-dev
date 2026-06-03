@@ -4,7 +4,10 @@ go 1.26
 
 toolchain go1.26.4
 
-require github.com/zscaler/zscaler-sdk-go/v3 v3.8.37
+require (
+	github.com/zscaler/zscaler-sdk-go/v3 v3.8.37
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/allegro/bigcache/v3 v3.1.0 // indirect
@@ -27,5 +30,4 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

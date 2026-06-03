@@ -48,6 +48,13 @@ func (s Secret) MarshalJSON() ([]byte, error) {
 	return json.Marshal(redacted)
 }
 
+func (s Secret) MarshalYAML() (any, error) {
+	if !s.IsSet() {
+		return nil, nil
+	}
+	return redacted, nil
+}
+
 func (s Secret) MarshalText() ([]byte, error) {
 	if !s.IsSet() {
 		return nil, nil

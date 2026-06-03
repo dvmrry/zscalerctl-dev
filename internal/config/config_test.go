@@ -148,6 +148,22 @@ func TestLoadEnvRejectsInvalidProxyFromEnvironmentFlag(t *testing.T) {
 	}
 }
 
+func TestLoadEnvInvalidBoolErrorDoesNotEchoValue(t *testing.T) {
+	t.Parallel()
+
+	const canary = "client_secret=raw-bool-canary"
+	_, err := config.LoadEnv([]string{config.EnvProxyFromEnv + "=" + canary})
+	if err == nil {
+		t.Fatalf("LoadEnv(%s=<canary>) error = nil, want error", config.EnvProxyFromEnv)
+	}
+	if !strings.Contains(err.Error(), config.EnvProxyFromEnv) {
+		t.Errorf("LoadEnv invalid bool error = %q, want env var name", err.Error())
+	}
+	if strings.Contains(err.Error(), canary) || strings.Contains(err.Error(), "client_secret") {
+		t.Errorf("LoadEnv invalid bool error = %q, want no raw value", err.Error())
+	}
+}
+
 func TestLoadEnvLoadsOwnerOnlySecretFile(t *testing.T) {
 	t.Parallel()
 

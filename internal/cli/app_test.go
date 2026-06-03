@@ -445,6 +445,59 @@ func TestResourceListProjectsAndRedactsFixture(t *testing.T) {
 	}
 }
 
+func TestResourceCommandsRejectAdvertisedButUnsupportedFormats(t *testing.T) {
+	t.Parallel()
+
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+		get: resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		}),
+	}
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "list yaml",
+			args: []string{"--format", "yaml", "zia", "locations", "list"},
+			want: "yaml output is not supported for resource list yet",
+		},
+		{
+			name: "get ndjson",
+			args: []string{"--format", "ndjson", "zia", "locations", "get", "123"},
+			want: "ndjson output is not supported for resource get yet",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errOut bytes.Buffer
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+			err := app.Run(context.Background(), tt.args)
+			if err == nil {
+				t.Fatalf("App.Run(%v) error = nil, want unsupported format error", tt.args)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("App.Run(%v) error = %q, want %q", tt.args, err.Error(), tt.want)
+			}
+			if out.Len() != 0 {
+				t.Errorf("App.Run(%v) stdout = %q, want empty", tt.args, out.String())
+			}
+			if errOut.Len() != 0 {
+				t.Errorf("App.Run(%v) stderr = %q, want empty", tt.args, errOut.String())
+			}
+		})
+	}
+}
+
 func TestResourceListRuleLabelsUsesCatalogProjection(t *testing.T) {
 	t.Parallel()
 

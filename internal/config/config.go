@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -287,7 +288,7 @@ func parseBoolEnv(value string) (bool, error) {
 	}
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		return false, err
+		return false, errors.New("must be true or false")
 	}
 	return parsed, nil
 }

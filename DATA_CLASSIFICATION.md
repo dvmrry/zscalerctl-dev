@@ -148,6 +148,11 @@ The default output rule is fail closed:
   backstop; name deny-lists, ambiguous-name holdouts, and fail-closed unknown
   names are the controls there. The scan is a backstop, not proof that every
   unlabeled secret is detectable.
+- The high-entropy backstop intentionally only scans token candidates at least
+  32 characters long. A shorter, unlabeled, non-self-describing secret can
+  survive if it lands in an emitted field; fail-closed field naming,
+  ambiguous-name holdouts, and live-smoke inspection remain the controls for
+  that residual.
 - Context-sensitive generic field names, such as `value`, must be classified per
   resource. They must not be allowed merely because the name is generic.
 

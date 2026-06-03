@@ -536,13 +536,16 @@ func (a *App) writeProjectedRecord(
 	spec resources.ResourceSpec,
 	record resources.ProjectedRecord,
 ) error {
-	if opts.format == output.FormatJSON {
+	switch opts.format {
+	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, record)
-	}
-	if opts.format != output.FormatTable {
+	case output.FormatTable:
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
+	case output.FormatYAML, output.FormatNDJSON:
 		return fmt.Errorf("%s output is not supported for resource get yet", opts.format)
+	default:
+		return fmt.Errorf("unhandled output format %q for resource get", opts.format)
 	}
-	return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
 }
 
 func (a *App) writeProjectedRecords(
@@ -551,13 +554,16 @@ func (a *App) writeProjectedRecords(
 	spec resources.ResourceSpec,
 	records resources.ProjectedRecords,
 ) error {
-	if opts.format == output.FormatJSON {
+	switch opts.format {
+	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, records)
-	}
-	if opts.format != output.FormatTable {
+	case output.FormatTable:
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, records, a.style(opts)))
+	case output.FormatYAML, output.FormatNDJSON:
 		return fmt.Errorf("%s output is not supported for resource list yet", opts.format)
+	default:
+		return fmt.Errorf("unhandled output format %q for resource list", opts.format)
 	}
-	return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, records, a.style(opts)))
 }
 
 func (a *App) writeUsage(w io.Writer) {

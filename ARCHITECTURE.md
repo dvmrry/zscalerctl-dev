@@ -177,8 +177,8 @@ everywhere. In `standard` mode, structured rendered strings also preserve compac
 UUIDs and 40/64 character hex fingerprints; `share` and `paranoid` redact those
 fingerprint-shaped values. Free-text prose preserves git commit SHAs only when
 nearby words identify them as git revisions. The scan does not guarantee
-detection of every short unlabeled secret, or of every hex-shaped secret in a
-rendering `standard` field.
+detection of every short unlabeled secret below the 32-character entropy floor,
+or of every hex-shaped secret in a rendering `standard` field.
 
 ## Secret-Safe Types
 
