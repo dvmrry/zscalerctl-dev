@@ -88,7 +88,6 @@ Open draft PR:
 | PR | Resources | Status | Smoke command |
 | --- | --- | --- | --- |
 | `#33` | `zia/risk-profiles`, `zia/nss-servers` | Draft rebased onto current `main`; parked until work-machine live smoke is available | `make live-smoke` |
-| `feature/zdx-report-scope-plan` | No enabled resources | Docs-only proposal for ZDX report semantics before any ZDX catalog work | none |
 
 Do not start applying the next batch until this PR is either merged or trimmed
 and merged. PR `#33` predates the preferred one-resource PR rule; record smoke
@@ -212,9 +211,9 @@ SDK scout across ZCC, ZDX, ZTW, Zidentity, and ZWA. The short version:
 | ZPA | `servergroup`, `segmentgroup`, `appservercontroller`, `appconnectorgroup`, `cloud_connector`, `cloud_connector_group`, `branch_connector`, `machinegroup`, `postureprofile`, `trustednetwork`, `idpcontroller` | Many ordinary or list/get-with-mutating-neighbor SDK packages exist in the full SDK. | OneAPI-only future track; start with one low-risk reference after production OneAPI smoke is available. |
 | ZTW | Workload groups, public cloud accounts, gateways, DNS gateways, EC groups, policy resources | Full SDK exposes many list/get-like config surfaces. | Best first separate product track. Start with workload groups; defer provisioning API keys/URLs and policy rules. |
 | ZCC | Trusted networks, notification templates, ZIA posture, IP/process app references | Closest Client Connector fit for configuration inventory; several packages sit next to mutating helpers. | Second separate product track after ZTW. Defer devices and secret packages. |
-| ZDX | Application, user, device, alert, and software reports | SDK exposes report/read surfaces rather than config inventory resources. | Separate report/export model; do not force into config dump semantics. Start with applications only after reviewing [ZDX Scope Plan](ZDX_SCOPE_PLAN.md). |
-| Zidentity | Resource servers, users, groups, entitlements | SDK exposes identity-plane reads with adjacent mutation. | Identity-plane work; start only with resource servers unless a stronger privacy posture is designed. |
-| ZWA | Customer audit and DLP incidents | SDK exposes audit/incident surfaces rather than config inventory resources. | Defer; requires audit/incident export model and retention/privacy rules. |
+| ZDX | Application, user, device, alert, and software reports | SDK exposes report/read surfaces rather than config inventory resources. | Explicitly out of pre-`v1.0.0` scope unless Zscaler exposes deterministic configuration APIs; see [ZDX Scope Plan](ZDX_SCOPE_PLAN.md). |
+| Zidentity | Resource servers, entitlements, users, groups | SDK exposes a thin read-only config slice next to sensitive identity-management APIs. | Partial track only. `resource_servers` is the clean pre-`v1.0.0` candidate; `user_entitlement` is sensitive later work; users/groups are hard-deferred. |
+| ZWA | Customer audit and DLP incidents | SDK exposes audit/incident surfaces rather than config inventory resources. | Explicitly out of pre-`v1.0.0` scope unless Zscaler exposes deterministic configuration APIs. |
 
 ## Needs A Shape Decision Before Applying
 

@@ -39,12 +39,15 @@ As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.37`:
 - ZCC has useful read-like service packages, but many sit beside mutating
   helpers or device/privacy-sensitive data.
 - ZDX exposes report, alert, device, user, and application telemetry surfaces.
-  Treat it as report/export design work, not ordinary config inventory.
-- Zidentity is exposed under `zscaler/zid/services/...`; treat it as
-  identity-plane work, not ordinary resource expansion.
+  Treat it as out of pre-`v1.0.0` scope unless Zscaler exposes deterministic
+  configuration APIs.
+- Zidentity is exposed under `zscaler/zid/services/...`; treat it as a partial
+  product track. Resource servers are the clean read-only config slice,
+  entitlements are sensitive authorization data, and users/groups are
+  PII/mutating identity-management surfaces.
 - ZWA is exposed under `zscaler/zwa/services/...`; treat customer audit and DLP
-  incident surfaces as audit/incident export work, not ordinary config
-  inventory.
+  incident surfaces as out of pre-`v1.0.0` scope unless Zscaler exposes
+  deterministic configuration APIs.
 
 These findings are SDK-shape evidence only. They do not prove entitlement,
 tenant availability, pagination behavior, or real response shape.
@@ -80,4 +83,4 @@ Use the inventory before adding non-ZIA surfaces:
    OneAPI smoke has been explicitly run.
 
 This keeps "ZCC/ZDX/ZTW/Zidentity/ZWA exists in the SDK" separate from "this
-resource is safe to expose in zscalerctl."
+resource is safe to expose in zscalerctl before `v1.0.0`."

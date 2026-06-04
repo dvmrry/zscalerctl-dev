@@ -1,18 +1,24 @@
 # ZDX Scope Plan
 
-This is a proposal for adding ZDX support without weakening zscalerctl's
-current configuration-inventory model. It is not an enabled catalog, live-smoke
-result, or entitlement proof.
+This document records why ZDX is out of pre-`v1.0.0` implementation scope for
+`zscalerctl`. It is not an enabled catalog, live-smoke result, entitlement
+proof, or implementation plan.
 
 ## Verdict
 
-Treat ZDX as a report/telemetry product, not as ordinary configuration
-inventory.
+Do not implement ZDX before `v1.0.0` unless Zscaler exposes actual ZDX
+configuration-inventory APIs.
 
-The first implementation should be a narrow `zdx/applications` report surface
-with an explicit time window and a dedicated `report` operation. It should not
-join default `dump`, and it should not reuse the generic resource `list|get`
-output path.
+The SDK surfaces inspected so far are report, telemetry, user/device activity,
+alert, and software inventory APIs. Those reads may be useful, but they are not
+the configuration inventory surface this project is prioritizing. They should
+not be forced into the current `list|get|dump` model, and they should not be
+implemented as a pre-`v1.0.0` feature just because the SDK exposes them.
+
+If Zscaler later surfaces ZDX configured applications, probes, collections,
+thresholds, alert rules, or other deterministic configuration objects through
+the SDK/API, revisit ZDX as ordinary configuration inventory. Until then, ZDX
+is a post-`v1.0.0` report/export track.
 
 ## Why ZDX Is Different
 
@@ -40,7 +46,7 @@ output look more deterministic than it is.
 
 Inspected SDK: `github.com/zscaler/zscaler-sdk-go/v3` `v3.8.37`.
 
-### First Candidate
+### Report Surface Reviewed
 
 `zscaler/zdx/services/reports/applications`
 
@@ -49,9 +55,9 @@ Inspected SDK: `github.com/zscaler/zscaler-sdk-go/v3` `v3.8.37`.
 - Both accept `common.GetFromToFilters`.
 - SDK comments say the endpoint defaults to the last 2 hours when the time
   range is omitted.
-- The functions accept the shared `*zscaler.Service`, so they fit the OneAPI
-  boundary used by ZIA/ZPA/ZTW/ZCC work. Do not use the product-local
-  `zdx.Client` path for the first implementation.
+- The functions accept the shared `*zscaler.Service`, so they could fit the
+  OneAPI boundary used by ZIA/ZPA/ZTW/ZCC work. That does not make them config
+  inventory.
 
 `Apps` fields:
 
@@ -70,11 +76,11 @@ Inspected SDK: `github.com/zscaler/zscaler-sdk-go/v3` `v3.8.37`.
 
 No free-text field is present in the application summary type.
 
-### Defer
+### Deferred Report Surfaces
 
-`GetAppScores` and `GetAppMetrics` return time-series data. They should not ship
-with the first ZDX resource unless the report envelope and time-window semantics
-are already settled.
+`GetAppScores` and `GetAppMetrics` return time-series data. They remain
+post-`v1.0.0` report/export work unless Zscaler exposes deterministic
+configuration inventory for the same objects.
 
 `zdx/users` and `zdx/devices` should be deferred. They include user email,
 device names, geolocation, hardware, network, software, usernames, hostnames,
@@ -87,14 +93,18 @@ geolocations, and affected devices with user IDs, usernames, and user email.
 software-to-user/device drill-down semantics.
 
 `zdx/administration` may be lower risk than users/devices, but it is still a
-ZDX-specific helper surface. It can follow after the application report model is
-settled.
+ZDX-specific helper surface. Hold it unless it proves to expose deterministic
+configuration inventory rather than report helpers.
 
-## Proposed Command Model
+## Future Report Command Model
 
-Do not add ZDX to default config `dump`.
+This section is not a pre-`v1.0.0` implementation plan. It records the minimum
+shape required if the project deliberately chooses to add ZDX reports after
+`v1.0.0`.
 
-Preferred first shape:
+Do not add ZDX reports to default config `dump`.
+
+Preferred future report shape:
 
 ```sh
 zscalerctl zdx applications report --from <unix-seconds> --to <unix-seconds>
@@ -132,10 +142,10 @@ Reasons:
 
 `window.requested` records the operator's input. `window.effective` records the
 window actually queried after any ZDX/API clamping, quantization, or validation.
-If the API does not report a normalized range, the first implementation should
-set `effective` equal to `requested` and document that limitation in the command
-help. Do not silently report only the requested range if the implementation can
-determine that the server used a different one.
+If the API does not report a normalized range, a future report implementation
+should set `effective` equal to `requested` and document that limitation in the
+command help. Do not silently report only the requested range if the
+implementation can determine that the server used a different one.
 
 Empty reports are successful report results:
 
@@ -177,7 +187,7 @@ out of scope for v1. The current global no-cache stance remains unchanged.
 
 ## Required Implementation Decisions
 
-Initial implementation decisions:
+Future report implementation decisions:
 
 1. ZDX uses a dedicated `report` operation. Do not overload config `list|get`
    for report-shaped output.
@@ -190,9 +200,9 @@ Initial implementation decisions:
 5. The report envelope uses schema `zscalerctl.report.v1`. Changes to this
    envelope follow the versioning policy for machine-readable output schemas.
 
-## Safety Requirements
+## Safety Requirements For Any Future Report Work
 
-The first implementation should keep the existing safety floor:
+Any future ZDX report implementation should keep the existing safety floor:
 
 - Use the shared OneAPI `*zscaler.Service` path only.
 - Do not instantiate `zdx.Client` or product-local ZDX config.
@@ -204,34 +214,31 @@ The first implementation should keep the existing safety floor:
 - Add live-smoke manifest support before promotion.
 - Treat `200-empty` as availability only, not response-shape proof.
 
-## Proposed First PR
+## Pre-1.0 Project Posture
 
-Draft branch: `feature/zdx-report-scope-plan`
+No ZDX implementation branch should be opened before `v1.0.0` unless it is
+scoping actual configuration-inventory APIs rather than reports. A qualifying
+ZDX config surface should meet the same baseline as the other product tracks:
 
-Scope:
+- deterministic tenant configuration object;
+- read-only SDK/API path;
+- stable `list|get`-like semantics, or an explicitly designed singleton shape;
+- allow-list projection and SDK shape review support;
+- controlled live-smoke path before promotion.
 
-- This document.
-- Optional queue/doc updates only.
-- No enabled ZDX catalog resources.
-- `semver:none`.
-
-Follow-up implementation branch after review:
-
-- Add minimal ZDX report command support.
-- Add `zdx/applications` only.
-- Require explicit `--from` and `--to`.
-- Output `zscalerctl.report.v1` envelope with requested and effective windows.
-- Do not include ZDX in default dump or config dump products.
-- Park as draft until a controlled ZDX OneAPI live smoke can run.
+Report-only work remains post-`v1.0.0` and should use the report envelope
+contract above if it is ever prioritized.
 
 ## Review Questions
 
-Resolved by review:
+Resolved by review and current project posture:
 
-1. `zdx/applications` should use a new `report` operation.
+1. No ZDX report implementation before `v1.0.0`.
 2. `id/name` are acceptable in share mode for application summaries; scores,
-   counts, and geography remain standard-only.
-3. `zdx/administration` waits until one live smoke proves the application report
-   envelope.
+   counts, and geography would remain standard-only if reports are implemented
+   after `v1.0.0`.
+3. `zdx/administration` does not follow applications pre-`v1.0.0`; it waits for
+   either real config inventory semantics or a post-`v1.0.0` report/export
+   decision.
 4. Report outputs remain separate artifacts with explicit window metadata. They
-   do not join config `dump` in v1.
+   do not join config `dump`.

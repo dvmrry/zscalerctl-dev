@@ -82,12 +82,14 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
    prove product auth and live smoke, then batch remaining ZTW references.
 4. Scout ZCC next for Client Connector configuration references after ZTW's
    product path is understood.
-5. Treat ZDX as a separate report/telemetry model rather than forcing it into the
-   current config-dump semantics.
-6. Leave ZWA as inventory-only unless product ownership and entitlement are
-   confirmed. It is audit/incident data, not config inventory.
-7. Treat Zidentity last unless there is a specific operator need; users, groups,
-   and entitlement reads need a stricter privacy posture than config references.
+5. Do not implement ZDX before `v1.0.0` unless Zscaler exposes deterministic
+   ZDX configuration APIs. The current SDK surfaces are report/telemetry.
+6. Do not implement ZWA before `v1.0.0` unless Zscaler exposes deterministic
+   ZWA configuration APIs. The current SDK surfaces are audit/incident data.
+7. Treat Zidentity as a partial config track only: `resource_servers` is the
+   cleanest read-only config candidate, `user_entitlement` is sensitive
+   read-only authorization data, and users/groups are PII identity management
+   surfaces with adjacent mutators.
 
 ## ZCC
 
@@ -117,24 +119,26 @@ Do not queue as ordinary inventory:
 ## ZDX
 
 ZDX is primarily monitoring, reporting, user, device, and application experience
-data. It should not be treated as plain configuration inventory without an
-explicit report model.
+data. It is explicitly out of pre-`v1.0.0` implementation scope unless Zscaler
+surfaces deterministic ZDX configuration APIs. Report and telemetry reads should
+not be treated as plain configuration inventory.
 
-See [ZDX Scope Plan](ZDX_SCOPE_PLAN.md) for the proposed report envelope,
-time-window requirements, and first-resource recommendation.
+See [ZDX Scope Plan](ZDX_SCOPE_PLAN.md) for the post-`v1.0.0` report/export
+contract and the configuration-API exception.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
-| `zdx/applications` | `zscaler/zdx/services/reports/applications` | `ordinary-list-get` | Best first ZDX candidate. Application-level reporting is less privacy-heavy than users/devices. |
-| `zdx/users` | `zscaler/zdx/services/reports/users` | `ordinary-list-get` | Defer. User telemetry is privacy-sensitive and likely needs restricted modes. |
-| `zdx/devices` | `zscaler/zdx/services/reports/devices` | `ordinary-list-get` | Defer. Device telemetry and metric fields need separate posture. |
-| `zdx/alerts` | `zscaler/zdx/services/alerts` | `read-only-nonstandard` | Defer until alert time-window and affected-device semantics are clear. |
-| `zdx/software-inventory` | `zscaler/zdx/services/inventory` | `read-only-nonstandard` | Defer. Software inventory is endpoint-sensitive. |
-| `zdx/administration` | `zscaler/zdx/services/administration` | `read-only-nonstandard` | Department/location helpers may be safe, but shape is not ordinary list/get. |
+| `zdx/applications` | `zscaler/zdx/services/reports/applications` | `ordinary-list-get` | Post-`v1.0.0` report/export only. Not configuration inventory. |
+| `zdx/users` | `zscaler/zdx/services/reports/users` | `ordinary-list-get` | Post-`v1.0.0` report/export only. User telemetry is privacy-sensitive. |
+| `zdx/devices` | `zscaler/zdx/services/reports/devices` | `ordinary-list-get` | Post-`v1.0.0` report/export only. Device telemetry and metric fields need separate posture. |
+| `zdx/alerts` | `zscaler/zdx/services/alerts` | `read-only-nonstandard` | Post-`v1.0.0` report/export only. Alert time-window and affected-device semantics are not config inventory. |
+| `zdx/software-inventory` | `zscaler/zdx/services/inventory` | `read-only-nonstandard` | Post-`v1.0.0` report/export only. Software inventory is endpoint-sensitive. |
+| `zdx/administration` | `zscaler/zdx/services/administration` | `read-only-nonstandard` | Out of pre-`v1.0.0` scope. Confirmed report-filter dimension reads, not configuration inventory. |
 
-Before enabling ZDX, decide whether report resources belong in `dump` at all or
-need a separate time-windowed report command. Defaulting dynamic telemetry into
-configuration dumps would weaken the deterministic-config story.
+Do not enable ZDX report resources before `v1.0.0`. If Zscaler exposes actual
+ZDX configuration objects, evaluate those separately under the ordinary
+configuration-inventory model. Defaulting dynamic telemetry into configuration
+dumps would weaken the deterministic-config story.
 
 ## ZTW
 
@@ -165,32 +169,35 @@ Do not queue as ordinary inventory:
 ZWA appears in the full SDK module cache as audit and DLP incident/evidence
 surfaces. It is not present as a comparable high-level product client in the
 committed vendor tree, and the committed OneAPI client does not expose a
-dedicated `ZWAHTTPClient` field. Treat this as a separate auth-path and data
-semantics track only if the product is confirmed in scope.
+dedicated `ZWAHTTPClient` field. It is explicitly out of pre-`v1.0.0`
+implementation scope unless Zscaler exposes deterministic ZWA configuration
+APIs.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
-| `zwa/customer-audit` | `zscaler/zwa/services/customeraudit` | `read-only-nonstandard` | Defer until auth routing and audit-log retention/output semantics are designed. |
-| `zwa/dlp-incidents` | `zscaler/zwa/services/dlp_incidents` | `mixed-read-write-sdk-package` | Defer. Incident, evidence, ticket, and history data are sensitive and sit next to mutating helpers. |
+| `zwa/customer-audit` | `zscaler/zwa/services/customeraudit` | `read-only-nonstandard` | Out of pre-`v1.0.0` scope. Audit logs are not configuration inventory. |
+| `zwa/dlp-incidents` | `zscaler/zwa/services/dlp_incidents` | `mixed-read-write-sdk-package` | Out of pre-`v1.0.0` scope. Incident, evidence, ticket, and history data are sensitive and sit next to mutating helpers. |
 | `zwa/common` | `zscaler/zwa/services/common` | `read-only-nonstandard` | Helper/pagination/types package, not a catalog resource. |
 
-Do not add ZWA to ordinary config dumps without deciding whether audit and DLP
-incident records belong in the same output model as static configuration. If it
-turns out to be needed, scaffold it only as a draft investigation PR until
-product ownership, entitlement, auth routing, and retention expectations are
-clear.
+Do not add ZWA to ordinary config dumps. If ZWA becomes necessary after
+`v1.0.0`, treat it as an audit/incident export model with explicit retention and
+privacy rules, not as static configuration inventory.
 
 ## Zidentity
 
-Zidentity is an identity plane. The SDK exposes useful read surfaces, but the
-data is privacy and authorization sensitive.
+Zidentity is the mixed case. The SDK exposes a thin read-only configuration
+slice next to PII identity-management APIs and authorization data.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
-| `zidentity/resource-servers` | `zscaler/zid/services/resource_servers` | `ordinary-list-get` | Safest first Zidentity resource if this product track is needed. Still review identifiers and OAuth-style fields conservatively. |
-| `zidentity/groups` | `zscaler/zid/services/groups` | `list-get-with-mutating-neighbors` | Defer. Group membership and nested user links need privacy posture. |
-| `zidentity/users` | `zscaler/zid/services/users` | `list-get-with-mutating-neighbors` | Defer. User identity surface; likely no share mode by default. |
-| `zidentity/user-entitlements` | `zscaler/zid/services/user_entitlement` | `read-only-nonstandard` | Defer. Authorization/entitlement surface. |
+| `zidentity/resource-servers` | `zscaler/zid/services/resource_servers` | `ordinary-list-get` | In scope as the only clean pre-`v1.0.0` Zidentity config candidate. Review identifiers and OAuth-style fields conservatively. |
+| `zidentity/user-entitlements` | `zscaler/zid/services/user_entitlement` | `read-only-nonstandard` | Sensitive read-only authorization data. Possible later, but not the first Zidentity resource. |
+| `zidentity/groups` | `zscaler/zid/services/groups` | `list-get-with-mutating-neighbors` | Hard-defer. PII/membership identity management surface with adjacent create/update/delete and membership mutators. |
+| `zidentity/users` | `zscaler/zid/services/users` | `list-get-with-mutating-neighbors` | Hard-defer. PII identity management surface with adjacent mutators, including reset-password semantics. |
+
+If Zidentity is wired, bind only the specific read functions used by the
+resource. Do not pass broad groups/users clients into handlers where mutating SDK
+methods sit next to read methods.
 
 ## Cross-Product Implementation Rules
 
@@ -218,8 +225,7 @@ Suggested independent branches, in order:
 | --- | --- | --- |
 | `feature/ztw-scope-plan` | Verify OneAPI SDK call path for ZTW and scaffold `workload_groups`. | Establish Cloud/Workload product semantics without touching provisioning credentials. |
 | `feature/zcc-scope-plan` | Verify OneAPI SDK call path for ZCC and scaffold `trusted_network_v2` or `notification_template`. | Establish whether ZCC can use the current service boundary cleanly. |
-| `feature/zdx-report-scope-plan` | Decide report command/dump semantics before scaffolding `reports/applications`; see [ZDX Scope Plan](ZDX_SCOPE_PLAN.md). | Prevent telemetry from being accidentally treated as deterministic config inventory. |
-| `feature/zidentity-scope-plan` | Scope `resource_servers` only. | Keep identity work narrow until privacy posture is explicit. |
+| `feature/zidentity-scope-plan` | Scope `resource_servers` only. | Keep identity work to the thin read-only config slice; users/groups remain hard-deferred. |
 
-ZWA is deliberately not in the first-branch queue. Open a draft
-`feature/zwa-scope-plan` only if the product is confirmed in scope.
+ZWA is deliberately not in the first-branch queue. Do not open a ZWA branch
+before `v1.0.0` unless Zscaler exposes deterministic configuration APIs.
