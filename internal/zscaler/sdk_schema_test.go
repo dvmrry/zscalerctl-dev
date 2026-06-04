@@ -8,6 +8,9 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
+	zccnotificationtemplate "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template"
+	zcctrustednetworkv2 "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network_v2"
+	zccziaposture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
@@ -1649,6 +1652,136 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"url",
 				"status",
 			},
+		},
+		{
+			name:         "zcctrustednetworkv2.TrustedNetworkV2",
+			resource:     resources.ProductZCC,
+			resourceName: resourceTrustedNetworks,
+			typ:          reflect.TypeOf(zcctrustednetworkv2.TrustedNetworkV2{}),
+			catalogFields: []string{
+				"id",
+				"companyId",
+				"zpaId",
+				"active",
+				"conditionType",
+				"name",
+				"createdBy",
+				"dnsSearchDomains",
+				"dnsServerIps",
+				"editedBy",
+				"guid",
+				"hostname",
+				"networkName",
+				"resolvedIpsForHostname",
+				"ssid",
+				"trustedDhcpServersIps",
+				"trustedEgressIps",
+				"trustedGatewayIps",
+				"trustedSubnetIps",
+			},
+		},
+		{
+			name:         "zccnotificationtemplate.NotificationTemplate",
+			resource:     resources.ProductZCC,
+			resourceName: resourceNotifyTemplates,
+			typ:          reflect.TypeOf(zccnotificationtemplate.NotificationTemplate{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"isDefaultTemplate",
+				"enableClient",
+				"enableZia",
+				"enableAppUpdates",
+				"enableServiceStatus",
+				"durationInSeconds",
+				"enablePersistent",
+				"enableDoNotDisturb",
+				"createdBy",
+				"editedBy",
+				"ziaNotificationTemplate",
+				"zpaNotificationTemplate",
+			},
+		},
+		{
+			name:         "zccziaposture.ZIAPosture",
+			resource:     resources.ProductZCC,
+			resourceName: resourceZIAPostures,
+			typ:          reflect.TypeOf(zccziaposture.ZIAPosture{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"platform",
+				"highTrustCriteria",
+				"mediumTrustCriteria",
+				"lowTrustCriteria",
+			},
+		},
+		{
+			name: "zccnotificationtemplate.ZIANotificationTemplate",
+			typ:  reflect.TypeOf(zccnotificationtemplate.ZIANotificationTemplate{}),
+			ignoredFields: ignoredBecause(
+				"covered by modeled ziaNotificationTemplate parent",
+				"enableZiaFirewall",
+				"enableZiaFirewallPopup",
+				"enableZiaDNS",
+				"enableZiaDNSPopup",
+				"enableZiaIPS",
+				"enableZiaIPSPopup",
+				"enableZiaPersistent",
+			),
+		},
+		{
+			name: "zccnotificationtemplate.ZPANotificationTemplate",
+			typ:  reflect.TypeOf(zccnotificationtemplate.ZPANotificationTemplate{}),
+			ignoredFields: ignoredBecause(
+				"covered by modeled zpaNotificationTemplate parent",
+				"enableDevicePostureFailure",
+				"enableZpaReauth",
+				"zpaReauthIntervalInMinutes",
+				"delayPostureFailureSeconds",
+			),
+		},
+		{
+			name: "zccziaposture.HighTrustCriteria",
+			typ:  reflect.TypeOf(zccziaposture.HighTrustCriteria{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped highTrustCriteria parent",
+				"cs",
+			),
+		},
+		{
+			name: "zccziaposture.MediumTrustCriteria",
+			typ:  reflect.TypeOf(zccziaposture.MediumTrustCriteria{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped mediumTrustCriteria parent",
+				"cs",
+			),
+		},
+		{
+			name: "zccziaposture.LowTrustCriteria",
+			typ:  reflect.TypeOf(zccziaposture.LowTrustCriteria{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped lowTrustCriteria parent",
+				"cs",
+			),
+		},
+		{
+			name: "zccziaposture.TrustCriteriaSet",
+			typ:  reflect.TypeOf(zccziaposture.TrustCriteriaSet{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped trust criteria parent",
+				"cn",
+			),
+		},
+		{
+			name: "zccziaposture.TrustCriterion",
+			typ:  reflect.TypeOf(zccziaposture.TrustCriterion{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped trust criteria parent",
+				"id",
+				"name",
+				"udid",
+			),
 		},
 		{
 			name:         "filetypecontrol.FileTypeRules",

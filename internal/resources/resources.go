@@ -23,6 +23,7 @@ const (
 	ProductZIA Product = "zia"
 	ProductZPA Product = "zpa"
 	ProductZTW Product = "ztw"
+	ProductZCC Product = "zcc"
 )
 
 type Capability string
@@ -3256,6 +3257,89 @@ func Catalog() ResourceCatalog {
 				idNameField("services", standardOnlyMode()),
 				freeTextField("description", "ZTW network service group description"),
 				operationalField("creatorContext", allModes()),
+			},
+		},
+		{
+			Product:    ProductZCC,
+			Name:       "trusted-networks",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				sensitiveIdentifierField("companyId"),
+				sensitiveIdentifierField("zpaId"),
+				operationalField("active", allModes()),
+				operationalField("conditionType", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				secretField("createdBy"),
+				sensitiveIdentifierField("dnsSearchDomains"),
+				sensitiveIdentifierField("dnsServerIps"),
+				secretField("editedBy"),
+				sensitiveIdentifierField("guid"),
+				sensitiveIdentifierField("hostname"),
+				sensitiveIdentifierField("networkName"),
+				sensitiveIdentifierField("resolvedIpsForHostname"),
+				sensitiveIdentifierField("ssid"),
+				sensitiveIdentifierField("trustedDhcpServersIps"),
+				sensitiveIdentifierField("trustedEgressIps"),
+				sensitiveIdentifierField("trustedGatewayIps"),
+				sensitiveIdentifierField("trustedSubnetIps"),
+			},
+		},
+		{
+			Product:    ProductZCC,
+			Name:       "notification-templates",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("isDefaultTemplate", allModes()),
+				operationalField("enableClient", allModes()),
+				operationalField("enableZia", allModes()),
+				operationalField("enableAppUpdates", allModes()),
+				operationalField("enableServiceStatus", allModes()),
+				operationalField("durationInSeconds", allModes()),
+				operationalField("enablePersistent", allModes()),
+				operationalField("enableDoNotDisturb", allModes()),
+				secretField("createdBy"),
+				secretField("editedBy"),
+				{
+					Name:           "ziaNotificationTemplate",
+					Classification: ClassTenantConfig,
+					AllowedModes:   standardShareModes(),
+					Fields: []FieldSpec{
+						operationalField("enableZiaFirewall", allModes()),
+						operationalField("enableZiaFirewallPopup", allModes()),
+						operationalField("enableZiaDNS", allModes()),
+						operationalField("enableZiaDNSPopup", allModes()),
+						operationalField("enableZiaIPS", allModes()),
+						operationalField("enableZiaIPSPopup", allModes()),
+						operationalField("enableZiaPersistent", allModes()),
+					},
+				},
+				{
+					Name:           "zpaNotificationTemplate",
+					Classification: ClassTenantConfig,
+					AllowedModes:   standardShareModes(),
+					Fields: []FieldSpec{
+						operationalField("enableDevicePostureFailure", allModes()),
+						operationalField("enableZpaReauth", allModes()),
+						operationalField("zpaReauthIntervalInMinutes", allModes()),
+						operationalField("delayPostureFailureSeconds", allModes()),
+					},
+				},
+			},
+		},
+		{
+			Product:    ProductZCC,
+			Name:       "zia-postures",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("platform", allModes()),
+				secretField("highTrustCriteria"),
+				secretField("mediumTrustCriteria"),
+				secretField("lowTrustCriteria"),
 			},
 		},
 	}

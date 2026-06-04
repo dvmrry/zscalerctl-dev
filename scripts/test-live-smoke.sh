@@ -28,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides ztw/workload-groups)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides ztw/workload-groups zcc/trusted-networks zcc/notification-templates zcc/zia-postures)
 
 schema_fields() {
   case "$1" in
@@ -97,6 +97,15 @@ schema_fields() {
       ;;
     workload-groups)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"expression","allowed_modes":[]},{"name":"lastModifiedTime","allowed_modes":["standard"]},{"name":"lastModifiedBy","allowed_modes":[]},{"name":"expressionJson","allowed_modes":[]}]'
+      ;;
+    trusted-networks)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"active","allowed_modes":["standard"]},{"name":"conditionType","allowed_modes":["standard"]},{"name":"hostname","allowed_modes":["standard"]}]'
+      ;;
+    notification-templates)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"isDefaultTemplate","allowed_modes":["standard"]},{"name":"enableClient","allowed_modes":["standard"]},{"name":"enableZia","allowed_modes":["standard"]},{"name":"ziaNotificationTemplate","allowed_modes":["standard"],"fields":[{"name":"enableZiaFirewall","allowed_modes":["standard"]}]},{"name":"zpaNotificationTemplate","allowed_modes":["standard"],"fields":[{"name":"enableDevicePostureFailure","allowed_modes":["standard"]}]}]'
+      ;;
+    zia-postures)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"platform","allowed_modes":["standard"]}]'
       ;;
     *)
       echo "unexpected resource: $1" >&2
@@ -237,6 +246,15 @@ JSON
       ;;
     *:ztw:workload-groups)
       printf '[{"id":7,"name":"Cloud workloads","description":"","lastModifiedTime":1700000000}]\n'
+      ;;
+    *:zcc:trusted-networks)
+      printf '[{"id":8,"name":"Trusted office","active":true,"conditionType":"TRUSTED_NETWORK","hostname":"trusted.example.test"}]\n'
+      ;;
+    *:zcc:notification-templates)
+      printf '[{"id":9,"name":"Default notification","isDefaultTemplate":true,"enableClient":true,"enableZia":true,"ziaNotificationTemplate":{"enableZiaFirewall":true},"zpaNotificationTemplate":{"enableDevicePostureFailure":true}}]\n'
+      ;;
+    *:zcc:zia-postures)
+      printf '[{"id":10,"name":"Default ZIA posture","platform":"macOS"}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2
@@ -638,6 +656,8 @@ cat >"$manifest" <<'EOF'
 # focused branch smoke
 - zia/locations
 * rule-labels
+ztw/workload-groups
+zcc/trusted-networks
 EOF
 
 if ! ZSCALERCTL_BIN="$fake_bin" "$repo_root/scripts/live-smoke.sh" --skip-credential-check --manifest "$manifest" --out "$tmp_dir/out-manifest" >"$tmp_dir/stdout-manifest" 2>"$tmp_dir/stderr-manifest"; then
@@ -653,8 +673,20 @@ if ! grep -q '\[INFO\] using live smoke manifest:' "$tmp_dir/stdout-manifest"; t
   exit 1
 fi
 
-if ! grep -q '\[PASS\] live smoke selected 2 resource(s): zia/locations zia/rule-labels' "$tmp_dir/stdout-manifest"; then
+if ! grep -q '\[PASS\] live smoke selected 4 resource(s): zia/locations zia/rule-labels ztw/workload-groups zcc/trusted-networks' "$tmp_dir/stdout-manifest"; then
   echo "live-smoke manifest fixture did not report selected resources" >&2
+  cat "$tmp_dir/stdout-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] ztw workload-groups list command completed' "$tmp_dir/stdout-manifest"; then
+  echo "live-smoke manifest fixture did not list selected ZTW resource" >&2
+  cat "$tmp_dir/stdout-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] zcc trusted-networks list command completed' "$tmp_dir/stdout-manifest"; then
+  echo "live-smoke manifest fixture did not list selected ZCC resource" >&2
   cat "$tmp_dir/stdout-manifest" >&2
   exit 1
 fi

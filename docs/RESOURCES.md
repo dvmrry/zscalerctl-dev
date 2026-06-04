@@ -1654,6 +1654,59 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `services` | Tenant configuration | `standard` | Rendered as id/name references only; service ports/details are owned by `ztw/network-services`. |
 
+## ZCC Trusted Networks
+
+Commands:
+
+```sh
+zscalerctl zcc trusted-networks list
+zscalerctl zcc trusted-networks get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `conditionType` | Operational metadata | `standard`, `share`, `paranoid` | Trusted network identity and state. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `companyId`, `zpaId`, `dnsSearchDomains`, `dnsServerIps`, `guid`, `hostname`, `networkName`, `resolvedIpsForHostname`, `ssid`, `trustedDhcpServersIps`, `trustedEgressIps`, `trustedGatewayIps`, `trustedSubnetIps` | Sensitive identifier | `standard` | Local-only network, device, tenant, and endpoint identifiers. |
+| `createdBy`, `editedBy` | Secret | never | Admin identity values are mapped into source records and dropped by projection. |
+
+## ZCC Notification Templates
+
+Commands:
+
+```sh
+zscalerctl zcc notification-templates list
+zscalerctl zcc notification-templates get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isDefaultTemplate`, `enableClient`, `enableZia`, `enableAppUpdates`, `enableServiceStatus`, `durationInSeconds`, `enablePersistent`, `enableDoNotDisturb` | Operational metadata | `standard`, `share`, `paranoid` | Template identity and behavior flags. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `ziaNotificationTemplate`, `zpaNotificationTemplate` | Tenant configuration | `standard`, `share` | Nested notification flags and timing values only. |
+| `createdBy`, `editedBy` | Secret | never | Admin identity values are mapped into source records and dropped by projection. |
+
+## ZCC Zia Postures
+
+Commands:
+
+```sh
+zscalerctl zcc zia-postures list
+zscalerctl zcc zia-postures get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `platform` | Operational metadata | `standard`, `share`, `paranoid` | Posture profile identity and platform. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `highTrustCriteria`, `mediumTrustCriteria`, `lowTrustCriteria` | Secret | never | Criteria graphs can contain endpoint/posture identifiers and are dropped in the first ZCC pass. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

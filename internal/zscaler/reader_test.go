@@ -12,6 +12,9 @@ import (
 	"time"
 
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
+	zccnotificationtemplate "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template"
+	zcctrustednetworkv2 "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network_v2"
+	zccziaposture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
@@ -183,14 +186,16 @@ func TestNewReaderRequiresExplicitZscalerctlCredentials(t *testing.T) {
 	}
 }
 
-func TestPerCallServiceRejectsZTWWithLegacyZIACredentials(t *testing.T) {
+func TestPerCallServiceRejectsNonZIAProductsWithLegacyZIACredentials(t *testing.T) {
 	t.Parallel()
 
 	service := perCallService{cfg: validLegacyReaderConfig()}
 
-	_, _, err := service.service(context.Background(), resources.ProductZTW)
-	if !errors.Is(err, ErrMissingCredentials) {
-		t.Fatalf("perCallService.service(ctx, ztw) error = %v, want ErrMissingCredentials", err)
+	for _, product := range []resources.Product{resources.ProductZTW, resources.ProductZCC} {
+		_, _, err := service.service(context.Background(), product)
+		if !errors.Is(err, ErrMissingCredentials) {
+			t.Fatalf("perCallService.service(ctx, %s) error = %v, want ErrMissingCredentials", product, err)
+		}
 	}
 }
 
@@ -2700,6 +2705,115 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 			for _, field := range tc.absentFields {
 				if _, ok := got[field]; ok {
 					t.Errorf("projected ztw %s = %#v, want no %s", tc.name, got, field)
+				}
+			}
+		})
+	}
+}
+
+func TestReaderZCCReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const canary = "zcc-reference-batch-psk-canary"
+	cases := []struct {
+		name         string
+		record       resources.SourceRecord
+		absentFields []string
+	}{
+		{
+			name: resourceTrustedNetworks,
+			record: zccTrustedNetworkSourceRecord(zcctrustednetworkv2.TrustedNetworkV2{
+				ID:                     2101,
+				CompanyID:              1001,
+				ZPAID:                  "zpa psk=" + canary,
+				Active:                 true,
+				ConditionType:          "TRUSTED_NETWORK",
+				Name:                   "Trusted network",
+				CreatedBy:              "creator psk=" + canary,
+				DNSSearchDomains:       []string{"domain psk=" + canary},
+				DNSServerIPs:           []string{"dns psk=" + canary},
+				EditedBy:               "editor psk=" + canary,
+				Guid:                   "guid psk=" + canary,
+				Hostname:               "host psk=" + canary,
+				NetworkName:            "network psk=" + canary,
+				ResolvedIPsForHostname: []string{"resolved psk=" + canary},
+				SSID:                   "ssid psk=" + canary,
+				TrustedDhcpServersIPs:  []string{"dhcp psk=" + canary},
+				TrustedEgressIPs:       []string{"egress psk=" + canary},
+				TrustedGatewayIPs:      []string{"gateway psk=" + canary},
+				TrustedSubnetIPs:       []string{"subnet psk=" + canary},
+			}),
+			absentFields: []string{"createdBy", "editedBy"},
+		},
+		{
+			name: resourceNotifyTemplates,
+			record: zccNotificationTemplateSourceRecord(zccnotificationtemplate.NotificationTemplate{
+				ID:                  2102,
+				Name:                "Notify template",
+				IsDefaultTemplate:   false,
+				EnableClient:        true,
+				EnableZia:           true,
+				EnableAppUpdates:    true,
+				EnableServiceStatus: true,
+				DurationInSeconds:   30,
+				EnablePersistent:    true,
+				EnableDoNotDisturb:  false,
+				CreatedBy:           7001,
+				EditedBy:            7002,
+				ZIANotificationTemplate: zccnotificationtemplate.ZIANotificationTemplate{
+					EnableZiaFirewall:      true,
+					EnableZiaFirewallPopup: true,
+					EnableZiaDNS:           true,
+					EnableZiaDNSPopup:      true,
+					EnableZiaIPS:           true,
+					EnableZiaIPSPopup:      true,
+					EnableZiaPersistent:    true,
+				},
+				ZPANotificationTemplate: zccnotificationtemplate.ZPANotificationTemplate{
+					EnableDevicePostureFailure: true,
+					EnableZpaReauth:            true,
+					ZpaReauthIntervalInMinutes: 15,
+					DelayPostureFailureSeconds: 20,
+				},
+			}),
+			absentFields: []string{"createdBy", "editedBy"},
+		},
+		{
+			name: resourceZIAPostures,
+			record: zccZIAPostureSourceRecord(zccziaposture.ZIAPosture{
+				ID:       2103,
+				Name:     "ZIA posture",
+				Platform: 3,
+				HighTrustCriteria: zccziaposture.HighTrustCriteria{
+					Cs: []zccziaposture.TrustCriteriaSet{
+						{Cn: []zccziaposture.TrustCriterion{{ID: "criterion psk=" + canary, Name: "criterion", UDID: "udid psk=" + canary}}},
+					},
+				},
+				MediumTrustCriteria: zccziaposture.MediumTrustCriteria{
+					Cs: []zccziaposture.TrustCriteriaSet{
+						{Cn: []zccziaposture.TrustCriterion{{ID: "medium psk=" + canary, Name: "medium", UDID: "medium udid psk=" + canary}}},
+					},
+				},
+				LowTrustCriteria: zccziaposture.LowTrustCriteria{
+					Cs: []zccziaposture.TrustCriteriaSet{
+						{Cn: []zccziaposture.TrustCriterion{{ID: "low psk=" + canary, Name: "low", UDID: "low udid psk=" + canary}}},
+					},
+				},
+			}),
+			absentFields: []string{"highTrustCriteria", "mediumTrustCriteria", "lowTrustCriteria"},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := projectOneRecord(t, resources.ProductZCC, tc.name, []resources.SourceRecord{tc.record})
+			assertNoCanaries(t, "zcc "+tc.name, got, canary)
+			for _, field := range tc.absentFields {
+				if _, ok := got[field]; ok {
+					t.Errorf("projected zcc %s = %#v, want no %s", tc.name, got, field)
 				}
 			}
 		})

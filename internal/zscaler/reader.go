@@ -18,6 +18,9 @@ import (
 	sdklogger "github.com/zscaler/zscaler-sdk-go/v3/logger"
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
+	zccnotificationtemplate "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template"
+	zcctrustednetworkv2 "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network_v2"
+	zccziaposture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
@@ -164,6 +167,9 @@ const (
 	resourceECGroups         = "ec-groups"
 	resourceIPGroups         = "ip-groups"
 	resourceNetworkSvcGroups = "network-service-groups"
+	resourceTrustedNetworks  = "trusted-networks"
+	resourceNotifyTemplates  = "notification-templates"
+	resourceZIAPostures      = "zia-postures"
 
 	resourceAdvancedSettings           = "advanced-settings"
 	resourceAdvancedThreatSettings     = "advanced-threat-settings"
@@ -291,7 +297,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
 	switch product {
-	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW:
+	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZCC:
 	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
@@ -1069,6 +1075,36 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return ztwnetworkservicegroups.GetNetworkServiceGroups(ctx, service, id)
 			}),
 			ztwNetworkServiceGroupSourceRecord,
+		),
+		{product: resources.ProductZCC, name: resourceTrustedNetworks}: newListGetHandler(
+			resourceTrustedNetworks,
+			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zcctrustednetworkv2.TrustedNetworkV2, error) {
+				return zcctrustednetworkv2.GetAll(ctx, service, nil)
+			}),
+			sdkProductGet(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service, id int) (*zcctrustednetworkv2.TrustedNetworkV2, error) {
+				return zcctrustednetworkv2.Get(ctx, service, id)
+			}),
+			zccTrustedNetworkSourceRecord,
+		),
+		{product: resources.ProductZCC, name: resourceNotifyTemplates}: newListGetHandler(
+			resourceNotifyTemplates,
+			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccnotificationtemplate.NotificationTemplate, error) {
+				return zccnotificationtemplate.GetAll(ctx, service, nil)
+			}),
+			sdkProductGet(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service, id int) (*zccnotificationtemplate.NotificationTemplate, error) {
+				return zccnotificationtemplate.Get(ctx, service, id)
+			}),
+			zccNotificationTemplateSourceRecord,
+		),
+		{product: resources.ProductZCC, name: resourceZIAPostures}: newListGetHandler(
+			resourceZIAPostures,
+			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccziaposture.ZIAPosture, error) {
+				return zccziaposture.GetAll(ctx, service, nil)
+			}),
+			sdkProductGet(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service, id int) (*zccziaposture.ZIAPosture, error) {
+				return zccziaposture.Get(ctx, service, id)
+			}),
+			zccZIAPostureSourceRecord,
 		),
 		{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
 			resourceZPAServerGroups,
@@ -2856,6 +2892,61 @@ func ztwNetworkServiceGroupSourceRecord(group ztwnetworkservicegroups.NetworkSer
 	return resources.NewSourceRecord(fields)
 }
 
+func zccTrustedNetworkSourceRecord(network zcctrustednetworkv2.TrustedNetworkV2) resources.SourceRecord {
+	fields := map[string]any{
+		"id":            network.ID,
+		"companyId":     network.CompanyID,
+		"zpaId":         network.ZPAID,
+		"active":        network.Active,
+		"conditionType": network.ConditionType,
+		"name":          network.Name,
+		"createdBy":     network.CreatedBy,
+		"editedBy":      network.EditedBy,
+		"guid":          network.Guid,
+		"hostname":      network.Hostname,
+		"networkName":   network.NetworkName,
+		"ssid":          network.SSID,
+	}
+	addStringSlice(fields, "dnsSearchDomains", network.DNSSearchDomains)
+	addStringSlice(fields, "dnsServerIps", network.DNSServerIPs)
+	addStringSlice(fields, "resolvedIpsForHostname", network.ResolvedIPsForHostname)
+	addStringSlice(fields, "trustedDhcpServersIps", network.TrustedDhcpServersIPs)
+	addStringSlice(fields, "trustedEgressIps", network.TrustedEgressIPs)
+	addStringSlice(fields, "trustedGatewayIps", network.TrustedGatewayIPs)
+	addStringSlice(fields, "trustedSubnetIps", network.TrustedSubnetIPs)
+	return resources.NewSourceRecord(fields)
+}
+
+func zccNotificationTemplateSourceRecord(template zccnotificationtemplate.NotificationTemplate) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":                      template.ID,
+		"name":                    template.Name,
+		"isDefaultTemplate":       template.IsDefaultTemplate,
+		"enableClient":            template.EnableClient,
+		"enableZia":               template.EnableZia,
+		"enableAppUpdates":        template.EnableAppUpdates,
+		"enableServiceStatus":     template.EnableServiceStatus,
+		"durationInSeconds":       template.DurationInSeconds,
+		"enablePersistent":        template.EnablePersistent,
+		"enableDoNotDisturb":      template.EnableDoNotDisturb,
+		"createdBy":               template.CreatedBy,
+		"editedBy":                template.EditedBy,
+		"ziaNotificationTemplate": zccZIANotificationTemplateSource(template.ZIANotificationTemplate),
+		"zpaNotificationTemplate": zccZPANotificationTemplateSource(template.ZPANotificationTemplate),
+	})
+}
+
+func zccZIAPostureSourceRecord(posture zccziaposture.ZIAPosture) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":                  posture.ID,
+		"name":                posture.Name,
+		"platform":            posture.Platform,
+		"highTrustCriteria":   zccHighTrustCriteriaSource(posture.HighTrustCriteria),
+		"mediumTrustCriteria": zccMediumTrustCriteriaSource(posture.MediumTrustCriteria),
+		"lowTrustCriteria":    zccLowTrustCriteriaSource(posture.LowTrustCriteria),
+	})
+}
+
 func alertSubscriptionSourceRecord(subscription alerts.AlertSubscriptions) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          subscription.ID,
@@ -3772,6 +3863,55 @@ func ztwNetworkServiceRefsSource(values []ztwnetworkservicegroups.Services) []an
 			"id":   value.ID,
 			"name": value.Name,
 		})
+	}
+	return out
+}
+
+func zccZIANotificationTemplateSource(value zccnotificationtemplate.ZIANotificationTemplate) map[string]any {
+	return map[string]any{
+		"enableZiaFirewall":      value.EnableZiaFirewall,
+		"enableZiaFirewallPopup": value.EnableZiaFirewallPopup,
+		"enableZiaDNS":           value.EnableZiaDNS,
+		"enableZiaDNSPopup":      value.EnableZiaDNSPopup,
+		"enableZiaIPS":           value.EnableZiaIPS,
+		"enableZiaIPSPopup":      value.EnableZiaIPSPopup,
+		"enableZiaPersistent":    value.EnableZiaPersistent,
+	}
+}
+
+func zccZPANotificationTemplateSource(value zccnotificationtemplate.ZPANotificationTemplate) map[string]any {
+	return map[string]any{
+		"enableDevicePostureFailure": value.EnableDevicePostureFailure,
+		"enableZpaReauth":            value.EnableZpaReauth,
+		"zpaReauthIntervalInMinutes": value.ZpaReauthIntervalInMinutes,
+		"delayPostureFailureSeconds": value.DelayPostureFailureSeconds,
+	}
+}
+
+func zccHighTrustCriteriaSource(value zccziaposture.HighTrustCriteria) map[string]any {
+	return map[string]any{"cs": zccTrustCriteriaSetsSource(value.Cs)}
+}
+
+func zccMediumTrustCriteriaSource(value zccziaposture.MediumTrustCriteria) map[string]any {
+	return map[string]any{"cs": zccTrustCriteriaSetsSource(value.Cs)}
+}
+
+func zccLowTrustCriteriaSource(value zccziaposture.LowTrustCriteria) map[string]any {
+	return map[string]any{"cs": zccTrustCriteriaSetsSource(value.Cs)}
+}
+
+func zccTrustCriteriaSetsSource(values []zccziaposture.TrustCriteriaSet) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		items := make([]any, 0, len(value.Cn))
+		for _, criterion := range value.Cn {
+			items = append(items, map[string]any{
+				"id":   criterion.ID,
+				"name": criterion.Name,
+				"udid": criterion.UDID,
+			})
+		}
+		out = append(out, map[string]any{"cn": items})
 	}
 	return out
 }

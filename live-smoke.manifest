@@ -4,13 +4,6 @@
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
 
-ztw/workload-groups
-ztw/public-cloud-accounts
-ztw/dns-gateways
-ztw/forwarding-gateways
-ztw/ec-groups
-ztw/ip-source-groups
-ztw/ip-destination-groups
-ztw/ip-groups
-ztw/network-services
-ztw/network-service-groups
+zcc/trusted-networks
+zcc/notification-templates
+zcc/zia-postures

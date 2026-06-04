@@ -70,6 +70,10 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network_v2
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zdx
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings

@@ -35,15 +35,17 @@ Runs a read-only live smoke against the currently configured zscalerctl
 credentials and prints PASS/FAIL markers for pre-PR validation.
 By default, all current ZIA read resources are validated. A manifest or
 --resources value may select qualified non-ZIA resources such as
-ztw/workload-groups.
+ztw/workload-groups or zcc/trusted-networks.
 
 Options:
   --out DIR            Write validation artifacts under DIR. Defaults to a
                        secure temporary directory that is kept for inspection.
   --bin PATH           zscalerctl binary to run. Defaults to
                        "go run -mod=vendor ./cmd/zscalerctl".
-  --resources LIST     Optional comma-separated resource filter, using bare ZIA
-                       names or product/name. Defaults to all ZIA resources.
+  --resources LIST     Optional comma-separated resource filter. Bare names
+                       mean zia/name; product-qualified names such as
+                       ztw/workload-groups and zcc/trusted-networks select
+                       other products.
   --manifest FILE      Read the resource filter from a line-oriented manifest.
                        Comments, Markdown bullets, and comma-separated entries
                        are accepted.
@@ -83,10 +85,10 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*|zpa/*|ztw/*)
+    zia/*|zpa/*|ztw/*|zcc/*)
       ;;
     */*)
-      echo "--resources supports only zia/, zpa/, or ztw/ qualified resources; got: $resource" >&2
+      echo "--resources supports only zia/, zpa/, ztw/, or zcc/ qualified resources; got: $resource" >&2
       exit 2
       ;;
     *)
@@ -700,7 +702,7 @@ load_smoke_resources() {
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia" or .product == "zpa" or .product == "ztw")
+      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zcc")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
       | [.product, .name]
     ]
@@ -728,7 +730,7 @@ load_smoke_resources() {
     done
   fi
 
-  pass "schema list found ${#all_resources[@]} ZIA/ZPA/ZTW read resource(s)"
+  pass "schema list found ${#all_resources[@]} ZIA/ZPA/ZTW/ZCC read resource(s)"
   pass "live smoke selected ${#resources[@]} resource(s): ${resources[*]}"
   record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} resources"
   return 0
