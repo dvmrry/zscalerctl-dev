@@ -192,6 +192,17 @@ func ProjectRecords(spec ResourceSpec, mode redact.Mode, records []SourceRecord)
 	return NewProjectedRecords(projected), reports, nil
 }
 
+func ProjectRecordsAndVerify(spec ResourceSpec, mode redact.Mode, records []SourceRecord) (ProjectedRecords, []ProjectionReport, error) {
+	projected, reports, err := ProjectRecords(spec, mode, records)
+	if err != nil {
+		return ProjectedRecords{}, nil, err
+	}
+	if err := assertProjectedRecordsSubset(spec, mode, projected); err != nil {
+		return ProjectedRecords{}, nil, err
+	}
+	return projected, reports, nil
+}
+
 func ProjectRecord(spec ResourceSpec, mode redact.Mode, record SourceRecord) (ProjectedRecord, ProjectionReport, error) {
 	if err := spec.Validate(); err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
@@ -220,6 +231,17 @@ func ProjectRecord(spec ResourceSpec, mode redact.Mode, record SourceRecord) (Pr
 	}
 	sortReport(&report)
 	return ProjectedRecord{fields: projected}, report, nil
+}
+
+func ProjectRecordAndVerify(spec ResourceSpec, mode redact.Mode, record SourceRecord) (ProjectedRecord, ProjectionReport, error) {
+	projected, report, err := ProjectRecord(spec, mode, record)
+	if err != nil {
+		return ProjectedRecord{}, ProjectionReport{}, err
+	}
+	if err := AssertRenderedSubset(spec, mode, projected.Fields()); err != nil {
+		return ProjectedRecord{}, ProjectionReport{}, err
+	}
+	return projected, report, nil
 }
 
 func projectValue(
@@ -406,6 +428,15 @@ func AssertRenderedSubset(spec ResourceSpec, mode redact.Mode, rendered map[stri
 			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, spec.Product, spec.Name, key)
 		}
 		if err := assertValueSubset(spec, mode, field, rendered[key], key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
+	for _, record := range records.Records() {
+		if err := AssertRenderedSubset(spec, mode, record.Fields()); err != nil {
 			return err
 		}
 	}

@@ -330,30 +330,20 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		if err != nil {
 			return err
 		}
-		projected, report, err := resources.ProjectRecord(spec, cfg.Defaults.Redaction, record)
+		projected, _, err := resources.ProjectRecordAndVerify(spec, cfg.Defaults.Redaction, record)
 		if err != nil {
 			return err
 		}
-		if err := resources.AssertRenderedSubset(spec, cfg.Defaults.Redaction, projected.Fields()); err != nil {
-			return err
-		}
-		_ = report
 		return a.writeProjectedRecord(cfg, opts, spec, projected)
 	}
 	records, err := reader.List(ctx, product, resource)
 	if err != nil {
 		return err
 	}
-	projected, reports, err := resources.ProjectRecords(spec, cfg.Defaults.Redaction, records)
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, cfg.Defaults.Redaction, records)
 	if err != nil {
 		return err
 	}
-	for _, record := range projected.Records() {
-		if err := resources.AssertRenderedSubset(spec, cfg.Defaults.Redaction, record.Fields()); err != nil {
-			return err
-		}
-	}
-	_ = reports
 	return a.writeProjectedRecords(cfg, opts, spec, projected)
 }
 
@@ -499,27 +489,19 @@ func (a *App) collectDump(
 			}
 			return result, fmt.Errorf("dump %s/%s list failed", spec.Product, spec.Name)
 		}
-		projected, reports, err := resources.ProjectRecords(spec, cfg.Defaults.Redaction, records)
+		projected, reports, err := resources.ProjectRecordsAndVerify(spec, cfg.Defaults.Redaction, records)
 		if err != nil {
+			operation := "project"
+			kind := "projection_failed"
+			if errors.Is(err, resources.ErrUnexpectedField) {
+				operation = "validate"
+				kind = "subset_failed"
+			}
 			if continueOnError {
-				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "project", "projection_failed"))
+				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
 				continue
 			}
-			return result, fmt.Errorf("dump %s/%s project failed", spec.Product, spec.Name)
-		}
-		subsetOK := true
-		for _, record := range projected.Records() {
-			if err := resources.AssertRenderedSubset(spec, cfg.Defaults.Redaction, record.Fields()); err != nil {
-				if continueOnError {
-					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "validate", "subset_failed"))
-					subsetOK = false
-					break
-				}
-				return result, fmt.Errorf("dump %s/%s validate failed", spec.Product, spec.Name)
-			}
-		}
-		if !subsetOK {
-			continue
+			return result, fmt.Errorf("dump %s/%s %s failed", spec.Product, spec.Name, operation)
 		}
 		result.Entries = append(result.Entries, dump.ResourceDump{
 			Spec:    spec,
