@@ -76,6 +76,8 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
+	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
+	ztwworkloadgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/workload_groups"
 )
 
 func TestReviewedSDKShapesMatchCatalogOrIgnoredRegistry(t *testing.T) {
@@ -1349,6 +1351,21 @@ func reviewedSDKShapes() []sdkShapeReview {
 			),
 		},
 		{
+			name:         "ztwworkloadgroups.WorkloadGroup",
+			resource:     resources.ProductZTW,
+			resourceName: resourceWorkloadGroups,
+			typ:          reflect.TypeOf(ztwworkloadgroups.WorkloadGroup{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"expression",
+				"lastModifiedTime",
+				"lastModifiedBy",
+				"expressionJson",
+			},
+		},
+		{
 			name:         "alerts.AlertSubscriptions",
 			resource:     resources.ProductZIA,
 			resourceName: resourceAlertSubs,
@@ -2556,6 +2573,52 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"covered by dropped expressionJson parent",
 				"key",
 				"value",
+			),
+		},
+		{
+			name: "ztwworkloadgroups.WorkloadTagExpression",
+			typ:  reflect.TypeOf(ztwworkloadgroups.WorkloadTagExpression{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped expressionJson parent",
+				"expressionContainers",
+			),
+		},
+		{
+			name: "ztwworkloadgroups.ExpressionContainer",
+			typ:  reflect.TypeOf(ztwworkloadgroups.ExpressionContainer{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped expressionJson parent",
+				"tagType",
+				"operator",
+				"tagContainer",
+			),
+		},
+		{
+			name: "ztwworkloadgroups.TagContainer",
+			typ:  reflect.TypeOf(ztwworkloadgroups.TagContainer{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped expressionJson parent",
+				"tags",
+				"operator",
+			),
+		},
+		{
+			name: "ztwworkloadgroups.Tags",
+			typ:  reflect.TypeOf(ztwworkloadgroups.Tags{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped expressionJson parent",
+				"key",
+				"value",
+			),
+		},
+		{
+			name: "ztwcommon.IDNameExtensions",
+			typ:  reflect.TypeOf(ztwcommon.IDNameExtensions{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped lastModifiedBy parent",
+				"id",
+				"name",
+				"extensions",
 			),
 		},
 		{

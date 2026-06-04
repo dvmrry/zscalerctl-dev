@@ -143,6 +143,8 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/workload_groups
 # golang.org/x/sys v0.44.0
 ## explicit; go 1.25.0
 golang.org/x/sys/unix

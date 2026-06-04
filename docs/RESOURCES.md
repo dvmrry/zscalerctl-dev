@@ -1462,6 +1462,32 @@ Fields:
 | `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
 | `configKey`, `configValue`, `configValueInt`, `customerId`, `targetGid` | Secret or unmodeled nested structure | none | Dropped because override keys, values, and tenant/target identifiers require resource-specific review before exposure. |
 
+## ZTW Workload Groups
+
+Commands:
+
+```sh
+zscalerctl ztw workload-groups list
+zscalerctl ztw workload-groups get <id>
+zscalerctl dump --products ztw --resources ztw/workload-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | ZTW workload group identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `expression` | Secret | never | Tag-expression text is dropped in the first ZTW pass because it can encode tenant tag keys and values. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
+| `lastModifiedBy` | Secret | never | Admin identity reference is mapped into source records and dropped by projection. |
+| `expressionJson` | Secret | never | Structured tag-expression graph is mapped into source records and dropped by projection. |
+
+The SDK also returns nested expression containers and tag key/value pairs under
+`expressionJson`. The reader maps that graph so SDK shape drift is visible to
+tests, but the catalog does not allow it to render.
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed
@@ -1516,7 +1542,7 @@ Fields:
 
 Before enabling another resource:
 
-- Start with `scripts/scaffold-resource.sh --product <zia|zpa> --resource
+- Start with `scripts/scaffold-resource.sh --product <zia|zpa|ztw> --resource
   <name> --package <sdk-package> --type <sdk-type>` to create a review bundle
   under `scratch/resource-drafts/`. The bundle wraps `catalog-draft.go`, adds
   reader/docs/validation notes, and does not mutate production files.

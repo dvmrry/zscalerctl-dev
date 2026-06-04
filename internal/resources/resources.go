@@ -22,6 +22,7 @@ type Product string
 const (
 	ProductZIA Product = "zia"
 	ProductZPA Product = "zpa"
+	ProductZTW Product = "ztw"
 )
 
 type Capability string
@@ -3095,6 +3096,20 @@ func Catalog() ResourceCatalog {
 				secretField("targetGid"),
 				tenantConfigField("targetName", standardShareModes()),
 				operationalField("targetType", allModes()),
+			},
+		},
+		{
+			Product:    ProductZTW,
+			Name:       "workload-groups",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZTW workload group description"),
+				secretField("expression"),
+				operationalField("lastModifiedTime", standardShareModes()),
+				secretField("lastModifiedBy"),
+				secretField("expressionJson"),
 			},
 		},
 	}

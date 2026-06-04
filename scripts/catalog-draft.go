@@ -485,6 +485,8 @@ func productConst(product string) string {
 		return "ProductZIA"
 	case "zpa":
 		return "ProductZPA"
+	case "ztw":
+		return "ProductZTW"
 	default:
 		return ""
 	}

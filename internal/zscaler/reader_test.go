@@ -62,6 +62,8 @@ import (
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
+	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
+	ztwworkloadgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/workload_groups"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -169,6 +171,17 @@ func TestNewReaderRequiresExplicitZscalerctlCredentials(t *testing.T) {
 
 	if _, err := NewReader(ReaderConfig{}); !errors.Is(err, ErrMissingCredentials) {
 		t.Fatalf("NewReader(empty) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
+func TestPerCallServiceRejectsZTWWithLegacyZIACredentials(t *testing.T) {
+	t.Parallel()
+
+	service := perCallService{cfg: validLegacyReaderConfig()}
+
+	_, _, err := service.service(context.Background(), resources.ProductZTW)
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("perCallService.service(ctx, ztw) error = %v, want ErrMissingCredentials", err)
 	}
 }
 
@@ -2442,6 +2455,77 @@ func TestReaderListWorkloadGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 	}
 	if got["lastModifiedTime"] != 1700000000 {
 		t.Errorf("projected workload-groups lastModifiedTime = %v, want 1700000000", got["lastModifiedTime"])
+	}
+}
+
+func TestReaderListZTWWorkloadGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary      = "ztw-workload-group-psk-canary"
+		adminCanary = "ztw-workload-group-admin-canary"
+		tagCanary   = "ztw-workload-group-tag-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZTW, name: resourceWorkloadGroups}: newListGetHandler(
+				resourceWorkloadGroups,
+				func(context.Context) ([]ztwworkloadgroups.WorkloadGroup, error) {
+					return []ztwworkloadgroups.WorkloadGroup{
+						{
+							ID:               1901,
+							Name:             "Cloud workload group",
+							Description:      "temporary psk=" + canary,
+							Expression:       "tags.value psk=" + canary,
+							LastModifiedTime: 1700000100,
+							LastModifiedBy: &ztwcommon.IDNameExtensions{
+								ID:   9004,
+								Name: adminCanary,
+							},
+							WorkloadTagExpression: ztwworkloadgroups.WorkloadTagExpression{
+								ExpressionContainers: []ztwworkloadgroups.ExpressionContainer{
+									{
+										TagType:  "TAG",
+										Operator: "AND",
+										TagContainer: ztwworkloadgroups.TagContainer{
+											Operator: "OR",
+											Tags: []ztwworkloadgroups.Tags{
+												{
+													Key:   "owner",
+													Value: tagCanary,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					}, nil
+				},
+				intIDGetter(func(context.Context, int) (*ztwworkloadgroups.WorkloadGroup, error) { return nil, nil }),
+				ztwWorkloadGroupSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZTW, resourceWorkloadGroups)
+	if err != nil {
+		t.Fatalf("SDKReader.List(ztw, workload-groups) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZTW, resourceWorkloadGroups, records)
+	assertNoCanaries(t, "ztw workload-groups", got, canary, adminCanary, tagCanary)
+	for _, field := range []string{"expression", "lastModifiedBy", "expressionJson"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected ztw workload-groups = %#v, want no %s", got, field)
+		}
+	}
+	if got["lastModifiedTime"] != 1700000100 {
+		t.Errorf("projected ztw workload-groups lastModifiedTime = %v, want 1700000100", got["lastModifiedTime"])
+	}
+	description := toString(got["description"])
+	if !strings.Contains(description, "<REDACTED:SECRET>") {
+		t.Errorf("projected ztw workload-groups description = %v, want redacted secret marker", got["description"])
 	}
 }
 

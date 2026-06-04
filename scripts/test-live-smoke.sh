@@ -28,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides ztw/workload-groups)
 
 schema_fields() {
   case "$1" in
@@ -94,6 +94,9 @@ schema_fields() {
       ;;
     config-overrides)
       printf '[{"name":"brokerName","allowed_modes":["standard"]},{"name":"customerName","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"targetName","allowed_modes":["standard"]},{"name":"targetType","allowed_modes":["standard"]},{"name":"configValue","allowed_modes":[]}]'
+      ;;
+    workload-groups)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"expression","allowed_modes":[]},{"name":"lastModifiedTime","allowed_modes":["standard"]},{"name":"lastModifiedBy","allowed_modes":[]},{"name":"expressionJson","allowed_modes":[]}]'
       ;;
     *)
       echo "unexpected resource: $1" >&2
@@ -231,6 +234,9 @@ JSON
       ;;
     *:zpa:config-overrides)
       printf '[{"brokerName":"Broker","customerName":"Customer","description":"","targetName":"Target","targetType":"BROKER"}]\n'
+      ;;
+    *:ztw:workload-groups)
+      printf '[{"id":7,"name":"Cloud workloads","description":"","lastModifiedTime":1700000000}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2
@@ -686,6 +692,36 @@ fi
 if ! grep -q '\[PASS\] manifest count matches resources/zpa/server-groups.json (1 records)' "$tmp_dir/stdout-zpa-manifest"; then
   echo "live-smoke ZPA manifest fixture did not validate ZPA manifest counts" >&2
   cat "$tmp_dir/stdout-zpa-manifest" >&2
+  exit 1
+fi
+
+ztw_manifest="$tmp_dir/ztw-live-smoke.manifest"
+cat >"$ztw_manifest" <<'EOF'
+ztw/workload-groups
+EOF
+
+if ! ZSCALERCTL_BIN="$fake_bin" "$repo_root/scripts/live-smoke.sh" --skip-credential-check --manifest "$ztw_manifest" --out "$tmp_dir/out-ztw-manifest" >"$tmp_dir/stdout-ztw-manifest" 2>"$tmp_dir/stderr-ztw-manifest"; then
+  echo "live-smoke rejected a valid ZTW manifest resource subset" >&2
+  cat "$tmp_dir/stdout-ztw-manifest" >&2
+  cat "$tmp_dir/stderr-ztw-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] live smoke selected 1 resource(s): ztw/workload-groups' "$tmp_dir/stdout-ztw-manifest"; then
+  echo "live-smoke ZTW manifest fixture did not report selected resources" >&2
+  cat "$tmp_dir/stdout-ztw-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] ztw workload-groups list command completed' "$tmp_dir/stdout-ztw-manifest"; then
+  echo "live-smoke ZTW manifest fixture did not run the ZTW list command" >&2
+  cat "$tmp_dir/stdout-ztw-manifest" >&2
+  exit 1
+fi
+
+if ! grep -q '\[PASS\] manifest count matches resources/ztw/workload-groups.json (1 records)' "$tmp_dir/stdout-ztw-manifest"; then
+  echo "live-smoke ZTW manifest fixture did not validate ZTW manifest counts" >&2
+  cat "$tmp_dir/stdout-ztw-manifest" >&2
   exit 1
 fi
 

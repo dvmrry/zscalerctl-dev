@@ -4,19 +4,4 @@
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
 
-zpa/server-groups
-zpa/application-segments
-zpa/segment-groups
-zpa/app-connectors
-zpa/app-connector-groups
-zpa/app-servers
-zpa/machine-groups
-zpa/trusted-networks
-zpa/service-edge-groups
-zpa/service-edges
-zpa/cloud-connector-groups
-zpa/cloud-connectors
-zpa/posture-profiles
-zpa/cbi-zpa-profiles
-zpa/c2c-ip-ranges
-zpa/config-overrides
+ztw/workload-groups

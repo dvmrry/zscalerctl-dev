@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-usage: scripts/scaffold-resource.sh --product zia|zpa --resource NAME --package PKG --type TYPE [--out DIR] [--force]
+usage: scripts/scaffold-resource.sh --product zia|zpa|ztw --resource NAME --package PKG --type TYPE [--out DIR] [--force]
 
 Creates a fail-closed resource review bundle under scratch/resource-drafts by
 default. The bundle is intentionally not applied to production files; review the
@@ -70,8 +70,8 @@ done
 [[ -n "$type_name" ]] || fail "--type is required"
 
 case "$product" in
-  zia|zpa) ;;
-  *) fail "--product must be zia or zpa" ;;
+  zia|zpa|ztw) ;;
+  *) fail "--product must be zia, zpa, or ztw" ;;
 esac
 
 if [[ ! "$resource" =~ ^[a-z0-9-]+$ ]]; then
@@ -118,6 +118,7 @@ title_resource() {
       gre) out_parts+=("GRE") ;;
       zia) out_parts+=("ZIA") ;;
       zpa) out_parts+=("ZPA") ;;
+      ztw) out_parts+=("ZTW") ;;
       "") ;;
       *) out_parts+=("$(tr '[:lower:]' '[:upper:]' <<< "${part:0:1}")${part:1}") ;;
     esac

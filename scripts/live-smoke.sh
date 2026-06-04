@@ -34,7 +34,8 @@ usage: scripts/live-smoke.sh [--out DIR] [--bin PATH] [--resources LIST] [--mani
 Runs a read-only live smoke against the currently configured zscalerctl
 credentials and prints PASS/FAIL markers for pre-PR validation.
 By default, all current ZIA read resources are validated. A manifest or
---resources value may select qualified ZPA resources such as zpa/server-groups.
+--resources value may select qualified non-ZIA resources such as
+ztw/workload-groups.
 
 Options:
   --out DIR            Write validation artifacts under DIR. Defaults to a
@@ -59,9 +60,9 @@ Options:
 
 This script does not print credential values or live resource payloads. It
 recognizes explicit zscalerctl OneAPI credentials and explicit ZIA legacy
-credentials; selected ZPA resources require OneAPI credentials plus
-ZSCALERCTL_ZPA_CUSTOMER_ID. Raw SDK env vars such as ZIA_USERNAME are
-intentionally ignored.
+credentials. Non-ZIA resources require OneAPI credentials; selected ZPA
+resources also require ZSCALERCTL_ZPA_CUSTOMER_ID. Raw SDK env vars such as
+ZIA_USERNAME are intentionally ignored.
 EOF
 }
 
@@ -82,10 +83,10 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*|zpa/*)
+    zia/*|zpa/*|ztw/*)
       ;;
     */*)
-      echo "--resources supports only zia/ or zpa/ qualified resources; got: $resource" >&2
+      echo "--resources supports only zia/, zpa/, or ztw/ qualified resources; got: $resource" >&2
       exit 2
       ;;
     *)
@@ -699,7 +700,7 @@ load_smoke_resources() {
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia" or .product == "zpa")
+      | select(.product == "zia" or .product == "zpa" or .product == "ztw")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
       | [.product, .name]
     ]
@@ -727,7 +728,7 @@ load_smoke_resources() {
     done
   fi
 
-  pass "schema list found ${#all_resources[@]} ZIA/ZPA read resource(s)"
+  pass "schema list found ${#all_resources[@]} ZIA/ZPA/ZTW read resource(s)"
   pass "live smoke selected ${#resources[@]} resource(s): ${resources[*]}"
   record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} resources"
   return 0
@@ -765,6 +766,17 @@ selected_has_product() {
 
   for qualified in "${resources[@]}"; do
     if [[ "$(resource_product "$qualified")" == "$want" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+selected_has_non_zia() {
+  local qualified
+
+  for qualified in "${resources[@]}"; do
+    if [[ "$(resource_product "$qualified")" != "zia" ]]; then
       return 0
     fi
   done
@@ -982,30 +994,33 @@ if ! load_smoke_resources "$schema_file" "$schema_stderr"; then
   exit 1
 fi
 
-if ((skip_credential_check == 0)) && selected_has_product zpa; then
+if ((skip_credential_check == 0)) && selected_has_non_zia; then
 	if [[ "${ZSCALERCTL_AUTH_MODE:-}" == "zia-legacy" ]]; then
-    fail "selected ZPA resources require OneAPI credentials"
+    fail "selected non-ZIA resources require OneAPI credentials"
     print_result_table >&2
     summary_file="$(write_failure_summary "$failures")"
     print_failure_summary "$summary_file"
     exit 1
   fi
-  if ! is_set ZSCALERCTL_CLIENT_ID ||
-    (! is_set ZSCALERCTL_CLIENT_SECRET && ! is_set ZSCALERCTL_CLIENT_SECRET_FILE) ||
-    ! is_set ZSCALERCTL_VANITY_DOMAIN; then
-    fail "selected ZPA resources require OneAPI credentials"
-    print_result_table >&2
+	  if ! is_set ZSCALERCTL_CLIENT_ID ||
+	    (! is_set ZSCALERCTL_CLIENT_SECRET && ! is_set ZSCALERCTL_CLIENT_SECRET_FILE) ||
+	    ! is_set ZSCALERCTL_VANITY_DOMAIN; then
+	    fail "selected non-ZIA resources require OneAPI credentials"
+	    print_result_table >&2
+	    summary_file="$(write_failure_summary "$failures")"
+	    print_failure_summary "$summary_file"
+	    exit 1
+	  fi
+fi
+
+if ((skip_credential_check == 0)) && selected_has_product zpa; then
+	  if ! is_set ZSCALERCTL_ZPA_CUSTOMER_ID; then
+	    fail "selected ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
+	    print_result_table >&2
     summary_file="$(write_failure_summary "$failures")"
     print_failure_summary "$summary_file"
-    exit 1
-  fi
-  if ! is_set ZSCALERCTL_ZPA_CUSTOMER_ID; then
-    fail "selected ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
-    print_result_table >&2
-    summary_file="$(write_failure_summary "$failures")"
-    print_failure_summary "$summary_file"
-    exit 1
-	fi
+	    exit 1
+		fi
 fi
 
 expected_paths_file="$lists_dir/expected-dump-paths.txt"

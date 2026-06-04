@@ -223,7 +223,7 @@ Suggested independent branches, in order:
 
 | Branch | Scope | Expected outcome |
 | --- | --- | --- |
-| `feature/ztw-scope-plan` | Verify OneAPI SDK call path for ZTW and scaffold `workload_groups`. | Establish Cloud/Workload product semantics without touching provisioning credentials. |
+| `feature/ztw-workload-groups` | Verify OneAPI SDK call path for ZTW and scaffold `workload_groups`. | Establish Cloud/Workload product semantics without touching provisioning credentials. |
 | `feature/zcc-scope-plan` | Verify OneAPI SDK call path for ZCC and scaffold `trusted_network_v2` or `notification_template`. | Establish whether ZCC can use the current service boundary cleanly. |
 | `feature/zidentity-scope-plan` | Scope `resource_servers` only. | Keep identity work to the thin read-only config slice; users/groups remain hard-deferred. |
 

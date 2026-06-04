@@ -88,6 +88,8 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
+	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
+	ztwworkloadgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/workload_groups"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/secret"
@@ -275,7 +277,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
 	switch product {
-	case resources.ProductZIA, resources.ProductZPA:
+	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW:
 	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
@@ -742,6 +744,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return workloadgroups.Get(ctx, service, id)
 			}),
 			workloadGroupSourceRecord,
+		),
+		{product: resources.ProductZTW, name: resourceWorkloadGroups}: newListGetHandler(
+			resourceWorkloadGroups,
+			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwworkloadgroups.WorkloadGroup, error) {
+				return ztwworkloadgroups.GetAll(ctx, service)
+			}),
+			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwworkloadgroups.WorkloadGroup, error) {
+				return ztwworkloadgroups.Get(ctx, service, id)
+			}),
+			ztwWorkloadGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAlertSubs}: newListGetHandler(
 			resourceAlertSubs,
@@ -1378,6 +1390,36 @@ func ziaSDKListGetByIntID[T any](
 			}
 		}
 		return nil, nil
+	})
+}
+
+func sdkProductList[T any](
+	product resources.Product,
+	client sdkClient,
+	call func(context.Context, *zsdk.Service) ([]T, error),
+) func(context.Context) ([]T, error) {
+	return func(ctx context.Context) ([]T, error) {
+		service, cleanup, err := client.productService(ctx, product)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service)
+	}
+}
+
+func sdkProductGet[T any](
+	product resources.Product,
+	client sdkClient,
+	call func(context.Context, *zsdk.Service, int) (*T, error),
+) func(context.Context, string) (*T, error) {
+	return intIDGetter(func(ctx context.Context, id int) (*T, error) {
+		service, cleanup, err := client.productService(ctx, product)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service, id)
 	})
 }
 
@@ -2554,6 +2596,21 @@ func workloadGroupSourceRecord(group workloadgroups.WorkloadGroup) resources.Sou
 	return resources.NewSourceRecord(fields)
 }
 
+func ztwWorkloadGroupSourceRecord(group ztwworkloadgroups.WorkloadGroup) resources.SourceRecord {
+	fields := map[string]any{
+		"id":               group.ID,
+		"name":             group.Name,
+		"description":      group.Description,
+		"expression":       group.Expression,
+		"lastModifiedTime": group.LastModifiedTime,
+	}
+	addZTWIDNameExtensionsPtr(fields, "lastModifiedBy", group.LastModifiedBy)
+	if len(group.WorkloadTagExpression.ExpressionContainers) > 0 {
+		fields["expressionJson"] = ztwWorkloadTagExpressionSource(group.WorkloadTagExpression)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func alertSubscriptionSourceRecord(subscription alerts.AlertSubscriptions) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          subscription.ID,
@@ -3103,6 +3160,12 @@ func addIDNameExtensionsPtr(fields map[string]any, name string, value *ziacommon
 	}
 }
 
+func addZTWIDNameExtensionsPtr(fields map[string]any, name string, value *ztwcommon.IDNameExtensions) {
+	if value != nil {
+		fields[name] = ztwIDNameExtensionsSource(value)
+	}
+}
+
 func addIDNameExtensionsSlice(fields map[string]any, name string, values []ziacommon.IDNameExtensions) {
 	if len(values) > 0 {
 		fields[name] = idNameExtensionsSliceSource(values)
@@ -3145,6 +3208,13 @@ func idNameExtensionsSource(value *ziacommon.IDNameExtensions) map[string]any {
 		"name": value.Name,
 	}
 	return fields
+}
+
+func ztwIDNameExtensionsSource(value *ztwcommon.IDNameExtensions) map[string]any {
+	return map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
 }
 
 func idNameSource(value *ziacommon.IDName) map[string]any {
@@ -3354,6 +3424,18 @@ func workloadTagExpressionSource(value workloadgroups.WorkloadTagExpression) map
 	return fields
 }
 
+func ztwWorkloadTagExpressionSource(value ztwworkloadgroups.WorkloadTagExpression) map[string]any {
+	fields := map[string]any{}
+	if len(value.ExpressionContainers) > 0 {
+		items := make([]map[string]any, 0, len(value.ExpressionContainers))
+		for _, container := range value.ExpressionContainers {
+			items = append(items, ztwExpressionContainerSource(container))
+		}
+		fields["expressionContainers"] = items
+	}
+	return fields
+}
+
 func expressionContainerSource(value workloadgroups.ExpressionContainer) map[string]any {
 	return map[string]any{
 		"tagType":      value.TagType,
@@ -3362,7 +3444,32 @@ func expressionContainerSource(value workloadgroups.ExpressionContainer) map[str
 	}
 }
 
+func ztwExpressionContainerSource(value ztwworkloadgroups.ExpressionContainer) map[string]any {
+	return map[string]any{
+		"tagType":      value.TagType,
+		"operator":     value.Operator,
+		"tagContainer": ztwTagContainerSource(value.TagContainer),
+	}
+}
+
 func tagContainerSource(value workloadgroups.TagContainer) map[string]any {
+	fields := map[string]any{
+		"operator": value.Operator,
+	}
+	if len(value.Tags) > 0 {
+		items := make([]map[string]any, 0, len(value.Tags))
+		for _, tag := range value.Tags {
+			items = append(items, map[string]any{
+				"key":   tag.Key,
+				"value": tag.Value,
+			})
+		}
+		fields["tags"] = items
+	}
+	return fields
+}
+
+func ztwTagContainerSource(value ztwworkloadgroups.TagContainer) map[string]any {
 	fields := map[string]any{
 		"operator": value.Operator,
 	}

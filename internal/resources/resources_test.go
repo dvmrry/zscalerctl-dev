@@ -1074,7 +1074,7 @@ func resourceSpecWithName(product resources.Product, name string, operation stri
 func documentedResourceKeys(doc string) map[string]struct{} {
 	keys := map[string]struct{}{}
 	for _, line := range strings.Split(doc, "\n") {
-		if !strings.HasPrefix(line, "## ZIA ") && !strings.HasPrefix(line, "## ZPA ") {
+		if !strings.HasPrefix(line, "## ZIA ") && !strings.HasPrefix(line, "## ZPA ") && !strings.HasPrefix(line, "## ZTW ") {
 			continue
 		}
 		parts := strings.Fields(line)
