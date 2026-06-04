@@ -154,6 +154,13 @@ Nested API objects are excluded unless the resource spec explicitly models their
 nested fields. An allowed top-level field does not implicitly allow every child
 field inside a map or list of maps.
 
+When a nested API object has, or plausibly should have, its own dedicated
+resource, parent resources should render only a reviewed `id`/`name` reference
+instead of re-expanding that object's child graph. The dedicated resource owns
+the authoritative field classification for that object; parent resources show
+the association without creating a second, potentially more permissive
+allow-list.
+
 Resource fields must be classified before they can render. Non-secret fields
 must explicitly list the redaction modes in which they are allowed. Secret-class
 fields are never renderable. The projection harness must be able to prove that

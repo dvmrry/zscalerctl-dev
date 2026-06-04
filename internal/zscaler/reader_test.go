@@ -48,6 +48,10 @@ import (
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
+	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
+	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
+	zpaapplicationsegmentbrowseraccess "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
+	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
 	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
 	zpacloudconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
@@ -2939,6 +2943,251 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
+func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		freeTextCanary = "psk=application-segment-canary-value"
+		nestedCanary   = "nested-application-segment-secret-canary"
+	)
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAAppSegments}: newListGetHandler(
+				resourceZPAAppSegments,
+				func(context.Context) ([]zpaapplicationsegment.ApplicationSegmentResource, error) {
+					return []zpaapplicationsegment.ApplicationSegmentResource{{
+						ID:                        "app-seg-1",
+						Name:                      "Payroll application",
+						Description:               freeTextCanary,
+						Enabled:                   true,
+						DomainNames:               []string{"payroll.example.internal"},
+						TCPPortRanges:             []string{"443"},
+						UDPPortRanges:             []string{"5000"},
+						APIProtectionEnabled:      true,
+						AutoAppProtectEnabled:     true,
+						ADPEnabled:                true,
+						BypassOnReauth:            true,
+						DoubleEncrypt:             true,
+						InspectTrafficWithZia:     true,
+						BypassType:                "NEVER",
+						HealthCheckType:           "DEFAULT",
+						IcmpAccessType:            "PING",
+						HealthReporting:           "ON_ACCESS",
+						PassiveHealthEnabled:      true,
+						IpAnchored:                true,
+						FQDNDnsCheck:              true,
+						TCPKeepAlive:              "1",
+						IsCnameEnabled:            true,
+						SelectConnectorCloseToApp: true,
+						RestrictionType:           "NONE",
+						UseInDrMode:               true,
+						CreationTime:              "1700000000000",
+						ModifiedTime:              "1700000100000",
+						SegmentGroupID:            nestedCanary,
+						SegmentGroupName:          "Payroll segment group",
+						MicroTenantID:             nestedCanary,
+						MicroTenantName:           "Default microtenant",
+						ModifiedBy:                nestedCanary,
+						AppRecommendationId:       nestedCanary,
+						Applications:              nestedCanary,
+						ConfigSpace:               nestedCanary,
+						ShareToMicrotenants:       []string{nestedCanary},
+						TCPAppPortRange:           []zpacommon.NetworkPorts{{From: "1", To: "65535"}},
+						UDPAppPortRange:           []zpacommon.NetworkPorts{{From: "1", To: "65535"}},
+						ServerGroups: []zpaservergroup.ServerGroup{{
+							ID:   "sg-1",
+							Name: "Payroll servers",
+							Servers: []zpaappservercontroller.ApplicationServer{{
+								ID:      "server-1",
+								Name:    nestedCanary,
+								Address: nestedCanary,
+							}},
+							AppConnectorGroups: []zpaappconnectorgroup.AppConnectorGroup{{
+								ID:       "connector-group-1",
+								Name:     nestedCanary,
+								Location: nestedCanary,
+							}},
+						}},
+						ClientlessApps: []zpaapplicationsegmentbrowseraccess.ClientlessApps{{
+							ID:     "clientless-1",
+							Name:   nestedCanary,
+							Domain: nestedCanary,
+						}},
+						SharedMicrotenantDetails: zpaapplicationsegment.SharedMicrotenantDetails{
+							SharedFromMicrotenant: zpaapplicationsegment.SharedFromMicrotenant{
+								ID:   nestedCanary,
+								Name: nestedCanary,
+							},
+							SharedToMicrotenants: []zpaapplicationsegment.SharedToMicrotenant{{
+								ID:   nestedCanary,
+								Name: nestedCanary,
+							}},
+						},
+						ZPNERID: &zpacommon.ZPNERID{
+							ID:        nestedCanary,
+							ZIAErName: nestedCanary,
+						},
+						Tags: []zpaapplicationsegment.Tag{{
+							Namespace: zpacommon.CommonSummary{ID: "ns-1", Name: nestedCanary},
+							TagKey:    zpacommon.CommonSummary{ID: "key-1", Name: nestedCanary},
+							TagValue:  zpacommon.CommonIDName{ID: "value-1", Name: nestedCanary},
+							Origin:    nestedCanary,
+						}},
+					}}, nil
+				},
+				func(context.Context, string) (*zpaapplicationsegment.ApplicationSegmentResource, error) {
+					return nil, nil
+				},
+				applicationSegmentSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAAppSegments)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, application-segments) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAAppSegments)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAAppSegments)
+	}
+
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa application-segments, standard) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa application-segments, standard) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "app-seg-1" {
+		t.Errorf("projected application-segment id = %v, want app-seg-1", got["id"])
+	}
+	if got["name"] != "Payroll application" {
+		t.Errorf("projected application-segment name = %v, want Payroll application", got["name"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "application-segment-canary-value") {
+		t.Errorf("projected application-segment description = %v, want redacted canary value", got["description"])
+	}
+	serverGroups := mustProjectedList(t, got, "serverGroups")
+	if len(serverGroups) != 1 {
+		t.Fatalf("projected application-segment serverGroups length = %d, want 1", len(serverGroups))
+	}
+	serverGroup, ok := serverGroups[0].(map[string]any)
+	if !ok {
+		t.Fatalf("projected application-segment serverGroups[0] = %T, want map[string]any", serverGroups[0])
+	}
+	if serverGroup["id"] != "sg-1" || serverGroup["name"] != "Payroll servers" {
+		t.Errorf("projected application-segment serverGroups[0] = %v, want id/name reference", serverGroup)
+	}
+	for _, field := range []string{"servers", "appConnectorGroups", "description", "enabled", "microtenantName"} {
+		if _, ok := serverGroup[field]; ok {
+			t.Errorf("projected application-segment serverGroups[0] includes %s, want reference only", field)
+		}
+	}
+	for _, field := range []string{
+		"modifiedBy",
+		"segmentGroupId",
+		"microtenantId",
+		"clientlessApps",
+		"sharedMicrotenantDetails",
+		"tags",
+		"zpnErId",
+		"shareToMicrotenants",
+		"tcpPortRange",
+		"udpPortRange",
+	} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected application-segment includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected application-segment = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected application-segment standard) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa application-segments) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "clientlessApps")
+	assertReportContains(t, reports[0].DroppedFields, "sharedMicrotenantDetails")
+	assertReportContains(t, reports[0].DroppedFields, "tags")
+	assertReportContains(t, reports[0].DroppedFields, "zpnErId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+
+	shareGot := projectApplicationSegmentMode(t, spec, records, redact.ModeShare)
+	for _, field := range []string{
+		"description",
+		"domainNames",
+		"tcpPortRanges",
+		"udpPortRanges",
+		"apiProtectionEnabled",
+		"inspectTrafficWithZia",
+		"doubleEncrypt",
+		"adpEnabled",
+		"autoAppProtectEnabled",
+		"bypassOnReauth",
+	} {
+		if _, ok := shareGot[field]; ok {
+			t.Errorf("share-mode projected application-segment includes %s, want dropped", field)
+		}
+	}
+	if shareGot["name"] != "Payroll application" {
+		t.Errorf("share-mode projected application-segment name = %v, want Payroll application", shareGot["name"])
+	}
+	shareServerGroup := mustProjectedList(t, shareGot, "serverGroups")[0].(map[string]any)
+	if shareServerGroup["name"] != "Payroll servers" {
+		t.Errorf("share-mode projected application-segment serverGroups[0].name = %v, want Payroll servers", shareServerGroup["name"])
+	}
+
+	paranoidGot := projectApplicationSegmentMode(t, spec, records, redact.ModeParanoid)
+	for _, field := range []string{"name", "segmentGroupName", "microtenantName"} {
+		if _, ok := paranoidGot[field]; ok {
+			t.Errorf("paranoid-mode projected application-segment includes %s, want dropped", field)
+		}
+	}
+	paranoidServerGroup := mustProjectedList(t, paranoidGot, "serverGroups")[0].(map[string]any)
+	if paranoidServerGroup["id"] != "sg-1" {
+		t.Errorf("paranoid-mode projected application-segment serverGroups[0].id = %v, want sg-1", paranoidServerGroup["id"])
+	}
+	if _, ok := paranoidServerGroup["name"]; ok {
+		t.Errorf("paranoid-mode projected application-segment serverGroups[0] includes name, want id-only reference")
+	}
+}
+
+func TestZPAApplicationSegmentServerGroupReferenceDoesNotOutExposeServerGroups(t *testing.T) {
+	t.Parallel()
+
+	appSpec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAAppSegments)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAAppSegments)
+	}
+	serverGroupSpec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServerGroups)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServerGroups)
+	}
+	appServerGroups := mustFieldSpec(t, appSpec.Fields, "serverGroups")
+	if _, ok := fieldSpecByName(appServerGroups.Fields, "servers"); ok {
+		t.Fatalf("zpa/application-segments serverGroups models servers, want id/name reference only")
+	}
+	standalone := fieldSpecMap(serverGroupSpec.Fields)
+	for _, nested := range appServerGroups.Fields {
+		topLevel, ok := standalone[nested.JSONField()]
+		if !ok {
+			t.Errorf("zpa/application-segments serverGroups.%s has no zpa/server-groups field", nested.JSONField())
+			continue
+		}
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			if nested.AllowedIn(mode) && !topLevel.AllowedIn(mode) {
+				t.Errorf("zpa/application-segments serverGroups.%s allowed in %s but zpa/server-groups.%s is not", nested.JSONField(), mode, topLevel.JSONField())
+			}
+		}
+	}
+}
+
 func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 
@@ -4022,6 +4271,69 @@ func projectOneRecord(t *testing.T, product resources.Product, name string, reco
 		t.Fatalf("AssertRenderedSubset(projected %s %s SDK shape) error = %v, want nil", product, name, err)
 	}
 	return got
+}
+
+func projectApplicationSegmentMode(
+	t *testing.T,
+	spec resources.ResourceSpec,
+	records []resources.SourceRecord,
+	mode redact.Mode,
+) map[string]any {
+	t.Helper()
+
+	projected, _, err := resources.ProjectRecords(spec, mode, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa application-segments, %s) error = %v, want nil", mode, err)
+	}
+	if len(projected.Records()) != 1 {
+		t.Fatalf("ProjectRecords(zpa application-segments, %s) records length = %d, want 1", mode, len(projected.Records()))
+	}
+	got := projected.Records()[0].Fields()
+	if err := resources.AssertRenderedSubset(spec, mode, got); err != nil {
+		t.Fatalf("AssertRenderedSubset(projected application-segment %s) error = %v, want nil", mode, err)
+	}
+	return got
+}
+
+func mustProjectedList(t *testing.T, record map[string]any, field string) []any {
+	t.Helper()
+
+	value, ok := record[field]
+	if !ok {
+		t.Fatalf("projected record missing %s, want list", field)
+	}
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("projected record %s = %T, want []any", field, value)
+	}
+	return items
+}
+
+func mustFieldSpec(t *testing.T, fields []resources.FieldSpec, name string) resources.FieldSpec {
+	t.Helper()
+
+	field, ok := fieldSpecByName(fields, name)
+	if !ok {
+		t.Fatalf("field specs missing %s", name)
+	}
+	return field
+}
+
+func fieldSpecByName(fields []resources.FieldSpec, name string) (resources.FieldSpec, bool) {
+	for _, field := range fields {
+		if field.JSONField() == name {
+			return field, true
+		}
+	}
+	return resources.FieldSpec{}, false
+}
+
+func fieldSpecMap(fields []resources.FieldSpec) map[string]resources.FieldSpec {
+	out := make(map[string]resources.FieldSpec, len(fields))
+	for _, field := range fields {
+		out[field.JSONField()] = field
+	}
+	return out
 }
 
 func assertNoCanaries(t *testing.T, resource string, record map[string]any, canaries ...string) {

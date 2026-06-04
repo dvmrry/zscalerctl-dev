@@ -28,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides)
 
 schema_fields() {
   case "$1" in
@@ -64,6 +64,9 @@ schema_fields() {
       ;;
     server-groups)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]}]'
+      ;;
+    application-segments)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"domainNames","allowed_modes":["standard"]},{"name":"tcpPortRanges","allowed_modes":["standard"]},{"name":"serverGroups","allowed_modes":["standard"]},{"name":"clientlessApps","allowed_modes":[]}]'
       ;;
     app-connectors)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"assistantVersion","allowed_modes":[]}]'
@@ -198,6 +201,9 @@ JSON
       ;;
     *:zpa:server-groups)
       printf '[{"id":"sg-1","name":"Server group","description":"","enabled":true}]\n'
+      ;;
+    *:zpa:application-segments)
+      printf '[{"id":"app-segment-1","name":"Application segment","description":"","enabled":true,"domainNames":["app.example.internal"],"tcpPortRanges":["443"],"serverGroups":[{"id":"sg-1","name":"Server group"}]}]\n'
       ;;
     *:zpa:app-connectors)
       printf '[{"id":"app-connector-1","name":"App connector","description":"","enabled":true,"location":"San Jose, CA"}]\n'

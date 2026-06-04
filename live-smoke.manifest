@@ -5,6 +5,7 @@
 # Keep this focused on the resources changed by the current branch.
 
 zpa/server-groups
+zpa/application-segments
 zpa/segment-groups
 zpa/app-connectors
 zpa/app-connector-groups

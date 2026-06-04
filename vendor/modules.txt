@@ -126,6 +126,8 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector

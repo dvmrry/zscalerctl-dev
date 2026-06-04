@@ -1187,6 +1187,29 @@ Fields:
 | `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
 | `configSpace`, `microtenantId`, `addedApps`, `deletedApps`, `applications`, `applicationNames` | Secret or unmodeled nested structure | none | Dropped until application references are separately reviewed. |
 
+## ZPA Application Segments
+
+Commands:
+
+```sh
+zscalerctl zpa application-segments list
+zscalerctl zpa application-segments get <id>
+zscalerctl dump --products zpa --resources zpa/application-segments --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `bypassType`, `healthCheckType`, `icmpAccessType`, `healthReporting`, `passiveHealthEnabled`, `ipAnchored`, `fqdnDnsCheck`, `tcpKeepAlive`, `isCnameEnabled`, `selectConnectorCloseToApp`, `restrictionType`, `useInDrMode` | Operational metadata | `standard`, `share`, `paranoid` | Application segment identity and reviewed behavior flags. |
+| `creationTime`, `modifiedTime` | Operational metadata | `standard`, `share` | Lifecycle timestamps. |
+| `apiProtectionEnabled`, `inspectTrafficWithZia`, `doubleEncrypt`, `adpEnabled`, `autoAppProtectEnabled`, `bypassOnReauth` | Operational metadata | `standard` | Local-only posture flags. |
+| `name`, `segmentGroupName`, `microtenantName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `domainNames`, `tcpPortRanges`, `udpPortRanges` | Sensitive identifier | `standard` | Local-only application matching surface and traffic ports. |
+| `serverGroups` | Tenant configuration reference | `standard`, `share`, `paranoid` for `id`; `standard`, `share` for `name` | Renders reviewed `id`/`name` references only. Query `zpa/server-groups` and `zpa/app-servers` for group and server details. |
+| `modifiedBy`, `segmentGroupId`, `microtenantId`, `appRecommendationId`, `applications`, `configSpace`, `matchStyle`, `policyStyle`, `isIncompleteDRConfig`, `defaultMaxAge`, `defaultIdleTimeout`, `readOnly`, `zscalerManaged`, `clientlessApps`, `sharedMicrotenantDetails`, `shareToMicrotenants`, `tags`, `zpnErId`, `tcpPortRange`, `udpPortRange`, `weightedLoadBalancing`, `extranetEnabled` | Secret or unmodeled nested structure | none | Dropped until admin identity, browser-access, tenant-sharing, tag, ER, structured-port, and weighted-load-balancing sub-shapes are separately reviewed. |
+
 ## ZPA App Connector Groups
 
 Commands:

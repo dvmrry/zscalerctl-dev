@@ -72,11 +72,14 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
+	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
+	zpaapplicationsegmentbrowseraccess "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
 	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
 	zpacloudconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
@@ -162,6 +165,7 @@ const (
 	resourceSecurityPolicyURLDenylist  = "url-deny-list"
 	resourceZPAServerGroups            = "server-groups"
 	resourceZPASegmentGroups           = "segment-groups"
+	resourceZPAAppSegments             = "application-segments"
 	resourceZPAAppConnectors           = "app-connectors"
 	resourceZPAConnectorGrps           = "app-connector-groups"
 	resourceZPAAppServers              = "app-servers"
@@ -968,6 +972,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpasegmentgroup.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpasegmentgroup.SegmentGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAAppSegments}: newListGetHandler(
+			resourceZPAAppSegments,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaapplicationsegment.ApplicationSegmentResource, *http.Response, error) {
+				return zpaapplicationsegment.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaapplicationsegment.ApplicationSegmentResource, *http.Response, error) {
+				return zpaapplicationsegment.Get(ctx, service, id)
+			}),
+			applicationSegmentSourceRecord,
 		),
 		{product: resources.ProductZPA, name: resourceZPAAppConnectors}: newListGetHandler(
 			resourceZPAAppConnectors,
@@ -2977,6 +2991,74 @@ func zpaGatewaySourceRecord(gateway zpagateways.ZPAGateways) resources.SourceRec
 	return resources.NewSourceRecord(fields)
 }
 
+func applicationSegmentSourceRecord(segment zpaapplicationsegment.ApplicationSegmentResource) resources.SourceRecord {
+	fields := map[string]any{
+		"adpEnabled":                segment.ADPEnabled,
+		"apiProtectionEnabled":      segment.APIProtectionEnabled,
+		"appRecommendationId":       segment.AppRecommendationId,
+		"applications":              segment.Applications,
+		"autoAppProtectEnabled":     segment.AutoAppProtectEnabled,
+		"bypassOnReauth":            segment.BypassOnReauth,
+		"bypassType":                segment.BypassType,
+		"configSpace":               segment.ConfigSpace,
+		"creationTime":              segment.CreationTime,
+		"defaultIdleTimeout":        segment.DefaultIdleTimeout,
+		"defaultMaxAge":             segment.DefaultMaxAge,
+		"description":               segment.Description,
+		"doubleEncrypt":             segment.DoubleEncrypt,
+		"enabled":                   segment.Enabled,
+		"extranetEnabled":           segment.ExtranetEnabled,
+		"fqdnDnsCheck":              segment.FQDNDnsCheck,
+		"healthCheckType":           segment.HealthCheckType,
+		"healthReporting":           segment.HealthReporting,
+		"icmpAccessType":            segment.IcmpAccessType,
+		"id":                        segment.ID,
+		"inspectTrafficWithZia":     segment.InspectTrafficWithZia,
+		"ipAnchored":                segment.IpAnchored,
+		"isCnameEnabled":            segment.IsCnameEnabled,
+		"isIncompleteDRConfig":      segment.IsIncompleteDRConfig,
+		"matchStyle":                segment.MatchStyle,
+		"microtenantId":             segment.MicroTenantID,
+		"microtenantName":           segment.MicroTenantName,
+		"modifiedBy":                segment.ModifiedBy,
+		"modifiedTime":              segment.ModifiedTime,
+		"name":                      segment.Name,
+		"passiveHealthEnabled":      segment.PassiveHealthEnabled,
+		"policyStyle":               segment.PolicyStyle,
+		"readOnly":                  segment.ReadOnly,
+		"restrictionType":           segment.RestrictionType,
+		"segmentGroupId":            segment.SegmentGroupID,
+		"segmentGroupName":          segment.SegmentGroupName,
+		"selectConnectorCloseToApp": segment.SelectConnectorCloseToApp,
+		"tcpKeepAlive":              segment.TCPKeepAlive,
+		"useInDrMode":               segment.UseInDrMode,
+		"weightedLoadBalancing":     segment.WeightedLoadBalancing,
+		"zscalerManaged":            segment.ZscalerManaged,
+	}
+	addStringSlice(fields, "domainNames", segment.DomainNames)
+	addStringSlice(fields, "shareToMicrotenants", segment.ShareToMicrotenants)
+	addStringSlice(fields, "tcpPortRanges", segment.TCPPortRanges)
+	addStringSlice(fields, "udpPortRanges", segment.UDPPortRanges)
+	addZPANetworkPorts(fields, "tcpPortRange", segment.TCPAppPortRange)
+	addZPANetworkPorts(fields, "udpPortRange", segment.UDPAppPortRange)
+	if len(segment.ServerGroups) > 0 {
+		fields["serverGroups"] = zpaServerGroupReferenceSource(segment.ServerGroups)
+	}
+	if len(segment.ClientlessApps) > 0 {
+		fields["clientlessApps"] = zpaClientlessAppsSource(segment.ClientlessApps)
+	}
+	if sharedMicrotenantDetailsHasValue(segment.SharedMicrotenantDetails) {
+		fields["sharedMicrotenantDetails"] = zpaSharedMicrotenantDetailsSource(segment.SharedMicrotenantDetails)
+	}
+	if segment.ZPNERID != nil {
+		fields["zpnErId"] = zpaZPNERIDSource(segment.ZPNERID)
+	}
+	if len(segment.Tags) > 0 {
+		fields["tags"] = zpaApplicationSegmentTagsSource(segment.Tags)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func addStringSlice(fields map[string]any, name string, values []string) {
 	if len(values) > 0 {
 		fields[name] = append([]string(nil), values...)
@@ -3048,6 +3130,12 @@ func addCommonNSSSlice(fields map[string]any, name string, values []ziacommon.Co
 func addNetworkPorts(fields map[string]any, name string, values []networkservices.NetworkPorts) {
 	if len(values) > 0 {
 		fields[name] = networkPortsSource(values)
+	}
+}
+
+func addZPANetworkPorts(fields map[string]any, name string, values []zpacommon.NetworkPorts) {
+	if len(values) > 0 {
+		fields[name] = zpaNetworkPortsSource(values)
 	}
 }
 
@@ -3137,6 +3225,121 @@ func networkPortsSource(values []networkservices.NetworkPorts) []any {
 		})
 	}
 	return out
+}
+
+func zpaNetworkPortsSource(values []zpacommon.NetworkPorts) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"from": value.From,
+			"to":   value.To,
+		})
+	}
+	return out
+}
+
+func zpaServerGroupReferenceSource(values []zpaservergroup.ServerGroup) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"id":   value.ID,
+			"name": value.Name,
+		})
+	}
+	return out
+}
+
+func zpaClientlessAppsSource(values []zpaapplicationsegmentbrowseraccess.ClientlessApps) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"id":                  value.ID,
+			"name":                value.Name,
+			"description":         value.Description,
+			"domain":              value.Domain,
+			"localDomain":         value.LocalDomain,
+			"certificateId":       value.CertificateID,
+			"certificateName":     value.CertificateName,
+			"applicationProtocol": value.ApplicationProtocol,
+			"applicationPort":     value.ApplicationPort,
+			"modifiedBy":          value.ModifiedBy,
+			"microtenantId":       value.MicroTenantID,
+			"microtenantName":     value.MicroTenantName,
+		})
+	}
+	return out
+}
+
+func sharedMicrotenantDetailsHasValue(value zpaapplicationsegment.SharedMicrotenantDetails) bool {
+	return value.SharedFromMicrotenant.ID != "" ||
+		value.SharedFromMicrotenant.Name != "" ||
+		len(value.SharedToMicrotenants) > 0
+}
+
+func zpaSharedMicrotenantDetailsSource(value zpaapplicationsegment.SharedMicrotenantDetails) map[string]any {
+	fields := map[string]any{}
+	if value.SharedFromMicrotenant.ID != "" || value.SharedFromMicrotenant.Name != "" {
+		fields["sharedFromMicrotenant"] = map[string]any{
+			"id":   value.SharedFromMicrotenant.ID,
+			"name": value.SharedFromMicrotenant.Name,
+		}
+	}
+	if len(value.SharedToMicrotenants) > 0 {
+		items := make([]any, 0, len(value.SharedToMicrotenants))
+		for _, tenant := range value.SharedToMicrotenants {
+			items = append(items, map[string]any{
+				"id":   tenant.ID,
+				"name": tenant.Name,
+			})
+		}
+		fields["sharedToMicrotenants"] = items
+	}
+	return fields
+}
+
+func zpaZPNERIDSource(value *zpacommon.ZPNERID) map[string]any {
+	if value == nil {
+		return nil
+	}
+	return map[string]any{
+		"id":              value.ID,
+		"creationTime":    value.CreationTime,
+		"modifiedBy":      value.ModifiedBy,
+		"modifiedTime":    value.ModifiedTime,
+		"ziaCloud":        value.ZIACloud,
+		"ziaErId":         value.ZIAErID,
+		"ziaErName":       value.ZIAErName,
+		"ziaModifiedTime": value.ZIAModifiedTime,
+		"ziaOrgId":        value.ZIAOrgID,
+	}
+}
+
+func zpaApplicationSegmentTagsSource(values []zpaapplicationsegment.Tag) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"namespace": tagCommonSummarySource(value.Namespace),
+			"tagKey":    tagCommonSummarySource(value.TagKey),
+			"tagValue":  tagCommonIDNameSource(value.TagValue),
+			"origin":    value.Origin,
+		})
+	}
+	return out
+}
+
+func tagCommonSummarySource(value zpacommon.CommonSummary) map[string]any {
+	return map[string]any{
+		"id":      value.ID,
+		"name":    value.Name,
+		"enabled": value.Enabled,
+	}
+}
+
+func tagCommonIDNameSource(value zpacommon.CommonIDName) map[string]any {
+	return map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
 }
 
 func workloadTagExpressionSource(value workloadgroups.WorkloadTagExpression) map[string]any {
