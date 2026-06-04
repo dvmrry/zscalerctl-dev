@@ -17,3 +17,18 @@ rules:
           func newLegacyZIAConfiguration(...) $RET {
             ...
           }
+  - id: zscalerctl.raw-projection-outside-verify
+    languages:
+      - go
+    severity: ERROR
+    message: >-
+      resources.ProjectRecord/ProjectRecords are the UNVERIFIED projection
+      primitives. Production code must call ProjectRecordAndVerify /
+      ProjectRecordsAndVerify so the AssertRenderedSubset allow-list check
+      cannot be skipped. Tests may use the raw form.
+    paths:
+      exclude:
+        - "**/*_test.go"
+    pattern-either:
+      - pattern: resources.ProjectRecord(...)
+      - pattern: resources.ProjectRecords(...)

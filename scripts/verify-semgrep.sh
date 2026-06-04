@@ -34,3 +34,9 @@ if semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/r
   echo "expected Semgrep Reveal() fixture to fail, but it passed" >&2
   exit 1
 fi
+semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/projection_ok.go"
+if semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/projection_bad.go" >/tmp/zscalerctl-semgrep-projection-bad.out 2>&1; then
+  cat /tmp/zscalerctl-semgrep-projection-bad.out >&2
+  echo "expected Semgrep raw projection fixture to fail, but it passed" >&2
+  exit 1
+fi
