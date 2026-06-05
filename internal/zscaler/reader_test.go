@@ -665,6 +665,44 @@ func TestReaderListAuthSettingsProjectsSingletonThroughAllowList(t *testing.T) {
 	}
 }
 
+func TestSourceRecordFromStructDropsUnsupportedKinds(t *testing.T) {
+	t.Parallel()
+
+	type unsupportedKinds struct {
+		Name     string    `json:"name"`
+		Callback func()    `json:"callback"`
+		Complex  complex64 `json:"complex"`
+	}
+
+	record := sourceRecordFromStruct(unsupportedKinds{
+		Name:     "settings",
+		Callback: func() {},
+		Complex:  1 + 2i,
+	})
+	projected, _, err := resources.ProjectRecord(resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "unsupported-kinds",
+		Operations: resources.ShowOperation(),
+		Fields: []resources.FieldSpec{
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			{Name: "callback", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			{Name: "complex", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+		},
+	}, redact.ModeStandard, record)
+	if err != nil {
+		t.Fatalf("ProjectRecord(unsupported kind record) error = %v, want nil", err)
+	}
+	if got, _ := projected.Value("name"); got != "settings" {
+		t.Fatalf("projected name = %#v, want settings", got)
+	}
+	if got, _ := projected.Value("callback"); got != nil {
+		t.Errorf("projected callback = %#v, want nil", got)
+	}
+	if got, _ := projected.Value("complex"); got != nil {
+		t.Errorf("projected complex = %#v, want nil", got)
+	}
+}
+
 func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 

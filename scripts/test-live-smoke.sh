@@ -78,6 +78,9 @@ write_schema() {
 write_resource() {
   local resource="$1"
   case "$mode:$resource" in
+    empty-object:advanced-settings)
+      printf '{}\n'
+      ;;
     *:advanced-settings)
       printf '{"apiSessionTimeout":30,"authBypassUrls":["admin.internal.example"]}\n'
       ;;
@@ -619,6 +622,19 @@ fi
 if grep -q '"error"' "$tmp_dir/stderr-json-list-fails"; then
   echo "live-smoke structured command failure printed raw JSON in the stderr snippet" >&2
   cat "$tmp_dir/stderr-json-list-fails" >&2
+  exit 1
+fi
+
+if run_smoke empty-object; then
+  echo "live-smoke accepted an empty singleton object" >&2
+  cat "$tmp_dir/stdout-empty-object" >&2
+  cat "$tmp_dir/stderr-empty-object" >&2
+  exit 1
+fi
+
+if ! grep -q 'returned an empty JSON object' "$tmp_dir/stderr-empty-object"; then
+  echo "live-smoke empty-object failure did not mention empty JSON object validation" >&2
+  cat "$tmp_dir/stderr-empty-object" >&2
   exit 1
 fi
 

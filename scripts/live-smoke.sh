@@ -555,6 +555,10 @@ validate_json_object() {
     return 1
   fi
   pass "$label returned a JSON object"
+  if ! jq -e 'keys | length > 0' "$file" >/dev/null 2>&1; then
+    fail "$label returned an empty JSON object"
+    return 1
+  fi
   pass "$label returned 1 record"
   return 0
 }

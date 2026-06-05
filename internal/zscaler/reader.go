@@ -1250,9 +1250,6 @@ func sourceValue(value reflect.Value) any {
 	case reflect.String:
 		return value.String()
 	default:
-		if value.CanInterface() {
-			return value.Interface()
-		}
 		return nil
 	}
 }
