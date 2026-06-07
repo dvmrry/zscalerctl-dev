@@ -22,6 +22,8 @@ GitHub security policy.
 ## Maintenance
 
 - [SDK_SURFACE_INVENTORY.md](SDK_SURFACE_INVENTORY.md)
+- [DEFERRED_RESOURCE_RECHECK.md](DEFERRED_RESOURCE_RECHECK.md) — pinned-SDK
+  source review for resources removed after live-smoke failures.
 - [ZSCALER_PRODUCT_SCOPE_PLAN.md](ZSCALER_PRODUCT_SCOPE_PLAN.md)
 - [ZDX_SCOPE_PLAN.md](ZDX_SCOPE_PLAN.md)
 - [VERSIONING.md](VERSIONING.md)

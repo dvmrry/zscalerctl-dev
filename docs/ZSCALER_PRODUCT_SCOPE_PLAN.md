@@ -128,8 +128,8 @@ data. It is explicitly out of pre-`v1.0.0` implementation scope unless Zscaler
 surfaces deterministic ZDX configuration APIs. Report and telemetry reads should
 not be treated as plain configuration inventory.
 
-See [ZDX Scope Plan](ZDX_SCOPE_PLAN.md) for the post-`v1.0.0` report/export
-contract and the configuration-API exception.
+See [ZDX Scope Plan](ZDX_SCOPE_PLAN.md) for the out-of-scope rationale and the
+configuration-API exception.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |

@@ -329,12 +329,12 @@ must use separate verbs, explicit enablement, allow-lists, dry-run behavior, and
 confirmation. Read and write paths must not be accidentally interchangeable at
 the command layer.
 
-## M0 Decisions Required Before Code
+## Foundation Decisions
 
-- First supported products and resources.
-- OneAPI-first versus legacy-auth support in version 1.
-- Exact `ZSCALERCTL_*` credential variable names.
-- Whether `paranoid` mode supports diffs in version 1.
-- Required CI gates before public release.
-- License.
-- Module path, expected to be `github.com/dvmrry/zscalerctl`.
+The implementation is read-only and uses allow-listed projections, explicit
+redaction modes, SDK boundary checks, and live-smoke promotion gates. ZIA
+legacy auth remains supported for the ZIA surface already proven with that auth
+mode. OneAPI is the expansion path for ZPA, ZTW, and other product families.
+
+`paranoid` mode does not promise stable cross-dump diffability unless a future
+tokenization and key-management design makes that safe.

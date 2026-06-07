@@ -161,10 +161,14 @@ Initial modes:
 
 There is no `off` mode.
 
-## Open Decisions
+## Scope Decisions
 
-- Exact resource catalog for the first release.
-- Whether `paranoid` mode supports cross-dump diffs in version 1.
+The enabled resource catalog is derived from the compiled catalog and published
+in [RESOURCES.md](RESOURCES.md). Deferred and queued SDK surfaces are tracked in
+[RESOURCE_QUEUE.md](RESOURCE_QUEUE.md).
+
+`paranoid` mode does not promise cross-dump diffability until a safe
+tokenization and key-management design exists.
 
 ## Mandatory CI Checks
 
