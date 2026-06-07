@@ -87,10 +87,11 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
    ZDX configuration APIs. The current SDK surfaces are report/telemetry.
 6. Do not implement ZWA before `v1.0.0` unless Zscaler exposes deterministic
    ZWA configuration APIs. The current SDK surfaces are audit/incident data.
-7. Treat Zidentity as a partial inventory track: resource servers, groups, and
-   users can be read-only administrator inventory when the CLI binds only read
-   helpers; per-user entitlements and membership expansion need separate
-   child-resource design.
+7. Treat Zidentity as a partial inventory track: the current vendored SDK
+   exposes resource servers, groups, and users as service packages. They can be
+   read-only administrator inventory when the CLI binds only read helpers; group
+   membership child lookups need a separate command shape, and any future
+   entitlement package must be reviewed from source before it is queued.
 
 ## ZCC
 
@@ -195,17 +196,23 @@ privacy rules, not as static configuration inventory.
 
 ## Zidentity
 
-Zidentity is the mixed case. The SDK exposes ordinary workforce identity
-inventory next to membership mutation helpers and authorization data. The CLI
-can safely bind read functions for users and groups, but it must not expand
-group membership or wire mutating helpers.
+Zidentity is the mixed case. The current vendored SDK exposes ordinary
+workforce identity inventory next to membership mutation helpers. The CLI can
+safely bind read functions for users and groups, but it must not expand group
+membership or wire mutating helpers in broad list output.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
 | `zidentity/resource-servers` | `zscaler/zid/services/resource_servers` | `ordinary-list-get` | In scope. OAuth-style identifiers render conservatively, and service/org internals are dropped. |
 | `zidentity/groups` | `zscaler/zid/services/groups` | `list-get-with-mutating-neighbors` | In scope for group object inventory. Do not expand membership or wire add/remove/update/delete helpers. |
 | `zidentity/users` | `zscaler/zid/services/users` | `list-get-with-mutating-neighbors` | In scope for administrator-visible workforce directory inventory. Drop arbitrary `customAttrsInfo`; do not wire reset-password or group-membership helpers. |
-| `zidentity/user-entitlements` | `zscaler/zid/services/user_entitlement` | `read-only-nonstandard` | Separate follow-up. It is a per-user child lookup rather than a list/dump-shaped resource. |
+
+The same SDK packages also expose child membership reads
+(`groups.GetUsers`, `users.GetGroupsByUser`) beside membership mutation helpers.
+Model those later as explicit child queries if needed; do not fold them into the
+top-level group/user inventory. This vendored SDK revision does not contain a
+separate `zscaler/zid/services/user_entitlement` package; if one appears in a
+future SDK release, scout it from source before queueing it.
 
 If Zidentity is wired, bind only the specific read functions used by the
 resource. Do not pass broad groups/users clients into handlers where mutating SDK
@@ -237,7 +244,7 @@ Suggested independent branches, in order:
 | --- | --- | --- |
 | `feature/ztw-workload-groups` | Verify OneAPI SDK call path for ZTW and scaffold the first ZTW reference batch. | Establish Cloud/Workload product semantics without touching provisioning credentials. |
 | `feature/zcc-scope-plan` | Verify OneAPI SDK call path for ZCC and scaffold `trusted_network_v2` or `notification_template`. | Establish whether ZCC can use the current service boundary cleanly. |
-| `feature/zidentity-reference-batch` | Scope resource servers, groups, and users. | Keep Zidentity to read-only inventory; entitlements and membership expansion remain follow-ups. |
+| `feature/zidentity-reference-batch` | Scope resource servers, groups, and users. | Keep Zidentity to read-only inventory; membership expansion remains a follow-up child-query design. |
 
 ZWA is deliberately not in the first-branch queue. Do not open a ZWA branch
 before `v1.0.0` unless Zscaler exposes deterministic configuration APIs.

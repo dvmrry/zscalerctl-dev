@@ -97,7 +97,7 @@ Product-track status:
 | ZPA | Tier-1 resources plus `zpa/application-segments` | Production OneAPI smoke passed after trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused smoke/trim discipline. |
 | ZTW | Initial reference batch plus staged admin-governance resources (`admin-users`, `admin-roles`) | Initial reference batch passed production OneAPI smoke; admin-governance batch has ordinary gates pending. | Run focused OneAPI smoke for the admin-governance resources before promotion; continue policy/control surfaces only after explicit review. |
 | ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Production OneAPI smoke returned 404 for all three list endpoints. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
-| Zidentity | `groups`, `users`, `resource-servers` | Staged as a focused workforce identity/reference batch; ordinary gates pass locally. | Run focused OneAPI live smoke before promotion; keep per-user entitlements as a separate child-resource design. |
+| Zidentity | `groups`, `users`, `resource-servers` | Staged as a focused workforce identity/reference batch covering the current vendored top-level Zidentity service packages; ordinary gates pass locally. | Run focused OneAPI live smoke before promotion; keep membership expansion as a separate child-query design. |
 
 Do not merge product stacks on green CI alone. Promote only the resources that
 pass focused live smoke, and trim or defer any endpoints that fail with
