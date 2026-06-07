@@ -80,8 +80,9 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
    workload inventory.
 3. Add a focused ZTW reference batch first, prove product auth and live smoke,
    then decide whether to continue into policy/control surfaces.
-4. Scout ZCC next for Client Connector configuration references after ZTW's
-   product path is understood.
+4. Defer ZCC until endpoint/auth/entitlement behavior is understood. The first
+   production OneAPI smoke for ZCC PAPI v2 list endpoints returned 404 across
+   the initial reference batch.
 5. Do not implement ZDX before `v1.0.0` unless Zscaler exposes deterministic
    ZDX configuration APIs. The current SDK surfaces are report/telemetry.
 6. Do not implement ZWA before `v1.0.0` unless Zscaler exposes deterministic
@@ -93,19 +94,23 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 
 ## ZCC
 
-ZCC is a good separate product track after ZTW. It has configuration-shaped
-resources, but several SDK packages sit next to mutating helpers, device data,
-or secret-like read functions.
+ZCC has configuration-shaped resources, but several SDK packages sit next to
+mutating helpers, device data, or secret-like read functions. The first
+production OneAPI smoke pass against the conservative ZCC PAPI v2 batch
+(`trusted_network_v2`, `notification_template`, and `zia_posture`) returned
+status 404 for every list endpoint. Treat ZCC as deferred until a focused
+endpoint/auth/entitlement scout proves which ZCC API path is reachable from the
+shared OneAPI boundary.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
-| `zcc/trusted-networks` | `zscaler/zcc/services/trusted_network_v2` | `list-get-with-mutating-neighbors` | Good first resource if OneAPI service calls work. Network identifiers likely standard-only where rendered. |
-| `zcc/notification-templates` | `zscaler/zcc/services/notification_template` | `list-get-with-mutating-neighbors` | Viable early resource. Template body/free-text needs standard-only or share-gated review. |
-| `zcc/zia-postures` | `zscaler/zcc/services/zia_posture` | `list-get-with-mutating-neighbors` | Viable early metadata resource. Expect posture/security-condition fields. |
+| `zcc/trusted-networks` | `zscaler/zcc/services/trusted_network_v2` | `list-get-with-mutating-neighbors` | Deferred: production OneAPI smoke returned 404 for list. Network identifiers likely standard-only if retried later. |
+| `zcc/notification-templates` | `zscaler/zcc/services/notification_template` | `list-get-with-mutating-neighbors` | Deferred: production OneAPI smoke returned 404 for list. Revisit only after ZCC endpoint/auth behavior is proven. |
+| `zcc/zia-postures` | `zscaler/zcc/services/zia_posture` | `list-get-with-mutating-neighbors` | Deferred: production OneAPI smoke returned 404 for list. Revisit only after ZCC endpoint/auth behavior is proven. |
 | `zcc/custom-ip-apps` | `zscaler/zcc/services/custom_ip_apps` | `read-only-nonstandard` | Useful, but list semantics are package-specific (`GetCustomIPApps`, `GetByAppID`, `GetByName`). Design as list-only/name-get if needed. |
 | `zcc/predefined-ip-apps` | `zscaler/zcc/services/predefined_ip_apps` | `read-only-nonstandard` | Similar to custom IP apps; likely lower sensitivity because predefined. |
 | `zcc/process-based-apps` | `zscaler/zcc/services/process_based_apps` | `read-only-nonstandard` | Useful but process/app identifiers may be endpoint-sensitive. |
-| `zcc/devices` | `zscaler/zcc/services/devices` | `list-get-with-mutating-neighbors` | High value, but device/user/privacy heavy. Defer until base ZCC auth and smoke are proven. |
+| `zcc/devices` | `zscaler/zcc/services/devices` | `list-get-with-mutating-neighbors` | High value, but device/user/privacy heavy. Defer until base ZCC endpoint/auth and smoke behavior are proven. |
 
 Do not queue as ordinary inventory:
 
