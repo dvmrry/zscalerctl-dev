@@ -206,6 +206,9 @@ const (
 	resourceZidentityGroups            = "groups"
 	resourceZidentityUsers             = "users"
 	resourceZidentityResourceServers   = "resource-servers"
+	zidentityGroupsEndpoint            = "/admin/api/v1/groups"
+	zidentityUsersEndpoint             = "/admin/api/v1/users"
+	zidentityResourceServersEndpoint   = "/admin/api/v1/resource-servers"
 )
 
 type AuthMode string
@@ -1274,7 +1277,7 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 		{product: resources.ProductZidentity, name: resourceZidentityGroups}: newListGetHandler(
 			resourceZidentityGroups,
 			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidgroups.Groups, error) {
-				return zidgroups.GetAll(ctx, service, nil)
+				return zidentityListAll[zidgroups.Groups](ctx, service, zidentityGroupsEndpoint)
 			}),
 			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidgroups.Groups, error) {
 				return zidgroups.Get(ctx, service, id)
@@ -1284,7 +1287,7 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 		{product: resources.ProductZidentity, name: resourceZidentityUsers}: newListGetHandler(
 			resourceZidentityUsers,
 			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidusers.Users, error) {
-				return zidusers.GetAll(ctx, service, nil)
+				return zidentityListAll[zidusers.Users](ctx, service, zidentityUsersEndpoint)
 			}),
 			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidusers.Users, error) {
 				return zidusers.GetUser(ctx, service, id)
@@ -1294,7 +1297,7 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 		{product: resources.ProductZidentity, name: resourceZidentityResourceServers}: newListGetHandler(
 			resourceZidentityResourceServers,
 			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidresourceservers.ResourceServers, error) {
-				return zidresourceservers.GetAll(ctx, service, nil)
+				return zidentityListAll[zidresourceservers.ResourceServers](ctx, service, zidentityResourceServersEndpoint)
 			}),
 			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidresourceservers.ResourceServers, error) {
 				return zidresourceservers.Get(ctx, service, id)
@@ -1605,6 +1608,65 @@ func sdkProductStringGet[T any](
 		}
 		defer cleanup()
 		return call(ctx, service, id)
+	}
+}
+
+const (
+	zidentityPageLimit = 1000
+	zidentityMaxPages  = 1000
+)
+
+type zidentityPage[T any] struct {
+	records      []T
+	resultsTotal int
+	pageOffset   int
+	nextLink     string
+}
+
+func zidentityListAll[T any](ctx context.Context, service *zsdk.Service, endpoint string) ([]T, error) {
+	return readAllZidentityPages(ctx, func(ctx context.Context, offset, limit int) (zidentityPage[T], error) {
+		params := zidcommon.NewPaginationQueryParams(limit)
+		params.WithOffset(offset)
+		response, err := zidcommon.ReadPageWithPagination[T](ctx, service.Client, endpoint, &params)
+		if err != nil {
+			return zidentityPage[T]{}, err
+		}
+		return zidentityPage[T]{
+			records:      response.Records,
+			resultsTotal: response.ResultsTotal,
+			pageOffset:   response.PageOffset,
+			nextLink:     response.NextLink,
+		}, nil
+	})
+}
+
+func readAllZidentityPages[T any](
+	ctx context.Context,
+	readPage func(context.Context, int, int) (zidentityPage[T], error),
+) ([]T, error) {
+	var all []T
+	for pageNumber, offset := 0, 0; ; pageNumber++ {
+		if pageNumber >= zidentityMaxPages {
+			return nil, fmt.Errorf("zidentity pagination exceeded %d pages at offset %d", zidentityMaxPages, offset)
+		}
+		page, err := readPage(ctx, offset, zidentityPageLimit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch zidentity page at offset %d: %w", offset, err)
+		}
+		if pageNumber > 0 && page.pageOffset != offset {
+			return nil, fmt.Errorf("zidentity pagination did not advance: requested offset %d, response pageOffset %d", offset, page.pageOffset)
+		}
+		all = append(all, page.records...)
+		if len(page.records) == 0 {
+			return all, nil
+		}
+		if page.resultsTotal > 0 && len(all) >= page.resultsTotal {
+			return all, nil
+		}
+		if len(page.records) < zidentityPageLimit || page.nextLink == "" {
+			return all, nil
+		}
+		offset += len(page.records)
 	}
 }
 

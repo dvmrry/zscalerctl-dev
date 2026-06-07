@@ -4681,6 +4681,36 @@ func TestReaderListZidentityResourceServersProjectsSDKShapeThroughAllowList(t *t
 	}
 }
 
+func TestReadAllZidentityPagesRejectsRepeatedPage(t *testing.T) {
+	t.Parallel()
+
+	fullPage := make([]string, zidentityPageLimit)
+	for i := range fullPage {
+		fullPage[i] = fmt.Sprintf("record-%d", i)
+	}
+	calls := 0
+	_, err := readAllZidentityPages(context.Background(), func(_ context.Context, offset, limit int) (zidentityPage[string], error) {
+		calls++
+		if limit != zidentityPageLimit {
+			t.Fatalf("readAllZidentityPages limit = %d, want %d", limit, zidentityPageLimit)
+		}
+		return zidentityPage[string]{
+			records:    fullPage,
+			pageOffset: 0,
+			nextLink:   fmt.Sprintf("/admin/api/v1/users?offset=%d&limit=%d", offset+len(fullPage), limit),
+		}, nil
+	})
+	if err == nil {
+		t.Fatal("readAllZidentityPages repeated page error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "pagination did not advance") {
+		t.Fatalf("readAllZidentityPages repeated page error = %q, want pagination did not advance", err)
+	}
+	if calls != 2 {
+		t.Fatalf("readAllZidentityPages repeated page calls = %d, want 2", calls)
+	}
+}
+
 func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {
 	t.Parallel()
 
