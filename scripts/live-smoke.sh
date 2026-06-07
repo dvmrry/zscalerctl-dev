@@ -6,6 +6,7 @@ cd "$repo_root"
 
 denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip"]'
 denied_resource_exact_keys_json='{"location-groups":["lastModUser","dynamicLocationGroupCriteria","locations"]}'
+allowed_resource_denied_keys_json='{"atp-malware-policy":["blockPasswordProtectedArchiveFiles"],"mobile-threat-settings":["blockAppsSendingUnencryptedUserCredentials"],"org-information":["city"]}'
 denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential)'
 manifest_warning='sanitized dumps remain confidential operational data'
 
@@ -514,10 +515,11 @@ find_denied_keys() {
   local resource="$1"
   local file="$2"
 
-  jq -r --argjson global_exact "$denied_exact_keys_json" --argjson resource_exact "$denied_resource_exact_keys_json" --arg resource "$resource" --arg pattern "$denied_key_pattern" '
+  jq -r --argjson global_exact "$denied_exact_keys_json" --argjson resource_exact "$denied_resource_exact_keys_json" --argjson resource_allowed "$allowed_resource_denied_keys_json" --arg resource "$resource" --arg pattern "$denied_key_pattern" '
     ($global_exact + ($resource_exact[$resource] // [])) as $exact
+    | ($resource_allowed[$resource] // []) as $allowed
     |
-    [.. | objects | keys[] | select((. as $k | $exact | index($k)) or test($pattern))] | unique | .[]
+    [.. | objects | keys[] | select(. as $k | (($allowed | index($k)) | not) and (($exact | index($k)) or ($k | test($pattern))))] | unique | .[]
   ' "$file"
 }
 
