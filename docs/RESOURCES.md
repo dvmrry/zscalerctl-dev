@@ -1694,7 +1694,7 @@ Fields:
 | `rank`, `policyAccess`, `alertingAccess`, `dashboardAccess`, `reportAccess`, `analysisAccess`, `usernameAccess`, `adminAcctAccess`, `deviceInfoAccess`, `permissions`, `logsLimit` | Tenant configuration | `standard` | Authorization details are visible to the local administrator and dropped from `share` and `paranoid`. |
 | `featurePermissions` | Secret or unmodeled nested structure | never | Arbitrary feature-permission map is dropped until its shape is reviewed. |
 
-## Zidentity Groups
+## ZIDENTITY Groups
 
 Commands:
 
@@ -1712,7 +1712,7 @@ Fields:
 | `name`, `source`, `adminEntitlementEnabled`, `serviceEntitlementEnabled`, `idp` | Tenant configuration | `standard`, `share` | Workforce directory and entitlement-toggle metadata. `idp` renders id/name/displayName only. |
 | `description` | Free text | `standard` | Admin-controlled text; scanned before output, including bare high-entropy tokens. |
 
-## Zidentity Users
+## ZIDENTITY Users
 
 Commands:
 
@@ -1731,7 +1731,7 @@ Fields:
 | `loginName`, `displayName`, `firstName`, `lastName`, `primaryEmail`, `secondaryEmail` | Sensitive identifier | `standard` | Person-identifying workforce directory fields. Visible to the local administrator, dropped from `share` and `paranoid` output. |
 | `customAttrsInfo` | Secret | none | Tenant-defined arbitrary attributes; dropped until specific keys are reviewed. |
 
-## Zidentity Resource Servers
+## ZIDENTITY Resource Servers
 
 Commands:
 
