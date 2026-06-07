@@ -88,12 +88,18 @@ The legacy-ZIA smoke gate is closed for the current queued work: PRs `#39` and
 `#58` were live-smoked from the work machine and merged after trimming or
 allowing the observed tenant-specific failures.
 
-Open draft PRs now require product-specific OneAPI smoke before merge:
+The ZPA and ZTW OneAPI smoke gates are closed for the staged product work:
+PRs `#41`, `#50`, and `#53` were live-smoked from the work machine and merged
+after trimming the observed tenant-specific failures.
 
-| PR | Resources | Status | Smoke command |
+Product-track status:
+
+| Product | Resources | Status | Next action |
 | --- | --- | --- | --- |
-| `#41` -> `#50` | ZPA Tier-1 resources plus `zpa/application-segments` | Draft stack; gates green, waiting on focused production OneAPI/ZPA smoke | `make live-smoke` with the branch manifest or explicit `LIVE_SMOKE_RESOURCES` |
-| `#53` -> `#54` | Initial ZTW reference batch plus initial ZCC reference batch | Draft stack; gates green, waiting on focused production OneAPI product smoke | `make live-smoke` with the branch manifest or explicit `LIVE_SMOKE_RESOURCES` |
+| ZIA | Current queued legacy-ZIA resources and singleton settings | Live-smoked and merged. | Continue only through the remaining shape-decision tracks below. |
+| ZPA | Tier-1 resources plus `zpa/application-segments` | Production OneAPI smoke passed after trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused smoke/trim discipline. |
+| ZTW | Initial reference batch | Production OneAPI smoke passed and merged. | Continue later from ZTW policy/control surfaces only after explicit review. |
+| ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Production OneAPI smoke returned 404 for all three list endpoints. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
 
 Do not merge product stacks on green CI alone. Promote only the resources that
 pass focused live smoke, and trim or defer any endpoints that fail with
@@ -299,7 +305,7 @@ The remaining non-deferred items split into these work tracks:
 | --- | --- | --- |
 | List-only or name-get candidates | `browser_isolation`, `dlp/dlp_exact_data_match_lite`, `location/locationlite`, `trafficforwarding/dc_exclusions`, `trafficforwarding/sub_clouds` | Add explicit list-only/dump-only reader semantics before queueing. `locationlite` should wait for a concrete performance or pagination reason because it overlaps `locations` and `sublocations`. |
 | SaaS/CASB split candidates | `saas_security_api`, `saas_security_api/casb_dlp_rules`, `saas_security_api/casb_malware_rules` | Split `saas_security_api` into separate resources such as domain profiles, quarantine tombstone templates, CASB email labels, CASB tenants, and SaaS scan info. CASB DLP/malware rules can use list/dump via `/all`, but `get` needs a rule-type decision. |
-| Deferred live/auth failures | `dlp/dlp_engines`, `dlp/dlp_incident_receiver_servers`, `dlp/dlp_notification_templates`, `dlp/dlpdictionaries`, `email_profiles`, `firewallpolicies/networkapplications`, `firewallpolicies/networkservicegroups`, `ips_control_policies/ips_signature_rules`, `usermanagement/departments`, `usermanagement/users` | Do not retry as ordinary batch work. Revisit with focused endpoint/auth scouting, ideally under controlled production OneAPI. |
+| Deferred live/auth failures | `dlp/dlp_engines`, `dlp/dlp_incident_receiver_servers`, `dlp/dlp_notification_templates`, `dlp/dlpdictionaries`, `email_profiles`, `firewallpolicies/networkapplications`, `firewallpolicies/networkservicegroups`, `ips_control_policies/ips_signature_rules`, `usermanagement/departments`, `usermanagement/users`, `zcc/trusted-networks`, `zcc/notification-templates`, `zcc/zia-postures` | Do not retry as ordinary batch work. Revisit with focused endpoint/auth scouting, ideally under controlled production OneAPI. |
 | Adjacent-to-failure scout | `ips_control_policies/ips_policies` | Ordinary list/get shape, but adjacent to the failed IPS signature-rule endpoint. Probe separately before queueing. |
 | Privacy, identity, export, or material surfaces | `adminauditlogs`, `adminuserrolemgmt/admins`, `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. |
 | Helper/catalog/diagnostic surfaces | `apptotal`, `trafficforwarding/virtualipaddress` | Do not force into config dump semantics. Treat as future lookup/report/diagnostic commands if needed. |
@@ -332,7 +338,7 @@ SDK scout across ZCC, ZDX, ZTW, Zidentity, and ZWA. The short version:
 | --- | --- | --- | --- |
 | ZPA | `servergroup`, `segmentgroup`, `appservercontroller`, `appconnectorgroup`, `cloud_connector`, `cloud_connector_group`, `branch_connector`, `machinegroup`, `postureprofile`, `trustednetwork`, `idpcontroller` | Many ordinary or list/get-with-mutating-neighbor SDK packages exist in the full SDK. | OneAPI-only future track; start with one low-risk reference after production OneAPI smoke is available. |
 | ZTW | Workload groups, public cloud accounts, gateways, DNS gateways, EC groups, policy resources | Full SDK exposes many list/get-like config surfaces. | Best first separate product track. Start with a focused reference batch; defer provisioning API keys/URLs and policy rules. |
-| ZCC | Trusted networks, notification templates, ZIA posture, IP/process app references | Closest Client Connector fit for configuration inventory; several packages sit next to mutating helpers. | Second separate product track after ZTW. Defer devices and secret packages. |
+| ZCC | Trusted networks, notification templates, ZIA posture, IP/process app references | Closest Client Connector fit for configuration inventory, but the first three PAPI v2 list endpoints returned 404 under production OneAPI. | Deferred pending endpoint/auth/entitlement investigation. Defer devices and secret packages. |
 | ZDX | Application, user, device, alert, and software reports | SDK exposes report/read surfaces rather than config inventory resources. | Explicitly out of pre-`v1.0.0` scope unless Zscaler exposes deterministic configuration APIs; see [ZDX Scope Plan](ZDX_SCOPE_PLAN.md). |
 | Zidentity | Resource servers, entitlements, users, groups | SDK exposes a thin read-only config slice next to sensitive identity-management APIs. | Partial track only. `resource_servers` is the clean pre-`v1.0.0` candidate; `user_entitlement` is sensitive later work; users/groups are hard-deferred. |
 | ZWA | Customer audit and DLP incidents | SDK exposes audit/incident surfaces rather than config inventory resources. | Explicitly out of pre-`v1.0.0` scope unless Zscaler exposes deterministic configuration APIs. |
@@ -385,6 +391,9 @@ endpoint behavior and auth-mode support first.
 | `zia/extranets` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 | `zpa/private-cloud-groups` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 403). |
 | `zpa/private-cloud-controllers` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 401). |
+| `zcc/trusted-networks` | List request failure under production OneAPI/ZCC credentials (`live_access_failed`, status 404). |
+| `zcc/notification-templates` | List request failure under production OneAPI/ZCC credentials (`live_access_failed`, status 404). |
+| `zcc/zia-postures` | List request failure under production OneAPI/ZCC credentials (`live_access_failed`, status 404). |
 
 ## Return-To-Work Checklist
 
