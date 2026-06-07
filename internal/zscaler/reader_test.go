@@ -4504,30 +4504,62 @@ func TestReaderListZidentityUsersProjectsSDKShapeThroughAllowList(t *testing.T) 
 	if !ok {
 		t.Fatalf("FindSpec(zidentity, %s) ok = false, want true", resourceZidentityUsers)
 	}
-	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare} {
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zidentity users, standard) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	wantStandardFields := map[string]any{
+		"source":         "SCIM",
+		"loginName":      "jane.doe@example.internal",
+		"displayName":    "Jane Doe",
+		"firstName":      "Jane",
+		"lastName":       "Doe",
+		"primaryEmail":   "jane.doe@example.internal",
+		"secondaryEmail": "jane.alt@example.internal",
+		"status":         true,
+	}
+	for field, want := range wantStandardFields {
+		if got[field] != want {
+			t.Errorf("ProjectRecords(zidentity users, standard) field %s = %v, want %v", field, got[field], want)
+		}
+	}
+	department, ok := got["department"].(map[string]any)
+	if !ok {
+		t.Fatalf("ProjectRecords(zidentity users, standard) department = %T, want map[string]any", got["department"])
+	}
+	if department["id"] != "dept-1" || department["name"] != "Engineering" || department["displayName"] != "Engineering display" {
+		t.Errorf("ProjectRecords(zidentity users, standard) department = %v, want id/name/displayName", department)
+	}
+	if _, ok := got["customAttrsInfo"]; ok {
+		t.Errorf("ProjectRecords(zidentity users, standard) includes customAttrsInfo, want dropped")
+	}
+	if strings.Contains(fmt.Sprint(got), customCanary) {
+		t.Errorf("ProjectRecords(zidentity users, standard) = %v, want custom canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected zidentity user standard) error = %v, want nil", err)
+	}
+	assertReportContains(t, reports[0].DroppedFields, "customAttrsInfo")
+
+	personalFields := []string{"loginName", "displayName", "firstName", "lastName", "primaryEmail", "secondaryEmail"}
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
 		projected, reports, err := resources.ProjectRecords(spec, mode, records)
 		if err != nil {
 			t.Fatalf("ProjectRecords(zidentity users, %s) error = %v, want nil", mode, err)
 		}
 		got := projected.Records()[0].Fields()
-		if got["displayName"] != "Jane Doe" || got["firstName"] != "Jane" || got["lastName"] != "Doe" || got["source"] != "SCIM" || got["status"] != true {
-			t.Errorf("projected zidentity user %s = %v, want workforce identity fields preserved", mode, got)
-		}
-		if mode == redact.ModeStandard && (got["loginName"] != "jane.doe@example.internal" || got["primaryEmail"] != "jane.doe@example.internal") {
-			t.Errorf("projected zidentity user standard emails = %v/%v, want preserved", got["loginName"], got["primaryEmail"])
-		}
-		department, ok := got["department"].(map[string]any)
-		if !ok {
-			t.Fatalf("projected zidentity user department %s = %T, want map[string]any", mode, got["department"])
-		}
-		if department["id"] != "dept-1" || department["name"] != "Engineering" || department["displayName"] != "Engineering display" {
-			t.Errorf("projected zidentity user department %s = %v, want id/name/displayName", mode, department)
+		for _, field := range personalFields {
+			if _, ok := got[field]; ok {
+				t.Errorf("ProjectRecords(zidentity users, %s) includes %s, want dropped", mode, field)
+			}
+			assertReportContains(t, reports[0].DroppedFields, field)
 		}
 		if _, ok := got["customAttrsInfo"]; ok {
-			t.Errorf("projected zidentity user %s includes customAttrsInfo, want dropped", mode)
+			t.Errorf("ProjectRecords(zidentity users, %s) includes customAttrsInfo, want dropped", mode)
 		}
-		if strings.Contains(fmt.Sprint(got), customCanary) {
-			t.Errorf("projected zidentity user %s = %v, want custom canary absent", mode, got)
+		if strings.Contains(fmt.Sprint(got), "jane.doe@example.internal") || strings.Contains(fmt.Sprint(got), "Jane Doe") {
+			t.Errorf("ProjectRecords(zidentity users, %s) = %v, want personal fields absent", mode, got)
 		}
 		if err := resources.AssertRenderedSubset(spec, mode, got); err != nil {
 			t.Errorf("AssertRenderedSubset(projected zidentity user %s) error = %v, want nil", mode, err)

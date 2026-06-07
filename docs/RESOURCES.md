@@ -1727,7 +1727,8 @@ Fields:
 | Field | Classification | Modes | Notes |
 | --- | --- | --- | --- |
 | `id`, `status` | Operational metadata | `standard`, `share`, `paranoid` | User identifier and enabled/status flag. |
-| `source`, `loginName`, `displayName`, `firstName`, `lastName`, `primaryEmail`, `secondaryEmail`, `department`, `idp` | Tenant configuration | `standard`, `share` | Workforce directory fields visible to Zidentity administrators. `department` and `idp` render id/name/displayName only. |
+| `source`, `department`, `idp` | Tenant configuration | `standard`, `share` | Workforce directory context visible to Zidentity administrators. `department` and `idp` render id/name/displayName only. |
+| `loginName`, `displayName`, `firstName`, `lastName`, `primaryEmail`, `secondaryEmail` | Sensitive identifier | `standard` | Person-identifying workforce directory fields. Visible to the local administrator, dropped from `share` and `paranoid` output. |
 | `customAttrsInfo` | Secret | none | Tenant-defined arbitrary attributes; dropped until specific keys are reviewed. |
 
 ## ZIDENTITY Resource Servers
