@@ -42,9 +42,10 @@ As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.37`:
   Treat it as out of pre-`v1.0.0` scope unless Zscaler exposes deterministic
   configuration APIs.
 - Zidentity is exposed under `zscaler/zid/services/...`; treat it as a partial
-  product track. Resource servers are the clean read-only config slice,
-  entitlements are sensitive authorization data, and users/groups are
-  PII/mutating identity-management surfaces.
+  product track. The current vendored service packages are resource servers,
+  groups, and users. They are administrator-visible read inventory when bound
+  through read-only handlers; group/user membership child lookups need a
+  separate command shape and must not wire adjacent membership mutators.
 - ZWA is exposed under `zscaler/zwa/services/...`; treat customer audit and DLP
   incident surfaces as out of pre-`v1.0.0` scope unless Zscaler exposes
   deterministic configuration APIs.

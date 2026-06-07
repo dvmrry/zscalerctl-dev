@@ -70,6 +70,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -199,6 +203,12 @@ const (
 	resourceZPACBIZPAProfs             = "cbi-zpa-profiles"
 	resourceZPAC2CIPRanges             = "c2c-ip-ranges"
 	resourceZPAConfigOvrds             = "config-overrides"
+	resourceZidentityGroups            = "groups"
+	resourceZidentityUsers             = "users"
+	resourceZidentityResourceServers   = "resource-servers"
+	zidentityGroupsEndpoint            = "/admin/api/v1/groups"
+	zidentityUsersEndpoint             = "/admin/api/v1/users"
+	zidentityResourceServersEndpoint   = "/admin/api/v1/resource-servers"
 )
 
 type AuthMode string
@@ -295,7 +305,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
 	switch product {
-	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW:
+	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZidentity:
 	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
@@ -1264,6 +1274,36 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			}),
 			jsonSourceRecord[zpaconfigoverride.ConfigOverrides],
 		),
+		{product: resources.ProductZidentity, name: resourceZidentityGroups}: newListGetHandler(
+			resourceZidentityGroups,
+			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidgroups.Groups, error) {
+				return zidentityListAll[zidgroups.Groups](ctx, service, zidentityGroupsEndpoint)
+			}),
+			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidgroups.Groups, error) {
+				return zidgroups.Get(ctx, service, id)
+			}),
+			zidentityGroupSourceRecord,
+		),
+		{product: resources.ProductZidentity, name: resourceZidentityUsers}: newListGetHandler(
+			resourceZidentityUsers,
+			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidusers.Users, error) {
+				return zidentityListAll[zidusers.Users](ctx, service, zidentityUsersEndpoint)
+			}),
+			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidusers.Users, error) {
+				return zidusers.GetUser(ctx, service, id)
+			}),
+			zidentityUserSourceRecord,
+		),
+		{product: resources.ProductZidentity, name: resourceZidentityResourceServers}: newListGetHandler(
+			resourceZidentityResourceServers,
+			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidresourceservers.ResourceServers, error) {
+				return zidentityListAll[zidresourceservers.ResourceServers](ctx, service, zidentityResourceServersEndpoint)
+			}),
+			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidresourceservers.ResourceServers, error) {
+				return zidresourceservers.Get(ctx, service, id)
+			}),
+			zidentityResourceServerSourceRecord,
+		),
 	}
 }
 
@@ -1550,6 +1590,84 @@ func sdkProductGet[T any](
 		defer cleanup()
 		return call(ctx, service, id)
 	})
+}
+
+func sdkProductStringGet[T any](
+	product resources.Product,
+	client sdkClient,
+	call func(context.Context, *zsdk.Service, string) (*T, error),
+) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("%w: empty", ErrInvalidResourceID)
+		}
+		service, cleanup, err := client.productService(ctx, product)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service, id)
+	}
+}
+
+const (
+	zidentityPageLimit = 1000
+	zidentityMaxPages  = 1000
+)
+
+type zidentityPage[T any] struct {
+	records      []T
+	resultsTotal int
+	pageOffset   int
+	nextLink     string
+}
+
+func zidentityListAll[T any](ctx context.Context, service *zsdk.Service, endpoint string) ([]T, error) {
+	return readAllZidentityPages(ctx, func(ctx context.Context, offset, limit int) (zidentityPage[T], error) {
+		params := zidcommon.NewPaginationQueryParams(limit)
+		params.WithOffset(offset)
+		response, err := zidcommon.ReadPageWithPagination[T](ctx, service.Client, endpoint, &params)
+		if err != nil {
+			return zidentityPage[T]{}, err
+		}
+		return zidentityPage[T]{
+			records:      response.Records,
+			resultsTotal: response.ResultsTotal,
+			pageOffset:   response.PageOffset,
+			nextLink:     response.NextLink,
+		}, nil
+	})
+}
+
+func readAllZidentityPages[T any](
+	ctx context.Context,
+	readPage func(context.Context, int, int) (zidentityPage[T], error),
+) ([]T, error) {
+	var all []T
+	for pageNumber, offset := 0, 0; ; pageNumber++ {
+		if pageNumber >= zidentityMaxPages {
+			return nil, fmt.Errorf("zidentity pagination exceeded %d pages at offset %d", zidentityMaxPages, offset)
+		}
+		page, err := readPage(ctx, offset, zidentityPageLimit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch zidentity page at offset %d: %w", offset, err)
+		}
+		if pageNumber > 0 && page.pageOffset != offset {
+			return nil, fmt.Errorf("zidentity pagination did not advance: requested offset %d, response pageOffset %d", offset, page.pageOffset)
+		}
+		all = append(all, page.records...)
+		if len(page.records) == 0 {
+			return all, nil
+		}
+		if page.resultsTotal > 0 && len(all) >= page.resultsTotal {
+			return all, nil
+		}
+		if len(page.records) < zidentityPageLimit || page.nextLink == "" {
+			return all, nil
+		}
+		offset += len(page.records)
+	}
 }
 
 func zpaSDKList[T any](
@@ -2934,6 +3052,62 @@ func ztwAdminRoleSourceRecord(role ztwadminroles.AdminRoles) resources.SourceRec
 	return resources.NewSourceRecord(fields)
 }
 
+func zidentityGroupSourceRecord(group zidgroups.Groups) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                        group.ID,
+		"name":                      group.Name,
+		"description":               group.Description,
+		"source":                    group.Source,
+		"isDynamicGroup":            group.IsDynamicGroup,
+		"dynamicGroup":              group.DynamicGroup,
+		"adminEntitlementEnabled":   group.AdminEntitlementEnabled,
+		"serviceEntitlementEnabled": group.ServiceEntitlementEnabled,
+	}
+	if group.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(group.IDP)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func zidentityUserSourceRecord(user zidusers.Users) resources.SourceRecord {
+	fields := map[string]any{
+		"id":             user.ID,
+		"source":         user.Source,
+		"loginName":      user.LoginName,
+		"displayName":    user.DisplayName,
+		"firstName":      user.FirstName,
+		"lastName":       user.LastName,
+		"primaryEmail":   user.PrimaryEmail,
+		"secondaryEmail": user.SecondaryEmail,
+		"status":         user.Status,
+	}
+	if user.Department != nil {
+		fields["department"] = zidIDNameDisplayNameSource(user.Department)
+	}
+	if user.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(user.IDP)
+	}
+	if len(user.CustomAttrsInfo) > 0 {
+		fields["customAttrsInfo"] = copyStringAnyMap(user.CustomAttrsInfo)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func zidentityResourceServerSourceRecord(server zidresourceservers.ResourceServers) resources.SourceRecord {
+	fields := map[string]any{
+		"id":          server.ID,
+		"name":        server.Name,
+		"displayName": server.DisplayName,
+		"description": server.Description,
+		"primaryAud":  server.PrimaryAud,
+		"defaultApi":  server.DefaultApi,
+	}
+	if len(server.ServiceScopes) > 0 {
+		fields["serviceScopes"] = zidentityServiceScopesSource(server.ServiceScopes)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func alertSubscriptionSourceRecord(subscription alerts.AlertSubscriptions) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          subscription.ID,
@@ -3893,6 +4067,52 @@ func ztwExecMobileAppTokensSource(values []ztwadminusers.ExecMobileAppTokens) []
 			"createTime":  value.CreateTime,
 			"deviceId":    value.DeviceId,
 			"deviceName":  value.DeviceName,
+		})
+	}
+	return out
+}
+
+func zidIDNameDisplayNameSource(value *zidcommon.IDNameDisplayName) map[string]any {
+	return map[string]any{
+		"id":          value.ID,
+		"name":        value.Name,
+		"displayName": value.DisplayName,
+	}
+}
+
+func copyStringAnyMap(values map[string]interface{}) map[string]any {
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func zidentityServiceScopesSource(values []zidresourceservers.ServiceScopes) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"service": zidentityServiceRefSource(value.Service),
+			"scopes":  zidentityScopesSource(value.Scopes),
+		})
+	}
+	return out
+}
+
+func zidentityServiceRefSource(value zidresourceservers.Service) map[string]any {
+	return map[string]any{
+		"id":          value.ID,
+		"name":        value.Name,
+		"displayName": value.DisplayName,
+	}
+}
+
+func zidentityScopesSource(values []zidresourceservers.Scopes) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"id":   value.ID,
+			"name": value.Name,
 		})
 	}
 	return out

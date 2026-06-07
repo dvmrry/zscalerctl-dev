@@ -123,6 +123,10 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/groups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup

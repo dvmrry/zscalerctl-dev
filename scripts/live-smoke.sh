@@ -83,10 +83,10 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*|zpa/*|ztw/*)
+    zia/*|zpa/*|ztw/*|zidentity/*)
       ;;
     */*)
-      echo "--resources supports only zia/, zpa/, or ztw/ qualified resources; got: $resource" >&2
+      echo "--resources supports only zia/, zpa/, ztw/, or zidentity/ qualified resources; got: $resource" >&2
       exit 2
       ;;
     *)
@@ -700,7 +700,7 @@ load_smoke_resources() {
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia" or .product == "zpa" or .product == "ztw")
+      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zidentity")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
       | [.product, .name]
     ]
@@ -728,7 +728,7 @@ load_smoke_resources() {
     done
   fi
 
-  pass "schema list found ${#all_resources[@]} ZIA/ZPA/ZTW read resource(s)"
+  pass "schema list found ${#all_resources[@]} catalog read resource(s)"
   pass "live smoke selected ${#resources[@]} resource(s): ${resources[*]}"
   record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} resources"
   return 0

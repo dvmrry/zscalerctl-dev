@@ -12,7 +12,7 @@ fi
 
 # This gate catches accidental CI/live-smoke wiring. It does not try to defend
 # against a maintainer deliberately hiding credential mapping in external code.
-pattern='(ZSCALERCTL_((CLIENT|ZIA|ZPA)_[A-Z0-9_]*|VANITY_DOMAIN|CLOUD|AUTH_MODE)|ZSCALER_[A-Z0-9_]*|ONEAPI_[A-Z0-9_]*|ZIA_[A-Z0-9_]*|ZPA_[A-Z0-9_]*|ZDX_[A-Z0-9_]*|ZCC_[A-Z0-9_]*|ZTC_[A-Z0-9_]*|ZTW_[A-Z0-9_]*|secrets\.[A-Z0-9_]*(ZSCALER|ONEAPI|ZIA|ZPA|ZDX|ZCC|ZTC|ZTW)[A-Z0-9_]*)'
+pattern='(ZSCALERCTL_((CLIENT|ZIA|ZPA|ZID|ZIDENTITY)_[A-Z0-9_]*|VANITY_DOMAIN|CLOUD|AUTH_MODE)|ZSCALER_[A-Z0-9_]*|ONEAPI_[A-Z0-9_]*|ZIA_[A-Z0-9_]*|ZPA_[A-Z0-9_]*|ZDX_[A-Z0-9_]*|ZCC_[A-Z0-9_]*|ZTC_[A-Z0-9_]*|ZTW_[A-Z0-9_]*|ZID_[A-Z0-9_]*|ZIDENTITY_[A-Z0-9_]*|secrets\.[A-Z0-9_]*(ZSCALER|ONEAPI|ZIA|ZPA|ZDX|ZCC|ZTC|ZTW|ZID|ZIDENTITY)[A-Z0-9_]*)'
 fail=0
 
 while IFS= read -r -d '' file; do

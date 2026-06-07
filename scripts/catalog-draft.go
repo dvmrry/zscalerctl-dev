@@ -69,16 +69,16 @@ func main() {
 	var resource string
 	flag.StringVar(&packagePath, "package", "", "Go package import path or relative package path containing the SDK struct")
 	flag.StringVar(&typeName, "type", "", "SDK struct type name")
-	flag.StringVar(&product, "product", "", "catalog product, currently zia or zpa")
+	flag.StringVar(&product, "product", "", "catalog product, currently zia, zpa, ztw, or zidentity")
 	flag.StringVar(&resource, "resource", "", "catalog resource name")
 	flag.Parse()
 
 	if packagePath == "" || typeName == "" || product == "" || resource == "" {
-		fmt.Fprintln(os.Stderr, "usage: go run ./scripts/catalog-draft.go --package PKG --type TYPE --product zia|zpa --resource NAME")
+		fmt.Fprintln(os.Stderr, "usage: go run ./scripts/catalog-draft.go --package PKG --type TYPE --product zia|zpa|ztw|zidentity --resource NAME")
 		os.Exit(2)
 	}
 	if productConst(product) == "" {
-		fmt.Fprintf(os.Stderr, "catalog-draft: unsupported product %q; want zia or zpa\n", product)
+		fmt.Fprintf(os.Stderr, "catalog-draft: unsupported product %q; want zia, zpa, ztw, or zidentity\n", product)
 		os.Exit(2)
 	}
 	if err := validatePackagePath(packagePath); err != nil {
@@ -487,6 +487,8 @@ func productConst(product string) string {
 		return "ProductZPA"
 	case "ztw":
 		return "ProductZTW"
+	case "zidentity":
+		return "ProductZidentity"
 	default:
 		return ""
 	}
