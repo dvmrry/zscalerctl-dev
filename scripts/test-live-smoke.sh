@@ -77,6 +77,10 @@ write_resource() {
     invalid-json:gre-tunnels)
       printf '{"broken":'
       ;;
+    list-fails:gre-tunnels)
+      echo "mock API 404 not entitled" >&2
+      exit 7
+      ;;
     *:locations)
       printf '[{"id":1,"name":"HQ","description":"<REDACTED:SECRET>","ipAddresses":["192.0.2.10"]}]\n'
       ;;
@@ -460,6 +464,18 @@ if ! grep -q 'preSharedKey' "$tmp_dir/stderr-leaky"; then
   exit 1
 fi
 
+if ! grep -q 'failure summary:' "$tmp_dir/stderr-leaky"; then
+  echo "live-smoke denied-key failure did not print a failure summary path" >&2
+  cat "$tmp_dir/stderr-leaky" >&2
+  exit 1
+fi
+
+if ! grep -q 'failure markers:' "$tmp_dir/stderr-leaky"; then
+  echo "live-smoke denied-key failure summary did not include failure markers" >&2
+  cat "$tmp_dir/stderr-leaky" >&2
+  exit 1
+fi
+
 if run_smoke leaky-location-groups; then
   echo "live-smoke accepted a fixture with location-group denied keys" >&2
   cat "$tmp_dir/stdout-leaky-location-groups" >&2
@@ -496,6 +512,31 @@ fi
 if ! grep -q 'is not a JSON array' "$tmp_dir/stderr-invalid-json"; then
   echo "live-smoke invalid-JSON failure did not mention JSON array validation" >&2
   cat "$tmp_dir/stderr-invalid-json" >&2
+  exit 1
+fi
+
+if run_smoke list-fails; then
+  echo "live-smoke accepted a resource command failure" >&2
+  cat "$tmp_dir/stdout-list-fails" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'zia gre-tunnels list command failed' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure summary did not include the failed resource" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'mock API 404 not entitled' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure summary did not include the stderr snippet" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'failure-summary.txt' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure did not print the failure-summary.txt path" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
   exit 1
 fi
 

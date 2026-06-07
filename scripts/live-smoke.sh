@@ -20,6 +20,8 @@ strict_counts=0
 failures=0
 resources=()
 requested_resources=()
+failure_messages=()
+summary_stderr_lines=20
 
 usage() {
   cat <<'EOF'
@@ -256,8 +258,53 @@ skip() {
 }
 
 fail() {
-  printf '[FAIL] %s\n' "$*" >&2
+  local message="$*"
+  printf '[FAIL] %s\n' "$message" >&2
+  failure_messages+=("$message")
   failures=$((failures + 1))
+}
+
+write_failure_summary() {
+  local failure_count="$1"
+  local summary_file="$out_dir/failure-summary.txt"
+  local file
+  local message
+  local found_stderr=0
+
+  {
+    printf 'zscalerctl live-smoke failure summary\n'
+    printf 'failures: %s\n' "$failure_count"
+    printf 'artifacts: %s\n' "$out_dir"
+    printf '\n'
+    printf 'failure markers:\n'
+    for message in "${failure_messages[@]}"; do
+      printf -- '- %s\n' "$message"
+    done
+    printf '\n'
+    printf 'non-empty stderr snippets (first %s lines each):\n' "$summary_stderr_lines"
+    while IFS= read -r file; do
+      if [[ ! -s "$file" ]]; then
+        continue
+      fi
+      found_stderr=1
+      printf '\n'
+      printf '===== %s =====\n' "$file"
+      sed -n "1,${summary_stderr_lines}p" "$file"
+    done < <(find "$out_dir" -type f -name '*.stderr' -print | sort)
+    if ((found_stderr == 0)); then
+      printf '<none>\n'
+    fi
+  } >"$summary_file"
+  chmod 600 "$summary_file"
+  printf '%s' "$summary_file"
+}
+
+print_failure_summary() {
+  local summary_file="$1"
+
+  printf '[INFO] failure summary: %s\n' "$summary_file" >&2
+  printf '\n' >&2
+  sed -n '1,220p' "$summary_file" >&2
 }
 
 if [[ -n "$manifest_path" ]]; then
@@ -710,6 +757,8 @@ schema_file="$lists_dir/schema.json"
 schema_stderr="$lists_dir/schema.stderr"
 if ! load_zia_resources "$schema_file" "$schema_stderr"; then
   fail "live smoke cannot continue without a valid schema resource set"
+  summary_file="$(write_failure_summary "$failures")"
+  print_failure_summary "$summary_file"
   exit 1
 fi
 
@@ -845,7 +894,10 @@ if [[ -d "$dump_dir" ]]; then
 fi
 
 if ((failures != 0)); then
-  fail "live smoke completed with $failures failure(s); artifacts kept at $out_dir"
+  failure_count="$failures"
+  summary_file="$(write_failure_summary "$failure_count")"
+  print_failure_summary "$summary_file"
+  printf '[FAIL] live smoke completed with %s failure(s); artifacts kept at %s\n' "$failure_count" "$out_dir" >&2
   exit 1
 fi
 
