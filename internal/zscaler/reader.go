@@ -17,6 +17,7 @@ import (
 	sdkcache "github.com/zscaler/zscaler-sdk-go/v3/cache"
 	sdklogger "github.com/zscaler/zscaler-sdk-go/v3/logger"
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
@@ -283,7 +284,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		if errors.Is(err, ErrMissingCredentials) {
 			return nil, err
 		}
-		return nil, normalizeLiveError(ctx, "authenticate", product, "session")
+		return nil, normalizeLiveError(ctx, "authenticate", product, "session", err)
 	}
 	client := sdkClient{services: fixedService{sdkService: service}}
 	return &SDKSession{
@@ -360,7 +361,7 @@ func listResource(
 		if errors.Is(err, ErrMissingCredentials) {
 			return nil, err
 		}
-		return nil, normalizeLiveError(ctx, "list", product, name)
+		return nil, normalizeLiveError(ctx, "list", product, name, err)
 	}
 	return records, nil
 }
@@ -383,7 +384,7 @@ func getResource(
 			errors.Is(err, ErrMissingCredentials) {
 			return resources.SourceRecord{}, err
 		}
-		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name)
+		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name, err)
 	}
 	return record, nil
 }
@@ -400,7 +401,7 @@ func showResource(
 	}
 	record, err := handler.Show(ctx)
 	if err != nil {
-		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name)
+		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name, err)
 	}
 	return record, nil
 }
@@ -3501,7 +3502,7 @@ func vpnCredentialsSource(credentials []locationmanagement.VPNCredentials) []any
 	return out
 }
 
-func normalizeLiveError(ctx context.Context, operation string, product resources.Product, resource string) error {
+func normalizeLiveError(ctx context.Context, operation string, product resources.Product, resource string, err error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -3509,22 +3510,41 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 		return fmt.Errorf("zscaler %s %s/%s cancelled: %w", operation, product, resource, err)
 	}
 	return liveAccessError{
-		operation: operation,
-		product:   product,
-		resource:  resource,
+		operation:  operation,
+		product:    product,
+		resource:   resource,
+		statusCode: sdkStatusCode(err),
 	}
 }
 
 type liveAccessError struct {
-	operation string
-	product   resources.Product
-	resource  string
+	operation  string
+	product    resources.Product
+	resource   string
+	statusCode int
 }
 
 func (e liveAccessError) Error() string {
+	if e.statusCode > 0 {
+		return fmt.Sprintf("%s: %s %s/%s (status %d)", ErrLiveAccessFailed, e.operation, e.product, e.resource, e.statusCode)
+	}
 	return fmt.Sprintf("%s: %s %s/%s", ErrLiveAccessFailed, e.operation, e.product, e.resource)
 }
 
 func (e liveAccessError) Unwrap() error {
 	return ErrLiveAccessFailed
+}
+
+func sdkStatusCode(err error) int {
+	var sdkErr *sdkerrorx.ErrorResponse
+	if !errors.As(err, &sdkErr) || sdkErr == nil {
+		return 0
+	}
+	if sdkErr.Response != nil && sdkErr.Response.StatusCode > 0 {
+		return sdkErr.Response.StatusCode
+	}
+	if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
+		return sdkErr.Parsed.Status
+	}
+	return 0
 }

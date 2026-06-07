@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
@@ -4041,6 +4042,37 @@ func TestReaderNormalizesSDKErrors(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), leaked) {
 		t.Errorf("SDKReader.List(error) error = %q, want no leaked SDK error content", err.Error())
+	}
+}
+
+func TestReaderNormalizedSDKErrorPreservesSafeStatusCodeOnly(t *testing.T) {
+	t.Parallel()
+
+	const leaked = "client_secret=raw-sdk-body"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceLocations}: fakeLocationsResourceHandler(fakeZIALocationClient{
+				err: &sdkerrorx.ErrorResponse{
+					Response: &http.Response{
+						StatusCode: http.StatusForbidden,
+						Status:     "403 Forbidden",
+					},
+					Message: leaked,
+				},
+			}),
+		},
+	}
+
+	_, err := reader.List(context.Background(), resources.ProductZIA, "locations")
+	if !errors.Is(err, ErrLiveAccessFailed) {
+		t.Fatalf("SDKReader.List(status error) error = %v, want ErrLiveAccessFailed", err)
+	}
+	if !strings.Contains(err.Error(), "status 403") {
+		t.Errorf("SDKReader.List(status error) error = %q, want safe status code", err.Error())
+	}
+	if strings.Contains(err.Error(), leaked) {
+		t.Errorf("SDKReader.List(status error) error = %q, want no leaked SDK error content", err.Error())
 	}
 }
 
