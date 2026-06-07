@@ -70,7 +70,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
 	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -200,6 +203,8 @@ const (
 	resourceZPACBIZPAProfs             = "cbi-zpa-profiles"
 	resourceZPAC2CIPRanges             = "c2c-ip-ranges"
 	resourceZPAConfigOvrds             = "config-overrides"
+	resourceZidentityGroups            = "groups"
+	resourceZidentityUsers             = "users"
 	resourceZidentityResourceServers   = "resource-servers"
 )
 
@@ -1265,6 +1270,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpaconfigoverride.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpaconfigoverride.ConfigOverrides],
+		),
+		{product: resources.ProductZidentity, name: resourceZidentityGroups}: newListGetHandler(
+			resourceZidentityGroups,
+			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidgroups.Groups, error) {
+				return zidgroups.GetAll(ctx, service, nil)
+			}),
+			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidgroups.Groups, error) {
+				return zidgroups.Get(ctx, service, id)
+			}),
+			zidentityGroupSourceRecord,
+		),
+		{product: resources.ProductZidentity, name: resourceZidentityUsers}: newListGetHandler(
+			resourceZidentityUsers,
+			sdkProductList(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service) ([]zidusers.Users, error) {
+				return zidusers.GetAll(ctx, service, nil)
+			}),
+			sdkProductStringGet(resources.ProductZidentity, client, func(ctx context.Context, service *zsdk.Service, id string) (*zidusers.Users, error) {
+				return zidusers.GetUser(ctx, service, id)
+			}),
+			zidentityUserSourceRecord,
 		),
 		{product: resources.ProductZidentity, name: resourceZidentityResourceServers}: newListGetHandler(
 			resourceZidentityResourceServers,
@@ -2965,6 +2990,47 @@ func ztwAdminRoleSourceRecord(role ztwadminroles.AdminRoles) resources.SourceRec
 	return resources.NewSourceRecord(fields)
 }
 
+func zidentityGroupSourceRecord(group zidgroups.Groups) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                        group.ID,
+		"name":                      group.Name,
+		"description":               group.Description,
+		"source":                    group.Source,
+		"isDynamicGroup":            group.IsDynamicGroup,
+		"dynamicGroup":              group.DynamicGroup,
+		"adminEntitlementEnabled":   group.AdminEntitlementEnabled,
+		"serviceEntitlementEnabled": group.ServiceEntitlementEnabled,
+	}
+	if group.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(group.IDP)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func zidentityUserSourceRecord(user zidusers.Users) resources.SourceRecord {
+	fields := map[string]any{
+		"id":             user.ID,
+		"source":         user.Source,
+		"loginName":      user.LoginName,
+		"displayName":    user.DisplayName,
+		"firstName":      user.FirstName,
+		"lastName":       user.LastName,
+		"primaryEmail":   user.PrimaryEmail,
+		"secondaryEmail": user.SecondaryEmail,
+		"status":         user.Status,
+	}
+	if user.Department != nil {
+		fields["department"] = zidIDNameDisplayNameSource(user.Department)
+	}
+	if user.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(user.IDP)
+	}
+	if len(user.CustomAttrsInfo) > 0 {
+		fields["customAttrsInfo"] = copyStringAnyMap(user.CustomAttrsInfo)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func zidentityResourceServerSourceRecord(server zidresourceservers.ResourceServers) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          server.ID,
@@ -3940,6 +4006,22 @@ func ztwExecMobileAppTokensSource(values []ztwadminusers.ExecMobileAppTokens) []
 			"deviceId":    value.DeviceId,
 			"deviceName":  value.DeviceName,
 		})
+	}
+	return out
+}
+
+func zidIDNameDisplayNameSource(value *zidcommon.IDNameDisplayName) map[string]any {
+	return map[string]any{
+		"id":          value.ID,
+		"name":        value.Name,
+		"displayName": value.DisplayName,
+	}
+}
+
+func copyStringAnyMap(values map[string]interface{}) map[string]any {
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
 	}
 	return out
 }

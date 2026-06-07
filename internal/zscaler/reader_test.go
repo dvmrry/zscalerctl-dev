@@ -47,7 +47,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
 	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -4367,6 +4370,170 @@ func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing
 	assertReportContains(t, reports[0].DroppedFields, "customerId")
 	assertReportContains(t, reports[0].DroppedFields, "targetGid")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZidentityGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const descriptionCanary = "zidentity-group-description-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZidentity, name: resourceZidentityGroups}: newListGetHandler(
+				resourceZidentityGroups,
+				func(context.Context) ([]zidgroups.Groups, error) {
+					return []zidgroups.Groups{{
+						ID:                        "group-1",
+						Name:                      "Engineering",
+						Description:               "temporary psk=" + descriptionCanary,
+						Source:                    "SCIM",
+						IsDynamicGroup:            true,
+						DynamicGroup:              true,
+						AdminEntitlementEnabled:   true,
+						ServiceEntitlementEnabled: true,
+						IDP: &zidcommon.IDNameDisplayName{
+							ID:          "idp-1",
+							Name:        "Corporate IDP",
+							DisplayName: "Corporate IDP display",
+						},
+					}}, nil
+				},
+				func(context.Context, string) (*zidgroups.Groups, error) {
+					return nil, nil
+				},
+				zidentityGroupSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZidentity, resourceZidentityGroups)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zidentity, groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZidentity, resourceZidentityGroups)
+	if !ok {
+		t.Fatalf("FindSpec(zidentity, %s) ok = false, want true", resourceZidentityGroups)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zidentity groups, standard) error = %v, want nil", err)
+	}
+	got := projected.Records()[0].Fields()
+	if got["name"] != "Engineering" || got["source"] != "SCIM" || got["adminEntitlementEnabled"] != true {
+		t.Errorf("projected zidentity group = %v, want directory fields preserved", got)
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, descriptionCanary) {
+		t.Errorf("projected zidentity group description = %v, want redacted canary", got["description"])
+	}
+	idp, ok := got["idp"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected zidentity group idp = %T, want map[string]any", got["idp"])
+	}
+	if idp["id"] != "idp-1" || idp["name"] != "Corporate IDP" || idp["displayName"] != "Corporate IDP display" {
+		t.Errorf("projected zidentity group idp = %v, want id/name/displayName", idp)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected zidentity group standard) error = %v, want nil", err)
+	}
+	assertReportContains(t, reports[0].RedactedFields, "description")
+
+	shareProjected, shareReports, err := resources.ProjectRecords(spec, redact.ModeShare, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zidentity groups, share) error = %v, want nil", err)
+	}
+	shareGot := shareProjected.Records()[0].Fields()
+	if shareGot["name"] != "Engineering" || shareGot["source"] != "SCIM" {
+		t.Errorf("projected zidentity group share = %v, want directory fields preserved", shareGot)
+	}
+	if _, ok := shareGot["description"]; ok {
+		t.Errorf("projected zidentity group share includes description, want dropped")
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeShare, shareGot); err != nil {
+		t.Errorf("AssertRenderedSubset(projected zidentity group share) error = %v, want nil", err)
+	}
+	assertReportContains(t, shareReports[0].DroppedFields, "description")
+}
+
+func TestReaderListZidentityUsersProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const customCanary = "zidentity-user-custom-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZidentity, name: resourceZidentityUsers}: newListGetHandler(
+				resourceZidentityUsers,
+				func(context.Context) ([]zidusers.Users, error) {
+					return []zidusers.Users{{
+						ID:             "user-1",
+						Source:         "SCIM",
+						LoginName:      "jane.doe@example.internal",
+						DisplayName:    "Jane Doe",
+						FirstName:      "Jane",
+						LastName:       "Doe",
+						PrimaryEmail:   "jane.doe@example.internal",
+						SecondaryEmail: "jane.alt@example.internal",
+						Status:         true,
+						Department: &zidcommon.IDNameDisplayName{
+							ID:          "dept-1",
+							Name:        "Engineering",
+							DisplayName: "Engineering display",
+						},
+						IDP: &zidcommon.IDNameDisplayName{
+							ID:          "idp-1",
+							Name:        "Corporate IDP",
+							DisplayName: "Corporate IDP display",
+						},
+						CustomAttrsInfo: map[string]interface{}{
+							"employeeCode": customCanary,
+						},
+					}}, nil
+				},
+				func(context.Context, string) (*zidusers.Users, error) {
+					return nil, nil
+				},
+				zidentityUserSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZidentity, resourceZidentityUsers)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zidentity, users) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZidentity, resourceZidentityUsers)
+	if !ok {
+		t.Fatalf("FindSpec(zidentity, %s) ok = false, want true", resourceZidentityUsers)
+	}
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare} {
+		projected, reports, err := resources.ProjectRecords(spec, mode, records)
+		if err != nil {
+			t.Fatalf("ProjectRecords(zidentity users, %s) error = %v, want nil", mode, err)
+		}
+		got := projected.Records()[0].Fields()
+		if got["displayName"] != "Jane Doe" || got["firstName"] != "Jane" || got["lastName"] != "Doe" || got["source"] != "SCIM" || got["status"] != true {
+			t.Errorf("projected zidentity user %s = %v, want workforce identity fields preserved", mode, got)
+		}
+		if mode == redact.ModeStandard && (got["loginName"] != "jane.doe@example.internal" || got["primaryEmail"] != "jane.doe@example.internal") {
+			t.Errorf("projected zidentity user standard emails = %v/%v, want preserved", got["loginName"], got["primaryEmail"])
+		}
+		department, ok := got["department"].(map[string]any)
+		if !ok {
+			t.Fatalf("projected zidentity user department %s = %T, want map[string]any", mode, got["department"])
+		}
+		if department["id"] != "dept-1" || department["name"] != "Engineering" || department["displayName"] != "Engineering display" {
+			t.Errorf("projected zidentity user department %s = %v, want id/name/displayName", mode, department)
+		}
+		if _, ok := got["customAttrsInfo"]; ok {
+			t.Errorf("projected zidentity user %s includes customAttrsInfo, want dropped", mode)
+		}
+		if strings.Contains(fmt.Sprint(got), customCanary) {
+			t.Errorf("projected zidentity user %s = %v, want custom canary absent", mode, got)
+		}
+		if err := resources.AssertRenderedSubset(spec, mode, got); err != nil {
+			t.Errorf("AssertRenderedSubset(projected zidentity user %s) error = %v, want nil", mode, err)
+		}
+		assertReportContains(t, reports[0].DroppedFields, "customAttrsInfo")
+	}
 }
 
 func TestReaderListZidentityResourceServersProjectsSDKShapeThroughAllowList(t *testing.T) {

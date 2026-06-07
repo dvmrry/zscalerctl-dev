@@ -1694,6 +1694,42 @@ Fields:
 | `rank`, `policyAccess`, `alertingAccess`, `dashboardAccess`, `reportAccess`, `analysisAccess`, `usernameAccess`, `adminAcctAccess`, `deviceInfoAccess`, `permissions`, `logsLimit` | Tenant configuration | `standard` | Authorization details are visible to the local administrator and dropped from `share` and `paranoid`. |
 | `featurePermissions` | Secret or unmodeled nested structure | never | Arbitrary feature-permission map is dropped until its shape is reviewed. |
 
+## ZIDENTITY Groups
+
+Commands:
+
+```sh
+zscalerctl zidentity groups list
+zscalerctl zidentity groups get <id>
+zscalerctl dump --products zidentity --resources zidentity/groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isDynamicGroup`, `dynamicGroup` | Operational metadata | `standard`, `share`, `paranoid` | Group identity and dynamic-group flags. |
+| `name`, `source`, `adminEntitlementEnabled`, `serviceEntitlementEnabled`, `idp` | Tenant configuration | `standard`, `share` | Workforce directory and entitlement-toggle metadata. `idp` renders id/name/displayName only. |
+| `description` | Free text | `standard` | Admin-controlled text; scanned before output, including bare high-entropy tokens. |
+
+## ZIDENTITY Users
+
+Commands:
+
+```sh
+zscalerctl zidentity users list
+zscalerctl zidentity users get <id>
+zscalerctl dump --products zidentity --resources zidentity/users --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `status` | Operational metadata | `standard`, `share`, `paranoid` | User identifier and enabled/status flag. |
+| `source`, `loginName`, `displayName`, `firstName`, `lastName`, `primaryEmail`, `secondaryEmail`, `department`, `idp` | Tenant configuration | `standard`, `share` | Workforce directory fields visible to Zidentity administrators. `department` and `idp` render id/name/displayName only. |
+| `customAttrsInfo` | Secret | none | Tenant-defined arbitrary attributes; dropped until specific keys are reviewed. |
+
 ## ZIDENTITY Resource Servers
 
 Commands:

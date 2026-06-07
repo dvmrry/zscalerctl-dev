@@ -59,7 +59,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
 	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -1611,6 +1614,65 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"logsLimit",
 				"roleType",
 				"featurePermissions",
+			},
+		},
+		{
+			name:         "zidgroups.Groups",
+			resource:     resources.ProductZidentity,
+			resourceName: resourceZidentityGroups,
+			typ:          reflect.TypeOf(zidgroups.Groups{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"source",
+				"isDynamicGroup",
+				"dynamicGroup",
+				"adminEntitlementEnabled",
+				"serviceEntitlementEnabled",
+				"idp",
+			},
+		},
+		{
+			name:         "zidcommon.IDNameDisplayName (groups)",
+			resource:     resources.ProductZidentity,
+			resourceName: resourceZidentityGroups,
+			typ:          reflect.TypeOf(zidcommon.IDNameDisplayName{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"displayName",
+			},
+		},
+		{
+			name:         "zidusers.Users",
+			resource:     resources.ProductZidentity,
+			resourceName: resourceZidentityUsers,
+			typ:          reflect.TypeOf(zidusers.Users{}),
+			catalogFields: []string{
+				"id",
+				"source",
+				"loginName",
+				"displayName",
+				"firstName",
+				"lastName",
+				"primaryEmail",
+				"secondaryEmail",
+				"status",
+				"department",
+				"idp",
+				"customAttrsInfo",
+			},
+		},
+		{
+			name:         "zidcommon.IDNameDisplayName (users)",
+			resource:     resources.ProductZidentity,
+			resourceName: resourceZidentityUsers,
+			typ:          reflect.TypeOf(zidcommon.IDNameDisplayName{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"displayName",
 			},
 		},
 		{

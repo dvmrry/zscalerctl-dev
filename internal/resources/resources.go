@@ -790,6 +790,19 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 	}
 }
 
+func idNameDisplayNameField(name string, allowed []redact.Mode) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allowed,
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			tenantConfigField("name", standardShareModes()),
+			tenantConfigField("displayName", standardShareModes()),
+		},
+	}
+}
+
 func idNameExternalIDField(name string, allowed []redact.Mode) FieldSpec {
 	return FieldSpec{
 		Name:           name,
@@ -3319,6 +3332,41 @@ func Catalog() ResourceCatalog {
 				tenantConfigField("logsLimit", standardOnlyMode()),
 				tenantConfigField("roleType", standardShareModes()),
 				secretField("featurePermissions"),
+			},
+		},
+		{
+			Product:    ProductZidentity,
+			Name:       "groups",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "Zidentity group description"),
+				tenantConfigField("source", standardShareModes()),
+				operationalField("isDynamicGroup", allModes()),
+				operationalField("dynamicGroup", allModes()),
+				tenantConfigField("adminEntitlementEnabled", standardShareModes()),
+				tenantConfigField("serviceEntitlementEnabled", standardShareModes()),
+				idNameDisplayNameField("idp", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZidentity,
+			Name:       "users",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("source", standardShareModes()),
+				tenantConfigField("loginName", standardShareModes()),
+				tenantConfigField("displayName", standardShareModes()),
+				tenantConfigField("firstName", standardShareModes()),
+				tenantConfigField("lastName", standardShareModes()),
+				tenantConfigField("primaryEmail", standardShareModes()),
+				tenantConfigField("secondaryEmail", standardShareModes()),
+				operationalField("status", allModes()),
+				idNameDisplayNameField("department", standardShareModes()),
+				idNameDisplayNameField("idp", standardShareModes()),
+				secretField("customAttrsInfo"),
 			},
 		},
 		{
