@@ -62,6 +62,8 @@ import (
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
+	ztwadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles"
+	ztwadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers"
 	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
 	ztwdnsgateway "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway"
 	ztwecgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/ecgroup"
@@ -2706,6 +2708,176 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 	}
 }
 
+func TestReaderZTWAdminGovernanceProjectsSDKShapesThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const canary = "ztw-admin-governance-psk-canary"
+	adminUserRecord := ztwAdminUserSourceRecord(ztwadminusers.AdminUsers{
+		ID:                          1911,
+		LoginName:                   "admin@example.internal",
+		UserName:                    "cloud-admin",
+		Email:                       "admin@example.internal",
+		Comments:                    "temporary psk=" + canary,
+		Disabled:                    false,
+		Password:                    "password psk=" + canary,
+		PasswordLastModifiedTime:    1700000400,
+		IsNonEditable:               false,
+		IsPasswordLoginAllowed:      true,
+		IsPasswordExpired:           false,
+		IsAuditor:                   true,
+		IsSecurityReportCommEnabled: true,
+		IsServiceUpdateCommEnabled:  false,
+		IsProductUpdateCommEnabled:  true,
+		IsExecMobileAppEnabled:      true,
+		AdminScopeGroupMemberEntities: []ztwcommon.IDNameExtensions{{
+			ID:   10,
+			Name: "scope member psk=" + canary,
+		}},
+		AdminScopeEntities: []ztwcommon.IDNameExtensions{{
+			ID:   11,
+			Name: "scope entity psk=" + canary,
+		}},
+		AdminScopeType: "LOCATION_GROUP",
+		Role: &ztwadminusers.Role{
+			ID:           20,
+			Name:         "Super Admin",
+			IsNameL10Tag: false,
+			Extensions:   map[string]any{"secret": "extension psk=" + canary},
+		},
+		ExecMobileAppTokens: []ztwadminusers.ExecMobileAppTokens{{
+			Cloud:      "zscloud",
+			OrgId:      101,
+			Name:       "phone",
+			TokenId:    "token-id psk=" + canary,
+			Token:      "token psk=" + canary,
+			DeviceId:   "device psk=" + canary,
+			DeviceName: "device-name psk=" + canary,
+		}},
+	})
+	adminRoleRecord := ztwAdminRoleSourceRecord(ztwadminroles.AdminRoles{
+		ID:                 1912,
+		Rank:               2,
+		Name:               "Cloud Security Admin",
+		PolicyAccess:       "READ_WRITE",
+		AlertingAccess:     "READ_ONLY",
+		DashboardAccess:    "READ_ONLY",
+		ReportAccess:       "READ_ONLY",
+		AnalysisAccess:     "READ_ONLY",
+		UsernameAccess:     "FULL",
+		AdminAcctAccess:    "READ_ONLY",
+		DeviceInfoAccess:   "READ_ONLY",
+		IsAuditor:          false,
+		Permissions:        []string{"POLICY_READ", "ADMIN_USERS psk=" + canary},
+		IsNonEditable:      false,
+		LogsLimit:          "LAST_30_DAYS",
+		RoleType:           "ADMIN",
+		FeaturePermissions: map[string]any{"feature": "permission psk=" + canary},
+	})
+
+	userStandard, userReports, err := resources.ProjectRecordsAndVerify(
+		mustFindSpec(t, resources.ProductZTW, resourceAdminUsers),
+		redact.ModeStandard,
+		[]resources.SourceRecord{adminUserRecord},
+	)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(ztw/admin-users standard) error = %v, want nil", err)
+	}
+	userGot := userStandard.Records()[0].Fields()
+	if userGot["loginName"] != "admin@example.internal" || userGot["userName"] != "cloud-admin" || userGot["email"] != "admin@example.internal" {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) identity fields = %#v, want visible", userGot)
+	}
+	if userGot["disabled"] != false || userGot["isAuditor"] != true || userGot["adminScopeType"] != "LOCATION_GROUP" {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) governance fields = %#v, want visible", userGot)
+	}
+	if role, ok := userGot["role"].(map[string]any); !ok || role["id"] != 20 || role["name"] != "Super Admin" {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) role = %#v, want id/name reference", userGot["role"])
+	}
+	for _, field := range []string{"password", "execMobileAppTokens", "role.extensions"} {
+		assertReportContains(t, userReports[0].DroppedFields, field)
+	}
+	for _, field := range []string{"isPasswordLoginAllowed", "isPasswordExpired"} {
+		if _, ok := userGot[field]; ok {
+			t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) includes %s, want dropped", field)
+		}
+		assertReportContains(t, userReports[0].DroppedFields, field)
+	}
+	assertNoCanaries(t, "ztw/admin-users standard", userGot, canary)
+
+	userShare, userShareReports, err := resources.ProjectRecordsAndVerify(
+		mustFindSpec(t, resources.ProductZTW, resourceAdminUsers),
+		redact.ModeShare,
+		[]resources.SourceRecord{adminUserRecord},
+	)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(ztw/admin-users share) error = %v, want nil", err)
+	}
+	userShareGot := userShare.Records()[0].Fields()
+	for _, field := range []string{
+		"loginName",
+		"userName",
+		"email",
+		"comments",
+		"pwdLastModifiedTime",
+		"adminScopescopeGroupMemberEntities",
+		"adminScopeScopeEntities",
+		"role",
+	} {
+		if _, ok := userShareGot[field]; ok {
+			t.Errorf("ProjectRecordsAndVerify(ztw/admin-users share) includes %s, want dropped", field)
+		}
+		assertReportContains(t, userShareReports[0].DroppedFields, field)
+	}
+	assertNoCanaries(t, "ztw/admin-users share", userShareGot, canary, "admin@example.internal", "cloud-admin")
+
+	roleStandard, roleReports, err := resources.ProjectRecordsAndVerify(
+		mustFindSpec(t, resources.ProductZTW, resourceAdminRoles),
+		redact.ModeStandard,
+		[]resources.SourceRecord{adminRoleRecord},
+	)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(ztw/admin-roles standard) error = %v, want nil", err)
+	}
+	roleGot := roleStandard.Records()[0].Fields()
+	if roleGot["name"] != "Cloud Security Admin" || roleGot["policyAccess"] != "READ_WRITE" || roleGot["rank"] != 2 {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-roles standard) = %#v, want role governance fields visible", roleGot)
+	}
+	assertReportContains(t, roleReports[0].DroppedFields, "featurePermissions")
+	assertNoCanaries(t, "ztw/admin-roles standard", roleGot, canary)
+
+	roleShare, roleShareReports, err := resources.ProjectRecordsAndVerify(
+		mustFindSpec(t, resources.ProductZTW, resourceAdminRoles),
+		redact.ModeShare,
+		[]resources.SourceRecord{adminRoleRecord},
+	)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(ztw/admin-roles share) error = %v, want nil", err)
+	}
+	roleShareGot := roleShare.Records()[0].Fields()
+	for _, field := range []string{
+		"rank",
+		"policyAccess",
+		"alertingAccess",
+		"dashboardAccess",
+		"reportAccess",
+		"analysisAccess",
+		"usernameAccess",
+		"adminAcctAccess",
+		"deviceInfoAccess",
+		"permissions",
+		"logsLimit",
+		"featurePermissions",
+	} {
+		if _, ok := roleShareGot[field]; ok {
+			t.Errorf("ProjectRecordsAndVerify(ztw/admin-roles share) includes %s, want dropped", field)
+		}
+		assertReportContains(t, roleShareReports[0].DroppedFields, field)
+	}
+	if roleShareGot["name"] != "Cloud Security Admin" || roleShareGot["roleType"] != "ADMIN" {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-roles share) = %#v, want share-safe role identity", roleShareGot)
+	}
+	assertNoCanaries(t, "ztw/admin-roles share", roleShareGot, canary)
+}
+
 func TestReaderListAlertSubscriptionsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 
@@ -4366,6 +4538,15 @@ func validLegacyReaderConfig() ReaderConfig {
 		},
 		Timeout: time.Second,
 	}
+}
+
+func mustFindSpec(t *testing.T, product resources.Product, name string) resources.ResourceSpec {
+	t.Helper()
+	spec, ok := resources.FindSpec(product, name)
+	if !ok {
+		t.Fatalf("FindSpec(%s, %s) ok = false, want true", product, name)
+	}
+	return spec
 }
 
 type fakeZIALocationClient struct {

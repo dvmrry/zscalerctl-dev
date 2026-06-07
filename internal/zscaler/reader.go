@@ -88,6 +88,8 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
+	ztwadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles"
+	ztwadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers"
 	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
 	ztwdnsgateway "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway"
 	ztwecgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/ecgroup"
@@ -164,6 +166,8 @@ const (
 	resourceECGroups         = "ec-groups"
 	resourceIPGroups         = "ip-groups"
 	resourceNetworkSvcGroups = "network-service-groups"
+	resourceAdminUsers       = "admin-users"
+	resourceAdminRoles       = "admin-roles"
 
 	resourceAdvancedSettings           = "advanced-settings"
 	resourceAdvancedThreatSettings     = "advanced-threat-settings"
@@ -1069,6 +1073,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return ztwnetworkservicegroups.GetNetworkServiceGroups(ctx, service, id)
 			}),
 			ztwNetworkServiceGroupSourceRecord,
+		),
+		{product: resources.ProductZTW, name: resourceAdminUsers}: newListGetHandler(
+			resourceAdminUsers,
+			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwadminusers.AdminUsers, error) {
+				return ztwadminusers.GetAllAdminUsers(ctx, service)
+			}),
+			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwadminusers.AdminUsers, error) {
+				return ztwadminusers.GetAdminUsers(ctx, service, id)
+			}),
+			ztwAdminUserSourceRecord,
+		),
+		{product: resources.ProductZTW, name: resourceAdminRoles}: newListGetHandler(
+			resourceAdminRoles,
+			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwadminroles.AdminRoles, error) {
+				return ztwadminroles.GetAllAdminRoles(ctx, service)
+			}),
+			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwadminroles.AdminRoles, error) {
+				return ztwadminroles.Get(ctx, service, id)
+			}),
+			ztwAdminRoleSourceRecord,
 		),
 		{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
 			resourceZPAServerGroups,
@@ -2856,6 +2880,60 @@ func ztwNetworkServiceGroupSourceRecord(group ztwnetworkservicegroups.NetworkSer
 	return resources.NewSourceRecord(fields)
 }
 
+func ztwAdminUserSourceRecord(user ztwadminusers.AdminUsers) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                          user.ID,
+		"loginName":                   user.LoginName,
+		"userName":                    user.UserName,
+		"email":                       user.Email,
+		"comments":                    user.Comments,
+		"disabled":                    user.Disabled,
+		"password":                    user.Password,
+		"pwdLastModifiedTime":         user.PasswordLastModifiedTime,
+		"isNonEditable":               user.IsNonEditable,
+		"isPasswordLoginAllowed":      user.IsPasswordLoginAllowed,
+		"isPasswordExpired":           user.IsPasswordExpired,
+		"isAuditor":                   user.IsAuditor,
+		"isSecurityReportCommEnabled": user.IsSecurityReportCommEnabled,
+		"isServiceUpdateCommEnabled":  user.IsServiceUpdateCommEnabled,
+		"isProductUpdateCommEnabled":  user.IsProductUpdateCommEnabled,
+		"isExecMobileAppEnabled":      user.IsExecMobileAppEnabled,
+		"adminScopeType":              user.AdminScopeType,
+	}
+	addZTWIDNameExtensionsSlice(fields, "adminScopescopeGroupMemberEntities", user.AdminScopeGroupMemberEntities)
+	addZTWIDNameExtensionsSlice(fields, "adminScopeScopeEntities", user.AdminScopeEntities)
+	if user.Role != nil {
+		fields["role"] = ztwAdminUserRoleSource(user.Role)
+	}
+	if len(user.ExecMobileAppTokens) > 0 {
+		fields["execMobileAppTokens"] = ztwExecMobileAppTokensSource(user.ExecMobileAppTokens)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func ztwAdminRoleSourceRecord(role ztwadminroles.AdminRoles) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                 role.ID,
+		"rank":               role.Rank,
+		"name":               role.Name,
+		"policyAccess":       role.PolicyAccess,
+		"alertingAccess":     role.AlertingAccess,
+		"dashboardAccess":    role.DashboardAccess,
+		"reportAccess":       role.ReportAccess,
+		"analysisAccess":     role.AnalysisAccess,
+		"usernameAccess":     role.UsernameAccess,
+		"adminAcctAccess":    role.AdminAcctAccess,
+		"deviceInfoAccess":   role.DeviceInfoAccess,
+		"isAuditor":          role.IsAuditor,
+		"isNonEditable":      role.IsNonEditable,
+		"logsLimit":          role.LogsLimit,
+		"roleType":           role.RoleType,
+		"featurePermissions": role.FeaturePermissions,
+	}
+	addStringSlice(fields, "permissions", role.Permissions)
+	return resources.NewSourceRecord(fields)
+}
+
 func alertSubscriptionSourceRecord(subscription alerts.AlertSubscriptions) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          subscription.ID,
@@ -3411,6 +3489,12 @@ func addZTWIDNameExtensionsPtr(fields map[string]any, name string, value *ztwcom
 	}
 }
 
+func addZTWIDNameExtensionsSlice(fields map[string]any, name string, values []ztwcommon.IDNameExtensions) {
+	if len(values) > 0 {
+		fields[name] = ztwIDNameExtensionsSliceSource(values)
+	}
+}
+
 func addZTWCommonIDNameExternalIDPtr(fields map[string]any, name string, value *ztwcommon.CommonIDNameExternalID) {
 	if value != nil {
 		fields[name] = ztwCommonIDNameExternalIDSource(value)
@@ -3472,6 +3556,14 @@ func ztwIDNameExtensionsSource(value *ztwcommon.IDNameExtensions) map[string]any
 		"id":   value.ID,
 		"name": value.Name,
 	}
+}
+
+func ztwIDNameExtensionsSliceSource(values []ztwcommon.IDNameExtensions) []any {
+	out := make([]any, 0, len(values))
+	for i := range values {
+		out = append(out, ztwIDNameExtensionsSource(&values[i]))
+	}
+	return out
 }
 
 func idNameSource(value *ziacommon.IDName) map[string]any {
@@ -3771,6 +3863,36 @@ func ztwNetworkServiceRefsSource(values []ztwnetworkservicegroups.Services) []an
 		out = append(out, map[string]any{
 			"id":   value.ID,
 			"name": value.Name,
+		})
+	}
+	return out
+}
+
+func ztwAdminUserRoleSource(value *ztwadminusers.Role) map[string]any {
+	fields := map[string]any{
+		"id":            value.ID,
+		"name":          value.Name,
+		"isNameL10nTag": value.IsNameL10Tag,
+	}
+	if len(value.Extensions) > 0 {
+		fields["extensions"] = value.Extensions
+	}
+	return fields
+}
+
+func ztwExecMobileAppTokensSource(values []ztwadminusers.ExecMobileAppTokens) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"cloud":       value.Cloud,
+			"orgId":       value.OrgId,
+			"name":        value.Name,
+			"tokenId":     value.TokenId,
+			"token":       value.Token,
+			"tokenExpiry": value.TokenExpiry,
+			"createTime":  value.CreateTime,
+			"deviceId":    value.DeviceId,
+			"deviceName":  value.DeviceName,
 		})
 	}
 	return out

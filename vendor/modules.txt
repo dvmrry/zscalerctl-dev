@@ -143,6 +143,8 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/ecgroup

@@ -28,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides ztw/workload-groups)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/application-segments zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides ztw/workload-groups ztw/admin-users ztw/admin-roles)
 
 schema_fields() {
   case "$1" in
@@ -97,6 +97,12 @@ schema_fields() {
       ;;
     workload-groups)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"expression","allowed_modes":[]},{"name":"lastModifiedTime","allowed_modes":["standard"]},{"name":"lastModifiedBy","allowed_modes":[]},{"name":"expressionJson","allowed_modes":[]}]'
+      ;;
+    admin-users)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"loginName","allowed_modes":["standard"]},{"name":"userName","allowed_modes":["standard"]},{"name":"email","allowed_modes":["standard"]},{"name":"comments","allowed_modes":["standard"]},{"name":"disabled","allowed_modes":["standard"]},{"name":"password","allowed_modes":[]},{"name":"pwdLastModifiedTime","allowed_modes":["standard"]},{"name":"isNonEditable","allowed_modes":["standard"]},{"name":"isAuditor","allowed_modes":["standard"]},{"name":"adminScopeType","allowed_modes":["standard"]},{"name":"role","allowed_modes":["standard"]},{"name":"execMobileAppTokens","allowed_modes":[]}]'
+      ;;
+    admin-roles)
+      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"rank","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"policyAccess","allowed_modes":["standard"]},{"name":"isAuditor","allowed_modes":["standard"]},{"name":"permissions","allowed_modes":["standard"]},{"name":"isNonEditable","allowed_modes":["standard"]},{"name":"roleType","allowed_modes":["standard"]},{"name":"featurePermissions","allowed_modes":[]}]'
       ;;
     *)
       echo "unexpected resource: $1" >&2
@@ -237,6 +243,12 @@ JSON
       ;;
     *:ztw:workload-groups)
       printf '[{"id":7,"name":"Cloud workloads","description":"","lastModifiedTime":1700000000}]\n'
+      ;;
+    *:ztw:admin-users)
+      printf '[{"id":8,"loginName":"admin@example.internal","userName":"cloud-admin","email":"admin@example.internal","comments":"","disabled":false,"pwdLastModifiedTime":1700000400,"isNonEditable":false,"isAuditor":true,"adminScopeType":"ORGANIZATION","role":{"id":20,"name":"Super Admin","isNameL10nTag":false}}]\n'
+      ;;
+    *:ztw:admin-roles)
+      printf '[{"id":9,"rank":2,"name":"Cloud Security Admin","policyAccess":"READ_ONLY","isAuditor":false,"permissions":["POLICY_READ"],"isNonEditable":false,"roleType":"ADMIN"}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2

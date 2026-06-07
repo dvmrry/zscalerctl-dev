@@ -1654,6 +1654,46 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `services` | Tenant configuration | `standard` | Rendered as id/name references only; service ports/details are owned by `ztw/network-services`. |
 
+## ZTW Admin Users
+
+Commands:
+
+```sh
+zscalerctl ztw admin-users list
+zscalerctl ztw admin-users get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `disabled`, `isNonEditable`, `isAuditor` | Operational metadata | `standard`, `share`, `paranoid` | Admin account identity and broad state. |
+| `loginName`, `userName`, `email` | Sensitive identifier | `standard` | Person-identifying admin account fields. Visible to the local administrator, dropped from `share` and `paranoid` output. |
+| `comments` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `pwdLastModifiedTime` | Operational metadata | `standard` | Password-age metadata is visible only in the local admin view. |
+| `isPasswordLoginAllowed`, `isPasswordExpired`, `password`, `execMobileAppTokens` | Secret or auth-sensitive field | never | Password flags and mobile app token data are dropped even if a GET response includes them. |
+| `isSecurityReportCommEnabled`, `isServiceUpdateCommEnabled`, `isProductUpdateCommEnabled`, `isExecMobileAppEnabled`, `adminScopeType` | Tenant configuration | `standard`, `share` | Admin communication, app access, and scope-type settings. |
+| `adminScopescopeGroupMemberEntities`, `adminScopeScopeEntities` | Tenant configuration | `standard` | Scope references render as id/name only; dropped from shared output because they can identify locations, departments, or groups. |
+| `role` | Tenant configuration | `standard` | Role reference renders as id/name plus localization flag; extensions are dropped. |
+
+## ZTW Admin Roles
+
+Commands:
+
+```sh
+zscalerctl ztw admin-roles list
+zscalerctl ztw admin-roles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isAuditor`, `isNonEditable` | Operational metadata | `standard`, `share`, `paranoid` | Role identity and broad state. |
+| `name`, `roleType` | Tenant configuration | `standard`, `share` | Share-safe role identity metadata. |
+| `rank`, `policyAccess`, `alertingAccess`, `dashboardAccess`, `reportAccess`, `analysisAccess`, `usernameAccess`, `adminAcctAccess`, `deviceInfoAccess`, `permissions`, `logsLimit` | Tenant configuration | `standard` | Authorization details are visible to the local administrator and dropped from `share` and `paranoid`. |
+| `featurePermissions` | Secret or unmodeled nested structure | never | Arbitrary feature-permission map is dropped until its shape is reviewed. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

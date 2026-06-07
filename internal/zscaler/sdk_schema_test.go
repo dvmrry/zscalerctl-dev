@@ -76,6 +76,8 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
+	ztwadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles"
+	ztwadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers"
 	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
 	ztwdnsgateway "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway"
 	ztwecgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/ecgroup"
@@ -1527,6 +1529,87 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"services",
 				"description",
 				"creatorContext",
+			},
+		},
+		{
+			name:         "ztwadminusers.AdminUsers",
+			resource:     resources.ProductZTW,
+			resourceName: resourceAdminUsers,
+			typ:          reflect.TypeOf(ztwadminusers.AdminUsers{}),
+			catalogFields: []string{
+				"id",
+				"loginName",
+				"userName",
+				"email",
+				"comments",
+				"disabled",
+				"password",
+				"pwdLastModifiedTime",
+				"isNonEditable",
+				"isPasswordLoginAllowed",
+				"isPasswordExpired",
+				"isAuditor",
+				"isSecurityReportCommEnabled",
+				"isServiceUpdateCommEnabled",
+				"isProductUpdateCommEnabled",
+				"isExecMobileAppEnabled",
+				"adminScopescopeGroupMemberEntities",
+				"adminScopeScopeEntities",
+				"adminScopeType",
+				"role",
+				"execMobileAppTokens",
+			},
+		},
+		{
+			name: "ztwadminusers.Role",
+			typ:  reflect.TypeOf(ztwadminusers.Role{}),
+			ignoredFields: ignoredBecause(
+				"covered by the ztw/admin-users role nested field",
+				"id",
+				"name",
+				"isNameL10nTag",
+				"extensions",
+			),
+		},
+		{
+			name: "ztwadminusers.ExecMobileAppTokens",
+			typ:  reflect.TypeOf(ztwadminusers.ExecMobileAppTokens{}),
+			ignoredFields: ignoredBecause(
+				"covered by dropped execMobileAppTokens parent",
+				"cloud",
+				"orgId",
+				"name",
+				"tokenId",
+				"token",
+				"tokenExpiry",
+				"createTime",
+				"deviceId",
+				"deviceName",
+			),
+		},
+		{
+			name:         "ztwadminroles.AdminRoles",
+			resource:     resources.ProductZTW,
+			resourceName: resourceAdminRoles,
+			typ:          reflect.TypeOf(ztwadminroles.AdminRoles{}),
+			catalogFields: []string{
+				"id",
+				"rank",
+				"name",
+				"policyAccess",
+				"alertingAccess",
+				"dashboardAccess",
+				"reportAccess",
+				"analysisAccess",
+				"usernameAccess",
+				"adminAcctAccess",
+				"deviceInfoAccess",
+				"isAuditor",
+				"permissions",
+				"isNonEditable",
+				"logsLimit",
+				"roleType",
+				"featurePermissions",
 			},
 		},
 		{

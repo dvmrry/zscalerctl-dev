@@ -14,3 +14,5 @@ ztw/ip-destination-groups
 ztw/ip-groups
 ztw/network-services
 ztw/network-service-groups
+ztw/admin-users
+ztw/admin-roles

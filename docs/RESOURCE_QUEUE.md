@@ -95,7 +95,7 @@ Product-track status:
 | --- | --- | --- | --- |
 | ZIA | Current queued legacy-ZIA resources and singleton settings | Live-smoked and merged. | Continue only through the remaining shape-decision tracks below. |
 | ZPA | Tier-1 resources plus `zpa/application-segments` | Production OneAPI smoke passed after trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused smoke/trim discipline. |
-| ZTW | Initial reference batch | Production OneAPI smoke passed and merged. | Continue later from ZTW policy/control surfaces only after explicit review. |
+| ZTW | Initial reference batch plus staged admin-governance resources (`admin-users`, `admin-roles`) | Initial reference batch passed production OneAPI smoke; admin-governance batch has ordinary gates pending. | Run focused OneAPI smoke for the admin-governance resources before promotion; continue policy/control surfaces only after explicit review. |
 | ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Production OneAPI smoke returned 404 for all three list endpoints. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
 
 Do not merge product stacks on green CI alone. Promote only the resources that
@@ -184,7 +184,7 @@ Remaining work is grouped by the decision that blocks catalog work:
 | SaaS/CASB split candidates | `saas_security_api`, `saas_security_api/casb_dlp_rules`, `saas_security_api/casb_malware_rules` | Split `saas_security_api` into separate resources such as domain profiles, quarantine tombstone templates, CASB email labels, CASB tenants, and SaaS scan info. CASB DLP/malware rules can use list/dump via `/all`, but `get` needs a rule-type decision. |
 | Deferred live/auth failures | See [Deferred Resource SDK Recheck](DEFERRED_RESOURCE_RECHECK.md). | Retry only as focused endpoint/auth probes that record exact status code, auth mode, product cloud, endpoint path, SDK version, and source commit. |
 | Adjacent-to-failure scout | `ips_control_policies/ips_policies` | Ordinary list/get shape, but adjacent to the failed IPS signature-rule endpoint. Probe separately before queueing. |
-| Privacy, identity, export, or material surfaces | `adminauditlogs`, `adminuserrolemgmt/admins`, `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. |
+| Privacy, identity, export, or material surfaces | `adminauditlogs`, ZIA `adminuserrolemgmt/admins`, ZIA `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. ZTW admin governance is tracked separately in the product scope plan. |
 | Helper/catalog/diagnostic surfaces | `apptotal`, `trafficforwarding/virtualipaddress` | Do not force into config dump semantics. Treat as future lookup/report/diagnostic commands if needed. |
 | Product-family tracks | ZPA, ZTW, ZCC, Zidentity, ZDX, ZWA | Keep product-specific posture in [Zscaler Product Scope Plan](ZSCALER_PRODUCT_SCOPE_PLAN.md). The queue should not duplicate that product map. |
 

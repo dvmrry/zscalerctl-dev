@@ -162,6 +162,8 @@ It is likely closer to Cloud Connector/Workload than to ZIA inventory.
 | `ztw/ip-groups` | `zscaler/ztw/services/policyresources/ipgroups` | `list-get-with-mutating-neighbors` | Included in the first ZTW reference batch. Addresses render standard-only. |
 | `ztw/network-services` | `zscaler/ztw/services/policyresources/networkservices` | `list-get-with-mutating-neighbors` | Included in the first ZTW reference batch. Port ranges render; free text is standard-only. |
 | `ztw/network-service-groups` | `zscaler/ztw/services/policyresources/networkservicegroups` | `list-get-with-mutating-neighbors` | Included in the first ZTW reference batch. Child services render as id/name references only. |
+| `ztw/admin-users` | `zscaler/ztw/services/adminuserrolemgmt/adminusers` | `list-get-with-mutating-neighbors` | Included in the admin-governance batch. Person-identifying fields render standard-only; password and token fields are dropped. |
+| `ztw/admin-roles` | `zscaler/ztw/services/adminuserrolemgmt/adminroles` | `list-get-with-mutating-neighbors` | Included in the admin-governance batch. Role identity renders share-safe; permission details render standard-only. |
 | `ztw/locations` | `zscaler/ztw/services/location` | `list-get-with-mutating-neighbors` | Useful but may overlap with ZIA location semantics; review separately. |
 
 Do not queue as ordinary inventory:
@@ -170,8 +172,6 @@ Do not queue as ordinary inventory:
 | --- | --- |
 | `zscaler/ztw/services/provisioning/api_keys` | API key surface by name. |
 | `zscaler/ztw/services/provisioning/provisioning_url` | Provisioning URL surface by name. |
-| `zscaler/ztw/services/administration/admin_users` | Admin identity surface. |
-| `zscaler/ztw/services/administration/admin_roles` | Admin authorization surface. |
 | `zscaler/ztw/services/policy/...` | Policy/control surfaces; valuable, but should follow the simpler ZTW references. |
 
 ## ZWA
