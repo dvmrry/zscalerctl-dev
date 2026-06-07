@@ -57,12 +57,15 @@ export ZSCALERCTL_CLIENT_ID=<client-id>
 export ZSCALERCTL_CLIENT_SECRET_FILE=/path/to/owner-only/secret-file
 export ZSCALERCTL_VANITY_DOMAIN=<vanity-domain>
 export ZSCALERCTL_CLOUD=PRODUCTION
+export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id> # required for ZPA resources
+export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id> # optional
 ```
 
 The secret file must be readable only by the current user. Inline
 `ZSCALERCTL_CLIENT_SECRET` is supported for automation systems that already
 provide protected environment variables, but file-based secret delivery is safer
-for interactive shells.
+for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
+reading ZPA resources; ZIA resources do not require it.
 
 ZIA legacy auth is available for read-only ZIA resources when OneAPI
 credentials are not available. Use only `ZSCALERCTL_ZIA_*` variables; raw SDK

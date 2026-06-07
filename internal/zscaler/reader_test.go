@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
@@ -46,6 +47,17 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
+	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
+	zpacloudconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector"
+	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
+	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
+	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
+	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
+	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -184,11 +196,23 @@ func TestNewReaderRequiresZIALegacyCredentials(t *testing.T) {
 	}
 }
 
+func TestZPALegacyAuthFailsClosedBeforeServiceConstruction(t *testing.T) {
+	t.Parallel()
+
+	service := perCallService{cfg: validLegacyReaderConfig()}
+	_, _, err := service.service(context.Background(), resources.ProductZPA)
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("perCallService.service(zpa with legacy auth) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
 func TestNewSDKConfigurationDoesNotUseSDKDiscoveryOrLogging(t *testing.T) {
 	t.Setenv("ZSCALER_CLIENT_ID", "sdk-client-id")
 	t.Setenv("ZSCALER_CLIENT_SECRET", "sdk-client-secret")
 	t.Setenv("ZSCALER_VANITY_DOMAIN", "sdk-vanity")
 	t.Setenv("ZSCALER_CLOUD", "sdk-cloud")
+	t.Setenv("ZPA_CUSTOMER_ID", "sdk-zpa-customer-id")
+	t.Setenv("ZPA_MICROTENANT_ID", "sdk-zpa-microtenant-id")
 	t.Setenv("ZSCALER_CLIENT_PROXY_HOST", "sdk-proxy.example.invalid")
 	t.Setenv("ZSCALER_CLIENT_CACHE_ENABLED", "true")
 	t.Setenv("ZSCALER_SDK_LOG", "true")
@@ -207,6 +231,12 @@ func TestNewSDKConfigurationDoesNotUseSDKDiscoveryOrLogging(t *testing.T) {
 	}
 	if got := cfg.Zscaler.Client.Cloud; got != "" {
 		t.Errorf("newSDKConfiguration().Cloud = %q, want empty", got)
+	}
+	if got := cfg.Zscaler.Client.CustomerID; got != "zscalerctl-zpa-customer-id" {
+		t.Errorf("newSDKConfiguration().CustomerID = %q, want zscalerctl-zpa-customer-id", got)
+	}
+	if got := cfg.Zscaler.Client.MicrotenantID; got != "zscalerctl-zpa-microtenant-id" {
+		t.Errorf("newSDKConfiguration().MicrotenantID = %q, want zscalerctl-zpa-microtenant-id", got)
 	}
 	if got := cfg.Zscaler.Client.Proxy.Host; got != "" {
 		t.Errorf("newSDKConfiguration().Proxy.Host = %q, want empty", got)
@@ -292,6 +322,24 @@ func TestNewReaderRejectsInvalidProxyConfig(t *testing.T) {
 	cfg.Proxy.FromEnvironment = true
 	if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidProxyConfig) {
 		t.Fatalf("NewReader(conflicting proxy config) error = %v, want ErrInvalidProxyConfig", err)
+	}
+}
+
+func TestZPAReaderRequiresCustomerIDBeforeNetwork(t *testing.T) {
+	t.Parallel()
+
+	cfg := validReaderConfig()
+	cfg.ZPACustomerID = ""
+	reader, err := NewReader(cfg)
+	if err != nil {
+		t.Fatalf("NewReader(valid OneAPI without ZPA customer id) error = %v, want nil", err)
+	}
+	_, err = reader.List(context.Background(), resources.ProductZPA, resourceZPAServerGroups)
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("SDKReader.List(zpa, server-groups without customer id) error = %v, want ErrMissingCredentials", err)
+	}
+	if !strings.Contains(err.Error(), "ZSCALERCTL_ZPA_CUSTOMER_ID") {
+		t.Errorf("SDKReader.List(zpa, server-groups without customer id) error = %v, want ZSCALERCTL_ZPA_CUSTOMER_ID guidance", err)
 	}
 }
 
@@ -2816,6 +2864,828 @@ func TestReaderGetStaticIPDispatchesByResource(t *testing.T) {
 	}
 }
 
+func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		freeTextCanary = "psk=server-group-canary-value"
+		nestedCanary   = "server-group-nested-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
+				resourceZPAServerGroups,
+				func(context.Context) ([]zpaservergroup.ServerGroup, error) {
+					return []zpaservergroup.ServerGroup{{
+						ID:               "sg-1",
+						Name:             "server-group",
+						Description:      freeTextCanary,
+						Enabled:          true,
+						ConfigSpace:      "DEFAULT",
+						DynamicDiscovery: true,
+						Applications: []zpaservergroup.Applications{{
+							ID:   "app-1",
+							Name: nestedCanary,
+						}},
+					}}, nil
+				},
+				func(context.Context, string) (*zpaservergroup.ServerGroup, error) { return nil, nil },
+				jsonSourceRecord[zpaservergroup.ServerGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServerGroups)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, server-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServerGroups)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServerGroups)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa server-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa server-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "sg-1" {
+		t.Errorf("projected server-group id = %v, want sg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "server-group-canary-value") {
+		t.Errorf("projected server-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"applications", "configSpace", "dynamicDiscovery"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected server-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected server-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected server-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa server-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "applications")
+	assertReportContains(t, reports[0].DroppedFields, "configSpace")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-service-edge-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServiceGrps}: newListGetHandler(
+				resourceZPAServiceGrps,
+				func(context.Context) ([]zpaserviceedgegroup.ServiceEdgeGroup, error) {
+					return []zpaserviceedgegroup.ServiceEdgeGroup{{
+						ID:          "seg-1",
+						Name:        "Service edge group",
+						Description: "psk=service-edge-group-canary-value",
+						Enabled:     true,
+						ServiceEdges: []zpaserviceedgecontroller.ServiceEdgeController{{
+							ID:                  "edge-1",
+							Name:                nestedCanary,
+							ProvisioningKeyName: nestedCanary,
+						}},
+						EnrollmentCertID: nestedCanary,
+					}}, nil
+				},
+				func(context.Context, string) (*zpaserviceedgegroup.ServiceEdgeGroup, error) { return nil, nil },
+				jsonSourceRecord[zpaserviceedgegroup.ServiceEdgeGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServiceGrps)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, service-edge-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServiceGrps)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServiceGrps)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "seg-1" {
+		t.Errorf("projected service-edge-group id = %v, want seg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-group-canary-value") {
+		t.Errorf("projected service-edge-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"serviceEdges", "enrollmentCertId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected service-edge-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected service-edge-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected service-edge-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edge-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "serviceEdges")
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCertId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-app-connector-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAAppConnectors}: newListGetHandler(
+				resourceZPAAppConnectors,
+				func(context.Context) ([]zpaappconnectorcontroller.AppConnector, error) {
+					return []zpaappconnectorcontroller.AppConnector{{
+						ID:                               "app-connector-1",
+						Name:                             "App connector",
+						Description:                      "psk=app-connector-canary-value",
+						Enabled:                          true,
+						AppConnectorGroupID:              nestedCanary,
+						AppConnectorGroupName:            "App connector group",
+						ApplicationStartTime:             "1700000000000",
+						AssistantVersion:                 zpaappconnectorcontroller.AssistantVersion{ID: "assistant-1", BrokerId: nestedCanary},
+						ControlChannelStatus:             "CONNECTED",
+						CreationTime:                     "1700000100000",
+						CtrlBrokerName:                   "Broker",
+						CurrentVersion:                   "1.2.3",
+						EnrollmentCert:                   map[string]any{"name": nestedCanary},
+						ExpectedUpgradeTime:              "1700000200000",
+						ExpectedVersion:                  "1.2.4",
+						Fingerprint:                      nestedCanary,
+						IPACL:                            "198.51.100.10",
+						IssuedCertID:                     nestedCanary,
+						LastBrokerConnectTime:            "1700000300000",
+						LastBrokerConnectTimeDuration:    "100",
+						LastBrokerDisconnectTime:         "1700000400000",
+						LastBrokerDisconnectTimeDuration: "200",
+						LastUpgradeTime:                  "1700000500000",
+						Latitude:                         "37.3387",
+						Location:                         "San Jose, CA",
+						Longitude:                        "-121.8853",
+						MicroTenantID:                    nestedCanary,
+						MicroTenantName:                  "Microtenant",
+						ModifiedBy:                       "admin-1",
+						ModifiedTime:                     "1700000600000",
+						Platform:                         "linux",
+						PlatformDetail:                   "el8",
+						PreviousVersion:                  "1.2.2",
+						PrivateIP:                        "10.0.0.20",
+						ProvisioningKeyID:                nestedCanary,
+						ProvisioningKeyName:              nestedCanary,
+						PublicIP:                         "203.0.113.20",
+						ReadOnly:                         true,
+						RestrictionType:                  "CUSTOMER",
+						RuntimeOS:                        "linux",
+						SargeVersion:                     "1.2.3",
+						UpgradeAttempt:                   nestedCanary,
+						UpgradeStatus:                    "COMPLETE",
+						ZPNSubModuleUpgrade:              []zpacommon.ZPNSubModuleUpgrade{{ID: "module-1", EntityGid: nestedCanary}},
+						ZscalerManaged:                   true,
+					}}, nil
+				},
+				func(context.Context, string) (*zpaappconnectorcontroller.AppConnector, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaappconnectorcontroller.AppConnector],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAAppConnectors)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, app-connectors) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAAppConnectors)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAAppConnectors)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa app-connectors) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa app-connectors) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "app-connector-1" {
+		t.Errorf("projected app-connector id = %v, want app-connector-1", got["id"])
+	}
+	if got["location"] != "San Jose, CA" {
+		t.Errorf("projected app-connector location = %v, want San Jose, CA", got["location"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "app-connector-canary-value") {
+		t.Errorf("projected app-connector description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{
+		"appConnectorGroupId",
+		"assistantVersion",
+		"enrollmentCert",
+		"fingerprint",
+		"issuedCertId",
+		"microtenantId",
+		"provisioningKeyId",
+		"provisioningKeyName",
+		"upgradeAttempt",
+		"zpnSubModuleUpgradeList",
+		"zscalerManaged",
+	} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected app-connector includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected app-connector = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected app-connector) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa app-connectors) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "appConnectorGroupId")
+	assertReportContains(t, reports[0].DroppedFields, "assistantVersion")
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
+	assertReportContains(t, reports[0].DroppedFields, "fingerprint")
+	assertReportContains(t, reports[0].DroppedFields, "issuedCertId")
+	assertReportContains(t, reports[0].DroppedFields, "microtenantId")
+	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyId")
+	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
+	assertReportContains(t, reports[0].DroppedFields, "upgradeAttempt")
+	assertReportContains(t, reports[0].DroppedFields, "zpnSubModuleUpgradeList")
+	assertReportContains(t, reports[0].DroppedFields, "zscalerManaged")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-service-edge-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAServiceEdges}: newListGetHandler(
+				resourceZPAServiceEdges,
+				func(context.Context) ([]zpaserviceedgecontroller.ServiceEdgeController, error) {
+					return []zpaserviceedgecontroller.ServiceEdgeController{{
+						ID:                  "edge-1",
+						Name:                "Service edge",
+						Description:         "psk=service-edge-canary-value",
+						Enabled:             true,
+						ProvisioningKeyName: nestedCanary,
+						EnrollmentCert: map[string]interface{}{
+							"name": nestedCanary,
+						},
+						PrivateBrokerVersion: zpaserviceedgecontroller.PrivateBrokerVersion{
+							ID:       "broker-1",
+							TunnelId: nestedCanary,
+						},
+					}}, nil
+				},
+				func(context.Context, string) (*zpaserviceedgecontroller.ServiceEdgeController, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaserviceedgecontroller.ServiceEdgeController],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAServiceEdges)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, service-edges) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAServiceEdges)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAServiceEdges)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa service-edges) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edges) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "edge-1" {
+		t.Errorf("projected service-edge id = %v, want edge-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-canary-value") {
+		t.Errorf("projected service-edge description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"enrollmentCert", "privateBrokerVersion", "provisioningKeyName"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected service-edge includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected service-edge = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected service-edge) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa service-edges) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
+	assertReportContains(t, reports[0].DroppedFields, "privateBrokerVersion")
+	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPACloudConnectorGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-cloud-connector-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPACloudConnGrps}: newListGetHandler(
+				resourceZPACloudConnGrps,
+				func(context.Context) ([]zpacloudconnectorgroup.CloudConnectorGroup, error) {
+					return []zpacloudconnectorgroup.CloudConnectorGroup{{
+						ID:            "ccg-1",
+						Name:          "Cloud connector group",
+						Description:   "psk=cloud-connector-group-canary-value",
+						Enabled:       true,
+						GeolocationID: nestedCanary,
+						CloudConnectors: []zpacloudconnectorgroup.CloudConnectors{{
+							ID:          "connector-1",
+							Name:        nestedCanary,
+							Fingerprint: nestedCanary,
+							SigningCert: map[string]any{
+								"name": nestedCanary,
+							},
+						}},
+					}}, nil
+				},
+				func(context.Context, string) (*zpacloudconnectorgroup.CloudConnectorGroup, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpacloudconnectorgroup.CloudConnectorGroup],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPACloudConnGrps)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, cloud-connector-groups) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPACloudConnGrps)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPACloudConnGrps)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "ccg-1" {
+		t.Errorf("projected cloud-connector-group id = %v, want ccg-1", got["id"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cloud-connector-group-canary-value") {
+		t.Errorf("projected cloud-connector-group description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"cloudConnectors", "geoLocationId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected cloud-connector-group includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected cloud-connector-group = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected cloud-connector-group) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "cloudConnectors")
+	assertReportContains(t, reports[0].DroppedFields, "geoLocationId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPACloudConnectorsProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-cloud-connector-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPACloudConns}: newListGetHandler(
+				resourceZPACloudConns,
+				func(context.Context) ([]zpacloudconnector.CloudConnector, error) {
+					return []zpacloudconnector.CloudConnector{{
+						ID:                     "cloud-connector-1",
+						Name:                   "Cloud connector",
+						Description:            "psk=cloud-connector-canary-value",
+						Enabled:                true,
+						EdgeConnectorGroupID:   nestedCanary,
+						EdgeConnectorGroupName: "Cloud connector group",
+						Fingerprint:            nestedCanary,
+						IpAcl:                  []string{"198.51.100.10"},
+						IssuedCertID:           nestedCanary,
+						EnrollmentCert: map[string]any{
+							"name": nestedCanary,
+						},
+					}}, nil
+				},
+				func(context.Context, string) (*zpacloudconnector.CloudConnector, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpacloudconnector.CloudConnector],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPACloudConns)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, cloud-connectors) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPACloudConns)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPACloudConns)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa cloud-connectors) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connectors) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "cloud-connector-1" {
+		t.Errorf("projected cloud-connector id = %v, want cloud-connector-1", got["id"])
+	}
+	if got["edgeConnectorGroupName"] != "Cloud connector group" {
+		t.Errorf("projected cloud-connector edgeConnectorGroupName = %v, want Cloud connector group", got["edgeConnectorGroupName"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cloud-connector-canary-value") {
+		t.Errorf("projected cloud-connector description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"edgeConnectorGroupId", "enrollmentCert", "fingerprint", "issuedCertId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected cloud-connector includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected cloud-connector = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected cloud-connector) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa cloud-connectors) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "edgeConnectorGroupId")
+	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
+	assertReportContains(t, reports[0].DroppedFields, "fingerprint")
+	assertReportContains(t, reports[0].DroppedFields, "issuedCertId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-posture-profile-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
+				resourceZPAPostureProfs,
+				func(context.Context) ([]zpapostureprofile.PostureProfile, error) {
+					return []zpapostureprofile.PostureProfile{{
+						ID:                             "posture-1",
+						Name:                           "Posture profile",
+						Domain:                         "example.internal",
+						ApplyToMachineTunnelEnabled:    true,
+						CRLCheckEnabled:                true,
+						NonExportablePrivateKeyEnabled: true,
+						PostureType:                    "cert",
+						PostureudID:                    nestedCanary,
+						RootCert:                       nestedCanary,
+						ZscalerCustomerID:              nestedCanary,
+					}}, nil
+				},
+				func(context.Context, string) (*zpapostureprofile.PostureProfile, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpapostureprofile.PostureProfile],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAPostureProfs)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, posture-profiles) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAPostureProfs)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAPostureProfs)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "posture-1" {
+		t.Errorf("projected posture-profile id = %v, want posture-1", got["id"])
+	}
+	if got["domain"] != "example.internal" {
+		t.Errorf("projected posture-profile domain = %v, want example.internal", got["domain"])
+	}
+	for _, field := range []string{"nonExportablePrivateKeyEnabled", "postureUdid", "rootCert", "zscalerCustomerId"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected posture-profile includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected posture-profile = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected posture-profile) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa posture-profiles) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "nonExportablePrivateKeyEnabled")
+	assertReportContains(t, reports[0].DroppedFields, "postureUdid")
+	assertReportContains(t, reports[0].DroppedFields, "rootCert")
+	assertReportContains(t, reports[0].DroppedFields, "zscalerCustomerId")
+}
+
+func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-cbi-zpa-profile-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPACBIZPAProfs}: newListGetHandler(
+				resourceZPACBIZPAProfs,
+				func(context.Context) ([]zpacbizpaprofile.ZPAProfiles, error) {
+					return []zpacbizpaprofile.ZPAProfiles{{
+						ID:           "cbi-zpa-profile-1",
+						Name:         "CBI ZPA profile",
+						Description:  "psk=cbi-zpa-profile-canary-value",
+						Enabled:      true,
+						CreationTime: "1700000000000",
+						ModifiedBy:   "admin-1",
+						ModifiedTime: "1700000100000",
+						CBIProfileID: "cbi-profile-1",
+						CBITenantID:  nestedCanary,
+						CBIURL:       "https://cbi.example.invalid/profile",
+					}}, nil
+				},
+				func(context.Context, string) (*zpacbizpaprofile.ZPAProfiles, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpacbizpaprofile.ZPAProfiles],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPACBIZPAProfs)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, cbi-zpa-profiles) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPACBIZPAProfs)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPACBIZPAProfs)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "cbi-zpa-profile-1" {
+		t.Errorf("projected cbi-zpa-profile id = %v, want cbi-zpa-profile-1", got["id"])
+	}
+	if got["cbiProfileId"] != "cbi-profile-1" {
+		t.Errorf("projected cbi-zpa-profile cbiProfileId = %v, want cbi-profile-1", got["cbiProfileId"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cbi-zpa-profile-canary-value") {
+		t.Errorf("projected cbi-zpa-profile description = %v, want redacted canary value", got["description"])
+	}
+	if _, ok := got["cbiTenantId"]; ok {
+		t.Errorf("projected cbi-zpa-profile includes cbiTenantId, want dropped")
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected cbi-zpa-profile = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected cbi-zpa-profile) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "cbiTenantId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-c2c-ip-range-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAC2CIPRanges}: newListGetHandler(
+				resourceZPAC2CIPRanges,
+				func(context.Context) ([]zpac2cipranges.IPRanges, error) {
+					return []zpac2cipranges.IPRanges{{
+						ID:            "c2c-ip-range-1",
+						Name:          "C2C IP range",
+						Description:   "psk=c2c-ip-range-canary-value",
+						Enabled:       true,
+						AvailableIps:  "8",
+						CountryCode:   "US",
+						CreationTime:  "1700000000000",
+						CustomerId:    nestedCanary,
+						IpRangeBegin:  "198.51.100.10",
+						IpRangeEnd:    "198.51.100.20",
+						IsDeleted:     "false",
+						LatitudeInDb:  "37.3387",
+						Location:      "San Jose, CA",
+						LocationHint:  "West",
+						LongitudeInDb: "-121.8853",
+						ModifiedBy:    "admin-1",
+						ModifiedTime:  "1700000100000",
+						SccmFlag:      true,
+						SubnetCidr:    "198.51.100.0/24",
+						TotalIps:      "16",
+						UsedIps:       "8",
+					}}, nil
+				},
+				func(context.Context, string) (*zpac2cipranges.IPRanges, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpac2cipranges.IPRanges],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAC2CIPRanges)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, c2c-ip-ranges) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAC2CIPRanges)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAC2CIPRanges)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa c2c-ip-ranges) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa c2c-ip-ranges) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["id"] != "c2c-ip-range-1" {
+		t.Errorf("projected c2c-ip-range id = %v, want c2c-ip-range-1", got["id"])
+	}
+	if got["subnetCidr"] != "198.51.100.0/24" {
+		t.Errorf("projected c2c-ip-range subnetCidr = %v, want 198.51.100.0/24", got["subnetCidr"])
+	}
+	if got["availableIps"] != "8" {
+		t.Errorf("projected c2c-ip-range availableIps = %v, want 8", got["availableIps"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "c2c-ip-range-canary-value") {
+		t.Errorf("projected c2c-ip-range description = %v, want redacted canary value", got["description"])
+	}
+	if _, ok := got["customerId"]; ok {
+		t.Errorf("projected c2c-ip-range includes customerId, want dropped")
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected c2c-ip-range = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected c2c-ip-range) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa c2c-ip-ranges) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "customerId")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
+func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const nestedCanary = "nested-config-override-secret-canary"
+	reader := SDKReader{
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZPA, name: resourceZPAConfigOvrds}: newListGetHandler(
+				resourceZPAConfigOvrds,
+				func(context.Context) ([]zpaconfigoverride.ConfigOverrides, error) {
+					return []zpaconfigoverride.ConfigOverrides{{
+						BrokerName:     "Broker",
+						ConfigKey:      nestedCanary,
+						ConfigValue:    "psk=" + nestedCanary,
+						ConfigValueInt: "12345",
+						CustomerId:     nestedCanary,
+						CustomerName:   "Customer",
+						Description:    "psk=config-override-canary-value",
+						TargetGid:      nestedCanary,
+						TargetName:     "Target",
+						TargetType:     "BROKER",
+					}}, nil
+				},
+				func(context.Context, string) (*zpaconfigoverride.ConfigOverrides, error) {
+					return nil, nil
+				},
+				jsonSourceRecord[zpaconfigoverride.ConfigOverrides],
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZPA, resourceZPAConfigOvrds)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zpa, config-overrides) error = %v, want nil", err)
+	}
+	spec, ok := resources.FindSpec(resources.ProductZPA, resourceZPAConfigOvrds)
+	if !ok {
+		t.Fatalf("FindSpec(zpa, %s) ok = false, want true", resourceZPAConfigOvrds)
+	}
+	projected, reports, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	if err != nil {
+		t.Fatalf("ProjectRecords(zpa config-overrides) error = %v, want nil", err)
+	}
+	gotRecords := projected.Records()
+	if len(gotRecords) != 1 {
+		t.Fatalf("ProjectRecords(zpa config-overrides) records length = %d, want 1", len(gotRecords))
+	}
+	got := gotRecords[0].Fields()
+	if got["brokerName"] != "Broker" {
+		t.Errorf("projected config-overrides brokerName = %v, want Broker", got["brokerName"])
+	}
+	if got["targetType"] != "BROKER" {
+		t.Errorf("projected config-overrides targetType = %v, want BROKER", got["targetType"])
+	}
+	description, ok := got["description"].(string)
+	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "config-override-canary-value") {
+		t.Errorf("projected config-overrides description = %v, want redacted canary value", got["description"])
+	}
+	for _, field := range []string{"configKey", "configValue", "configValueInt", "customerId", "targetGid"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected config-overrides includes %s, want dropped", field)
+		}
+	}
+	if strings.Contains(fmt.Sprint(got), nestedCanary) {
+		t.Errorf("projected config-overrides = %v, want nested canary absent", got)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+		t.Errorf("AssertRenderedSubset(projected config-overrides) error = %v, want nil", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("ProjectRecords(zpa config-overrides) reports length = %d, want 1", len(reports))
+	}
+	assertReportContains(t, reports[0].DroppedFields, "configKey")
+	assertReportContains(t, reports[0].DroppedFields, "configValue")
+	assertReportContains(t, reports[0].DroppedFields, "configValueInt")
+	assertReportContains(t, reports[0].DroppedFields, "customerId")
+	assertReportContains(t, reports[0].DroppedFields, "targetGid")
+	assertReportContains(t, reports[0].RedactedFields, "description")
+}
+
 func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -2933,12 +3803,45 @@ func TestReaderNormalizesSDKErrors(t *testing.T) {
 	}
 }
 
+func TestReaderNormalizedSDKErrorPreservesSafeStatusCodeOnly(t *testing.T) {
+	t.Parallel()
+
+	const leaked = "client_secret=raw-sdk-body"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceLocations}: fakeLocationsResourceHandler(fakeZIALocationClient{
+				err: &sdkerrorx.ErrorResponse{
+					Response: &http.Response{
+						StatusCode: http.StatusForbidden,
+						Status:     "403 Forbidden",
+					},
+					Message: leaked,
+				},
+			}),
+		},
+	}
+
+	_, err := reader.List(context.Background(), resources.ProductZIA, "locations")
+	if !errors.Is(err, ErrLiveAccessFailed) {
+		t.Fatalf("SDKReader.List(status error) error = %v, want ErrLiveAccessFailed", err)
+	}
+	if !strings.Contains(err.Error(), "status 403") {
+		t.Errorf("SDKReader.List(status error) error = %q, want safe status code", err.Error())
+	}
+	if strings.Contains(err.Error(), leaked) {
+		t.Errorf("SDKReader.List(status error) error = %q, want no leaked SDK error content", err.Error())
+	}
+}
+
 func validReaderConfig() ReaderConfig {
 	return ReaderConfig{
-		ClientID:     secret.New("zscalerctl-client-id"),
-		ClientSecret: secret.New("zscalerctl-client-secret"),
-		VanityDomain: "zscalerctl-vanity",
-		Timeout:      time.Second,
+		ClientID:         secret.New("zscalerctl-client-id"),
+		ClientSecret:     secret.New("zscalerctl-client-secret"),
+		VanityDomain:     "zscalerctl-vanity",
+		ZPACustomerID:    "zscalerctl-zpa-customer-id",
+		ZPAMicrotenantID: "zscalerctl-zpa-microtenant-id",
+		Timeout:          time.Second,
 	}
 }
 
@@ -3130,6 +4033,17 @@ func assertNoCanaries(t *testing.T, resource string, record map[string]any, cana
 			t.Errorf("projected %s = %#v, want no %q", resource, record, canary)
 		}
 	}
+}
+
+func assertReportContains(t *testing.T, got []string, want string) {
+	t.Helper()
+
+	for _, item := range got {
+		if item == want {
+			return
+		}
+	}
+	t.Errorf("projection report fields = %v, want %q", got, want)
 }
 
 func toString(value any) string {

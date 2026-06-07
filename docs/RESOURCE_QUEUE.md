@@ -82,7 +82,7 @@ and artifact handling governed by the operator's records policy. Treat any
 required change ticket or authorization record as an external operational
 control, not as repository content.
 
-## Current Gate
+## Current Gates
 
 The legacy-ZIA smoke gate is closed for the current queued work: PRs `#39` and
 `#58` were live-smoked from the work machine and merged after trimming or
@@ -383,6 +383,8 @@ endpoint behavior and auth-mode support first.
 | `zia/dlp-web-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 | `zia/traffic-capture-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 | `zia/extranets` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zpa/private-cloud-groups` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 403). |
+| `zpa/private-cloud-controllers` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 401). |
 
 ## Return-To-Work Checklist
 
@@ -390,7 +392,8 @@ When production OneAPI smoke is available:
 
 1. Pull the base product stack first (`#41` for ZPA or `#53` for ZTW).
 2. Run `make live-smoke` against the branch manifest or an explicit
-   `LIVE_SMOKE_RESOURCES` list.
+   `LIVE_SMOKE_RESOURCES` list. For ZPA, include
+   `ZSCALERCTL_ZPA_CUSTOMER_ID`.
 3. Record pass/fail outcomes for every manifest resource.
 4. Trim failed resources from the branch or move them to the deferred table
    with the observed failure mode.

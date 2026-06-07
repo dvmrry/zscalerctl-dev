@@ -457,6 +457,8 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 		{Key: "Cloud", Value: valueOrUnset(safe.Cloud)},
 		{Key: "Client ID", Value: setStatus(safe.Credentials.ClientIDSet)},
 		{Key: "Client Secret", Value: setStatus(safe.Credentials.ClientSecretSet || safe.Credentials.ClientSecretFileSet)},
+		{Key: "ZPA Customer ID", Value: setStatus(safe.ZPA.CustomerIDSet)},
+		{Key: "ZPA Microtenant ID", Value: setStatus(safe.ZPA.MicrotenantIDSet)},
 		{Key: "ZIA Username", Value: setStatus(safe.ZIALegacy.UsernameSet)},
 		{Key: "ZIA Password", Value: setStatus(safe.ZIALegacy.PasswordSet || safe.ZIALegacy.PasswordFileSet)},
 		{Key: "ZIA API Key", Value: setStatus(safe.ZIALegacy.APIKeySet || safe.ZIALegacy.APIKeyFileSet)},
@@ -606,11 +608,13 @@ func (a *App) resourceReader(cfg config.Config, opts globalOptions) (ResourceRea
 		return a.reader, nil
 	}
 	return zscaler.NewReader(zscaler.ReaderConfig{
-		ClientID:     cfg.Credentials.ClientID,
-		ClientSecret: cfg.Credentials.ClientSecret,
-		VanityDomain: cfg.VanityDomain,
-		Cloud:        cfg.Cloud,
-		AuthMode:     zscaler.AuthMode(cfg.EffectiveAuthMode()),
+		ClientID:         cfg.Credentials.ClientID,
+		ClientSecret:     cfg.Credentials.ClientSecret,
+		VanityDomain:     cfg.VanityDomain,
+		Cloud:            cfg.Cloud,
+		ZPACustomerID:    cfg.ZPA.CustomerID,
+		ZPAMicrotenantID: cfg.ZPA.MicrotenantID,
+		AuthMode:         zscaler.AuthMode(cfg.EffectiveAuthMode()),
 		ZIALegacy: zscaler.ZIALegacyConfig{
 			Username: cfg.ZIALegacy.Username,
 			Password: cfg.ZIALegacy.Password,
@@ -1070,12 +1074,15 @@ func credentialStatus(cfg config.Config) string {
 
 func liveAPIStatus(cfg config.Config) string {
 	if credentialStatus(cfg) == "configured" {
+		if cfg.EffectiveAuthMode() != config.AuthModeZIALegacy && strings.TrimSpace(cfg.ZPA.CustomerID) == "" {
+			return "available for ZIA read-only commands; ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
+		}
 		return "available for read-only commands"
 	}
 	if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
 		return "requires ZSCALERCTL_ZIA_USERNAME, ZSCALERCTL_ZIA_PASSWORD, ZSCALERCTL_ZIA_API_KEY, and ZSCALERCTL_ZIA_CLOUD"
 	}
-	return "requires ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, and ZSCALERCTL_VANITY_DOMAIN"
+	return "requires ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, and ZSCALERCTL_VANITY_DOMAIN; ZPA resources also require ZSCALERCTL_ZPA_CUSTOMER_ID"
 }
 
 func setStatus(set bool) string {

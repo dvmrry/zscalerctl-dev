@@ -2,6 +2,7 @@ package zscaler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	sdkcache "github.com/zscaler/zscaler-sdk-go/v3/cache"
 	sdklogger "github.com/zscaler/zscaler-sdk-go/v3/logger"
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
@@ -68,6 +70,21 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
+	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
+	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
+	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
+	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
+	zpacloudconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector"
+	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
+	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
+	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
+	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
+	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
+	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
+	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/secret"
@@ -143,6 +160,21 @@ const (
 	resourceSecurityExceptions         = "security-exceptions"
 	resourceSecurityPolicyURLAllowlist = "url-allow-list"
 	resourceSecurityPolicyURLDenylist  = "url-deny-list"
+	resourceZPAServerGroups            = "server-groups"
+	resourceZPASegmentGroups           = "segment-groups"
+	resourceZPAAppConnectors           = "app-connectors"
+	resourceZPAConnectorGrps           = "app-connector-groups"
+	resourceZPAAppServers              = "app-servers"
+	resourceZPAMachineGroups           = "machine-groups"
+	resourceZPATrustedNets             = "trusted-networks"
+	resourceZPAServiceEdges            = "service-edges"
+	resourceZPAServiceGrps             = "service-edge-groups"
+	resourceZPACloudConns              = "cloud-connectors"
+	resourceZPACloudConnGrps           = "cloud-connector-groups"
+	resourceZPAPostureProfs            = "posture-profiles"
+	resourceZPACBIZPAProfs             = "cbi-zpa-profiles"
+	resourceZPAC2CIPRanges             = "c2c-ip-ranges"
+	resourceZPAConfigOvrds             = "config-overrides"
 )
 
 type AuthMode string
@@ -153,15 +185,17 @@ const (
 )
 
 type ReaderConfig struct {
-	ClientID     secret.Secret
-	ClientSecret secret.Secret
-	VanityDomain string
-	Cloud        string
-	AuthMode     AuthMode
-	ZIALegacy    ZIALegacyConfig
-	Proxy        ProxyConfig
-	Timeout      time.Duration
-	NoCache      bool
+	ClientID         secret.Secret
+	ClientSecret     secret.Secret
+	VanityDomain     string
+	Cloud            string
+	ZPACustomerID    string
+	ZPAMicrotenantID string
+	AuthMode         AuthMode
+	ZIALegacy        ZIALegacyConfig
+	Proxy            ProxyConfig
+	Timeout          time.Duration
+	NoCache          bool
 }
 
 type ZIALegacyConfig struct {
@@ -205,8 +239,8 @@ type resourceHandler interface {
 	Show(context.Context) (resources.SourceRecord, error)
 }
 
-type ziaServiceProvider interface {
-	service(context.Context) (*zsdk.Service, func(), error)
+type zscalerServiceProvider interface {
+	service(context.Context, resources.Product) (*zsdk.Service, func(), error)
 }
 
 var (
@@ -225,10 +259,10 @@ func NewReader(cfg ReaderConfig) (*SDKReader, error) {
 	if err := validateReaderConfig(cfg); err != nil {
 		return nil, err
 	}
-	ziaClient := sdkZIAClient{services: perCallZIAService{cfg: cfg}}
+	client := sdkClient{services: perCallService{cfg: cfg}}
 	return &SDKReader{
 		cfg:      cfg,
-		handlers: newResourceHandlers(ziaClient),
+		handlers: newResourceHandlers(client),
 	}, nil
 }
 
@@ -236,16 +270,21 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 	if r == nil {
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
-	if product != resources.ProductZIA {
+	switch product {
+	case resources.ProductZIA, resources.ProductZPA:
+	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
-	service, cleanup, err := perCallZIAService{cfg: r.cfg}.service(ctx)
+	service, cleanup, err := perCallService{cfg: r.cfg}.service(ctx, product)
 	if err != nil {
-		return nil, normalizeLiveError(ctx, "authenticate", product, "session")
+		if errors.Is(err, ErrMissingCredentials) {
+			return nil, err
+		}
+		return nil, normalizeLiveError(ctx, "authenticate", product, "session", err)
 	}
-	ziaClient := sdkZIAClient{services: fixedZIAService{sdkService: service}}
+	client := sdkClient{services: fixedService{sdkService: service}}
 	return &SDKSession{
-		handlers: newResourceHandlers(ziaClient),
+		handlers: newResourceHandlers(client),
 		cleanup:  cleanup,
 	}, nil
 }
@@ -315,7 +354,10 @@ func listResource(
 	}
 	records, err := handler.List(ctx)
 	if err != nil {
-		return nil, normalizeLiveError(ctx, "list", product, name)
+		if errors.Is(err, ErrMissingCredentials) {
+			return nil, err
+		}
+		return nil, normalizeLiveError(ctx, "list", product, name, err)
 	}
 	return records, nil
 }
@@ -333,10 +375,12 @@ func getResource(
 	}
 	record, err := handler.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, ErrInvalidResourceID) || errors.Is(err, ErrUnsupportedResource) {
+		if errors.Is(err, ErrInvalidResourceID) ||
+			errors.Is(err, ErrUnsupportedResource) ||
+			errors.Is(err, ErrMissingCredentials) {
 			return resources.SourceRecord{}, err
 		}
-		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name)
+		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name, err)
 	}
 	return record, nil
 }
@@ -353,7 +397,7 @@ func showResource(
 	}
 	record, err := handler.Show(ctx)
 	if err != nil {
-		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name)
+		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name, err)
 	}
 	return record, nil
 }
@@ -369,165 +413,165 @@ func handlerFrom(handlers map[resourceKey]resourceHandler, product resources.Pro
 	return handler, nil
 }
 
-func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler {
+func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 	return map[resourceKey]resourceHandler{
 		{product: resources.ProductZIA, name: resourceLocations}: newListGetHandler(
 			resourceLocations,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
 				return locationmanagement.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
 				return locationmanagement.GetLocation(ctx, service, id)
 			}),
 			locationSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceLocationGroups}: newListGetHandler(
 			resourceLocationGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
 				fetchLocations := false
 				return locationgroups.GetAll(ctx, service, &locationgroups.GetAllFilterOptions{
 					FetchLocations: &fetchLocations,
 				})
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationgroups.LocationGroup, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*locationgroups.LocationGroup, error) {
 				return locationgroups.GetLocationGroup(ctx, service, id)
 			}),
 			locationGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceRuleLabels}: newListGetHandler(
 			resourceRuleLabels,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]rulelabels.RuleLabels, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]rulelabels.RuleLabels, error) {
 				return rulelabels.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*rulelabels.RuleLabels, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*rulelabels.RuleLabels, error) {
 				return rulelabels.Get(ctx, service, id)
 			}),
 			ruleLabelSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAuthSettings}: newSingletonHandler(
 			resourceAuthSettings,
-			ziaSDKSingleton(ziaClient, func(ctx context.Context, service *zsdk.Service) (*authsettings.AuthenticationSettings, error) {
+			ziaSDKSingleton(client, func(ctx context.Context, service *zsdk.Service) (*authsettings.AuthenticationSettings, error) {
 				return authsettings.Get(ctx, service)
 			}),
 			authSettingsSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceStaticIPs}: newListGetHandler(
 			resourceStaticIPs,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]staticips.StaticIP, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]staticips.StaticIP, error) {
 				return staticips.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*staticips.StaticIP, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*staticips.StaticIP, error) {
 				return staticips.Get(ctx, service, id)
 			}),
 			staticIPSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceGRETunnels}: newListGetHandler(
 			resourceGRETunnels,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]gretunnels.GreTunnels, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]gretunnels.GreTunnels, error) {
 				return gretunnels.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*gretunnels.GreTunnels, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*gretunnels.GreTunnels, error) {
 				return gretunnels.GetGreTunnels(ctx, service, id)
 			}),
 			greTunnelSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceSublocations}: newListGetHandler(
 			resourceSublocations,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
 				return locationmanagement.GetAllSublocations(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
 				return locationmanagement.GetSubLocationBySubID(ctx, service, id)
 			}),
 			sublocationSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceSSLRules}: newListGetHandler(
 			resourceSSLRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]sslinspection.SSLInspectionRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]sslinspection.SSLInspectionRules, error) {
 				return sslinspection.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*sslinspection.SSLInspectionRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*sslinspection.SSLInspectionRules, error) {
 				return sslinspection.Get(ctx, service, id)
 			}),
 			sslInspectionRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceURLCategories}: newListGetHandler(
 			resourceURLCategories,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]urlcategories.URLCategory, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]urlcategories.URLCategory, error) {
 				return urlcategories.GetAll(ctx, service, false, true, "")
 			}),
-			ziaSDKStringGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id string) (*urlcategories.URLCategory, error) {
+			ziaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*urlcategories.URLCategory, error) {
 				return urlcategories.Get(ctx, service, id)
 			}),
 			urlCategorySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceURLRules}: newListGetHandler(
 			resourceURLRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]urlfilteringpolicies.URLFilteringRule, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]urlfilteringpolicies.URLFilteringRule, error) {
 				return urlfilteringpolicies.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
 				return urlfilteringpolicies.Get(ctx, service, id)
 			}),
 			urlFilteringRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceFirewallRules}: newListGetHandler(
 			resourceFirewallRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]filteringrules.FirewallFilteringRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]filteringrules.FirewallFilteringRules, error) {
 				return filteringrules.GetAll(ctx, service, nil)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*filteringrules.FirewallFilteringRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*filteringrules.FirewallFilteringRules, error) {
 				return filteringrules.Get(ctx, service, id)
 			}),
 			firewallFilteringRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceForwardingRules}: newListGetHandler(
 			resourceForwardingRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]forwardingrules.ForwardingRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]forwardingrules.ForwardingRules, error) {
 				return forwardingrules.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*forwardingrules.ForwardingRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*forwardingrules.ForwardingRules, error) {
 				return forwardingrules.Get(ctx, service, id)
 			}),
 			forwardingRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceIPSourceGroups}: newListGetHandler(
 			resourceIPSourceGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]ipsourcegroups.IPSourceGroups, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipsourcegroups.IPSourceGroups, error) {
 				return ipsourcegroups.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*ipsourcegroups.IPSourceGroups, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ipsourcegroups.IPSourceGroups, error) {
 				return ipsourcegroups.Get(ctx, service, id)
 			}),
 			ipSourceGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceIPDestGroups}: newListGetHandler(
 			resourceIPDestGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]ipdestinationgroups.IPDestinationGroups, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipdestinationgroups.IPDestinationGroups, error) {
 				return ipdestinationgroups.GetAll(ctx, service, "")
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*ipdestinationgroups.IPDestinationGroups, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ipdestinationgroups.IPDestinationGroups, error) {
 				return ipdestinationgroups.Get(ctx, service, id)
 			}),
 			ipDestinationGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceNetworkServices}: newListGetHandler(
 			resourceNetworkServices,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]networkservices.NetworkServices, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkservices.NetworkServices, error) {
 				return networkservices.GetAllNetworkServices(ctx, service, nil, nil)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*networkservices.NetworkServices, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkservices.NetworkServices, error) {
 				return networkservices.Get(ctx, service, id)
 			}),
 			networkServiceSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAppServices}: newListGetHandler(
 			resourceAppServices,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
 				return applicationservices.GetAll(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
 					return applicationservices.GetAll(ctx, service)
 				},
@@ -537,11 +581,11 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceAppServiceGroups}: newListGetHandler(
 			resourceAppServiceGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]appservicegroups.ApplicationServicesGroupLite, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]appservicegroups.ApplicationServicesGroupLite, error) {
 				return appservicegroups.GetAll(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]appservicegroups.ApplicationServicesGroupLite, error) {
 					return appservicegroups.GetAll(ctx, service)
 				},
@@ -551,21 +595,21 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceNetworkAppGroups}: newListGetHandler(
 			resourceNetworkAppGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]networkapplicationgroups.NetworkApplicationGroups, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkapplicationgroups.NetworkApplicationGroups, error) {
 				return networkapplicationgroups.GetAllNetworkApplicationGroups(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*networkapplicationgroups.NetworkApplicationGroups, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkapplicationgroups.NetworkApplicationGroups, error) {
 				return networkapplicationgroups.GetNetworkApplicationGroups(ctx, service, id)
 			}),
 			networkApplicationGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceTimeWindows}: newListGetHandler(
 			resourceTimeWindows,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]timewindow.TimeWindow, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]timewindow.TimeWindow, error) {
 				return timewindow.GetAll(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]timewindow.TimeWindow, error) {
 					return timewindow.GetAll(ctx, service)
 				},
@@ -575,21 +619,21 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceProxies}: newListGetHandler(
 			resourceProxies,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxies.Proxies, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxies.Proxies, error) {
 				return proxies.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*proxies.Proxies, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*proxies.Proxies, error) {
 				return proxies.Get(ctx, service, id)
 			}),
 			proxySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceProxyGateways}: newListGetHandler(
 			resourceProxyGateways,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
 				return proxygateways.GetAll(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
 					return proxygateways.GetAll(ctx, service)
 				},
@@ -599,11 +643,11 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceDedicatedIPGWs}: newListGetHandler(
 			resourceDedicatedIPGWs,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
 				return proxies.GetDedicatedIPGWLite(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
 					return proxies.GetDedicatedIPGWLite(ctx, service)
 				},
@@ -613,71 +657,71 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceTimeIntervals}: newListGetHandler(
 			resourceTimeIntervals,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]timeintervals.TimeInterval, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]timeintervals.TimeInterval, error) {
 				return timeintervals.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*timeintervals.TimeInterval, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*timeintervals.TimeInterval, error) {
 				return timeintervals.Get(ctx, service, id)
 			}),
 			timeIntervalSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceBandwidthClasses}: newListGetHandler(
 			resourceBandwidthClasses,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]bandwidthclasses.BandwidthClasses, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]bandwidthclasses.BandwidthClasses, error) {
 				return bandwidthclasses.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthclasses.BandwidthClasses, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthclasses.BandwidthClasses, error) {
 				return bandwidthclasses.Get(ctx, service, id)
 			}),
 			bandwidthClassSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceBandwidthRules}: newListGetHandler(
 			resourceBandwidthRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]bandwidthcontrolrules.BandwidthControlRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]bandwidthcontrolrules.BandwidthControlRules, error) {
 				return bandwidthcontrolrules.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthcontrolrules.BandwidthControlRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthcontrolrules.BandwidthControlRules, error) {
 				return bandwidthcontrolrules.Get(ctx, service, id)
 			}),
 			bandwidthControlRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDNSGateways}: newListGetHandler(
 			resourceDNSGateways,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dnsgateways.DNSGateways, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dnsgateways.DNSGateways, error) {
 				return dnsgateways.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dnsgateways.DNSGateways, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dnsgateways.DNSGateways, error) {
 				return dnsgateways.Get(ctx, service, id)
 			}),
 			dnsGatewaySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceNATRules}: newListGetHandler(
 			resourceNATRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]natcontrol.NatControlPolicies, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]natcontrol.NatControlPolicies, error) {
 				return natcontrol.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*natcontrol.NatControlPolicies, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*natcontrol.NatControlPolicies, error) {
 				return natcontrol.Get(ctx, service, id)
 			}),
 			natControlRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceGroups}: newListGetHandler(
 			resourceGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]usergroups.Groups, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]usergroups.Groups, error) {
 				return usergroups.GetAllGroups(ctx, service, nil)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*usergroups.Groups, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*usergroups.Groups, error) {
 				return usergroups.GetGroups(ctx, service, id)
 			}),
 			groupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDeviceGroups}: newListGetHandler(
 			resourceDeviceGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
 				return devicegroups.GetAllDevicesGroups(ctx, service)
 			}),
 			ziaSDKListGetByIntID(
-				ziaClient,
+				client,
 				func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
 					return devicegroups.GetAllDevicesGroups(ctx, service)
 				},
@@ -687,223 +731,383 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 		),
 		{product: resources.ProductZIA, name: resourceWorkloadGroups}: newListGetHandler(
 			resourceWorkloadGroups,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]workloadgroups.WorkloadGroup, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]workloadgroups.WorkloadGroup, error) {
 				return workloadgroups.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*workloadgroups.WorkloadGroup, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*workloadgroups.WorkloadGroup, error) {
 				return workloadgroups.Get(ctx, service, id)
 			}),
 			workloadGroupSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAlertSubs}: newListGetHandler(
 			resourceAlertSubs,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]alerts.AlertSubscriptions, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]alerts.AlertSubscriptions, error) {
 				return alerts.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*alerts.AlertSubscriptions, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*alerts.AlertSubscriptions, error) {
 				return alerts.Get(ctx, service, id)
 			}),
 			alertSubscriptionSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCloudAppInsts}: newListGetHandler(
 			resourceCloudAppInsts,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]cloudappinstances.CloudApplicationInstances, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudappinstances.CloudApplicationInstances, error) {
 				return cloudappinstances.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*cloudappinstances.CloudApplicationInstances, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*cloudappinstances.CloudApplicationInstances, error) {
 				return cloudappinstances.Get(ctx, service, id)
 			}),
 			cloudAppInstanceSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceTenancyProfiles}: newListGetHandler(
 			resourceTenancyProfiles,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]tenancyrestriction.TenancyRestrictionProfile, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]tenancyrestriction.TenancyRestrictionProfile, error) {
 				return tenancyrestriction.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*tenancyrestriction.TenancyRestrictionProfile, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*tenancyrestriction.TenancyRestrictionProfile, error) {
 				return tenancyrestriction.Get(ctx, service, id)
 			}),
 			tenancyRestrictionProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceVZENClusters}: newListGetHandler(
 			resourceVZENClusters,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]vzenclusters.VZENClusters, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]vzenclusters.VZENClusters, error) {
 				return vzenclusters.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*vzenclusters.VZENClusters, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*vzenclusters.VZENClusters, error) {
 				return vzenclusters.Get(ctx, service, id)
 			}),
 			vzenClusterSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceVZENNodes}: newListGetHandler(
 			resourceVZENNodes,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]vzennodes.VZENNodes, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]vzennodes.VZENNodes, error) {
 				return vzennodes.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*vzennodes.VZENNodes, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*vzennodes.VZENNodes, error) {
 				return vzennodes.Get(ctx, service, id)
 			}),
 			vzenNodeSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDLPICAPServers}: newListGetHandler(
 			resourceDLPICAPServers,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpicapservers.DLPICAPServers, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpicapservers.DLPICAPServers, error) {
 				return dlpicapservers.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpicapservers.DLPICAPServers, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpicapservers.DLPICAPServers, error) {
 				return dlpicapservers.Get(ctx, service, id)
 			}),
 			dlpICAPServerSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceRiskProfiles}: newListGetHandler(
 			resourceRiskProfiles,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]riskprofiles.RiskProfiles, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]riskprofiles.RiskProfiles, error) {
 				return riskprofiles.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*riskprofiles.RiskProfiles, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*riskprofiles.RiskProfiles, error) {
 				return riskprofiles.Get(ctx, service, id)
 			}),
 			riskProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceNSSServers}: newListGetHandler(
 			resourceNSSServers,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]nssservers.NSSServers, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]nssservers.NSSServers, error) {
 				return nssservers.GetAll(ctx, service, nil)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*nssservers.NSSServers, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*nssservers.NSSServers, error) {
 				return nssservers.Get(ctx, service, id)
 			}),
 			nssServerSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceNSSFeeds}: newListGetHandler(
 			resourceNSSFeeds,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]cloudnss.NSSFeed, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudnss.NSSFeed, error) {
 				return cloudnss.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*cloudnss.NSSFeed, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*cloudnss.NSSFeed, error) {
 				return cloudnss.Get(ctx, service, id)
 			}),
 			nssFeedSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceFileTypeRules}: newListGetHandler(
 			resourceFileTypeRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]filetypecontrol.FileTypeRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]filetypecontrol.FileTypeRules, error) {
 				return filetypecontrol.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*filetypecontrol.FileTypeRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*filetypecontrol.FileTypeRules, error) {
 				return filetypecontrol.Get(ctx, service, id)
 			}),
 			fileTypeRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceSandboxRules}: newListGetHandler(
 			resourceSandboxRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]sandboxrules.SandboxRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]sandboxrules.SandboxRules, error) {
 				return sandboxrules.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*sandboxrules.SandboxRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*sandboxrules.SandboxRules, error) {
 				return sandboxrules.Get(ctx, service, id)
 			}),
 			sandboxRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceFirewallDNSRules}: newListGetHandler(
 			resourceFirewallDNSRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]firewalldnscontrolpolicies.FirewallDNSRules, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]firewalldnscontrolpolicies.FirewallDNSRules, error) {
 				return firewalldnscontrolpolicies.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*firewalldnscontrolpolicies.FirewallDNSRules, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*firewalldnscontrolpolicies.FirewallDNSRules, error) {
 				return firewalldnscontrolpolicies.Get(ctx, service, id)
 			}),
 			firewallDNSRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCustomFileTypes}: newListGetHandler(
 			resourceCustomFileTypes,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]customfiletypes.CustomFileTypes, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]customfiletypes.CustomFileTypes, error) {
 				return customfiletypes.GetCustomFileTypes(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*customfiletypes.CustomFileTypes, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*customfiletypes.CustomFileTypes, error) {
 				return customfiletypes.Get(ctx, service, id)
 			}),
 			customFileTypeSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceZPAGateways}: newListGetHandler(
 			resourceZPAGateways,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]zpagateways.ZPAGateways, error) {
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpagateways.ZPAGateways, error) {
 				return zpagateways.GetAll(ctx, service)
 			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*zpagateways.ZPAGateways, error) {
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*zpagateways.ZPAGateways, error) {
 				return zpagateways.Get(ctx, service, id)
 			}),
 			zpaGatewaySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAdvancedSettings}: newSingletonHandler(
 			resourceAdvancedSettings,
-			ziaSDKShow(ziaClient, advancedsettings.GetAdvancedSettings),
+			ziaSDKShow(client, advancedsettings.GetAdvancedSettings),
 			structSourceRecord[advancedsettings.AdvancedSettings],
 		),
 		{product: resources.ProductZIA, name: resourceAdvancedThreatSettings}: newSingletonHandler(
 			resourceAdvancedThreatSettings,
-			ziaSDKShow(ziaClient, advancedthreatsettings.GetAdvancedThreatSettings),
+			ziaSDKShow(client, advancedthreatsettings.GetAdvancedThreatSettings),
 			structSourceRecord[advancedthreatsettings.AdvancedThreatSettings],
 		),
 		{product: resources.ProductZIA, name: resourceMobileThreatSettings}: newSingletonHandler(
 			resourceMobileThreatSettings,
-			ziaSDKShow(ziaClient, mobilethreatsettings.GetMobileThreatSettings),
+			ziaSDKShow(client, mobilethreatsettings.GetMobileThreatSettings),
 			structSourceRecord[mobilethreatsettings.MobileAdvanceThreatSettings],
 		),
 		{product: resources.ProductZIA, name: resourceSandboxSettings}: newSingletonHandler(
 			resourceSandboxSettings,
-			ziaSDKShow(ziaClient, sandboxsettings.Get),
+			ziaSDKShow(client, sandboxsettings.Get),
 			structSourceRecord[sandboxsettings.BaAdvancedSettings],
 		),
 		{product: resources.ProductZIA, name: resourceEndUserNotification}: newSingletonHandler(
 			resourceEndUserNotification,
-			ziaSDKShow(ziaClient, endusernotification.GetUserNotificationSettings),
+			ziaSDKShow(client, endusernotification.GetUserNotificationSettings),
 			structSourceRecord[endusernotification.UserNotificationSettings],
 		),
 		{product: resources.ProductZIA, name: resourceOrgInformation}: newSingletonHandler(
 			resourceOrgInformation,
-			ziaSDKShow(ziaClient, organizationdetails.GetOrgInformation),
+			ziaSDKShow(client, organizationdetails.GetOrgInformation),
 			structSourceRecord[organizationdetails.Organization],
 		),
 		{product: resources.ProductZIA, name: resourceATPMalwarePolicy}: newSingletonHandler(
 			resourceATPMalwarePolicy,
-			ziaSDKShow(ziaClient, malwareprotection.GetATPMalwarePolicy),
+			ziaSDKShow(client, malwareprotection.GetATPMalwarePolicy),
 			structSourceRecord[malwareprotection.MalwarePolicy],
 		),
 		{product: resources.ProductZIA, name: resourceATPMalwareSettings}: newSingletonHandler(
 			resourceATPMalwareSettings,
-			ziaSDKShow(ziaClient, malwareprotection.GetATPMalwareSettings),
+			ziaSDKShow(client, malwareprotection.GetATPMalwareSettings),
 			structSourceRecord[malwareprotection.MalwareSettings],
 		),
 		{product: resources.ProductZIA, name: resourceATPMalwareInspection}: newSingletonHandler(
 			resourceATPMalwareInspection,
-			ziaSDKShow(ziaClient, malwareprotection.GetATPMalwareInspection),
+			ziaSDKShow(client, malwareprotection.GetATPMalwareInspection),
 			structSourceRecord[malwareprotection.ATPMalwareInspection],
 		),
 		{product: resources.ProductZIA, name: resourceATPMalwareProtocols}: newSingletonHandler(
 			resourceATPMalwareProtocols,
-			ziaSDKShow(ziaClient, malwareprotection.GetATPMalwareProtocols),
+			ziaSDKShow(client, malwareprotection.GetATPMalwareProtocols),
 			structSourceRecord[malwareprotection.ATPMalwareProtocols],
 		),
 		{product: resources.ProductZIA, name: resourceMaliciousURLs}: newSingletonHandler(
 			resourceMaliciousURLs,
-			ziaSDKShow(ziaClient, advancedthreatsettings.GetMaliciousURLs),
+			ziaSDKShow(client, advancedthreatsettings.GetMaliciousURLs),
 			structSourceRecord[advancedthreatsettings.MaliciousURLs],
 		),
 		{product: resources.ProductZIA, name: resourceSecurityExceptions}: newSingletonHandler(
 			resourceSecurityExceptions,
-			ziaSDKShow(ziaClient, advancedthreatsettings.GetSecurityExceptions),
+			ziaSDKShow(client, advancedthreatsettings.GetSecurityExceptions),
 			structSourceRecord[advancedthreatsettings.SecurityExceptions],
 		),
 		{product: resources.ProductZIA, name: resourceSecurityPolicyURLAllowlist}: newSingletonHandler(
 			resourceSecurityPolicyURLAllowlist,
-			ziaSDKShow(ziaClient, securitypolicysettings.GetWhiteListUrls),
+			ziaSDKShow(client, securitypolicysettings.GetWhiteListUrls),
 			structSourceRecord[securitypolicysettings.ListUrls],
 		),
 		{product: resources.ProductZIA, name: resourceSecurityPolicyURLDenylist}: newSingletonHandler(
 			resourceSecurityPolicyURLDenylist,
-			ziaSDKShow(ziaClient, securitypolicysettings.GetBlackListUrls),
+			ziaSDKShow(client, securitypolicysettings.GetBlackListUrls),
 			structSourceRecord[securitypolicysettings.ListUrls],
+		),
+		{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
+			resourceZPAServerGroups,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaservergroup.ServerGroup, *http.Response, error) {
+				return zpaservergroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaservergroup.ServerGroup, *http.Response, error) {
+				return zpaservergroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaservergroup.ServerGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPASegmentGroups}: newListGetHandler(
+			resourceZPASegmentGroups,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpasegmentgroup.SegmentGroup, *http.Response, error) {
+				return zpasegmentgroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpasegmentgroup.SegmentGroup, *http.Response, error) {
+				return zpasegmentgroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpasegmentgroup.SegmentGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAAppConnectors}: newListGetHandler(
+			resourceZPAAppConnectors,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappconnectorcontroller.AppConnector, *http.Response, error) {
+				return zpaappconnectorcontroller.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappconnectorcontroller.AppConnector, *http.Response, error) {
+				return zpaappconnectorcontroller.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaappconnectorcontroller.AppConnector],
+		),
+		{product: resources.ProductZPA, name: resourceZPAConnectorGrps}: newListGetHandler(
+			resourceZPAConnectorGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappconnectorgroup.AppConnectorGroup, *http.Response, error) {
+				return zpaappconnectorgroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappconnectorgroup.AppConnectorGroup, *http.Response, error) {
+				return zpaappconnectorgroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaappconnectorgroup.AppConnectorGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAAppServers}: newListGetHandler(
+			resourceZPAAppServers,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappservercontroller.ApplicationServer, *http.Response, error) {
+				return zpaappservercontroller.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappservercontroller.ApplicationServer, *http.Response, error) {
+				return zpaappservercontroller.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaappservercontroller.ApplicationServer],
+		),
+		{product: resources.ProductZPA, name: resourceZPAMachineGroups}: newListGetHandler(
+			resourceZPAMachineGroups,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpamachinegroup.MachineGroup, *http.Response, error) {
+				return zpamachinegroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpamachinegroup.MachineGroup, *http.Response, error) {
+				return zpamachinegroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpamachinegroup.MachineGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPATrustedNets}: newListGetHandler(
+			resourceZPATrustedNets,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpatrustednetwork.TrustedNetwork, *http.Response, error) {
+				return zpatrustednetwork.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpatrustednetwork.TrustedNetwork, *http.Response, error) {
+				return zpatrustednetwork.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpatrustednetwork.TrustedNetwork],
+		),
+		{product: resources.ProductZPA, name: resourceZPAServiceGrps}: newListGetHandler(
+			resourceZPAServiceGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
+				return zpaserviceedgegroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
+				return zpaserviceedgegroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaserviceedgegroup.ServiceEdgeGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAServiceEdges}: newListGetHandler(
+			resourceZPAServiceEdges,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
+				return zpaserviceedgecontroller.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
+				return zpaserviceedgecontroller.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaserviceedgecontroller.ServiceEdgeController],
+		),
+		{product: resources.ProductZPA, name: resourceZPACloudConnGrps}: newListGetHandler(
+			resourceZPACloudConnGrps,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
+				return zpacloudconnectorgroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
+				return zpacloudconnectorgroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpacloudconnectorgroup.CloudConnectorGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPACloudConns}: newListGetHandler(
+			resourceZPACloudConns,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacloudconnector.CloudConnector, *http.Response, error) {
+				return zpacloudconnector.GetAll(ctx, service)
+			}),
+			func(context.Context, string) (*zpacloudconnector.CloudConnector, error) {
+				return nil, fmt.Errorf("%w: %s/%s get", ErrUnsupportedResource, resources.ProductZPA, resourceZPACloudConns)
+			},
+			jsonSourceRecord[zpacloudconnector.CloudConnector],
+		),
+		{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
+			resourceZPAPostureProfs,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpapostureprofile.PostureProfile, *http.Response, error) {
+				return zpapostureprofile.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpapostureprofile.PostureProfile, *http.Response, error) {
+				return zpapostureprofile.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpapostureprofile.PostureProfile],
+		),
+		{product: resources.ProductZPA, name: resourceZPACBIZPAProfs}: newListGetHandler(
+			resourceZPACBIZPAProfs,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
+				return zpacbizpaprofile.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
+				return zpacbizpaprofile.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpacbizpaprofile.ZPAProfiles],
+		),
+		{product: resources.ProductZPA, name: resourceZPAC2CIPRanges}: newListGetHandler(
+			resourceZPAC2CIPRanges,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpac2cipranges.IPRanges, *http.Response, error) {
+				items, resp, err := zpac2cipranges.GetAll(ctx, service)
+				if err != nil {
+					return nil, resp, err
+				}
+				out := make([]zpac2cipranges.IPRanges, 0, len(items))
+				for _, item := range items {
+					if item != nil {
+						out = append(out, *item)
+					}
+				}
+				return out, resp, nil
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpac2cipranges.IPRanges, *http.Response, error) {
+				return zpac2cipranges.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpac2cipranges.IPRanges],
+		),
+		{product: resources.ProductZPA, name: resourceZPAConfigOvrds}: newListGetHandler(
+			resourceZPAConfigOvrds,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaconfigoverride.ConfigOverrides, *http.Response, error) {
+				return zpaconfigoverride.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaconfigoverride.ConfigOverrides, *http.Response, error) {
+				return zpaconfigoverride.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpaconfigoverride.ConfigOverrides],
 		),
 	}
 }
@@ -1047,19 +1251,26 @@ func parsePositiveIntID(id string) (int, error) {
 	return parsed, nil
 }
 
-type sdkZIAClient struct {
-	services ziaServiceProvider
+type sdkClient struct {
+	services zscalerServiceProvider
 }
 
-func (c sdkZIAClient) service(ctx context.Context) (*zsdk.Service, func(), error) {
+func (c sdkClient) service(ctx context.Context) (*zsdk.Service, func(), error) {
 	if c.services == nil {
-		return nil, nil, errors.New("missing zia service provider")
+		return nil, nil, errors.New("missing zscaler service provider")
 	}
-	return c.services.service(ctx)
+	return c.services.service(ctx, resources.ProductZIA)
+}
+
+func (c sdkClient) productService(ctx context.Context, product resources.Product) (*zsdk.Service, func(), error) {
+	if c.services == nil {
+		return nil, nil, errors.New("missing zscaler service provider")
+	}
+	return c.services.service(ctx, product)
 }
 
 func ziaSDKList[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	call func(context.Context, *zsdk.Service) ([]T, error),
 ) func(context.Context) ([]T, error) {
 	return func(ctx context.Context) ([]T, error) {
@@ -1073,7 +1284,7 @@ func ziaSDKList[T any](
 }
 
 func ziaSDKSingleton[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	call func(context.Context, *zsdk.Service) (*T, error),
 ) func(context.Context) (*T, error) {
 	return func(ctx context.Context) (*T, error) {
@@ -1087,7 +1298,7 @@ func ziaSDKSingleton[T any](
 }
 
 func ziaSDKShow[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	call func(context.Context, *zsdk.Service) (*T, error),
 ) func(context.Context) (*T, error) {
 	return func(ctx context.Context) (*T, error) {
@@ -1101,7 +1312,7 @@ func ziaSDKShow[T any](
 }
 
 func ziaSDKGet[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	call func(context.Context, *zsdk.Service, int) (*T, error),
 ) func(context.Context, string) (*T, error) {
 	return intIDGetter(func(ctx context.Context, id int) (*T, error) {
@@ -1115,7 +1326,7 @@ func ziaSDKGet[T any](
 }
 
 func ziaSDKStringGet[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	call func(context.Context, *zsdk.Service, string) (*T, error),
 ) func(context.Context, string) (*T, error) {
 	return func(ctx context.Context, id string) (*T, error) {
@@ -1133,7 +1344,7 @@ func ziaSDKStringGet[T any](
 }
 
 func ziaSDKListGetByIntID[T any](
-	client sdkZIAClient,
+	client sdkClient,
 	list func(context.Context, *zsdk.Service) ([]T, error),
 	idOf func(T) int,
 ) func(context.Context, string) (*T, error) {
@@ -1154,6 +1365,40 @@ func ziaSDKListGetByIntID[T any](
 		}
 		return nil, nil
 	})
+}
+
+func zpaSDKList[T any](
+	client sdkClient,
+	call func(context.Context, *zsdk.Service) ([]T, *http.Response, error),
+) func(context.Context) ([]T, error) {
+	return func(ctx context.Context) ([]T, error) {
+		service, cleanup, err := client.productService(ctx, resources.ProductZPA)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		items, _, err := call(ctx, service)
+		return items, err
+	}
+}
+
+func zpaSDKStringGet[T any](
+	client sdkClient,
+	call func(context.Context, *zsdk.Service, string) (*T, *http.Response, error),
+) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("%w: empty", ErrInvalidResourceID)
+		}
+		service, cleanup, err := client.productService(ctx, resources.ProductZPA)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		item, _, err := call(ctx, service, id)
+		return item, err
+	}
 }
 
 func intIDGetter[T any](get func(context.Context, int) (*T, error)) func(context.Context, string) (*T, error) {
@@ -1252,13 +1497,19 @@ func sdkJSONFieldName(field reflect.StructField) string {
 	return field.Name
 }
 
-type perCallZIAService struct {
+type perCallService struct {
 	cfg ReaderConfig
 }
 
-func (s perCallZIAService) service(ctx context.Context) (*zsdk.Service, func(), error) {
+func (s perCallService) service(ctx context.Context, product resources.Product) (*zsdk.Service, func(), error) {
 	if s.cfg.AuthMode == AuthModeZIALegacy {
+		if product != resources.ProductZIA {
+			return nil, nil, fmt.Errorf("%w: %s requires OneAPI credentials", ErrMissingCredentials, product)
+		}
 		return s.legacyService(ctx)
+	}
+	if err := validateProductConfig(s.cfg, product); err != nil {
+		return nil, nil, err
 	}
 	cfg := newSDKConfiguration(ctx, s.cfg)
 	// Do not replace this with zsdk.NewConfiguration. That SDK constructor
@@ -1276,7 +1527,7 @@ func (s perCallZIAService) service(ctx context.Context) (*zsdk.Service, func(), 
 	return service, cleanup, nil
 }
 
-func (s perCallZIAService) legacyService(ctx context.Context) (*zsdk.Service, func(), error) {
+func (s perCallService) legacyService(ctx context.Context) (*zsdk.Service, func(), error) {
 	ziaCfg, err := newLegacyZIAConfiguration(ctx, s.cfg)
 	if err != nil {
 		return nil, nil, err
@@ -1313,17 +1564,18 @@ func (s perCallZIAService) legacyService(ctx context.Context) (*zsdk.Service, fu
 	return service, cleanup, nil
 }
 
-type fixedZIAService struct {
+type fixedService struct {
 	sdkService *zsdk.Service
 }
 
-func (s fixedZIAService) service(ctx context.Context) (*zsdk.Service, func(), error) {
+func (s fixedService) service(ctx context.Context, _ resources.Product) (*zsdk.Service, func(), error) {
 	if err := effectiveContext(ctx).Err(); err != nil {
 		return nil, nil, err
 	}
 	if s.sdkService == nil {
 		return nil, nil, errors.New("missing zscaler sdk service")
 	}
+	// The dump session has already authenticated the shared OneAPI service.
 	return s.sdkService, func() {}, nil
 }
 
@@ -1331,6 +1583,18 @@ func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {
 	restore := suppressSDKLogEnv()
 	defer restore()
 	return sdkzia.NewClient(cfg)
+}
+
+func jsonSourceRecord[T any](item T) resources.SourceRecord {
+	fields := map[string]any{}
+	body, err := json.Marshal(item)
+	if err != nil {
+		return resources.NewSourceRecord(fields)
+	}
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return resources.NewSourceRecord(map[string]any{})
+	}
+	return resources.NewSourceRecord(fields)
 }
 
 func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configuration {
@@ -1356,6 +1620,8 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.ClientSecret = cfg.ClientSecret.Reveal()
 	sdkCfg.Zscaler.Client.VanityDomain = cfg.VanityDomain
 	sdkCfg.Zscaler.Client.Cloud = cfg.Cloud
+	sdkCfg.Zscaler.Client.CustomerID = strings.TrimSpace(cfg.ZPACustomerID)
+	sdkCfg.Zscaler.Client.MicrotenantID = strings.TrimSpace(cfg.ZPAMicrotenantID)
 	sdkCfg.Zscaler.Client.RequestTimeout = timeout
 	sdkCfg.Zscaler.Client.RateLimit.MaxRetries = 2
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMin = time.Second
@@ -1473,6 +1739,16 @@ func validateReaderConfig(cfg ReaderConfig) error {
 	default:
 		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
 	}
+}
+
+func validateProductConfig(cfg ReaderConfig, product resources.Product) error {
+	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI {
+		return nil
+	}
+	if product == resources.ProductZPA && strings.TrimSpace(cfg.ZPACustomerID) == "" {
+		return fmt.Errorf("%w: ZSCALERCTL_ZPA_CUSTOMER_ID is required for ZPA resources", ErrMissingCredentials)
+	}
+	return nil
 }
 
 func validateProxyConfig(proxy ProxyConfig) error {
@@ -3202,7 +3478,7 @@ func vpnCredentialsSource(credentials []locationmanagement.VPNCredentials) []any
 	return out
 }
 
-func normalizeLiveError(ctx context.Context, operation string, product resources.Product, resource string) error {
+func normalizeLiveError(ctx context.Context, operation string, product resources.Product, resource string, err error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -3210,22 +3486,41 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 		return fmt.Errorf("zscaler %s %s/%s cancelled: %w", operation, product, resource, err)
 	}
 	return liveAccessError{
-		operation: operation,
-		product:   product,
-		resource:  resource,
+		operation:  operation,
+		product:    product,
+		resource:   resource,
+		statusCode: sdkStatusCode(err),
 	}
 }
 
 type liveAccessError struct {
-	operation string
-	product   resources.Product
-	resource  string
+	operation  string
+	product    resources.Product
+	resource   string
+	statusCode int
 }
 
 func (e liveAccessError) Error() string {
+	if e.statusCode > 0 {
+		return fmt.Sprintf("%s: %s %s/%s (status %d)", ErrLiveAccessFailed, e.operation, e.product, e.resource, e.statusCode)
+	}
 	return fmt.Sprintf("%s: %s %s/%s", ErrLiveAccessFailed, e.operation, e.product, e.resource)
 }
 
 func (e liveAccessError) Unwrap() error {
 	return ErrLiveAccessFailed
+}
+
+func sdkStatusCode(err error) int {
+	var sdkErr *sdkerrorx.ErrorResponse
+	if !errors.As(err, &sdkErr) || sdkErr == nil {
+		return 0
+	}
+	if sdkErr.Response != nil && sdkErr.Response.StatusCode > 0 {
+		return sdkErr.Response.StatusCode
+	}
+	if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
+		return sdkErr.Parsed.Status
+	}
+	return 0
 }

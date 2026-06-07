@@ -24,11 +24,15 @@ func TestConfigShowDoesNotExposeEnvironmentSecrets(t *testing.T) {
 
 	const clientID = "client-id-value"
 	const clientSecret = "client-secret-value"
+	const zpaCustomerID = "zpa-customer-id-value"
+	const zpaMicrotenantID = "zpa-microtenant-id-value"
 	const proxyURL = "http://proxy-user:proxy-secret@proxy.example.invalid:8080"
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, []string{
 		config.EnvClientID + "=" + clientID,
 		config.EnvClientSecret + "=" + clientSecret,
+		config.EnvZPACustomerID + "=" + zpaCustomerID,
+		config.EnvZPAMicrotenantID + "=" + zpaMicrotenantID,
 		config.EnvProxyURL + "=" + proxyURL,
 	})
 
@@ -37,7 +41,7 @@ func TestConfigShowDoesNotExposeEnvironmentSecrets(t *testing.T) {
 		t.Fatalf("App.Run(config show) error = %v, want nil", err)
 	}
 	got := out.String()
-	for _, forbidden := range []string{clientID, clientSecret, "proxy-user", "proxy-secret", "proxy.example.invalid"} {
+	for _, forbidden := range []string{clientID, clientSecret, zpaCustomerID, zpaMicrotenantID, "proxy-user", "proxy-secret", "proxy.example.invalid"} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("App.Run(config show) output = %q, want no %q", got, forbidden)
 		}
@@ -52,11 +56,15 @@ func TestDoctorDoesNotExposeEnvironmentSecrets(t *testing.T) {
 
 	const clientID = "client-id-value"
 	const clientSecret = "client-secret-value"
+	const zpaCustomerID = "zpa-customer-id-value"
+	const zpaMicrotenantID = "zpa-microtenant-id-value"
 	const proxyURL = "http://proxy-user:proxy-secret@proxy.example.invalid:8080"
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, []string{
 		config.EnvClientID + "=" + clientID,
 		config.EnvClientSecret + "=" + clientSecret,
+		config.EnvZPACustomerID + "=" + zpaCustomerID,
+		config.EnvZPAMicrotenantID + "=" + zpaMicrotenantID,
 		config.EnvProxyURL + "=" + proxyURL,
 	})
 
@@ -64,7 +72,7 @@ func TestDoctorDoesNotExposeEnvironmentSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(doctor) error = %v, want nil", err)
 	}
-	for _, forbidden := range []string{clientID, clientSecret, "proxy-user", "proxy-secret", "proxy.example.invalid"} {
+	for _, forbidden := range []string{clientID, clientSecret, zpaCustomerID, zpaMicrotenantID, "proxy-user", "proxy-secret", "proxy.example.invalid"} {
 		if strings.Contains(out.String(), forbidden) {
 			t.Errorf("App.Run(doctor) output = %q, want no %q", out.String(), forbidden)
 		}
@@ -125,17 +133,21 @@ func TestAuthStatusDoesNotExposeEnvironmentSecrets(t *testing.T) {
 
 	const clientID = "client-id-value"
 	const clientSecret = "client-secret-value"
+	const zpaCustomerID = "zpa-customer-id-value"
+	const zpaMicrotenantID = "zpa-microtenant-id-value"
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, []string{
 		config.EnvClientID + "=" + clientID,
 		config.EnvClientSecret + "=" + clientSecret,
+		config.EnvZPACustomerID + "=" + zpaCustomerID,
+		config.EnvZPAMicrotenantID + "=" + zpaMicrotenantID,
 	})
 
 	err := app.Run(context.Background(), []string{"auth", "status"})
 	if err != nil {
 		t.Fatalf("App.Run(auth status) error = %v, want nil", err)
 	}
-	for _, forbidden := range []string{clientID, clientSecret} {
+	for _, forbidden := range []string{clientID, clientSecret, zpaCustomerID, zpaMicrotenantID} {
 		if strings.Contains(out.String(), forbidden) {
 			t.Errorf("App.Run(auth status) output = %q, want no %q", out.String(), forbidden)
 		}
@@ -1841,22 +1853,6 @@ func TestDumpRejectsNilReaderSession(t *testing.T) {
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(dump with nil session) stderr = %q, want empty", errOut.String())
-	}
-}
-
-func TestDumpWithUnsupportedProductDoesNotOpenReader(t *testing.T) {
-	t.Parallel()
-
-	var out, errOut bytes.Buffer
-	outDir := filepath.Join(t.TempDir(), "dump")
-	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
-
-	// zpa has no enabled resources on this build, so it is not a known product.
-	// Selecting it must fail fast WITHOUT opening the reader (failingResourceReader
-	// would error if it were ever opened).
-	err := app.Run(context.Background(), []string{"dump", "--products", "zpa", "--out", outDir})
-	if err == nil || !strings.Contains(err.Error(), "unsupported product") {
-		t.Fatalf("App.Run(dump --products zpa --out) error = %v, want unsupported product error", err)
 	}
 }
 

@@ -60,7 +60,12 @@ export ZSCALERCTL_CLIENT_ID=...
 export ZSCALERCTL_CLIENT_SECRET_FILE=/path/to/owner-only/secret-file
 export ZSCALERCTL_VANITY_DOMAIN=...
 export ZSCALERCTL_CLOUD=PRODUCTION # optional
+export ZSCALERCTL_ZPA_CUSTOMER_ID=... # required for ZPA resources
+export ZSCALERCTL_ZPA_MICROTENANT_ID=... # optional
 ```
+
+`ZSCALERCTL_ZPA_CUSTOMER_ID` is not needed for ZIA reads, but ZPA SDK
+endpoints are customer-scoped and fail closed without it.
 
 ZIA legacy credentials are supported for read-only ZIA resources through
 explicit `ZSCALERCTL_ZIA_*` variables. Raw SDK names such as `ZIA_USERNAME` are

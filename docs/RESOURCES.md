@@ -1148,6 +1148,297 @@ zscalerctl zia url-deny-list show
 This singleton settings page renders the global URL deny list only in
 `standard`. The allow-list field is explicitly modeled and dropped.
 
+## ZPA Server Groups
+
+Commands:
+
+```sh
+zscalerctl zpa server-groups list
+zscalerctl zpa server-groups get <id>
+zscalerctl dump --products zpa --resources zpa/server-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `ipAnchored`, `creationTime`, `modifiedTime`, `readOnly`, `restrictionType`, `zscalerManaged` | Operational metadata | `standard`, `share`, `paranoid` | Server group identity, state, lifecycle, and operational flags. |
+| `name`, `microtenantName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `dynamicDiscovery` | Sensitive identifier | `standard` | Local-only dynamic discovery setting. |
+| `configSpace`, `microtenantId`, `appConnectorGroups`, `servers`, `applications`, `extranetDTO` | Secret or unmodeled nested structure | none | Dropped until the nested ZPA reference shapes are separately reviewed. |
+
+## ZPA Segment Groups
+
+Commands:
+
+```sh
+zscalerctl zpa segment-groups list
+zscalerctl zpa segment-groups get <id>
+zscalerctl dump --products zpa --resources zpa/segment-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedTime`, `policyMigrated`, `tcpKeepAliveEnabled` | Operational metadata | `standard`, `share`, `paranoid` | Segment group identity, state, lifecycle, and operational flags. |
+| `name`, `microtenantName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `configSpace`, `microtenantId`, `addedApps`, `deletedApps`, `applications`, `applicationNames` | Secret or unmodeled nested structure | none | Dropped until application references are separately reviewed. |
+
+## ZPA App Connector Groups
+
+Commands:
+
+```sh
+zscalerctl zpa app-connector-groups list
+zscalerctl zpa app-connector-groups get <id>
+zscalerctl dump --products zpa --resources zpa/app-connector-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedTime`, `overrideVersionProfile`, `upgradeDay`, `upgradeTimeInSecs`, `versionProfileId`, `versionProfileName`, `versionProfileVisibilityScope`, `readOnly`, `praEnabled`, `wafDisabled`, `lssAppConnectorGroup`, `tcpConnectTimeout`, `useInDrMode`, `zscalerManaged` | Operational metadata | `standard`, `share`, `paranoid` | Connector group identity, lifecycle, version, and operational flags. |
+| `name`, `location`, `dnsQueryType`, `microtenantName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `latitude`, `longitude`, `cityCountry`, `countryCode`, `geolocationId`, `siteId`, `microtenantId` | Sensitive identifier | `standard` | Local-only placement and tenant identifiers. |
+| `appConnectorGroupCommonDTO`, `connectors`, `platform`, `serverTypes`, `assistantGroups`, `versionProfile` | Secret or unmodeled nested structure | none | Dropped until connector and platform sub-shapes are separately reviewed. |
+
+## ZPA App Servers
+
+Commands:
+
+```sh
+zscalerctl zpa app-servers list
+zscalerctl zpa app-servers get <id>
+zscalerctl dump --products zpa --resources zpa/app-servers --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Application server identity, state, and lifecycle metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `address` | Sensitive identifier | `standard` | Local-only server address. |
+| `appServerGroupIds`, `configSpace`, `microtenantId` | Secret or unmodeled nested structure | none | Dropped until server group references and tenant scope are separately reviewed. |
+
+## ZPA Machine Groups
+
+Commands:
+
+```sh
+zscalerctl zpa machine-groups list
+zscalerctl zpa machine-groups get <id>
+zscalerctl dump --products zpa --resources zpa/machine-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `creationTime`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Machine group identity and lifecycle metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `microtenantId`, `machines` | Secret or unmodeled nested structure | none | Dropped until machine membership and tenant scope are separately reviewed. |
+
+## ZPA Trusted Networks
+
+Commands:
+
+```sh
+zscalerctl zpa trusted-networks list
+zscalerctl zpa trusted-networks get <id>
+zscalerctl dump --products zpa --resources zpa/trusted-networks --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `creationTime`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Trusted network identity and lifecycle metadata. |
+| `name`, `domain` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `masterCustomerId`, `networkId`, `zscalerCloud` | Secret or unmodeled nested structure | none | Dropped until tenant and cloud identifiers are separately reviewed. |
+
+## ZPA Service Edge Groups
+
+Commands:
+
+```sh
+zscalerctl zpa service-edge-groups list
+zscalerctl zpa service-edge-groups get <id>
+zscalerctl dump --products zpa --resources zpa/service-edge-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `isPublic`, `objectType`, `overrideVersionProfile`, `readOnly`, `restrictedEntity`, `restrictionType`, `graceDistanceEnabled`, `exclusiveForBusinessContinuity`, `upgradeDay`, `upgradeTimeInSecs`, `useInDrMode` | Operational metadata | `standard`, `share`, `paranoid` | Service edge group identity, state, lifecycle, and operational flags. |
+| `name`, `microtenantName`, `scopeName`, `siteName`, `versionProfileName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cityCountry`, `countryCode`, `latitude`, `location`, `longitude` | Sensitive identifier | `standard` | Local-only placement metadata. |
+| `altCloud`, `city`, `enrollmentCertId`, `geoLocationId`, `graceDistanceValue`, `graceDistanceValueUnit`, `microtenantId`, `nameWithoutTrim`, `serviceEdges`, `siteId`, `trustedNetworks`, `versionProfileId`, `versionProfileVisibilityScope`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until service edge, trusted network, certificate, and tenant sub-shapes are separately reviewed. |
+
+## ZPA Service Edges
+
+Commands:
+
+```sh
+zscalerctl zpa service-edges list
+zscalerctl zpa service-edges get <id>
+zscalerctl dump --products zpa --resources zpa/service-edges --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `applicationStartTime`, `controlChannelStatus`, `creationTime`, `expectedUpgradeTime`, `lastBrokerConnectTime`, `lastBrokerConnectTimeDuration`, `lastBrokerDisconnectTime`, `lastBrokerDisconnectTimeDuration`, `lastUpgradeTime`, `modifiedBy`, `modifiedTime`, `publishIpv6`, `runtimeOS`, `upgradeStatus` | Operational metadata | `standard`, `share`, `paranoid` | Service edge identity, state, lifecycle, connection, runtime, and upgrade metadata. |
+| `name`, `ctrlBrokerName`, `currentVersion`, `expectedVersion`, `microtenantName`, `platform`, `platformDetail`, `previousVersion`, `sargeVersion`, `serviceEdgeGroupName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `ipAcl`, `latitude`, `listenIps`, `location`, `longitude`, `privateIp`, `publicIp`, `publishIps` | Sensitive identifier | `standard` | Local-only placement and network metadata. |
+| `enrollmentCert`, `fingerprint`, `issuedCertId`, `microtenantId`, `privateBrokerVersion`, `provisioningKeyId`, `provisioningKeyName`, `serviceEdgeGroupId`, `upgradeAttempt` | Secret or unmodeled nested structure | none | Dropped until broker, certificate, provisioning, and tenant sub-shapes are separately reviewed. |
+
+## ZPA Cloud Connector Groups
+
+Commands:
+
+```sh
+zscalerctl zpa cloud-connector-groups list
+zscalerctl zpa cloud-connector-groups get <id>
+zscalerctl dump --products zpa --resources zpa/cloud-connector-groups --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `znfGroupType` | Operational metadata | `standard`, `share`, `paranoid` | Cloud connector group identity, state, lifecycle, and operational type metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cloudConnectors`, `geoLocationId`, `ziaCloud`, `ziaOrgId` | Secret or unmodeled nested structure | none | Dropped until cloud connector, geolocation, cloud, and tenant sub-shapes are separately reviewed. |
+
+## ZPA Cloud Connectors
+
+Commands:
+
+```sh
+zscalerctl zpa cloud-connectors list
+zscalerctl dump --products zpa --resources zpa/cloud-connectors --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Cloud connector identity, state, and lifecycle metadata. |
+| `name`, `edgeConnectorGroupName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `ipAcl` | Sensitive identifier | `standard` | Local-only cloud connector ACL metadata. |
+| `edgeConnectorGroupId`, `enrollmentCert`, `fingerprint`, `issuedCertId` | Secret or unmodeled nested structure | none | Dropped until group, certificate, and fingerprint sub-shapes are separately reviewed. |
+
+## ZPA Posture Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa posture-profiles list
+zscalerctl zpa posture-profiles get <id>
+zscalerctl dump --products zpa --resources zpa/posture-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `applyToMachineTunnelEnabled`, `creationTime`, `crlCheckEnabled`, `modifiedBy`, `modifiedTime`, `postureType` | Operational metadata | `standard`, `share`, `paranoid` | Posture profile identity, lifecycle, posture type, and certificate-check flags. |
+| `name`, `platform` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `domain` | Sensitive identifier | `standard` | Local-only posture domain metadata. |
+| `masterCustomerId`, `nonExportablePrivateKeyEnabled`, `postureUdid`, `rootCert`, `zscalerCloud`, `zscalerCustomerId` | Secret or unmodeled nested structure | none | Dropped until certificate, tenant, cloud, and device-posture identifiers are separately reviewed. |
+
+## ZPA Cbi Zpa Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa cbi-zpa-profiles list
+zscalerctl zpa cbi-zpa-profiles get <id>
+zscalerctl dump --products zpa --resources zpa/cbi-zpa-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | CBI ZPA profile identity, state, and lifecycle metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `cbiProfileId`, `cbiUrl` | Sensitive identifier | `standard` | Local-only CBI profile and tenant URL metadata. |
+| `cbiTenantId` | Secret or unmodeled nested structure | none | Dropped until tenant identifiers are separately reviewed. |
+
+## ZPA App Connectors
+
+Commands:
+
+```sh
+zscalerctl zpa app-connectors list
+zscalerctl zpa app-connectors get <id>
+zscalerctl dump --products zpa --resources zpa/app-connectors --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `applicationStartTime`, `controlChannelStatus`, `creationTime`, `expectedUpgradeTime`, `lastBrokerConnectTime`, `lastBrokerConnectTimeDuration`, `lastBrokerDisconnectTime`, `lastBrokerDisconnectTimeDuration`, `lastUpgradeTime`, `modifiedBy`, `modifiedTime`, `readOnly`, `restrictionType`, `runtimeOS`, `upgradeStatus` | Operational metadata | `standard`, `share`, `paranoid` | Connector identity, lifecycle, control-channel, runtime, and upgrade metadata. |
+| `name`, `appConnectorGroupName`, `ctrlBrokerName`, `currentVersion`, `expectedVersion`, `microtenantName`, `platform`, `platformDetail`, `previousVersion`, `sargeVersion` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `ipAcl`, `latitude`, `location`, `longitude`, `privateIp`, `publicIp` | Sensitive identifier | `standard` | Local-only connector placement and network metadata. |
+| `appConnectorGroupId`, `assistantVersion`, `enrollmentCert`, `fingerprint`, `issuedCertId`, `microtenantId`, `provisioningKeyId`, `provisioningKeyName`, `upgradeAttempt`, `zpnSubModuleUpgradeList`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until connector-group IDs, assistant-version details, certificate, provisioning, tenant, upgrade-attempt, module, and management-scope fields are separately reviewed. |
+
+## ZPA C2c IP Ranges
+
+Commands:
+
+```sh
+zscalerctl zpa c2c-ip-ranges list
+zscalerctl zpa c2c-ip-ranges get <id>
+zscalerctl dump --products zpa --resources zpa/c2c-ip-ranges --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `availableIps`, `totalIps`, `usedIps`, `isDeleted`, `sccmFlag` | Operational metadata | `standard`, `share`, `paranoid` | C2C IP range identity, lifecycle, state, and utilization metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `countryCode`, `ipRangeBegin`, `ipRangeEnd`, `latitudeInDb`, `location`, `locationHint`, `longitudeInDb`, `subnetCidr` | Sensitive identifier | `standard` | Local-only network range and placement metadata. |
+| `customerId` | Secret or unmodeled nested structure | none | Dropped until tenant identifiers are separately reviewed. |
+
+## ZPA Config Overrides
+
+Commands:
+
+```sh
+zscalerctl zpa config-overrides list
+zscalerctl dump --products zpa --resources zpa/config-overrides --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `targetType` | Operational metadata | `standard`, `share`, `paranoid` | Override target type. |
+| `brokerName`, `customerName`, `targetName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
+| `configKey`, `configValue`, `configValueInt`, `customerId`, `targetGid` | Secret or unmodeled nested structure | none | Dropped because override keys, values, and tenant/target identifiers require resource-specific review before exposure. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed

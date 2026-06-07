@@ -15,12 +15,16 @@ func TestLoadEnvSafeConfigDoesNotExposeSecrets(t *testing.T) {
 
 	const clientID = "client-id-value"
 	const clientSecret = "client-secret-value"
+	const zpaCustomerID = "zpa-customer-id-value"
+	const zpaMicrotenantID = "zpa-microtenant-id-value"
 	cfg, err := config.LoadEnv([]string{
 		config.EnvProfile + "=prod",
 		config.EnvVanityDomain + "=acme",
 		config.EnvCloud + "=zscalerthree",
 		config.EnvClientID + "=" + clientID,
 		config.EnvClientSecret + "=" + clientSecret,
+		config.EnvZPACustomerID + "=" + zpaCustomerID,
+		config.EnvZPAMicrotenantID + "=" + zpaMicrotenantID,
 		config.EnvProxyURL + "=http://proxy-user:proxy-secret@proxy.example.invalid:8080",
 		config.EnvNoCache + "=true",
 	})
@@ -33,7 +37,7 @@ func TestLoadEnvSafeConfigDoesNotExposeSecrets(t *testing.T) {
 		t.Fatalf("json.Marshal(Config.Safe()) error = %v, want nil", err)
 	}
 	got := string(body)
-	for _, forbidden := range []string{clientID, clientSecret, "acme", "proxy-user", "proxy-secret", "proxy.example.invalid"} {
+	for _, forbidden := range []string{clientID, clientSecret, zpaCustomerID, zpaMicrotenantID, "acme", "proxy-user", "proxy-secret", "proxy.example.invalid"} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("json.Marshal(Config.Safe()) = %s, want no %q", got, forbidden)
 		}
@@ -43,6 +47,9 @@ func TestLoadEnvSafeConfigDoesNotExposeSecrets(t *testing.T) {
 	}
 	if !cfg.Safe().VanityDomainSet {
 		t.Errorf("Config.Safe().VanityDomainSet = false, want true")
+	}
+	if !cfg.Safe().ZPA.CustomerIDSet || !cfg.Safe().ZPA.MicrotenantIDSet {
+		t.Errorf("Config.Safe().ZPA = %+v, want customer and microtenant marked set", cfg.Safe().ZPA)
 	}
 	if !cfg.Safe().Proxy.URLSet || cfg.Safe().Proxy.FromEnvironment {
 		t.Errorf("Config.Safe().Proxy = %+v, want URL set without environment proxy", cfg.Safe().Proxy)
