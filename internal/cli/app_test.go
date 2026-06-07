@@ -945,6 +945,42 @@ func TestResourceShowProjectsAndRedactsFixture(t *testing.T) {
 	}
 }
 
+func TestResourceShowTableRendersVerticalKeyValues(t *testing.T) {
+	t.Parallel()
+
+	reader := fakeResourceReader{
+		show: resources.NewSourceRecord(map[string]any{
+			"apiSessionTimeout": 30,
+			"authBypassUrls":    []any{"admin.internal.example"},
+			"ecsObject": map[string]any{
+				"token": "raw-token-value",
+			},
+			"newSdkField": "surprise",
+		}),
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"zia", "advanced-settings", "show"})
+	if err != nil {
+		t.Fatalf("App.Run(zia advanced-settings show) error = %v, want nil", err)
+	}
+	got := out.String()
+	for _, want := range []string{"apiSessionTimeout", "30", "authBypassUrls", "admin.internal.example"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("App.Run(zia advanced-settings show) stdout = %q, want %q", got, want)
+		}
+	}
+	for _, forbidden := range []string{"\t", "ecsObject", "newSdkField"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("App.Run(zia advanced-settings show) stdout = %q, want no %q", got, forbidden)
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(zia advanced-settings show) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestProductCommandsRejectUnsupportedOperationBeforeReader(t *testing.T) {
 	t.Parallel()
 

@@ -493,10 +493,10 @@ func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions
 }
 
 func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOptions, productName string, args []string) error {
-	if len(args) < 2 {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> list|get|show", productName)}
-	}
 	product := resources.Product(productName)
+	if len(args) < 2 {
+		return UsageError{Message: productCommandUsage(product)}
+	}
 	resource := args[0]
 	op := args[1]
 	if op == "list" && len(args) != 2 {
@@ -509,7 +509,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> show", productName)}
 	}
 	if op != "list" && op != "get" && op != "show" {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> list|get|show", productName)}
+		return UsageError{Message: productCommandUsage(product)}
 	}
 	spec, ok := a.resourceCatalog().FindSpec(product, resource)
 	if !ok {
@@ -767,6 +767,9 @@ func (a *App) writeProjectedRecord(
 	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, record)
 	case output.FormatTable:
+		if operation == "show" {
+			return a.renderer(cfg, opts).WriteText(a.out, renderRecordKeyValues(spec, cfg.Defaults.Redaction, record, a.style(opts)))
+		}
 		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource %s", opts.format, operation)
@@ -803,7 +806,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  completion bash|zsh|fish")
 	fmt.Fprintln(w, "  version")
 	for _, product := range knownProducts() {
-		fmt.Fprintf(w, "  %s <resource> list|get|show\n", product)
+		fmt.Fprintf(w, "  %s <resource> %s\n", product, strings.Join(productReadOperationNames(product), "|"))
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "global flags:")
@@ -867,6 +870,25 @@ func renderRecordsTable(
 		body.WriteByte('\n')
 	}
 	return output.NewSafeText(body.String())
+}
+
+func renderRecordKeyValues(
+	spec resources.ResourceSpec,
+	mode redact.Mode,
+	record resources.ProjectedRecord,
+	style output.Style,
+) output.SafeText {
+	fields := spec.FieldOrder(mode)
+	values := record.Fields()
+	rows := make([]output.KV, 0, len(fields))
+	for _, field := range fields {
+		rows = append(rows, output.KV{
+			Key:   field,
+			Kind:  field,
+			Value: formatTableValue(values[field]),
+		})
+	}
+	return output.RenderKeyValues(rows, style)
 }
 
 func formatTableValue(value any) string {
@@ -945,6 +967,36 @@ func productNames(products []resources.Product) []string {
 	names := make([]string, len(products))
 	for i, product := range products {
 		names[i] = string(product)
+	}
+	return names
+}
+
+func productCommandUsage(product resources.Product) string {
+	return fmt.Sprintf(
+		"usage: zscalerctl %s <resource> %s",
+		product,
+		strings.Join(productReadOperationNames(product), "|"),
+	)
+}
+
+func productReadOperationNames(product resources.Product) []string {
+	seen := make(map[string]bool)
+	for _, spec := range resources.Catalog() {
+		if spec.Product != product {
+			continue
+		}
+		for _, op := range spec.Operations {
+			if op.Capability == resources.CapabilityRead {
+				seen[op.Name] = true
+			}
+		}
+	}
+
+	var names []string
+	for _, name := range []string{"list", "get", "show"} {
+		if seen[name] {
+			names = append(names, name)
+		}
 	}
 	return names
 }
