@@ -28,7 +28,7 @@ cat >"$fake_bin" <<'SH'
 set -euo pipefail
 
 mode="${ZSCALERCTL_FAKE_MODE:-good}"
-resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/private-cloud-groups zpa/config-overrides zpa/private-cloud-controllers)
+resources=(zia/advanced-settings zia/atp-malware-policy zia/gre-tunnels zia/location-groups zia/locations zia/mobile-threat-settings zia/org-information zia/rule-labels zia/static-ips zia/url-filtering-rules zpa/server-groups zpa/app-connectors zpa/service-edge-groups zpa/service-edges zpa/cloud-connector-groups zpa/cloud-connectors zpa/posture-profiles zpa/cbi-zpa-profiles zpa/c2c-ip-ranges zpa/config-overrides)
 
 schema_fields() {
   case "$1" in
@@ -89,14 +89,8 @@ schema_fields() {
     c2c-ip-ranges)
       printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"subnetCidr","allowed_modes":["standard"]},{"name":"customerId","allowed_modes":[]}]'
       ;;
-    private-cloud-groups)
-      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"microtenantId","allowed_modes":[]}]'
-      ;;
     config-overrides)
       printf '[{"name":"brokerName","allowed_modes":["standard"]},{"name":"customerName","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"targetName","allowed_modes":["standard"]},{"name":"targetType","allowed_modes":["standard"]},{"name":"configValue","allowed_modes":[]}]'
-      ;;
-    private-cloud-controllers)
-      printf '[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"enabled","allowed_modes":["standard"]},{"name":"location","allowed_modes":["standard"]},{"name":"enrollmentCert","allowed_modes":[]}]'
       ;;
     *)
       echo "unexpected resource: $1" >&2
@@ -229,14 +223,8 @@ JSON
     *:zpa:c2c-ip-ranges)
       printf '[{"id":"c2c-ip-range-1","name":"C2C IP range","description":"","enabled":true,"subnetCidr":"198.51.100.0/24"}]\n'
       ;;
-    *:zpa:private-cloud-groups)
-      printf '[{"id":"private-cloud-group-1","name":"Private cloud group","description":"","enabled":true,"location":"San Jose, CA"}]\n'
-      ;;
     *:zpa:config-overrides)
       printf '[{"brokerName":"Broker","customerName":"Customer","description":"","targetName":"Target","targetType":"BROKER"}]\n'
-      ;;
-    *:zpa:private-cloud-controllers)
-      printf '[{"id":"private-cloud-controller-1","name":"Private cloud controller","description":"","enabled":true,"location":"San Jose, CA"}]\n'
       ;;
     *)
       echo "unexpected resource: $resource" >&2

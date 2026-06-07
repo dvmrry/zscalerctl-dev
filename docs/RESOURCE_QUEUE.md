@@ -383,6 +383,8 @@ endpoint behavior and auth-mode support first.
 | `zia/dlp-web-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 | `zia/traffic-capture-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 | `zia/extranets` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zpa/private-cloud-groups` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 403). |
+| `zpa/private-cloud-controllers` | List request failure under production OneAPI/ZPA credentials (`live_access_failed`, status 401). |
 
 ## Return-To-Work Checklist
 

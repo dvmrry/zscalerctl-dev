@@ -1421,26 +1421,6 @@ Fields:
 | `countryCode`, `ipRangeBegin`, `ipRangeEnd`, `latitudeInDb`, `location`, `locationHint`, `longitudeInDb`, `subnetCidr` | Sensitive identifier | `standard` | Local-only network range and placement metadata. |
 | `customerId` | Secret or unmodeled nested structure | none | Dropped until tenant identifiers are separately reviewed. |
 
-## ZPA Private Cloud Groups
-
-Commands:
-
-```sh
-zscalerctl zpa private-cloud-groups list
-zscalerctl zpa private-cloud-groups get <id>
-zscalerctl dump --products zpa --resources zpa/private-cloud-groups --out ./scratch-live-smoke
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `isPublic`, `overrideVersionProfile`, `readOnly`, `restrictionType`, `upgradeDay`, `upgradeTimeInSecs` | Operational metadata | `standard`, `share`, `paranoid` | Private cloud group identity, lifecycle, state, visibility, and upgrade metadata. |
-| `name`, `microtenantName`, `siteName`, `versionProfileName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
-| `city`, `cityCountry`, `countryCode`, `latitude`, `location`, `longitude` | Sensitive identifier | `standard` | Local-only placement metadata. |
-| `geoLocationId`, `microtenantId`, `siteId`, `versionProfileId`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until placement, tenant, site, version-profile, and management-scope identifiers are separately reviewed. |
-
 ## ZPA Config Overrides
 
 Commands:
@@ -1458,26 +1438,6 @@ Fields:
 | `brokerName`, `customerName`, `targetName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
 | `configKey`, `configValue`, `configValueInt`, `customerId`, `targetGid` | Secret or unmodeled nested structure | none | Dropped because override keys, values, and tenant/target identifiers require resource-specific review before exposure. |
-
-## ZPA Private Cloud Controllers
-
-Commands:
-
-```sh
-zscalerctl zpa private-cloud-controllers list
-zscalerctl zpa private-cloud-controllers get <id>
-zscalerctl dump --products zpa --resources zpa/private-cloud-controllers --out ./scratch-live-smoke
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `enabled`, `applicationStartTime`, `controlChannelStatus`, `creationTime`, `expectedUpgradeTime`, `lastBrokerConnectTime`, `lastBrokerConnectTimeDuration`, `lastBrokerDisconnectTime`, `lastBrokerDisconnectTimeDuration`, `lastOSUpgradeTime`, `lastSargeUpgradeTime`, `lastUpgradeTime`, `masterLastSyncTime`, `modifiedBy`, `modifiedTime`, `osUpgradeEnabled`, `osUpgradeStatus`, `readOnly`, `restrictionType`, `runtimeOS`, `sargeUpgradeStatus`, `shardLastSyncTime`, `upgradeStatus`, `userdbLastSyncTime` | Operational metadata | `standard`, `share`, `paranoid` | Controller identity, state, sync, runtime, connection, and upgrade metadata. |
-| `name`, `ctrlBrokerName`, `currentVersion`, `expectedSargeVersion`, `expectedVersion`, `microtenantName`, `platform`, `platformDetail`, `platformVersion`, `previousVersion`, `privateCloudControllerGroupName`, `sargeVersion` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `description` | Free text | `standard` | Standard-only operator context; scanned with free-text and rendered-string backstops. |
-| `ipAcl`, `latitude`, `listenIps`, `location`, `longitude`, `privateIp`, `publicIp`, `publishIps`, `siteSpDnsName` | Sensitive identifier | `standard` | Local-only controller placement and network metadata. |
-| `enrollmentCert`, `fingerprint`, `issuedCertId`, `microtenantId`, `privateCloudControllerGroupId`, `privateCloudControllerVersion`, `provisioningKeyId`, `provisioningKeyName`, `sargeUpgradeAttempt`, `upgradeAttempt`, `zpnSubModuleUpgradeList`, `zscalerManaged` | Secret or unmodeled nested structure | none | Dropped until certificate, provisioning, tenant, upgrade-attempt, module, and management-scope fields are separately reviewed. |
 
 ## Deferred Resource Follow-Ups
 
