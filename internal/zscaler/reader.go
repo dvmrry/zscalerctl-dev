@@ -71,7 +71,9 @@ import (
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
+	userdepartments "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/departments"
 	usergroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/groups"
+	ziausers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/users"
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
@@ -156,7 +158,10 @@ const (
 	resourceDNSGateways      = "dns-gateways"
 	resourceNATRules         = "nat-control-rules"
 	resourceGroups           = "groups"
+	resourceDepartments      = "departments"
+	resourceUsers            = "users"
 	resourceDeviceGroups     = "device-groups"
+	resourceDevices          = "devices"
 	resourceWorkloadGroups   = "workload-groups"
 	resourceAlertSubs        = "alert-subscriptions"
 	resourceCloudAppInsts    = "cloud-app-instances"
@@ -778,6 +783,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			}),
 			groupSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceDepartments}: newListGetHandler(
+			resourceDepartments,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]userdepartments.Department, error) {
+				return userdepartments.GetAll(ctx, service, nil)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*userdepartments.Department, error) {
+				return userdepartments.GetDepartments(ctx, service, id)
+			}),
+			departmentSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceUsers}: newListGetHandler(
+			resourceUsers,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ziausers.Users, error) {
+				return ziausers.GetAllUsers(ctx, service, nil)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ziausers.Users, error) {
+				return ziausers.Get(ctx, service, id)
+			}),
+			userSourceRecord,
+		),
 		{product: resources.ProductZIA, name: resourceDeviceGroups}: newListGetHandler(
 			resourceDeviceGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
@@ -791,6 +816,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				func(item devicegroups.DeviceGroups) int { return item.ID },
 			),
 			deviceGroupSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDevices}: newListGetHandler(
+			resourceDevices,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.Devices, error) {
+				return devicegroups.GetAllDevices(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*devicegroups.Devices, error) {
+				return devicegroups.GetDevicesByID(ctx, service, id)
+			}),
+			deviceSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceWorkloadGroups}: newListGetHandler(
 			resourceWorkloadGroups,
@@ -2903,6 +2938,37 @@ func groupSourceRecord(group usergroups.Groups) resources.SourceRecord {
 	return resources.NewSourceRecord(fields)
 }
 
+func departmentSourceRecord(department userdepartments.Department) resources.SourceRecord {
+	fields := map[string]any{
+		"id":       department.ID,
+		"name":     department.Name,
+		"idpId":    department.IdpID,
+		"comments": department.Comments,
+		"deleted":  department.Deleted,
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func userSourceRecord(user ziausers.Users) resources.SourceRecord {
+	fields := map[string]any{
+		"id":            user.ID,
+		"name":          user.Name,
+		"email":         user.Email,
+		"comments":      user.Comments,
+		"tempAuthEmail": user.TempAuthEmail,
+		"authMethods":   user.AuthMethods,
+		"password":      user.Password,
+		"adminUser":     user.AdminUser,
+		"type":          user.Type,
+		"deleted":       user.Deleted,
+	}
+	addUserGroups(fields, "groups", user.Groups)
+	if user.Department != nil {
+		fields["department"] = userDepartmentSource(*user.Department)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
 func deviceGroupSourceRecord(group devicegroups.DeviceGroups) resources.SourceRecord {
 	fields := map[string]any{
 		"id":          group.ID,
@@ -2913,6 +2979,22 @@ func deviceGroupSourceRecord(group devicegroups.DeviceGroups) resources.SourceRe
 		"predefined":  group.Predefined,
 		"deviceNames": group.DeviceNames,
 		"deviceCount": group.DeviceCount,
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func deviceSourceRecord(device devicegroups.Devices) resources.SourceRecord {
+	fields := map[string]any{
+		"id":              device.ID,
+		"name":            device.Name,
+		"deviceGroupType": device.DeviceGroupType,
+		"deviceModel":     device.DeviceModel,
+		"osType":          device.OSType,
+		"osVersion":       device.OSVersion,
+		"description":     device.Description,
+		"ownerUserId":     device.OwnerUserId,
+		"ownerName":       device.OwnerName,
+		"hostName":        device.HostName,
 	}
 	return resources.NewSourceRecord(fields)
 }
@@ -3881,6 +3963,31 @@ func idNameExternalIDSource(value *ziacommon.IDNameExternalID) map[string]any {
 		fields["externalId"] = value.ExternalID
 	}
 	return fields
+}
+
+func userGroupSource(value ziacommon.UserGroups) map[string]any {
+	return map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
+}
+
+func addUserGroups(fields map[string]any, name string, values []ziacommon.UserGroups) {
+	if len(values) == 0 {
+		return
+	}
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, userGroupSource(value))
+	}
+	fields[name] = out
+}
+
+func userDepartmentSource(value ziacommon.UserDepartment) map[string]any {
+	return map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
 }
 
 func cloudInstanceIdentifierSource(value cloudappinstances.InstanceIdentifiers) map[string]any {

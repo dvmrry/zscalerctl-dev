@@ -60,7 +60,9 @@ import (
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
+	userdepartments "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/departments"
 	usergroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/groups"
+	ziausers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/users"
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
@@ -1378,6 +1380,71 @@ func reviewedSDKShapes() []sdkShapeReview {
 			},
 		},
 		{
+			name:         "userdepartments.Department",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDepartments,
+			typ:          reflect.TypeOf(userdepartments.Department{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"idpId",
+				"comments",
+				"deleted",
+			},
+		},
+		{
+			name:         "ziausers.Users",
+			resource:     resources.ProductZIA,
+			resourceName: resourceUsers,
+			typ:          reflect.TypeOf(ziausers.Users{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"email",
+				"groups",
+				"department",
+				"comments",
+				"tempAuthEmail",
+				"authMethods",
+				"password",
+				"adminUser",
+				"type",
+				"deleted",
+			},
+		},
+		{
+			name:         "ziacommon.UserGroups (users)",
+			resource:     resources.ProductZIA,
+			resourceName: resourceUsers,
+			typ:          reflect.TypeOf(ziacommon.UserGroups{}),
+			catalogFields: []string{
+				"id",
+				"name",
+			},
+			ignoredFields: ignoredBecause(
+				"user group references under zia/users render id/name only; query zia/groups for group metadata",
+				"idp_id",
+				"comments",
+				"isSystemDefined",
+			),
+		},
+		{
+			name:         "ziacommon.UserDepartment (users)",
+			resource:     resources.ProductZIA,
+			resourceName: resourceUsers,
+			typ:          reflect.TypeOf(ziacommon.UserDepartment{}),
+			catalogFields: []string{
+				"id",
+				"name",
+			},
+			ignoredFields: ignoredBecause(
+				"user department reference under zia/users renders id/name only; query zia/departments for department metadata",
+				"idp_id",
+				"comments",
+				"deleted",
+			),
+		},
+		{
 			name:         "devicegroups.DeviceGroups",
 			resource:     resources.ProductZIA,
 			resourceName: resourceDeviceGroups,
@@ -1391,6 +1458,24 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"predefined",
 				"deviceNames",
 				"deviceCount",
+			},
+		},
+		{
+			name:         "devicegroups.Devices",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDevices,
+			typ:          reflect.TypeOf(devicegroups.Devices{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"deviceGroupType",
+				"deviceModel",
+				"osType",
+				"osVersion",
+				"description",
+				"ownerUserId",
+				"ownerName",
+				"hostName",
 			},
 		},
 		{

@@ -4,8 +4,6 @@
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
 
-zia/network-service-groups
-zia/network-applications
-zia/email-profiles
-zia/dlp-incident-receiver-servers
-zia/dlp-notification-templates
+zia/departments
+zia/users
+zia/devices

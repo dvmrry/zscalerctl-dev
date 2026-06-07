@@ -48,7 +48,9 @@ import (
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
+	userdepartments "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/departments"
 	usergroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/groups"
+	ziausers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/users"
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
@@ -1955,6 +1957,145 @@ func TestZIADeferredOrdinaryBatchProjectionBoundaries(t *testing.T) {
 				t.Fatalf("share projection for %s included attachContent", tc.name)
 			}
 		})
+	}
+}
+
+func TestZIAIdentityDeviceProjectionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	const (
+		freeTextCanary = "zia-identity-device-psk-canary"
+		longToken      = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+
+	departmentSpec := mustFindSpec(t, resources.ProductZIA, resourceDepartments)
+	departmentRecords := []resources.SourceRecord{departmentSourceRecord(userdepartments.Department{
+		ID:       20,
+		Name:     "Engineering",
+		IdpID:    7,
+		Comments: "dept psk=" + freeTextCanary + " " + longToken,
+		Deleted:  false,
+	})}
+	departments, departmentReports, err := resources.ProjectRecordsAndVerify(departmentSpec, redact.ModeStandard, departmentRecords)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(zia/departments standard) error = %v, want nil", err)
+	}
+	departmentGot := departments.Records()[0].Fields()
+	if departmentGot["name"] != "Engineering" || departmentGot["idpId"] != 7 || departmentGot["deleted"] != false {
+		t.Errorf("ProjectRecordsAndVerify(zia/departments standard) = %#v, want department fields visible", departmentGot)
+	}
+	if strings.Contains(fmt.Sprint(departmentGot), freeTextCanary) {
+		t.Errorf("ProjectRecordsAndVerify(zia/departments standard) = %#v, want comment canary redacted", departmentGot)
+	}
+	assertReportContains(t, departmentReports[0].RedactedFields, "comments")
+
+	userSpec := mustFindSpec(t, resources.ProductZIA, resourceUsers)
+	userRecords := []resources.SourceRecord{userSourceRecord(ziausers.Users{
+		ID:            21,
+		Name:          "Jane Doe",
+		Email:         "jane.doe@example.internal",
+		Groups:        []ziacommon.UserGroups{{ID: 30, Name: "Engineering Admins", Comments: "group psk=" + freeTextCanary}},
+		Department:    &ziacommon.UserDepartment{ID: 20, Name: "Engineering", Comments: "dept psk=" + freeTextCanary},
+		Comments:      "user psk=" + freeTextCanary + " " + longToken,
+		TempAuthEmail: "jane.temp@example.internal",
+		AuthMethods:   []string{"PASSWORD", "SAML"},
+		Password:      "password psk=" + freeTextCanary,
+		AdminUser:     true,
+		Type:          "EMPLOYEE",
+		Deleted:       false,
+	})}
+	users, userReports, err := resources.ProjectRecordsAndVerify(userSpec, redact.ModeStandard, userRecords)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(zia/users standard) error = %v, want nil", err)
+	}
+	userGot := users.Records()[0].Fields()
+	if userGot["name"] != "Jane Doe" || userGot["email"] != "jane.doe@example.internal" || userGot["tempAuthEmail"] != "jane.temp@example.internal" {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) = %#v, want employee identity visible", userGot)
+	}
+	if userGot["adminUser"] != true || userGot["type"] != "EMPLOYEE" || userGot["deleted"] != false {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) = %#v, want status fields visible", userGot)
+	}
+	userGroups := mustProjectedList(t, userGot, "groups")
+	group := userGroups[0].(map[string]any)
+	if group["id"] != 30 || group["name"] != "Engineering Admins" {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) groups = %#v, want id/name reference", group)
+	}
+	if _, ok := group["comments"]; ok {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) group reference includes comments, want id/name only")
+	}
+	userDepartment, ok := userGot["department"].(map[string]any)
+	if !ok {
+		t.Fatalf("ProjectRecordsAndVerify(zia/users standard) department = %T, want map[string]any", userGot["department"])
+	}
+	if userDepartment["id"] != 20 || userDepartment["name"] != "Engineering" {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) department = %#v, want id/name reference", userDepartment)
+	}
+	if _, ok := userGot["password"]; ok {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) includes password, want dropped")
+	}
+	if strings.Contains(fmt.Sprint(userGot), freeTextCanary) {
+		t.Errorf("ProjectRecordsAndVerify(zia/users standard) = %#v, want secret/free-text canary absent", userGot)
+	}
+	assertReportContains(t, userReports[0].DroppedFields, "password")
+	assertReportContains(t, userReports[0].RedactedFields, "comments")
+
+	userShare, userShareReports, err := resources.ProjectRecordsAndVerify(userSpec, redact.ModeShare, userRecords)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(zia/users share) error = %v, want nil", err)
+	}
+	userShareGot := userShare.Records()[0].Fields()
+	for _, field := range []string{"name", "email", "groups", "department", "comments", "tempAuthEmail", "authMethods", "password"} {
+		if _, ok := userShareGot[field]; ok {
+			t.Errorf("ProjectRecordsAndVerify(zia/users share) includes %s, want dropped", field)
+		}
+		assertReportContains(t, userShareReports[0].DroppedFields, field)
+	}
+	if userShareGot["adminUser"] != true || userShareGot["type"] != "EMPLOYEE" || userShareGot["deleted"] != false {
+		t.Errorf("ProjectRecordsAndVerify(zia/users share) = %#v, want share-safe status fields", userShareGot)
+	}
+
+	deviceSpec := mustFindSpec(t, resources.ProductZIA, resourceDevices)
+	deviceRecords := []resources.SourceRecord{deviceSourceRecord(devicegroups.Devices{
+		ID:              22,
+		Name:            "macbook-123",
+		DeviceGroupType: "USER_DEFINED",
+		DeviceModel:     "MacBookPro18,3",
+		OSType:          "macOS",
+		OSVersion:       "14.5",
+		Description:     "device psk=" + freeTextCanary + " " + longToken,
+		OwnerUserId:     21,
+		OwnerName:       "Jane Doe",
+		HostName:        "macbook-123.example.internal",
+	})}
+	devices, deviceReports, err := resources.ProjectRecordsAndVerify(deviceSpec, redact.ModeStandard, deviceRecords)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(zia/devices standard) error = %v, want nil", err)
+	}
+	deviceGot := devices.Records()[0].Fields()
+	if deviceGot["name"] != "macbook-123" || deviceGot["ownerName"] != "Jane Doe" || deviceGot["hostName"] != "macbook-123.example.internal" {
+		t.Errorf("ProjectRecordsAndVerify(zia/devices standard) = %#v, want device identity visible", deviceGot)
+	}
+	if deviceGot["deviceGroupType"] != "USER_DEFINED" || deviceGot["osType"] != "macOS" || deviceGot["osVersion"] != "14.5" {
+		t.Errorf("ProjectRecordsAndVerify(zia/devices standard) = %#v, want device status/config visible", deviceGot)
+	}
+	if strings.Contains(fmt.Sprint(deviceGot), freeTextCanary) {
+		t.Errorf("ProjectRecordsAndVerify(zia/devices standard) = %#v, want description canary redacted", deviceGot)
+	}
+	assertReportContains(t, deviceReports[0].RedactedFields, "description")
+
+	deviceShare, deviceShareReports, err := resources.ProjectRecordsAndVerify(deviceSpec, redact.ModeShare, deviceRecords)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(zia/devices share) error = %v, want nil", err)
+	}
+	deviceShareGot := deviceShare.Records()[0].Fields()
+	for _, field := range []string{"name", "deviceModel", "description", "ownerUserId", "ownerName", "hostName"} {
+		if _, ok := deviceShareGot[field]; ok {
+			t.Errorf("ProjectRecordsAndVerify(zia/devices share) includes %s, want dropped", field)
+		}
+		assertReportContains(t, deviceShareReports[0].DroppedFields, field)
+	}
+	if deviceShareGot["deviceGroupType"] != "USER_DEFINED" || deviceShareGot["osType"] != "macOS" || deviceShareGot["osVersion"] != "14.5" {
+		t.Errorf("ProjectRecordsAndVerify(zia/devices share) = %#v, want share-safe device status/config", deviceShareGot)
 	}
 }
 

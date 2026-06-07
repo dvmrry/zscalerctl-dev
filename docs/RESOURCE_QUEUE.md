@@ -93,7 +93,7 @@ Product-track status:
 
 | Product | Resources | Status | Next action |
 | --- | --- | --- | --- |
-| ZIA | Current queued legacy-ZIA resources, singleton settings, and the focused ordinary-recheck batch for `zia/network-service-groups`, `zia/network-applications`, `zia/email-profiles`, `zia/dlp-incident-receiver-servers`, and `zia/dlp-notification-templates` | Live-smoked and merged for the earlier catalog; focused ordinary-recheck batch passed work-machine live smoke before merge. | Merge the focused ordinary-recheck batch after CI/review, then continue only through the remaining shape-decision tracks below. |
+| ZIA | Current queued legacy-ZIA resources, singleton settings, focused ordinary-recheck batch, and staged identity/device recheck for `zia/departments`, `zia/users`, and `zia/devices` | Earlier catalog and ordinary-recheck batch passed work-machine live smoke before merge. Identity/device recheck is staged with standard-mode visibility and share/paranoid identifier stripping. | Smoke the identity/device recheck batch, then promote passers or return failures to the deferred backlog with exact status. |
 | ZPA | Tier-1 resources plus `zpa/application-segments` | Production OneAPI smoke passed after trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused smoke/trim discipline. |
 | ZTW | Initial reference batch plus admin-governance resources (`admin-users`, `admin-roles`) | Production OneAPI smoke passed for both the initial reference batch and admin-governance batch. | Continue policy/control surfaces only after explicit review. |
 | ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Production OneAPI smoke returned 404 for all three list endpoints. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
@@ -218,9 +218,6 @@ boundary issue, or a deliberate privacy/material hold.
 
 | Resource | Last evidence | Required next probe |
 | --- | --- | --- |
-| `zia/departments` | Legacy-ZIA list request failed; exact status not recorded. | Retry as identity-like metadata only; record status before deciding whether this is endpoint/auth failure or privacy hold. |
-| `zia/users` | Legacy-ZIA list request failed; exact status not recorded. | Retry only as a privacy-scoped probe; even if reachable, user output still needs PII review before cataloging. |
-| `zia/devices` | Legacy-ZIA list request failed; exact status not recorded. | Retry only as a privacy-scoped probe; even if reachable, device output still needs PII/device review before cataloging. |
 | `zia/dlp-engines` | Legacy-ZIA list request failed; exact status not recorded. | Retry DLP endpoints as a small family, not mixed with unrelated policy resources. |
 | `zia/dlp-dictionaries` | Legacy-ZIA list request failed; exact status not recorded. | Retry with DLP family; inspect dictionary fields for sensitive sample/content values before cataloging. |
 | `zia/ips-signature-rules` | Legacy-ZIA list request failed; exact status not recorded. | Retry before `ips_policies`; do not use IPS policy adjacency as proof either way. |
