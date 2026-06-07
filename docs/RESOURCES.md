@@ -895,97 +895,6 @@ Fields:
 | Reference fields such as `urlCategories`, `dlpEngines`, `dlpDictionaries`, `rules`, and `nwServices` | Tenant configuration | `standard` | Local-only references render reviewed `id`/`name` fields only. |
 | Authentication fields, connection headers, certificates, VPN credentials, collaborator/user/location references, and high-risk object/filter fields | Secret | never | Mapped into source records and dropped by projection until separately modeled. |
 
-## ZIA C2c Incident Receivers
-
-Commands:
-
-```sh
-zscalerctl zia c2c-incident-receivers list
-zscalerctl zia c2c-incident-receivers get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `status`, `modifiedTime`, `lastTenantValidationTime` | Operational metadata | varies | Receiver identity, state, and validation timestamp metadata. |
-| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `lastValidationMsg`, `lastModifiedBy`, `onboardableEntity` | Secret | never | Validation detail, admin references, and tenant authorization payloads are mapped into source records and dropped by projection. |
-
-## ZIA Dlp Edm Schemas
-
-Commands:
-
-```sh
-zscalerctl zia dlp-edm-schemas list
-zscalerctl zia dlp-edm-schemas get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `schemaId`, `revision`, `fileUploadStatus`, `schemaStatus`, `origColCount`, `lastModifiedTime`, `cellsUsed`, `schemaActive`, `schedulePresent` | Operational metadata | varies | EDM schema identity, status, counts, and timestamps. |
-| `projectName`, `schedule` | Tenant configuration | `standard`, `share` | Schedule renders reviewed timing metadata only. |
-| `filename`, `originalFileName` | Sensitive identifier | `standard` | Local-only source-file identifiers. |
-| `edmClient`, `modifiedBy`, `createdBy`, `tokenList` | Secret | never | Index-tool, admin, and token definitions are mapped into source records and dropped by projection. |
-
-## ZIA Dlp Idm Profile Lite
-
-Commands:
-
-```sh
-zscalerctl zia dlp-idm-profile-lite list
-zscalerctl zia dlp-idm-profile-lite get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `profileId`, `numDocuments`, `lastModifiedTime` | Operational metadata | varies | IDM template identity, document count, and timestamp metadata. |
-| `templateName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `clientVm` | Tenant configuration | `standard` | Local-only index-tool reference renders reviewed `id`/`name` fields only. |
-| `modifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
-
-## ZIA Dlp Idm Profiles
-
-Commands:
-
-```sh
-zscalerctl zia dlp-idm-profiles list
-zscalerctl zia dlp-idm-profiles get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `profileId`, `profileType`, `port`, `scheduleType`, `scheduleDay`, `scheduleTime`, `scheduleDisabled`, `uploadStatus`, `version`, `volumeOfDocuments`, `numDocuments`, `lastModifiedTime` | Operational metadata | varies | IDM template identity, type, schedule, status, version, counts, and timestamp metadata. |
-| `profileName`, `scheduleDayOfMonth`, `scheduleDayOfWeek`, `idmClient` | Tenant configuration | varies | Local-only index-tool reference renders reviewed `id`/`name` fields only. |
-| `profileDesc` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
-| `host`, `profileDirPath` | Sensitive identifier | `standard` | Local-only host and path metadata. |
-| `userName`, `modifiedBy` | Secret | never | User and admin references are mapped into source records and dropped by projection. |
-
-## ZIA Dlp Web Rules
-
-Commands:
-
-```sh
-zscalerctl zia dlp-web-rules list
-zscalerctl zia dlp-web-rules get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `order`, `rank`, `state`, `matchOnly`, `lastModifiedTime`, `withoutContentInspection`, `ocrEnabled`, `dlpDownloadScanEnabled`, `zccNotificationsEnabled`, `zscalerIncidentReceiver`, `parentRule`, `inspectHttpGetEnabled` | Operational metadata | varies | Rule identity, ordering, status, and behavior metadata. |
-| `name`, `accessControl`, `protocols`, `fileTypes`, `cloudApplications`, `action`, `severity`, `urlCategories`, `timeWindows`, `labels`, and `fileTypeCategories` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
-| `eunTemplateId`, `externalAuditorEmail`, `userRiskScoreLevels`, `dlpContentLocationsScopes`, and scope references such as `locations`, `groups`, `users`, and IP/domain profile groups | Sensitive identifier / tenant configuration | `standard` | Local-only rule target and notification metadata. |
-| `auditor`, `lastModifiedBy`, `notificationTemplate`, `icapServer`, `receiver`, and `subRules` | Secret | never | Admin, receiver, server, template, and nested exception-rule details are mapped into source records and dropped by projection. |
-
 ## ZIA File Type Rules
 
 Commands:
@@ -1061,26 +970,6 @@ Fields:
 | `name`, `extension` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 
-## ZIA Traffic Capture Rules
-
-Commands:
-
-```sh
-zscalerctl zia traffic-capture-rules list
-zscalerctl zia traffic-capture-rules get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `order`, `rank`, `accessControl`, `state`, `lastModifiedTime`, `excludeSrcCountries`, `defaultRule`, `predefined` | Operational metadata | varies | Rule identity, ordering, access, and status metadata. |
-| `name`, `action`, `nwApplications`, `txnSizeLimit`, `txnSampling`, `deviceTrustLevels` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
-| `srcIps`, `destAddresses`, `destIpCategories` | Sensitive identifier | `standard` | Local-only network targeting data. |
-| Scope references such as `locations`, `groups`, services, application groups, and IP groups | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
-| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
-
 ## ZIA Zpa Gateways
 
 Commands:
@@ -1099,24 +988,6 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `zpaTenantId`, `zpaServerGroup`, `zpaAppSegments` | Sensitive identifier / tenant configuration | `standard` | Local-only ZPA tenant and reference metadata render reviewed `id`/`name` fields only. |
 | `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
-
-## ZIA Extranets
-
-Commands:
-
-```sh
-zscalerctl zia extranets list
-zscalerctl zia extranets get <id>
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `createdAt`, `modifiedAt` | Operational metadata | varies | Extranet identity and timestamp metadata. |
-| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
-| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
-| `extranetDNSList`, `extranetIpPoolList` | Tenant configuration | `standard` | Local-only nested DNS and IP pool references. DNS servers and pool ranges are sensitive identifiers and only render in `standard`. |
 
 ## Deferred Resource Follow-Ups
 
@@ -1160,6 +1031,13 @@ Fields:
   removed from the DLP-reference batch after live smoke reported a list request
   failure under ZIA legacy credentials. Investigate the live endpoint behavior
   separately before enabling it in the catalog.
+- `zia/c2c-incident-receivers`, `zia/dlp-edm-schemas`,
+  `zia/dlp-idm-profile-lite`, `zia/dlp-idm-profiles`, `zia/dlp-web-rules`,
+  `zia/traffic-capture-rules`, and `zia/extranets`: generated and locally
+  validated in the smoke-lab branch, but removed after work-machine live smoke
+  reported `live_access_failed` list request failures under ZIA legacy
+  credentials. Investigate endpoint behavior and auth-mode support separately
+  before enabling them in the catalog.
 
 ## Adding A Resource
 

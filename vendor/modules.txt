@@ -76,18 +76,13 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/nss_servers
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profile_lite
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profiles
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_web_rules
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol/custom_file_types
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewalldnscontrolpolicies
@@ -112,8 +107,6 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_rules
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/traffic_capture
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/extranet
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories

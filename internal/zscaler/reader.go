@@ -20,18 +20,13 @@ import (
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
-	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	cloudnss "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss"
 	nssservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/nss_servers"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
-	dlpedm "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
-	dlpidmlite "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profile_lite"
-	dlpidmprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profiles"
-	dlpwebrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_web_rules"
 	filetypecontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol"
 	customfiletypes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol/custom_file_types"
 	firewalldnscontrolpolicies "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewalldnscontrolpolicies"
@@ -56,8 +51,6 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	tenancyrestriction "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction"
 	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
-	trafficcapture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/traffic_capture"
-	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/extranet"
 	gretunnels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels"
 	staticips "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/staticips"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlcategories"
@@ -121,18 +114,11 @@ const (
 	resourceRiskProfiles     = "risk-profiles"
 	resourceNSSServers       = "nss-servers"
 	resourceNSSFeeds         = "nss-feeds"
-	resourceC2CReceivers     = "c2c-incident-receivers"
-	resourceDLPEDMSchemas    = "dlp-edm-schemas"
-	resourceDLPIDMLite       = "dlp-idm-profile-lite"
-	resourceDLPIDMProfiles   = "dlp-idm-profiles"
-	resourceDLPWebRules      = "dlp-web-rules"
 	resourceFileTypeRules    = "file-type-rules"
 	resourceSandboxRules     = "sandbox-rules"
 	resourceFirewallDNSRules = "firewall-dns-rules"
 	resourceCustomFileTypes  = "custom-file-types"
-	resourceTrafficCaptRules = "traffic-capture-rules"
 	resourceZPAGateways      = "zpa-gateways"
-	resourceExtranets        = "extranets"
 )
 
 type AuthMode string
@@ -742,56 +728,6 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 			}),
 			nssFeedSourceRecord,
 		),
-		{product: resources.ProductZIA, name: resourceC2CReceivers}: newListGetHandler(
-			resourceC2CReceivers,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]c2cincidentreceiver.C2CIncidentReceiver, error) {
-				return c2cincidentreceiver.GetAll(ctx, service)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*c2cincidentreceiver.C2CIncidentReceiver, error) {
-				return c2cincidentreceiver.Get(ctx, service, id)
-			}),
-			c2cIncidentReceiverSourceRecord,
-		),
-		{product: resources.ProductZIA, name: resourceDLPEDMSchemas}: newListGetHandler(
-			resourceDLPEDMSchemas,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpedm.DLPEDMSchema, error) {
-				return dlpedm.GetAll(ctx, service)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpedm.DLPEDMSchema, error) {
-				return dlpedm.GetDLPEDMSchemaID(ctx, service, id)
-			}),
-			dlpEDMSchemaSourceRecord,
-		),
-		{product: resources.ProductZIA, name: resourceDLPIDMLite}: newListGetHandler(
-			resourceDLPIDMLite,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpidmlite.DLPIDMProfileLite, error) {
-				return dlpidmlite.GetAll(ctx, service, false)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmlite.DLPIDMProfileLite, error) {
-				return dlpidmlite.GetDLPProfileLiteID(ctx, service, id, false)
-			}),
-			dlpIDMProfileLiteSourceRecord,
-		),
-		{product: resources.ProductZIA, name: resourceDLPIDMProfiles}: newListGetHandler(
-			resourceDLPIDMProfiles,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofiles.DLPIDMProfile, error) {
-				return dlpidmprofiles.GetAll(ctx, service)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmprofiles.DLPIDMProfile, error) {
-				return dlpidmprofiles.Get(ctx, service, id)
-			}),
-			dlpIDMProfileSourceRecord,
-		),
-		{product: resources.ProductZIA, name: resourceDLPWebRules}: newListGetHandler(
-			resourceDLPWebRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]dlpwebrules.WebDLPRules, error) {
-				return dlpwebrules.GetAll(ctx, service)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*dlpwebrules.WebDLPRules, error) {
-				return dlpwebrules.Get(ctx, service, id)
-			}),
-			dlpWebRuleSourceRecord,
-		),
 		{product: resources.ProductZIA, name: resourceFileTypeRules}: newListGetHandler(
 			resourceFileTypeRules,
 			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]filetypecontrol.FileTypeRules, error) {
@@ -832,16 +768,6 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 			}),
 			customFileTypeSourceRecord,
 		),
-		{product: resources.ProductZIA, name: resourceTrafficCaptRules}: newListGetHandler(
-			resourceTrafficCaptRules,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]trafficcapture.TrafficCaptureRules, error) {
-				return trafficcapture.GetAll(ctx, service, nil)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*trafficcapture.TrafficCaptureRules, error) {
-				return trafficcapture.Get(ctx, service, id)
-			}),
-			trafficCaptureRuleSourceRecord,
-		),
 		{product: resources.ProductZIA, name: resourceZPAGateways}: newListGetHandler(
 			resourceZPAGateways,
 			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]zpagateways.ZPAGateways, error) {
@@ -851,16 +777,6 @@ func newResourceHandlers(ziaClient sdkZIAClient) map[resourceKey]resourceHandler
 				return zpagateways.Get(ctx, service, id)
 			}),
 			zpaGatewaySourceRecord,
-		),
-		{product: resources.ProductZIA, name: resourceExtranets}: newListGetHandler(
-			resourceExtranets,
-			ziaSDKList(ziaClient, func(ctx context.Context, service *zsdk.Service) ([]extranet.Extranet, error) {
-				return extranet.GetAll(ctx, service, nil)
-			}),
-			ziaSDKGet(ziaClient, func(ctx context.Context, service *zsdk.Service, id int) (*extranet.Extranet, error) {
-				return extranet.Get(ctx, service, id)
-			}),
-			extranetSourceRecord,
 		),
 	}
 }
@@ -2382,147 +2298,6 @@ func nssFeedSourceRecord(feed cloudnss.NSSFeed) resources.SourceRecord {
 	return resources.NewSourceRecord(fields)
 }
 
-func c2cIncidentReceiverSourceRecord(receiver c2cincidentreceiver.C2CIncidentReceiver) resources.SourceRecord {
-	fields := map[string]any{
-		"id":                       receiver.ID,
-		"name":                     receiver.Name,
-		"modifiedTime":             receiver.ModifiedTime,
-		"lastTenantValidationTime": receiver.LastTenantValidationTime,
-	}
-	addStringSlice(fields, "status", receiver.Status)
-	if receiver.LastValidationMsg != nil {
-		fields["lastValidationMsg"] = c2cLastValidationMsgSource(*receiver.LastValidationMsg)
-	}
-	addIDNameExtensionsPtr(fields, "lastModifiedBy", receiver.LastModifiedBy)
-	if receiver.OnboardableEntity != nil {
-		fields["onboardableEntity"] = c2cOnboardableEntitySource(*receiver.OnboardableEntity)
-	}
-	return resources.NewSourceRecord(fields)
-}
-
-func dlpEDMSchemaSourceRecord(schema dlpedm.DLPEDMSchema) resources.SourceRecord {
-	fields := map[string]any{
-		"schemaId":         schema.SchemaID,
-		"projectName":      schema.ProjectName,
-		"revision":         schema.Revision,
-		"filename":         schema.Filename,
-		"originalFileName": schema.OriginalFileName,
-		"fileUploadStatus": schema.FileUploadStatus,
-		"schemaStatus":     schema.SchemaStatus,
-		"origColCount":     schema.OrigColCount,
-		"lastModifiedTime": schema.LastModifiedTime,
-		"cellsUsed":        schema.CellsUsed,
-		"schemaActive":     schema.SchemaActive,
-		"schedulePresent":  schema.SchedulePresent,
-		"schedule":         dlpEDMScheduleSource(schema.Schedule),
-	}
-	addIDNameExtensionsPtr(fields, "edmClient", schema.EDMClient)
-	addIDNameExtensionsPtr(fields, "modifiedBy", schema.ModifiedBy)
-	addIDNameExtensionsPtr(fields, "createdBy", schema.CreatedBy)
-	if len(schema.TokenList) > 0 {
-		fields["tokenList"] = dlpEDMTokenListSource(schema.TokenList)
-	}
-	return resources.NewSourceRecord(fields)
-}
-
-func dlpIDMProfileLiteSourceRecord(profile dlpidmlite.DLPIDMProfileLite) resources.SourceRecord {
-	fields := map[string]any{
-		"profileId":        profile.ProfileID,
-		"templateName":     profile.TemplateName,
-		"numDocuments":     profile.NumDocuments,
-		"lastModifiedTime": profile.LastModifiedTime,
-	}
-	addIDNameExtensionsPtr(fields, "clientVm", profile.ClientVM)
-	addIDNameExtensionsPtr(fields, "modifiedBy", profile.ModifiedBy)
-	return resources.NewSourceRecord(fields)
-}
-
-func dlpIDMProfileSourceRecord(profile dlpidmprofiles.DLPIDMProfile) resources.SourceRecord {
-	fields := map[string]any{
-		"profileId":         profile.ProfileID,
-		"profileName":       profile.ProfileName,
-		"profileDesc":       profile.ProfileDesc,
-		"profileType":       profile.ProfileType,
-		"host":              profile.Host,
-		"port":              profile.Port,
-		"profileDirPath":    profile.ProfileDirPath,
-		"scheduleType":      profile.ScheduleType,
-		"scheduleDay":       profile.ScheduleDay,
-		"scheduleTime":      profile.ScheduleTime,
-		"scheduleDisabled":  profile.ScheduleDisabled,
-		"uploadStatus":      profile.UploadStatus,
-		"userName":          profile.UserName,
-		"version":           profile.Version,
-		"volumeOfDocuments": profile.VolumeOfDocuments,
-		"numDocuments":      profile.NumDocuments,
-		"lastModifiedTime":  profile.LastModifiedTime,
-	}
-	addStringSlice(fields, "scheduleDayOfMonth", profile.ScheduleDayOfMonth)
-	addStringSlice(fields, "scheduleDayOfWeek", profile.ScheduleDayOfWeek)
-	addIDNameExtensionsPtr(fields, "idmClient", profile.IDMClient)
-	addIDNameExtensionsPtr(fields, "modifiedBy", profile.ModifiedBy)
-	return resources.NewSourceRecord(fields)
-}
-
-func dlpWebRuleSourceRecord(rule dlpwebrules.WebDLPRules) resources.SourceRecord {
-	return resources.NewSourceRecord(dlpWebRuleFields(rule))
-}
-
-func dlpWebRuleFields(rule dlpwebrules.WebDLPRules) map[string]any {
-	fields := map[string]any{
-		"id":                       rule.ID,
-		"order":                    rule.Order,
-		"accessControl":            rule.AccessControl,
-		"rank":                     rule.Rank,
-		"name":                     rule.Name,
-		"description":              rule.Description,
-		"minSize":                  rule.MinSize,
-		"action":                   rule.Action,
-		"state":                    rule.State,
-		"matchOnly":                rule.MatchOnly,
-		"lastModifiedTime":         rule.LastModifiedTime,
-		"withoutContentInspection": rule.WithoutContentInspection,
-		"ocrEnabled":               rule.OcrEnabled,
-		"dlpDownloadScanEnabled":   rule.DLPDownloadScanEnabled,
-		"zccNotificationsEnabled":  rule.ZCCNotificationsEnabled,
-		"zscalerIncidentReceiver":  rule.ZscalerIncidentReceiver,
-		"eunTemplateId":            rule.EUNTemplateID,
-		"externalAuditorEmail":     rule.ExternalAuditorEmail,
-		"severity":                 rule.Severity,
-		"parentRule":               rule.ParentRule,
-		"inspectHttpGetEnabled":    rule.InspectHttpGetEnabled,
-	}
-	addStringSlice(fields, "protocols", rule.Protocols)
-	addStringSlice(fields, "fileTypes", rule.FileTypes)
-	addStringSlice(fields, "cloudApplications", rule.CloudApplications)
-	addIDCustomPtr(fields, "auditor", rule.Auditor)
-	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
-	addIDCustomPtr(fields, "notificationTemplate", rule.NotificationTemplate)
-	addIDCustomPtr(fields, "icapServer", rule.IcapServer)
-	addDLPWebRuleReceiver(fields, "receiver", rule.Receiver)
-	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
-	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
-	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
-	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
-	addIDNameExtensionsSlice(fields, "users", rule.Users)
-	addIDNameExtensionsSlice(fields, "urlCategories", rule.URLCategories)
-	addIDNameExtensionsSlice(fields, "dlpEngines", rule.DLPEngines)
-	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
-	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
-	addIDNameExtensionsSlice(fields, "excludedGroups", rule.ExcludedGroups)
-	addIDNameExtensionsSlice(fields, "excludedDepartments", rule.ExcludedDepartments)
-	addIDNameExtensionsSlice(fields, "excludedUsers", rule.ExcludedUsers)
-	addIDNameExtensionsSlice(fields, "includedDomainProfiles", rule.IncludedDomainProfiles)
-	addIDNameExtensionsSlice(fields, "excludedDomainProfiles", rule.ExcludedDomainProfiles)
-	addIDNameExtensionsSlice(fields, "sourceIpGroups", rule.SourceIpGroups)
-	addIDNameSlice(fields, "workloadGroups", rule.WorkloadGroups)
-	addIDNameSlice(fields, "fileTypeCategories", rule.FileTypeCategories)
-	addDLPWebRuleSubRules(fields, "subRules", rule.SubRules)
-	addStringSlice(fields, "userRiskScoreLevels", rule.UserRiskScoreLevels)
-	addStringSlice(fields, "dlpContentLocationsScopes", rule.DlpContentLocationsScopes)
-	return fields
-}
-
 func fileTypeRuleSourceRecord(rule filetypecontrol.FileTypeRules) resources.SourceRecord {
 	fields := map[string]any{
 		"id":                   rule.ID,
@@ -2662,52 +2437,6 @@ func customFileTypeSourceRecord(fileType customfiletypes.CustomFileTypes) resour
 	})
 }
 
-func trafficCaptureRuleSourceRecord(rule trafficcapture.TrafficCaptureRules) resources.SourceRecord {
-	fields := map[string]any{
-		"id":                  rule.ID,
-		"name":                rule.Name,
-		"order":               rule.Order,
-		"rank":                rule.Rank,
-		"accessControl":       rule.AccessControl,
-		"action":              rule.Action,
-		"state":               rule.State,
-		"description":         rule.Description,
-		"lastModifiedTime":    rule.LastModifiedTime,
-		"excludeSrcCountries": rule.ExcludeSrcCountries,
-		"defaultRule":         rule.DefaultRule,
-		"predefined":          rule.Predefined,
-		"txnSizeLimit":        rule.TxnSizeLimit,
-		"txnSampling":         rule.TxnSampling,
-	}
-	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
-	addStringSlice(fields, "srcIps", rule.SrcIps)
-	addStringSlice(fields, "destAddresses", rule.DestAddresses)
-	addStringSlice(fields, "destIpCategories", rule.DestIpCategories)
-	addStringSlice(fields, "destCountries", rule.DestCountries)
-	addStringSlice(fields, "sourceCountries", rule.SourceCountries)
-	addStringSlice(fields, "nwApplications", rule.NwApplications)
-	addStringSlice(fields, "deviceTrustLevels", rule.DeviceTrustLevels)
-	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
-	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationsGroups)
-	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
-	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
-	addIDNameExtensionsSlice(fields, "users", rule.Users)
-	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
-	addIDNameExtensionsSlice(fields, "nwApplicationGroups", rule.NwApplicationGroups)
-	addIDNameExtensionsSlice(fields, "appServiceGroups", rule.AppServiceGroups)
-	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
-	addIDNameExtensionsSlice(fields, "destIpGroups", rule.DestIpGroups)
-	addIDNameExtensionsSlice(fields, "nwServices", rule.NwServices)
-	addIDNameExtensionsSlice(fields, "nwServiceGroups", rule.NwServiceGroups)
-	addIDNameExtensionsSlice(fields, "srcIpGroups", rule.SrcIpGroups)
-	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
-	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
-	addIDNameSlice(fields, "workloadGroups", rule.WorkloadGroups)
-	addIDNameExtensionsSlice(fields, "srcIpv6Groups", rule.SrcIpv6Groups)
-	addIDNameExtensionsSlice(fields, "destIpv6Groups", rule.DestIpv6Groups)
-	return resources.NewSourceRecord(fields)
-}
-
 func zpaGatewaySourceRecord(gateway zpagateways.ZPAGateways) resources.SourceRecord {
 	fields := map[string]any{
 		"id":               gateway.ID,
@@ -2722,23 +2451,6 @@ func zpaGatewaySourceRecord(gateway zpagateways.ZPAGateways) resources.SourceRec
 		fields["zpaAppSegments"] = zpaGatewayAppSegmentsSource(gateway.ZPAAppSegments)
 	}
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", gateway.LastModifiedBy)
-	return resources.NewSourceRecord(fields)
-}
-
-func extranetSourceRecord(item extranet.Extranet) resources.SourceRecord {
-	fields := map[string]any{
-		"id":          item.ID,
-		"name":        item.Name,
-		"description": item.Description,
-		"createdAt":   item.CreatedAt,
-		"modifiedAt":  item.ModifiedAt,
-	}
-	if len(item.ExtranetDNSList) > 0 {
-		fields["extranetDNSList"] = extranetDNSListSource(item.ExtranetDNSList)
-	}
-	if len(item.ExtranetIpPoolList) > 0 {
-		fields["extranetIpPoolList"] = extranetIPPoolListSource(item.ExtranetIpPoolList)
-	}
 	return resources.NewSourceRecord(fields)
 }
 
@@ -2798,12 +2510,6 @@ func addIDNamePtr(fields map[string]any, name string, value *ziacommon.IDName) {
 	}
 }
 
-func addIDCustomPtr(fields map[string]any, name string, value *ziacommon.IDCustom) {
-	if value != nil {
-		fields[name] = idCustomSource(value)
-	}
-}
-
 func addIDNameSlice(fields map[string]any, name string, values []ziacommon.IDName) {
 	if len(values) > 0 {
 		fields[name] = idNameSliceSource(values)
@@ -2813,18 +2519,6 @@ func addIDNameSlice(fields map[string]any, name string, values []ziacommon.IDNam
 func addCommonNSSSlice(fields map[string]any, name string, values []ziacommon.CommonNSS) {
 	if len(values) > 0 {
 		fields[name] = commonNSSSliceSource(values)
-	}
-}
-
-func addDLPWebRuleReceiver(fields map[string]any, name string, value *dlpwebrules.Receiver) {
-	if value != nil {
-		fields[name] = dlpWebRuleReceiverSource(value)
-	}
-}
-
-func addDLPWebRuleSubRules(fields map[string]any, name string, values []dlpwebrules.WebDLPRules) {
-	if len(values) > 0 {
-		fields[name] = dlpWebRuleSubRulesSource(values)
 	}
 }
 
@@ -2851,13 +2545,6 @@ func idNameSource(value *ziacommon.IDName) map[string]any {
 		fields["parent"] = value.Parent
 	}
 	return fields
-}
-
-func idCustomSource(value *ziacommon.IDCustom) map[string]any {
-	return map[string]any{
-		"id":   value.ID,
-		"name": value.Name,
-	}
 }
 
 func idNameExternalIDSource(value *ziacommon.IDNameExternalID) map[string]any {
@@ -2916,24 +2603,6 @@ func commonNSSSource(value ziacommon.CommonNSS) map[string]any {
 		"deleted":     value.Deleted,
 		"getlId":      value.GetlID,
 	}
-}
-
-func dlpWebRuleReceiverSource(value *dlpwebrules.Receiver) map[string]any {
-	fields := map[string]any{
-		"id":   value.ID,
-		"name": value.Name,
-		"type": value.Type,
-	}
-	addIDNameExtensionsPtr(fields, "tenant", value.Tenant)
-	return fields
-}
-
-func dlpWebRuleSubRulesSource(values []dlpwebrules.WebDLPRules) []any {
-	out := make([]any, 0, len(values))
-	for _, value := range values {
-		out = append(out, dlpWebRuleFields(value))
-	}
-	return out
 }
 
 func networkPortsSource(values []networkservices.NetworkPorts) []any {
@@ -3029,139 +2698,6 @@ func zpaGatewayAppSegmentsSource(values []zpagateways.ZPAAppSegments) []any {
 		out = append(out, fields)
 	}
 	return out
-}
-
-func extranetDNSListSource(values []extranet.ExtranetDNSList) []any {
-	out := make([]any, 0, len(values))
-	for _, value := range values {
-		out = append(out, map[string]any{
-			"id":                 value.ID,
-			"name":               value.Name,
-			"primaryDNSServer":   value.PrimaryDNSServer,
-			"secondaryDNSServer": value.SecondaryDNSServer,
-			"useAsDefault":       value.UseAsDefault,
-		})
-	}
-	return out
-}
-
-func extranetIPPoolListSource(values []extranet.ExtranetPoolList) []any {
-	out := make([]any, 0, len(values))
-	for _, value := range values {
-		out = append(out, map[string]any{
-			"id":           value.ID,
-			"name":         value.Name,
-			"ipStart":      value.IPStart,
-			"ipEnd":        value.IPEnd,
-			"useAsDefault": value.UseAsDefault,
-		})
-	}
-	return out
-}
-
-func c2cLastValidationMsgSource(value c2cincidentreceiver.LastValidationMsg) map[string]any {
-	return map[string]any{
-		"errorMsg":  value.ErrorMsg,
-		"errorCode": value.ErrorCode,
-	}
-}
-
-func c2cOnboardableEntitySource(value c2cincidentreceiver.OnboardableEntity) map[string]any {
-	fields := map[string]any{
-		"id":                      value.ID,
-		"name":                    value.Name,
-		"type":                    value.Type,
-		"enterpriseTenantId":      value.EnterpriseTenantID,
-		"application":             value.Application,
-		"lastValidationMsg":       c2cLastValidationMsgSource(value.LastValidationMsg),
-		"tenantAuthorizationInfo": c2cTenantAuthorizationInfoSource(value.TenantAuthorizationInfo),
-	}
-	addIDNameExtensionsPtr(fields, "zscalerAppTenantId", value.ZscalerAppTenantID)
-	return fields
-}
-
-func c2cTenantAuthorizationInfoSource(value c2cincidentreceiver.TenantAuthorizationInfo) map[string]any {
-	fields := map[string]any{
-		"accessToken":          value.AccessToken,
-		"botToken":             value.BotToken,
-		"redirectUrl":          value.RedirectUrl,
-		"type":                 value.Type,
-		"env":                  value.Env,
-		"tempAuthCode":         value.TempAuthCode,
-		"subdomain":            value.Subdomain,
-		"apicp":                value.Apicp,
-		"clientId":             value.ClientID,
-		"clientSecret":         value.ClientSecret,
-		"secretToken":          value.SecretToken,
-		"userName":             value.UserName,
-		"userPwd":              value.UserPwd,
-		"instanceUrl":          value.InstanceUrl,
-		"roleArn":              value.RoleArn,
-		"quarantineBucketName": value.QuarantineBucketName,
-		"cloudTrailBucketName": value.CloudTrailBucketName,
-		"botId":                value.BotID,
-		"orgApiKey":            value.OrgApiKey,
-		"externalId":           value.ExternalID,
-		"enterpriseId":         value.EnterpriseID,
-		"credJson":             value.CredJson,
-		"role":                 value.Role,
-		"organizationId":       value.OrganizationID,
-		"workspaceName":        value.WorkspaceName,
-		"workspaceId":          value.WorkspaceID,
-		"qtnChannelUrl":        value.QtnChannelUrl,
-		"malQtnLibName":        value.MalQtnLibName,
-		"dlpQtnLibName":        value.DlpQtnLibName,
-		"credentials":          value.Credentials,
-		"tokenEndpoint":        value.TokenEndpoint,
-		"restApiEndpoint":      value.RestApiEndpoint,
-		"qtnInfoCleared":       value.QtnInfoCleared,
-	}
-	addStringSlice(fields, "featuresSupported", value.FeaturesSupported)
-	if len(value.SmirBucketConfig) > 0 {
-		fields["smirBucketConfig"] = c2cSMIRBucketConfigSource(value.SmirBucketConfig)
-	}
-	if len(value.QtnInfo) > 0 {
-		fields["qtnInfo"] = append([]any(nil), value.QtnInfo...)
-	}
-	return fields
-}
-
-func c2cSMIRBucketConfigSource(values []c2cincidentreceiver.SmirBucketConfig) []any {
-	out := make([]any, 0, len(values))
-	for _, value := range values {
-		out = append(out, map[string]any{
-			"configName":         value.ConfigName,
-			"metadataBucketName": value.MetadataBucketName,
-			"dataBucketName":     value.DataBucketName,
-			"id":                 value.ID,
-		})
-	}
-	return out
-}
-
-func dlpEDMTokenListSource(values []dlpedm.TokenList) []any {
-	out := make([]any, 0, len(values))
-	for _, value := range values {
-		out = append(out, map[string]any{
-			"name":                value.Name,
-			"type":                value.Type,
-			"primaryKey":          value.PrimaryKey,
-			"originalColumn":      value.OriginalColumn,
-			"hashfileColumnOrder": value.HashfileColumnOrder,
-			"colLengthBitmap":     value.ColLengthBitmap,
-		})
-	}
-	return out
-}
-
-func dlpEDMScheduleSource(value dlpedm.Schedule) map[string]any {
-	return map[string]any{
-		"scheduleType":       value.ScheduleType,
-		"scheduleDayOfMonth": append([]string(nil), value.ScheduleDayOfMonth...),
-		"scheduleDayOfWeek":  append([]string(nil), value.ScheduleDayOfWeek...),
-		"scheduleTime":       value.ScheduleTime,
-		"scheduleDisabled":   value.ScheduleDisabled,
-	}
 }
 
 func cbiProfileSource(value *ziacommon.CBIProfile) map[string]any {

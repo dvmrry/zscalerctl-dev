@@ -88,7 +88,7 @@ Open draft PR:
 
 | PR | Resources | Status | Smoke command |
 | --- | --- | --- | --- |
-| `#39` | `zia/file-type-rules`, `zia/sandbox-rules`, `zia/firewall-dns-rules`, `zia/risk-profiles`, `zia/nss-servers`, `zia/nss-feeds`, `zia/c2c-incident-receivers`, `zia/dlp-edm-schemas`, `zia/dlp-idm-profile-lite`, `zia/dlp-idm-profiles`, `zia/dlp-web-rules`, `zia/custom-file-types`, `zia/traffic-capture-rules`, `zia/zpa-gateways`, `zia/extranets`, `zia/auth-settings` | Smoke-lab draft; non-release-track until work-machine live smoke trims or promotes resources | `make live-smoke` |
+| `#39` | `zia/file-type-rules`, `zia/sandbox-rules`, `zia/firewall-dns-rules`, `zia/risk-profiles`, `zia/nss-servers`, `zia/nss-feeds`, `zia/custom-file-types`, `zia/zpa-gateways`, `zia/auth-settings` | Smoke-lab draft trimmed after legacy-ZIA live smoke; rerun focused smoke before promoting resources | `make live-smoke` |
 
 Do not merge this branch as-is. Use it as a broad smoke-lab surface, record
 outcomes for each resource independently, and promote only resources that pass
@@ -209,16 +209,6 @@ The following candidates came from a full SDK module-cache scout, not from the
 current vendored import set. They are queue evidence only. Re-run the scaffold
 commands from current SDK source before applying any of them.
 
-### Batch D: Traffic Capture Rules
-
-This looks resource-shaped in the SDK, but it is a policy/control surface with
-nested references and filter options. Keep the first pass conservative and use a
-small custom list closure if the SDK requires explicit default options.
-
-| Resource | SDK package | SDK type | List | Get | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `zia/traffic-capture-rules` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/traffic_capture` | `TrafficCaptureRules` | `GetAll` | `Get` | Policy/control surface; expect labels and capture-specific nested references. |
-
 ### Batch E: Remaining ZIA Traffic Forwarding References
 
 These are read-like traffic-forwarding references. Avoid `vpncredentials` in
@@ -228,43 +218,27 @@ separate secret-material decision.
 | Resource | SDK package | SDK type | List | Get | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `zia/zpa-gateways` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/zpa_gateways` | `ZPAGateways` | `GetAll` | `Get` | ZPA gateway references used by forwarding policy. |
-| `zia/extranets` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/extranet` | `Extranet` | `GetAll` | `Get` | External connectivity metadata; inspect nested refs conservatively. |
 
-### Batch F: C2C And DLP Metadata
+### Batch G: NSS Feed Metadata
 
-These are metadata-oriented read surfaces that may still depend on DLP/C2C
-entitlements. Keep the first smoke-lab pass conservative: render identity,
-status, counts, and schedule metadata; drop authorization payloads, admin
-references, EDM token definitions, and user/path details unless separately
-modeled.
-
-| Resource | SDK package | SDK type | List | Get | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `zia/c2c-incident-receivers` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver` | `C2CIncidentReceiver` | `GetAll` | `Get` | Cloud-to-cloud receiver metadata; authorization payloads must remain dropped. |
-| `zia/dlp-edm-schemas` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match` | `DLPEDMSchema` | `GetAll` | `GetDLPEDMSchemaID` | EDM schema metadata; token definitions remain dropped. |
-| `zia/dlp-idm-profile-lite` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profile_lite` | `DLPIDMProfileLite` | `GetAll` | `GetDLPProfileLiteID` | Lite IDM template metadata. |
-| `zia/dlp-idm-profiles` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_idm_profiles` | `DLPIDMProfile` | `GetAll` | `Get` | IDM template metadata; host/path/user details stay local-only or dropped. |
-
-### Batch G: NSS Feed And Web DLP Rule Metadata
-
-These complete the first two open items from the remaining ZIA list/get queue.
-Both are broad policy/logging surfaces, so the smoke-lab pass keeps credential,
-admin, exception-rule, receiver, and high-risk nested details dropped until live
-data proves the shape is useful.
+This completes one open item from the remaining ZIA list/get queue. NSS feeds are
+broad logging surfaces, so the smoke-lab pass keeps credential, connection,
+collaborator, location, and high-risk nested details dropped until live data
+proves the shape is useful.
 
 | Resource | SDK package | SDK type | List | Get | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `zia/nss-feeds` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss` | `NSSFeed` | `GetAll` | `Get` | Feed metadata and reviewed filters render; connection auth, headers, certificates, VPN credentials, and collaborator/location refs remain dropped or local-only. |
-| `zia/dlp-web-rules` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_web_rules` | `WebDLPRules` | `GetAll` | `Get` | Web DLP rule metadata; admin, receiver, ICAP/template, auditor, and nested sub-rule details remain dropped or local-only. |
 
 ## Remaining SDK Package Review
 
-After the auth-settings singleton smoke seam, a full SDK module-cache scout
-shows 76 ZIA packages with ordinary list/get, singleton, or
-list/get-with-mutating-neighbor shapes. Forty-nine of those package surfaces are
-represented by the current catalog/shape-review graph; the 27 below remain
-outside the catalog. This count is package-level
-scouting evidence, not a promise that every row should become a resource.
+After the auth-settings singleton smoke seam and the smoke-lab trim, the current
+branch catalog contains 44 ZIA resources. The table below tracks SDK package
+surfaces that remain outside the catalog and still need a shape or policy
+decision. The deferred table later in this document tracks generated resources
+that were removed after live smoke reported request failures. These are
+package-level scouting notes, not a promise that every row should become a
+resource.
 
 | SDK package | Review posture |
 | --- | --- |
@@ -296,7 +270,7 @@ scouting evidence, not a promise that every row should become a resource.
 | `usermanagement/departments` | Deferred after legacy live-smoke failure; identity-like data also needs privacy review. |
 | `usermanagement/users` | Deferred after legacy live-smoke failure; identity-like data also needs privacy review. |
 
-### Review Outcome For The Remaining 27
+### Review Outcome For Remaining Shape-Decision Items
 
 The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.37) remains the
 implementation authority. The Python SDK is useful only as scout evidence for
@@ -314,7 +288,7 @@ Python SDK spot-checks confirmed four important shape notes:
 - Intermediate CA certificates mix ordinary certificate metadata with
   certificate, CSR, attestation, and public-key material/download endpoints.
 
-The remaining 27 split into these work tracks:
+The remaining non-deferred items split into these work tracks:
 
 | Track | Surfaces | Next action |
 | --- | --- | --- |
@@ -325,8 +299,8 @@ The remaining 27 split into these work tracks:
 | Privacy, identity, export, or material surfaces | `adminauditlogs`, `adminuserrolemgmt/admins`, `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. |
 | Helper/catalog/diagnostic surfaces | `apptotal`, `trafficforwarding/virtualipaddress` | Do not force into config dump semantics. Treat as future lookup/report/diagnostic commands if needed. |
 
-No row in the remaining 27 should be wired as a normal list/get resource before
-one of those track-level decisions is made. The core list-only and singleton
+No remaining row should be wired as a normal list/get resource before one of
+those track-level decisions is made. The core list-only and singleton
 seams now exist:
 
 - Catalog specs can declare only `list`, and the CLI rejects unsupported `get`
@@ -397,6 +371,13 @@ endpoint behavior and auth-mode support first.
 | `zia/dlp-incident-receiver-servers` | List request failure under ZIA legacy credentials. |
 | `zia/dlp-notification-templates` | List request failure under ZIA legacy credentials. |
 | `zia/ips-signature-rules` | List request failure under ZIA legacy credentials. |
+| `zia/c2c-incident-receivers` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-edm-schemas` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-idm-profile-lite` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-idm-profiles` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-web-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/traffic-capture-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/extranets` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 
 ## Return-To-Work Checklist
 
