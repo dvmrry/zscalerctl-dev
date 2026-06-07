@@ -23,6 +23,65 @@ func TestReadOperationsDoNotMutate(t *testing.T) {
 	}
 }
 
+func TestListOperationsDoNotMutate(t *testing.T) {
+	t.Parallel()
+
+	ops := resources.ListOperations()
+	if len(ops) != 1 {
+		t.Fatalf("ListOperations() length = %d, want 1", len(ops))
+	}
+	if ops[0].Name != "list" || ops[0].Capability != resources.CapabilityRead {
+		t.Fatalf("ListOperations()[0] = %+v, want read list operation", ops[0])
+	}
+	if ops[0].Mutates() {
+		t.Errorf("ListOperations()[0].Mutates() = true, want false")
+	}
+}
+
+func TestSingletonOperationsUseListContract(t *testing.T) {
+	t.Parallel()
+
+	ops := resources.SingletonOperations()
+	if len(ops) != 1 {
+		t.Fatalf("SingletonOperations() length = %d, want 1", len(ops))
+	}
+	if ops[0].Name != "list" || ops[0].Capability != resources.CapabilityRead {
+		t.Fatalf("SingletonOperations()[0] = %+v, want read list operation", ops[0])
+	}
+	if ops[0].Mutates() {
+		t.Errorf("SingletonOperations()[0].Mutates() = true, want false")
+	}
+}
+
+func TestResourceSpecSupportsReadOperation(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "list-only",
+		Operations: resources.ListOperations(),
+	}
+	if !spec.SupportsReadOperation("list") {
+		t.Errorf("ResourceSpec.SupportsReadOperation(list) = false, want true")
+	}
+	if spec.SupportsReadOperation("get") {
+		t.Errorf("ResourceSpec.SupportsReadOperation(get) = true, want false")
+	}
+}
+
+func TestResourceSpecEffectiveShapeDefaultsToList(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{}
+	if got := spec.EffectiveShape(); got != resources.ShapeList {
+		t.Errorf("ResourceSpec.EffectiveShape() = %s, want %s", got, resources.ShapeList)
+	}
+	spec.Shape = resources.ShapeSingleton
+	if got := spec.EffectiveShape(); got != resources.ShapeSingleton {
+		t.Errorf("ResourceSpec.EffectiveShape(singleton) = %s, want %s", got, resources.ShapeSingleton)
+	}
+}
+
 func TestAssertReadOnlyRejectsWriteCapability(t *testing.T) {
 	t.Parallel()
 
@@ -851,6 +910,39 @@ func TestResourceSpecValidationRejectsUnsafeCatalogNames(t *testing.T) {
 				t.Errorf("ResourceSpec.Validate(%s) error = %v, want ErrInvalidResourceSpec", tt.name, err)
 			}
 		})
+	}
+}
+
+func TestResourceSpecValidationRejectsUnknownShape(t *testing.T) {
+	t.Parallel()
+
+	spec := resourceSpecWithName(resources.ProductZIA, "locations", "list")
+	spec.Shape = resources.ResourceShape("bag")
+	err := spec.Validate()
+	if !errors.Is(err, resources.ErrInvalidResourceSpec) {
+		t.Errorf("ResourceSpec.Validate(unknown shape) error = %v, want ErrInvalidResourceSpec", err)
+	}
+}
+
+func TestResourceSpecValidationRejectsSingletonWithoutList(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product: resources.ProductZIA,
+		Name:    "singleton-settings",
+		Shape:   resources.ShapeSingleton,
+		Operations: []resources.Operation{{
+			Name:       "get",
+			Capability: resources.CapabilityRead,
+		}},
+		Fields: []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+		}},
+	}
+	err := spec.Validate()
+	if !errors.Is(err, resources.ErrInvalidResourceSpec) {
+		t.Errorf("ResourceSpec.Validate(singleton without list) error = %v, want ErrInvalidResourceSpec", err)
 	}
 }
 

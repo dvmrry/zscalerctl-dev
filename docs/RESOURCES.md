@@ -116,6 +116,28 @@ The SDK also returns admin references such as `createdBy` and `lastModifiedBy`.
 The reader maps those nested objects into source records, but the catalog does
 not allow them to render, so projection drops them.
 
+## ZIA Auth Settings
+
+Commands:
+
+```sh
+zscalerctl zia auth-settings list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `orgAuthType`, `oneTimeAuth` | Operational metadata | `standard`, `share` | Organization authentication mode metadata. |
+| `samlEnabled`, `kerberosEnabled`, `mobileAdminSamlIdpEnabled` | Operational metadata | `standard`, `share` | Enabled-state flags for authentication integrations. |
+| `authFrequency`, `authCustomFrequency` | Operational metadata | `standard`, `share` | Authentication frequency policy metadata. |
+| `lastSyncStartTime`, `lastSyncEndTime` | Operational metadata | `standard`, `share` | Directory sync timestamps from the SDK. |
+| `autoProvision`, `directorySyncMigrateToScimEnabled` | Operational metadata | `standard`, `share` | Provisioning and migration flags. |
+| `kerberosPwd`, `passwordStrength`, `passwordExpiry` | Secret | never | Password-bearing settings are mapped into source records and dropped by projection. |
+
+This is a singleton settings object. The CLI exposes it through `list` so dumps
+and live smoke can treat singleton resources as one-record arrays.
+
 ## ZIA Static IPs
 
 Commands:
@@ -819,6 +841,154 @@ Fields:
 | `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `url` | Sensitive identifier | `standard` | Local-only ICAP server endpoint. |
 
+## ZIA Risk Profiles
+
+Commands:
+
+```sh
+zscalerctl zia risk-profiles list
+zscalerctl zia risk-profiles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `profileType`, `status`, `createTime`, `lastModTime` | Operational metadata | `standard`, `share`, `paranoid` | Risk-profile identity, type, state, and timestamp metadata. |
+| `profileName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `customTags`, `modifiedBy`, `sourceIpRestrictions` | Sensitive identifier / tenant configuration | `standard` | Local-only tag, admin, and source-restriction references. |
+| `adminAuditLogs`, `certifications`, `dataBreach`, `dataEncryptionInTransit`, `dnsCaaPolicy`, `domainBasedMessageAuth`, `domainKeysIdentifiedMail`, `evasive`, `excludeCertificates`, `fileSharing`, `httpSecurityHeaders`, `malwareScanningForContent`, `mfaSupport`, `passwordStrength`, `poorItemsOfService`, `remoteScreenSharing`, `riskIndex`, `senderPolicyFramework`, `sslCertKeySize`, `sslCertValidity`, `sslPinned`, `supportForWaf`, `vulnerability`, `vulnerabilityDisclosure`, `vulnerableToHeartBleed`, `vulnerableToLogJam`, `vulnerableToPoodle`, `weakCipherSupport` | Secret | never | Security posture detail is mapped into source records and dropped by projection until separately modeled. |
+
+## ZIA Nss Servers
+
+Commands:
+
+```sh
+zscalerctl zia nss-servers list
+zscalerctl zia nss-servers get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `status`, `state`, `type` | Operational metadata | `standard`, `share`, `paranoid` | NSS server identity, state, and type metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `icapSvrId` | Sensitive identifier | `standard` | Local-only ICAP server reference. |
+
+## ZIA Nss Feeds
+
+Commands:
+
+```sh
+zscalerctl zia nss-feeds list
+zscalerctl zia nss-feeds get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `feedStatus`, `nssLogType`, `nssFeedType`, `epsRateLimit`, `jsonArrayToggle`, `maxBatchSize`, `lastSuccessFullTest`, `testConnectivityCode`, `nssType`, `cloudNss`, `oauthAuthentication` | Operational metadata | varies | Feed identity, status, type, limits, test, and OAuth-state metadata. |
+| `name`, `feedOutputFormat`, `userObfuscation`, `timeZone`, `siemType`, `grantType`, `firewallLoggingMode`, `actionFilter`, `emailDlpPolicyAction`, `direction`, `event`, and reviewed enum/filter lists | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| Network, host, URL, file, project, repository, channel, user-agent, and tunnel fields | Sensitive identifier | `standard` | Local-only feed targeting and logging metadata. |
+| Reference fields such as `urlCategories`, `dlpEngines`, `dlpDictionaries`, `rules`, and `nwServices` | Tenant configuration | `standard` | Local-only references render reviewed `id`/`name` fields only. |
+| Authentication fields, connection headers, certificates, VPN credentials, collaborator/user/location references, and high-risk object/filter fields | Secret | never | Mapped into source records and dropped by projection until separately modeled. |
+
+## ZIA File Type Rules
+
+Commands:
+
+```sh
+zscalerctl zia file-type-rules list
+zscalerctl zia file-type-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `state`, `order`, `rank`, `timeQuota`, `sizeQuota`, `accessControl`, `capturePCAP`, `activeContent`, `unscannable`, `minSize`, `maxSize`, `lastModifiedTime` | Operational metadata | varies | Rule identity, ordering, quota, and status metadata. |
+| `name`, `filteringAction`, `passwordProtected`, `operation`, `cloudApplications`, `fileTypes`, `protocols`, `urlCategories`, `deviceTrustLevels` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `browserEunTemplateId`, scope references such as `locations`, `groups`, and `devices` | Sensitive identifier / tenant configuration | `standard` | Local-only rule target and notification references. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Sandbox Rules
+
+Commands:
+
+```sh
+zscalerctl zia sandbox-rules list
+zscalerctl zia sandbox-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `state`, `order`, `rank`, `firstTimeEnable`, `mlActionEnabled`, `byThreatScore`, `accessControl`, `lastModifiedTime`, `defaultRule` | Operational metadata | varies | Rule identity, ordering, status, and behavior metadata. |
+| `name`, `baRuleAction`, `firstTimeOperation`, `protocols`, `baPolicyCategories`, `fileTypes`, `urlCategories` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| Scope references such as `locations`, `groups`, `devices`, and `zpaAppSegments` | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Firewall Dns Rules
+
+Commands:
+
+```sh
+zscalerctl zia firewall-dns-rules list
+zscalerctl zia firewall-dns-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `order`, `rank`, `accessControl`, `state`, `lastModifiedTime`, `defaultRule`, `capturePCAP`, `predefined`, `isWebEunEnabled`, `defaultDnsRuleNameUsed` | Operational metadata | varies | Rule identity, ordering, status, and predefined/default metadata. |
+| `name`, `action`, `blockResponseCode`, `applications`, `dnsRuleRequestTypes`, `protocols` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `redirectIp`, `srcIps`, `destAddresses`, `destIpCategories`, `resCategories` | Sensitive identifier | `standard` | Local-only DNS and network targeting data. |
+| Scope references such as `locations`, `groups`, `dnsGateway`, and IP groups | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Custom File Types
+
+Commands:
+
+```sh
+zscalerctl zia custom-file-types list
+zscalerctl zia custom-file-types get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `fileTypeId` | Operational metadata | `standard`, `share`, `paranoid` | Custom file type identifiers. |
+| `name`, `extension` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+
+## ZIA Zpa Gateways
+
+Commands:
+
+```sh
+zscalerctl zia zpa-gateways list
+zscalerctl zia zpa-gateways get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `lastModifiedTime`, `type` | Operational metadata | varies | Gateway identity, modified timestamp, and gateway type. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `zpaTenantId`, `zpaServerGroup`, `zpaAppSegments` | Sensitive identifier / tenant configuration | `standard` | Local-only ZPA tenant and reference metadata render reviewed `id`/`name` fields only. |
+| `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
 ## Deferred Resource Follow-Ups
 
 - `zia/network-service-groups`: generated and locally validated, but removed
@@ -861,6 +1031,13 @@ Fields:
   removed from the DLP-reference batch after live smoke reported a list request
   failure under ZIA legacy credentials. Investigate the live endpoint behavior
   separately before enabling it in the catalog.
+- `zia/c2c-incident-receivers`, `zia/dlp-edm-schemas`,
+  `zia/dlp-idm-profile-lite`, `zia/dlp-idm-profiles`, `zia/dlp-web-rules`,
+  `zia/traffic-capture-rules`, and `zia/extranets`: generated and locally
+  validated in the smoke-lab branch, but removed after work-machine live smoke
+  reported `live_access_failed` list request failures under ZIA legacy
+  credentials. Investigate endpoint behavior and auth-mode support separately
+  before enabling them in the catalog.
 
 ## Adding A Resource
 

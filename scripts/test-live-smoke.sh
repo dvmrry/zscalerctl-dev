@@ -77,6 +77,21 @@ write_resource() {
     invalid-json:gre-tunnels)
       printf '{"broken":'
       ;;
+    list-fails:gre-tunnels)
+      echo "mock API 404 not entitled" >&2
+      exit 7
+      ;;
+    json-list-fails:gre-tunnels)
+      cat >&2 <<'JSON'
+{
+  "error": {
+    "kind": "live_access_failed",
+    "message": "zscaler API request failed: list zia/gre-tunnels"
+  }
+}
+JSON
+      exit 7
+      ;;
     *:locations)
       printf '[{"id":1,"name":"HQ","description":"<REDACTED:SECRET>","ipAddresses":["192.0.2.10"]}]\n'
       ;;
@@ -298,6 +313,36 @@ if ! grep -q '\[PASS\] live smoke completed' "$tmp_dir/stdout-good"; then
   exit 1
 fi
 
+if ! grep -q 'live smoke results' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not print the result table heading" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'RESOURCE[[:space:]]+PHASE[[:space:]]+STATUS[[:space:]]+RECORDS[[:space:]]+NOTE' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not print the result table header" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'zia/locations[[:space:]]+list[[:space:]]+PASS[[:space:]]+1' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not summarize the locations list row" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'zia/locations[[:space:]]+dump[[:space:]]+PASS[[:space:]]+1' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not summarize the locations dump row" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'dump[[:space:]]+manifest[[:space:]]+PASS' "$tmp_dir/stdout-good"; then
+  echo "live-smoke good fixture did not summarize the dump manifest row" >&2
+  cat "$tmp_dir/stdout-good" >&2
+  exit 1
+fi
+
 if ! grep -q '\[PASS\] manifest count matches resources/zia/locations.json (1 records)' "$tmp_dir/stdout-good"; then
   echo "live-smoke good fixture did not validate manifest counts" >&2
   cat "$tmp_dir/stdout-good" >&2
@@ -460,6 +505,18 @@ if ! grep -q 'preSharedKey' "$tmp_dir/stderr-leaky"; then
   exit 1
 fi
 
+if ! grep -q 'failure summary:' "$tmp_dir/stderr-leaky"; then
+  echo "live-smoke denied-key failure did not print a failure summary path" >&2
+  cat "$tmp_dir/stderr-leaky" >&2
+  exit 1
+fi
+
+if ! grep -q 'failure markers:' "$tmp_dir/stderr-leaky"; then
+  echo "live-smoke denied-key failure summary did not include failure markers" >&2
+  cat "$tmp_dir/stderr-leaky" >&2
+  exit 1
+fi
+
 if run_smoke leaky-location-groups; then
   echo "live-smoke accepted a fixture with location-group denied keys" >&2
   cat "$tmp_dir/stdout-leaky-location-groups" >&2
@@ -496,6 +553,56 @@ fi
 if ! grep -q 'is not a JSON array' "$tmp_dir/stderr-invalid-json"; then
   echo "live-smoke invalid-JSON failure did not mention JSON array validation" >&2
   cat "$tmp_dir/stderr-invalid-json" >&2
+  exit 1
+fi
+
+if run_smoke list-fails; then
+  echo "live-smoke accepted a resource command failure" >&2
+  cat "$tmp_dir/stdout-list-fails" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'zia gre-tunnels list command failed' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure summary did not include the failed resource" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'mock API 404 not entitled' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure summary did not include the stderr snippet" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'zia/gre-tunnels[[:space:]]+list[[:space:]]+FAIL' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure did not print a failed table row" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'failure-summary.txt' "$tmp_dir/stderr-list-fails"; then
+  echo "live-smoke command failure did not print the failure-summary.txt path" >&2
+  cat "$tmp_dir/stderr-list-fails" >&2
+  exit 1
+fi
+
+if run_smoke json-list-fails; then
+  echo "live-smoke accepted a structured JSON resource command failure" >&2
+  cat "$tmp_dir/stdout-json-list-fails" >&2
+  cat "$tmp_dir/stderr-json-list-fails" >&2
+  exit 1
+fi
+
+if ! grep -q 'error: live_access_failed - zscaler API request failed: list zia/gre-tunnels' "$tmp_dir/stderr-json-list-fails"; then
+  echo "live-smoke structured command failure did not compact the JSON stderr snippet" >&2
+  cat "$tmp_dir/stderr-json-list-fails" >&2
+  exit 1
+fi
+
+if grep -q '"error"' "$tmp_dir/stderr-json-list-fails"; then
+  echo "live-smoke structured command failure printed raw JSON in the stderr snippet" >&2
+  cat "$tmp_dir/stderr-json-list-fails" >&2
   exit 1
 fi
 

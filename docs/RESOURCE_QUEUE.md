@@ -20,9 +20,10 @@ available. Queue entries are not validation evidence.
   trim failed resources instead of blocking proven ones.
 - Do not merge resource PRs without a focused `make live-smoke` pass.
 - Do not stack un-smoked resource branches behind an unmerged resource PR.
-- While live-smoke access is unavailable, do not apply queued resource
-  scaffolds to production files. Use the time for SDK scouting, queue
-  refinement, and shape-decision notes only.
+- While live-smoke access is unavailable, do not open merge-track resource PRs
+  behind the current live-smoke gate. A single disposable smoke-lab branch may
+  wire queued resources for future broad live smoke, but it must remain
+  clearly non-release-track until live validation trims or promotes it.
 - Do not commit generated scaffold bundles from `scratch/resource-drafts/`.
 - Regenerate scaffolds from current SDK source and current generator code when a
   batch is ready to apply. Do not replay stale commands blindly.
@@ -87,18 +88,17 @@ Open draft PR:
 
 | PR | Resources | Status | Smoke command |
 | --- | --- | --- | --- |
-| `#33` | `zia/risk-profiles`, `zia/nss-servers` | Draft rebased onto current `main`; parked until work-machine live smoke is available | `make live-smoke` |
+| `#39` | `zia/file-type-rules`, `zia/sandbox-rules`, `zia/firewall-dns-rules`, `zia/risk-profiles`, `zia/nss-servers`, `zia/nss-feeds`, `zia/custom-file-types`, `zia/zpa-gateways`, `zia/auth-settings` | Legacy-ZIA live smoke passed after trimming failed endpoints; release-track candidate pending CI/merge approval | `make live-smoke` |
 
-Do not start applying the next batch until this PR is either merged or trimmed
-and merged. PR `#33` predates the preferred one-resource PR rule; record smoke
-outcomes for each resource independently and trim only the failing resource if
-they diverge.
+This branch started as a broad smoke-lab surface. The retained resources above
+passed focused work-machine live smoke under legacy ZIA credentials after
+`live_access_failed` endpoints were moved to the deferred table.
 
 ## No-Live Work Mode
 
 When read-only tenant credentials are unavailable, do not create more
-production resource branches behind the open draft PR. Safe work during this
-period:
+merge-track production resource PRs behind the open draft PR. Safe work during
+this period:
 
 - refresh this queue from `make sdk-surface-inventory`;
 - scout the full SDK module cache with:
@@ -109,9 +109,42 @@ period:
   ```
 
 - add or refine batch notes, shape-decision notes, and deferred-resource notes;
-- regenerate scratch scaffolds locally for review, but do not commit
-  `scratch/resource-drafts/` or apply them to production files until live smoke
-  is available again.
+- regenerate scratch scaffolds locally for review;
+- optionally maintain one disposable smoke-lab branch that applies reviewed
+  queued scaffolds to production files and carries a `live-smoke.manifest` for
+  broad later testing. Do not mark that branch ready, merge it, or release from
+  it until live smoke has identified which resources survive.
+
+## Future Platform Improvements
+
+These are reusable CLI/resource-model improvements. Do not mix them into a
+resource smoke-lab PR unless a resource explicitly depends on the platform
+change and the change can be tested without live credentials.
+
+### Selector-Based `get`
+
+Current `get` semantics are ID-centered. A future improvement should let
+`get <selector>` accept either an ID or a catalog-declared natural key such as
+`name`, `configuredName`, `commonName`, or `fqdn`.
+
+Required contract:
+
+- Numeric selectors use the SDK's ID get path when one exists.
+- Non-numeric selectors match only catalog-declared lookup fields.
+- Matching is exact only; fuzzy search belongs in a separate future `search`
+  command, not `get`.
+- Zero matches return not found.
+- One match returns that projected record.
+- Multiple matches fail closed with an ambiguous-selector error and tell the
+  operator to use ID. Do not pick an arbitrary duplicate.
+- List-only resources may support `get` by listing and exact-matching the
+  declared lookup fields.
+- Errors must remain value-free: show safe field names, IDs, and counts rather
+  than dumping raw records.
+
+This should be implemented through shared resolver logic plus small
+per-resource catalog metadata, not by hardwiring lookup behavior into every
+resource handler.
 
 ## Next Apply Batches
 
@@ -176,16 +209,6 @@ The following candidates came from a full SDK module-cache scout, not from the
 current vendored import set. They are queue evidence only. Re-run the scaffold
 commands from current SDK source before applying any of them.
 
-### Batch D: Traffic Capture Rules
-
-This looks resource-shaped in the SDK, but it is a policy/control surface with
-nested references and filter options. Keep the first pass conservative and use a
-small custom list closure if the SDK requires explicit default options.
-
-| Resource | SDK package | SDK type | List | Get | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `zia/traffic-capture-rules` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/traffic_capture` | `TrafficCaptureRules` | `GetAll` | `Get` | Policy/control surface; expect labels and capture-specific nested references. |
-
 ### Batch E: Remaining ZIA Traffic Forwarding References
 
 These are read-like traffic-forwarding references. Avoid `vpncredentials` in
@@ -195,7 +218,101 @@ separate secret-material decision.
 | Resource | SDK package | SDK type | List | Get | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `zia/zpa-gateways` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/zpa_gateways` | `ZPAGateways` | `GetAll` | `Get` | ZPA gateway references used by forwarding policy. |
-| `zia/extranets` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/extranet` | `Extranet` | `GetAll` | `Get` | External connectivity metadata; inspect nested refs conservatively. |
+
+### Batch G: NSS Feed Metadata
+
+This completes one open item from the remaining ZIA list/get queue. NSS feeds are
+broad logging surfaces, so the smoke-lab pass keeps credential, connection,
+collaborator, location, and high-risk nested details dropped until live data
+proves the shape is useful.
+
+| Resource | SDK package | SDK type | List | Get | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `zia/nss-feeds` | `github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss` | `NSSFeed` | `GetAll` | `Get` | Feed metadata and reviewed filters render; connection auth, headers, certificates, VPN credentials, and collaborator/location refs remain dropped or local-only. |
+
+## Remaining SDK Package Review
+
+After the auth-settings singleton smoke seam and the smoke-lab trim, the current
+branch catalog contains 44 ZIA resources. The table below tracks SDK package
+surfaces that remain outside the catalog and still need a shape or policy
+decision. The deferred table later in this document tracks generated resources
+that were removed after live smoke reported request failures. These are
+package-level scouting notes, not a promise that every row should become a
+resource.
+
+| SDK package | Review posture |
+| --- | --- |
+| `adminauditlogs` | Admin/audit export surface with download helpers and adjacent export/delete operations; keep as a privacy/audit design item, not ordinary inventory. |
+| `adminuserrolemgmt/admins` | Identity/admin plane with adjacent mutation; requires stricter privacy and role review before any catalog work. |
+| `adminuserrolemgmt/roles` | Admin role plane with adjacent mutation; identity/admin design item. |
+| `apptotal` | Application-view helper surface, not a stable list/get config object yet; needs output semantics before queueing. |
+| `browser_isolation` | List/name-get only; decide list-only resources before enabling. |
+| `dlp/dlp_engines` | Deferred after legacy live-smoke failure; investigate endpoint/auth behavior before retrying. |
+| `dlp/dlp_exact_data_match_lite` | Potential lite companion to EDM schemas, but list/name-get semantics overlap existing EDM schema coverage; decide whether it adds useful output. |
+| `dlp/dlp_incident_receiver_servers` | Deferred after legacy live-smoke failure. |
+| `dlp/dlp_notification_templates` | Deferred after legacy live-smoke failure. |
+| `dlp/dlpdictionaries` | Deferred after legacy live-smoke failure. |
+| `email_profiles` | Deferred after legacy live-smoke failure. |
+| `firewallpolicies/networkapplications` | Deferred after network-applications live-smoke failure while groups succeeded. |
+| `firewallpolicies/networkservicegroups` | Deferred after network-service-groups live-smoke failure. |
+| `intermediatecacertificates` | Certificate/CSR/download material surface; needs public-metadata versus material/export decision. |
+| `ips_control_policies/ips_policies` | Adjacent to failed IPS signature-rule endpoint; verify endpoint and entitlement behavior separately. |
+| `ips_control_policies/ips_signature_rules` | Deferred after legacy live-smoke failure. |
+| `location/locationlite` | Slim location view overlaps `locations`/`sublocations`; only queue if it resolves a concrete pagination or performance gap. |
+| `saas_security_api` | Parameterized CASB/SaaS helper surface; needs stable defaults and shape semantics. |
+| `saas_security_api/casb_dlp_rules` | CASB rule surface with rule-type get semantics; requires resource/get design before enabling. |
+| `saas_security_api/casb_malware_rules` | CASB rule surface with rule-type get semantics; requires resource/get design before enabling. |
+| `scim_api` | Identity-plane SCIM users/groups with adjacent mutation; stricter privacy/auth design item. |
+| `trafficforwarding/dc_exclusions` | List/name-get plus datacenter helper semantics; shape decision before queueing. |
+| `trafficforwarding/sub_clouds` | `GetAll` and integer `Get` return different shapes; decide resource split or list-only semantics. |
+| `trafficforwarding/virtualipaddress` | Read-only VIP recommendation/source-IP helper surface, not ordinary config inventory; decide output model before queueing. |
+| `trafficforwarding/vpncredentials` | Credential-bearing by name; requires a public-metadata-only decision before any catalog entry. |
+| `usermanagement/departments` | Deferred after legacy live-smoke failure; identity-like data also needs privacy review. |
+| `usermanagement/users` | Deferred after legacy live-smoke failure; identity-like data also needs privacy review. |
+
+### Review Outcome For Remaining Shape-Decision Items
+
+The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.37) remains the
+implementation authority. The Python SDK is useful only as scout evidence for
+resource names, endpoint intent, and default query semantics; do not use it to
+override the pinned Go SDK shape.
+
+Python SDK spot-checks confirmed four important shape notes:
+
+- Browser isolation profiles are list/search oriented and have no integer get
+  equivalent.
+- SaaS Security API is several separate lite/list surfaces, not one ordinary
+  resource.
+- Sub-clouds mixes a normal sub-cloud list with a different "last DC in
+  country" lookup.
+- Intermediate CA certificates mix ordinary certificate metadata with
+  certificate, CSR, attestation, and public-key material/download endpoints.
+
+The remaining non-deferred items split into these work tracks:
+
+| Track | Surfaces | Next action |
+| --- | --- | --- |
+| List-only or name-get candidates | `browser_isolation`, `dlp/dlp_exact_data_match_lite`, `location/locationlite`, `trafficforwarding/dc_exclusions`, `trafficforwarding/sub_clouds` | Add explicit list-only/dump-only reader semantics before queueing. `locationlite` should wait for a concrete performance or pagination reason because it overlaps `locations` and `sublocations`. |
+| SaaS/CASB split candidates | `saas_security_api`, `saas_security_api/casb_dlp_rules`, `saas_security_api/casb_malware_rules` | Split `saas_security_api` into separate resources such as domain profiles, quarantine tombstone templates, CASB email labels, CASB tenants, and SaaS scan info. CASB DLP/malware rules can use list/dump via `/all`, but `get` needs a rule-type decision. |
+| Deferred live/auth failures | `dlp/dlp_engines`, `dlp/dlp_incident_receiver_servers`, `dlp/dlp_notification_templates`, `dlp/dlpdictionaries`, `email_profiles`, `firewallpolicies/networkapplications`, `firewallpolicies/networkservicegroups`, `ips_control_policies/ips_signature_rules`, `usermanagement/departments`, `usermanagement/users` | Do not retry as ordinary batch work. Revisit with focused endpoint/auth scouting, ideally under controlled production OneAPI. |
+| Adjacent-to-failure scout | `ips_control_policies/ips_policies` | Ordinary list/get shape, but adjacent to the failed IPS signature-rule endpoint. Probe separately before queueing. |
+| Privacy, identity, export, or material surfaces | `adminauditlogs`, `adminuserrolemgmt/admins`, `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. |
+| Helper/catalog/diagnostic surfaces | `apptotal`, `trafficforwarding/virtualipaddress` | Do not force into config dump semantics. Treat as future lookup/report/diagnostic commands if needed. |
+
+No remaining row should be wired as a normal list/get resource before one of
+those track-level decisions is made. The core list-only and singleton
+seams now exist:
+
+- Catalog specs can declare only `list`, and the CLI rejects unsupported `get`
+  before reader construction.
+- The SDK adapter has a list-only handler for future resources with no ID
+  lookup.
+- Singleton specs are explicitly marked as `shape: singleton`, use the `list`
+  operation contract, dump as one projected record, and record that shape in the
+  dump manifest.
+
+The next resource unlock is applying one list-only or singleton candidate with
+focused docs/completion review and later live smoke.
 
 ### Future Non-ZIA Tracks
 
@@ -254,14 +371,22 @@ endpoint behavior and auth-mode support first.
 | `zia/dlp-incident-receiver-servers` | List request failure under ZIA legacy credentials. |
 | `zia/dlp-notification-templates` | List request failure under ZIA legacy credentials. |
 | `zia/ips-signature-rules` | List request failure under ZIA legacy credentials. |
+| `zia/c2c-incident-receivers` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-edm-schemas` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-idm-profile-lite` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-idm-profiles` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/dlp-web-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/traffic-capture-rules` | List request failure under ZIA legacy credentials (`live_access_failed`). |
+| `zia/extranets` | List request failure under ZIA legacy credentials (`live_access_failed`). |
 
 ## Return-To-Work Checklist
 
 When live smoke is available again:
 
-1. Resolve PR `#33` first with `make live-smoke`.
-2. Merge or trim PR `#33`.
-3. Regenerate Batch A scaffolds from this queue.
-4. Apply only Batch A to production files.
-5. Open one draft PR with a focused `live-smoke.manifest`.
-6. Repeat only after that PR is merged or trimmed.
+1. Pull PR `#39` and run `make live-smoke`.
+2. Record pass/fail outcomes for every manifest resource.
+3. Trim failed resources from the smoke-lab branch or move them to the
+   deferred table with the observed failure mode.
+4. Promote only passing resources into release-track work.
+5. Close or supersede older draft resource PRs that are now represented in the
+   smoke-lab branch.

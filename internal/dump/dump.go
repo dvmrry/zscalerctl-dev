@@ -76,6 +76,7 @@ func (Manifest) OutputSafe() {}
 type ManifestResource struct {
 	Product   string `json:"product"`
 	Name      string `json:"name"`
+	Shape     string `json:"shape,omitempty"`
 	Status    string `json:"status"`
 	Path      string `json:"path,omitempty"`
 	Records   int    `json:"records"`
@@ -159,6 +160,7 @@ func Write(dir string, mode redact.Mode, result Result) error {
 		manifest.Resources = append(manifest.Resources, ManifestResource{
 			Product: target.product,
 			Name:    target.name,
+			Shape:   manifestResourceShape(target.entry.Spec),
 			Status:  "complete",
 			Path:    filepath.ToSlash(target.relPath),
 			Records: recordCount,
@@ -187,6 +189,14 @@ func Write(dir string, mode redact.Mode, result Result) error {
 		}
 	}
 	return nil
+}
+
+func manifestResourceShape(spec resources.ResourceSpec) string {
+	shape := spec.EffectiveShape()
+	if shape == resources.ShapeList {
+		return ""
+	}
+	return string(shape)
 }
 
 func buildResourceTargets(dir string, entries []ResourceDump) ([]resourceTarget, error) {

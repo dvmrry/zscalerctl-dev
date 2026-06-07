@@ -14,6 +14,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
@@ -1213,6 +1214,110 @@ func TestDumpResourceFilterRejectsResourceOutsideSelectedProductsBeforeReader(t 
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(dump --products zpa --resources locations) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestResourceGetRejectsUnsupportedOperationBeforeReader(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{{
+		Product:    resources.ProductZIA,
+		Name:       "list-only",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+		}},
+	}}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Reader:  failingResourceReader{},
+		Catalog: catalog,
+	})
+
+	err := app.Run(context.Background(), []string{"zia", "list-only", "get", "123"})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(zia list-only get 123) error = %v, want ErrUsage", err)
+	}
+	if !strings.Contains(err.Error(), "unsupported operation get for zia/list-only") {
+		t.Errorf("App.Run(zia list-only get 123) error = %q, want unsupported operation message", err.Error())
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(zia list-only get 123) stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(zia list-only get 123) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestDumpWritesSingletonResourceAsOneRecordWithManifestShape(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{{
+		Product:    resources.ProductZIA,
+		Name:       "singleton-settings",
+		Shape:      resources.ShapeSingleton,
+		Operations: resources.SingletonOperations(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+		},
+	}}
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   1,
+			"name": "Auth settings",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Reader:  reader,
+		Catalog: catalog,
+	})
+
+	err := app.Run(context.Background(), []string{"dump", "--resources", "zia/singleton-settings", "--out", outDir})
+	if err != nil {
+		t.Fatalf("App.Run(dump singleton-settings) error = %v, want nil", err)
+	}
+	var manifest struct {
+		Resources []struct {
+			Product string `json:"product"`
+			Name    string `json:"name"`
+			Shape   string `json:"shape"`
+			Records int    `json:"records"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(outDir, "manifest.json"))), &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(singleton manifest) error = %v, want nil", err)
+	}
+	if len(manifest.Resources) != 1 {
+		t.Fatalf("manifest resources length = %d, want 1", len(manifest.Resources))
+	}
+	got := manifest.Resources[0]
+	if got.Product != "zia" || got.Name != "singleton-settings" || got.Shape != "singleton" || got.Records != 1 {
+		t.Errorf("manifest singleton resource = %+v, want zia/singleton-settings shape singleton records 1", got)
+	}
+	var records []map[string]any
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(outDir, "resources", "zia", "singleton-settings.json"))), &records); err != nil {
+		t.Fatalf("json.Unmarshal(singleton resource) error = %v, want nil", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("singleton-settings records length = %d, want 1", len(records))
+	}
+	if records[0]["name"] != "Auth settings" {
+		t.Errorf("singleton-settings record name = %v, want Auth settings", records[0]["name"])
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(dump singleton-settings) stderr = %q, want empty", errOut.String())
 	}
 }
 

@@ -20,6 +20,11 @@ strict_counts=0
 failures=0
 resources=()
 requested_resources=()
+failure_messages=()
+result_rows=()
+summary_stderr_lines=4
+summary_stderr_chars=220
+summary_note_chars=72
 
 usage() {
   cat <<'EOF'
@@ -256,8 +261,180 @@ skip() {
 }
 
 fail() {
-  printf '[FAIL] %s\n' "$*" >&2
+  local message="$*"
+  printf '[FAIL] %s\n' "$message" >&2
+  failure_messages+=("$message")
   failures=$((failures + 1))
+}
+
+artifact_note() {
+  local path="$1"
+  printf '%s' "${path#"$out_dir/"}"
+}
+
+record_result() {
+  local resource="$1"
+  local phase="$2"
+  local status="$3"
+  local records="$4"
+  local note="$5"
+
+  note="${note//$'\n'/ }"
+  note="${note//|/ }"
+  if [[ -z "$records" ]]; then
+    records="-"
+  fi
+  result_rows+=("$resource|$phase|$status|$records|$note")
+}
+
+record_result_from_failures() {
+  local resource="$1"
+  local phase="$2"
+  local start_failures="$3"
+  local records="$4"
+  local pass_note="$5"
+  local fail_note="$6"
+
+  if ((failures == start_failures)); then
+    record_result "$resource" "$phase" "PASS" "$records" "$pass_note"
+  else
+    record_result "$resource" "$phase" "FAIL" "$records" "$fail_note"
+  fi
+}
+
+fit_cell() {
+  local value="$1"
+  local width="$2"
+
+  value="${value//$'\n'/ }"
+  if ((${#value} > width)); then
+    printf '%s...' "${value:0:$((width - 3))}"
+    return
+  fi
+  printf '%s' "$value"
+}
+
+print_result_table() {
+  local resource_width=36
+  local phase_width=10
+  local status_width=6
+  local records_width=7
+  local resource
+  local phase
+  local status
+  local records
+  local note
+  local row
+
+  if ((${#result_rows[@]} == 0)); then
+    return
+  fi
+
+  printf '\n'
+  printf 'live smoke results\n'
+  printf '%-*s  %-*s  %-*s  %-*s  %s\n' \
+    "$resource_width" "RESOURCE" \
+    "$phase_width" "PHASE" \
+    "$status_width" "STATUS" \
+    "$records_width" "RECORDS" \
+    "NOTE"
+  printf '%-*s  %-*s  %-*s  %-*s  %s\n' \
+    "$resource_width" "------------------------------------" \
+    "$phase_width" "----------" \
+    "$status_width" "------" \
+    "$records_width" "-------" \
+    "----"
+
+  for row in "${result_rows[@]}"; do
+    IFS='|' read -r resource phase status records note <<<"$row"
+    note="$(fit_cell "$note" "$summary_note_chars")"
+    printf '%-*s  %-*s  %-*s  %-*s  %s\n' \
+      "$resource_width" "$(fit_cell "$resource" "$resource_width")" \
+      "$phase_width" "$(fit_cell "$phase" "$phase_width")" \
+      "$status_width" "$status" \
+      "$records_width" "$(fit_cell "$records" "$records_width")" \
+      "$note"
+  done
+  printf '\n'
+}
+
+write_failure_summary() {
+  local failure_count="$1"
+  local summary_file="$out_dir/failure-summary.txt"
+  local file
+  local message
+  local found_stderr=0
+
+  {
+    printf 'zscalerctl live-smoke failure summary\n'
+    printf 'failures: %s\n' "$failure_count"
+    printf 'artifacts: %s\n' "$out_dir"
+    printf '\n'
+    printf 'failure markers:\n'
+    for message in "${failure_messages[@]}"; do
+      printf -- '- %s\n' "$message"
+    done
+    printf '\n'
+    printf 'non-empty stderr snippets (first %s compacted lines each):\n' "$summary_stderr_lines"
+    while IFS= read -r file; do
+      if [[ ! -s "$file" ]]; then
+        continue
+      fi
+      found_stderr=1
+      printf '\n'
+      printf '===== %s =====\n' "$file"
+      write_stderr_summary "$file"
+    done < <(find "$out_dir" -type f -name '*.stderr' -print | sort)
+    if ((found_stderr == 0)); then
+      printf '<none>\n'
+    fi
+  } >"$summary_file"
+  chmod 600 "$summary_file"
+  printf '%s' "$summary_file"
+}
+
+write_stderr_summary() {
+  local file="$1"
+  local kind
+  local message
+
+  if kind="$(jq -r '.error.kind // empty' "$file" 2>/dev/null)" && [[ -n "$kind" ]]; then
+    message="$(jq -r '.error.message // empty' "$file" 2>/dev/null)"
+    printf 'error: %s' "$kind"
+    if [[ -n "$message" ]]; then
+      printf ' - %s' "$message"
+    fi
+    printf '\n'
+    return
+  fi
+
+  awk -v max_lines="$summary_stderr_lines" -v max_chars="$summary_stderr_chars" '
+    NR > max_lines {
+      omitted = 1
+      next
+    }
+    {
+      line = $0
+      gsub(/[[:space:]]+/, " ", line)
+      if (length(line) > max_chars) {
+        line = substr(line, 1, max_chars) "... <truncated>"
+      }
+      print line
+    }
+    END {
+      if (omitted) {
+        print "... <additional stderr omitted; see full artifact file>"
+      }
+    }
+  ' "$file"
+}
+
+print_failure_summary() {
+  local summary_file="$1"
+
+  printf '[INFO] failure summary: %s\n' "$summary_file" >&2
+  printf '\n' >&2
+  sed -n '1,220p' "$summary_file" >&2
 }
 
 if [[ -n "$manifest_path" ]]; then
@@ -475,11 +652,13 @@ load_zia_resources() {
     pass "schema list command completed"
   else
     fail "schema list command failed; stderr captured at $stderr_file"
+    record_result "schema" "list" "FAIL" "-" "see $(artifact_note "$stderr_file")"
     return 1
   fi
 
   if ! jq -e 'type == "array"' "$schema_file" >/dev/null 2>&1; then
     fail "schema list is not a JSON array: $schema_file"
+    record_result "schema" "list" "FAIL" "-" "invalid JSON; see $(artifact_note "$schema_file")"
     return 1
   fi
   pass "schema list returned a JSON array"
@@ -518,6 +697,7 @@ load_zia_resources() {
 
   pass "schema list found ${#all_resources[@]} ZIA read/list resource(s)"
   pass "live smoke selected ${#resources[@]} ZIA resource(s): ${resources[*]}"
+  record_result "schema" "list" "PASS" "${#all_resources[@]}" "selected ${#resources[@]} ZIA resources"
   return 0
 }
 
@@ -710,6 +890,9 @@ schema_file="$lists_dir/schema.json"
 schema_stderr="$lists_dir/schema.stderr"
 if ! load_zia_resources "$schema_file" "$schema_stderr"; then
   fail "live smoke cannot continue without a valid schema resource set"
+  print_result_table >&2
+  summary_file="$(write_failure_summary "$failures")"
+  print_failure_summary "$summary_file"
   exit 1
 fi
 
@@ -719,25 +902,37 @@ write_expected_dump_paths "$expected_paths_file"
 for resource in "${resources[@]}"; do
   stdout_file="$lists_dir/zia-${resource}.json"
   stderr_file="$lists_dir/zia-${resource}.stderr"
+  list_start_failures="$failures"
+  list_records="-"
 
   if "${cli[@]}" --format json zia "$resource" list >"$stdout_file" 2>"$stderr_file"; then
     pass "zia $resource list command completed"
   else
     fail "zia $resource list command failed; stderr captured at $stderr_file"
+    record_result "zia/$resource" "list" "FAIL" "-" "command failed; see $(artifact_note "$stderr_file")"
     continue
   fi
 
   if validate_json_array "zia $resource list" "$stdout_file"; then
-    jq 'length' "$stdout_file" >"$lists_dir/zia-${resource}.count"
+    list_records="$(jq 'length' "$stdout_file")"
+    printf '%s\n' "$list_records" >"$lists_dir/zia-${resource}.count"
     validate_no_denied_keys "zia $resource list" "$resource" "$stdout_file"
     validate_catalog_subset "zia $resource list" "$resource" "$stdout_file" "$schema_file"
     summarize_redaction_markers "zia $resource list" "$stdout_file"
   fi
+  record_result_from_failures \
+    "zia/$resource" \
+    "list" \
+    "$list_start_failures" \
+    "$list_records" \
+    "" \
+    "see $(artifact_note "$stdout_file") / $(artifact_note "$stderr_file")"
 done
 
 dump_dir="$out_dir/dump"
 dump_stdout="$out_dir/dump.stdout"
 dump_stderr="$out_dir/dump.stderr"
+dump_command_start_failures="$failures"
 dump_args=(dump --products zia)
 if ((${#requested_resources[@]} != 0)); then
   dump_args+=(--resources "$(join_csv "${resources[@]}")")
@@ -749,8 +944,16 @@ if "${cli[@]}" "${dump_args[@]}" >"$dump_stdout" 2>"$dump_stderr"; then
 else
   fail "zia dump command failed; stderr captured at $dump_stderr"
 fi
+record_result_from_failures \
+  "dump" \
+  "command" \
+  "$dump_command_start_failures" \
+  "-" \
+  "$(artifact_note "$dump_dir")" \
+  "see $(artifact_note "$dump_stderr")"
 
 if [[ -d "$dump_dir" ]]; then
+  manifest_start_failures="$failures"
   validate_file_mode "dump root directory" "$dump_dir" "700"
   validate_file_mode "dump resources directory" "$dump_dir/resources" "700"
   validate_file_mode "dump zia directory" "$dump_dir/resources/zia" "700"
@@ -806,18 +1009,37 @@ if [[ -d "$dump_dir" ]]; then
   else
     pass "complete dump did not write errors.ndjson"
   fi
+  record_result_from_failures \
+    "dump" \
+    "manifest" \
+    "$manifest_start_failures" \
+    "${#resources[@]}" \
+    "complete" \
+    "see $(artifact_note "$dump_dir")"
 
+  dump_files_start_failures="$failures"
   validate_dump_file_set "$dump_dir" "$expected_paths_file" "$lists_dir/actual-zia-dump-paths.txt" "$lists_dir/actual-zia-dump-paths.diff"
+  record_result_from_failures \
+    "dump" \
+    "files" \
+    "$dump_files_start_failures" \
+    "${#resources[@]}" \
+    "resource set matches" \
+    "see $(artifact_note "$lists_dir/actual-zia-dump-paths.diff")"
 
   for resource in "${resources[@]}"; do
     file="$dump_dir/resources/zia/${resource}.json"
+    dump_resource_start_failures="$failures"
+    dump_records="-"
     if [[ ! -f "$file" ]]; then
       fail "dump resource file missing: $file"
+      record_result "zia/$resource" "dump" "FAIL" "-" "missing $(artifact_note "$file")"
       continue
     fi
     validate_file_mode "dump zia $resource file" "$file" "600"
     if validate_json_array "dump zia $resource" "$file"; then
-      jq 'length' "$file" >"$lists_dir/dump-zia-${resource}.count"
+      dump_records="$(jq 'length' "$file")"
+      printf '%s\n' "$dump_records" >"$lists_dir/dump-zia-${resource}.count"
       validate_no_denied_keys "dump zia $resource" "$resource" "$file"
       validate_catalog_subset "dump zia $resource" "$resource" "$file" "$schema_file"
       summarize_redaction_markers "dump zia $resource" "$file"
@@ -825,6 +1047,13 @@ if [[ -d "$dump_dir" ]]; then
         compare_counts "$resource" "$(cat "$lists_dir/zia-${resource}.count")" "$(cat "$lists_dir/dump-zia-${resource}.count")"
       fi
     fi
+    record_result_from_failures \
+      "zia/$resource" \
+      "dump" \
+      "$dump_resource_start_failures" \
+      "$dump_records" \
+      "" \
+      "see $(artifact_note "$file")"
   done
 
   if [[ -f "$manifest" ]]; then
@@ -845,8 +1074,13 @@ if [[ -d "$dump_dir" ]]; then
 fi
 
 if ((failures != 0)); then
-  fail "live smoke completed with $failures failure(s); artifacts kept at $out_dir"
+  failure_count="$failures"
+  print_result_table >&2
+  summary_file="$(write_failure_summary "$failure_count")"
+  print_failure_summary "$summary_file"
+  printf '[FAIL] live smoke completed with %s failure(s); artifacts kept at %s\n' "$failure_count" "$out_dir" >&2
   exit 1
 fi
 
+print_result_table
 pass "live smoke completed; artifacts kept at $out_dir"

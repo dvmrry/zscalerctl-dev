@@ -63,6 +63,13 @@ const (
 
 const standardFreeTextControls = "standard-only local operator context; scanned with free-text backstops and excluded from share/paranoid"
 
+type ResourceShape string
+
+const (
+	ShapeList      ResourceShape = "list"
+	ShapeSingleton ResourceShape = "singleton"
+)
+
 func standardFreeTextReason(subject string) string {
 	return subject + "; " + standardFreeTextControls
 }
@@ -88,10 +95,11 @@ func (f FieldSpec) AllowedIn(mode redact.Mode) bool {
 }
 
 type ResourceSpec struct {
-	Product    Product     `json:"product"`
-	Name       string      `json:"name"`
-	Operations []Operation `json:"operations"`
-	Fields     []FieldSpec `json:"fields"`
+	Product    Product       `json:"product"`
+	Name       string        `json:"name"`
+	Shape      ResourceShape `json:"shape,omitempty"`
+	Operations []Operation   `json:"operations"`
+	Fields     []FieldSpec   `json:"fields"`
 }
 
 type ResourceCatalog []ResourceSpec
@@ -103,6 +111,32 @@ func ReadOperations() []Operation {
 		{Name: "list", Capability: CapabilityRead},
 		{Name: "get", Capability: CapabilityRead},
 	}
+}
+
+func ListOperations() []Operation {
+	return []Operation{
+		{Name: "list", Capability: CapabilityRead},
+	}
+}
+
+func SingletonOperations() []Operation {
+	return ListOperations()
+}
+
+func (s ResourceSpec) EffectiveShape() ResourceShape {
+	if s.Shape == "" {
+		return ShapeList
+	}
+	return s.Shape
+}
+
+func (s ResourceSpec) SupportsReadOperation(name string) bool {
+	for _, op := range s.Operations {
+		if op.Name == name && op.Capability == CapabilityRead {
+			return true
+		}
+	}
+	return false
 }
 
 func AssertReadOnly(specs ...ResourceSpec) error {
@@ -534,6 +568,11 @@ func (s ResourceSpec) Validate() error {
 	if !validCatalogName(s.Name) {
 		return fmt.Errorf("%w: invalid resource name %q", ErrInvalidResourceSpec, s.Name)
 	}
+	switch s.EffectiveShape() {
+	case ShapeList, ShapeSingleton:
+	default:
+		return fmt.Errorf("%w: %s/%s invalid shape %q", ErrInvalidResourceSpec, s.Product, s.Name, s.Shape)
+	}
 	if len(s.Operations) == 0 {
 		return fmt.Errorf("%w: %s/%s has no operations", ErrInvalidResourceSpec, s.Product, s.Name)
 	}
@@ -549,6 +588,9 @@ func (s ResourceSpec) Validate() error {
 		default:
 			return fmt.Errorf("%w: %s/%s operation %s has invalid capability %q", ErrInvalidResourceSpec, s.Product, s.Name, op.Name, op.Capability)
 		}
+	}
+	if s.EffectiveShape() == ShapeSingleton && !s.SupportsReadOperation("list") {
+		return fmt.Errorf("%w: %s/%s singleton resources must support list", ErrInvalidResourceSpec, s.Product, s.Name)
 	}
 	if err := validateFields(s.Product, s.Name, "", s.Fields); err != nil {
 		return err
@@ -638,7 +680,11 @@ func validateFreeTextField(product Product, resource string, path string, field 
 }
 
 func FindSpec(product Product, name string) (ResourceSpec, bool) {
-	for _, spec := range Catalog() {
+	return Catalog().FindSpec(product, name)
+}
+
+func (c ResourceCatalog) FindSpec(product Product, name string) (ResourceSpec, bool) {
+	for _, spec := range c {
 		if spec.Product == product && spec.Name == name {
 			return spec, true
 		}
@@ -868,6 +914,28 @@ func Catalog() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "auth-settings",
+			Shape:      ShapeSingleton,
+			Operations: SingletonOperations(),
+			Fields: []FieldSpec{
+				operationalField("orgAuthType", standardShareModes()),
+				operationalField("oneTimeAuth", standardShareModes()),
+				operationalField("samlEnabled", standardShareModes()),
+				operationalField("kerberosEnabled", standardShareModes()),
+				secretField("kerberosPwd"),
+				operationalField("authFrequency", standardShareModes()),
+				operationalField("authCustomFrequency", standardShareModes()),
+				secretField("passwordStrength"),
+				secretField("passwordExpiry"),
+				operationalField("lastSyncStartTime", standardShareModes()),
+				operationalField("lastSyncEndTime", standardShareModes()),
+				operationalField("mobileAdminSamlIdpEnabled", standardShareModes()),
+				operationalField("autoProvision", standardShareModes()),
+				operationalField("directorySyncMigrateToScimEnabled", standardShareModes()),
 			},
 		},
 		{
@@ -1777,6 +1845,352 @@ func Catalog() ResourceCatalog {
 				tenantConfigField("name", standardShareModes()),
 				sensitiveIdentifierField("url"),
 				operationalField("status", allModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "risk-profiles",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("profileName", standardShareModes()),
+				operationalField("profileType", allModes()),
+				operationalField("status", allModes()),
+				operationalField("createTime", allModes()),
+				operationalField("lastModTime", allModes()),
+				idNameExternalIDField("customTags", standardOnlyMode()),
+				idNameExtensionsField("modifiedBy", standardOnlyMode()),
+				sensitiveIdentifierField("sourceIpRestrictions"),
+				secretField("adminAuditLogs"),
+				secretField("certifications"),
+				secretField("dataBreach"),
+				secretField("dataEncryptionInTransit"),
+				secretField("dnsCaaPolicy"),
+				secretField("domainBasedMessageAuth"),
+				secretField("domainKeysIdentifiedMail"),
+				secretField("evasive"),
+				secretField("excludeCertificates"),
+				secretField("fileSharing"),
+				secretField("httpSecurityHeaders"),
+				secretField("malwareScanningForContent"),
+				secretField("mfaSupport"),
+				secretField("passwordStrength"),
+				secretField("poorItemsOfService"),
+				secretField("remoteScreenSharing"),
+				secretField("riskIndex"),
+				secretField("senderPolicyFramework"),
+				secretField("sslCertKeySize"),
+				secretField("sslCertValidity"),
+				secretField("sslPinned"),
+				secretField("supportForWaf"),
+				secretField("vulnerability"),
+				secretField("vulnerabilityDisclosure"),
+				secretField("vulnerableToHeartBleed"),
+				secretField("vulnerableToLogJam"),
+				secretField("vulnerableToPoodle"),
+				secretField("weakCipherSupport"),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "nss-servers",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("status", allModes()),
+				operationalField("state", allModes()),
+				operationalField("type", allModes()),
+				sensitiveIdentifierField("icapSvrId"),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "nss-feeds",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("feedStatus", allModes()),
+				operationalField("nssLogType", allModes()),
+				operationalField("nssFeedType", allModes()),
+				tenantConfigField("feedOutputFormat", standardShareModes()),
+				tenantConfigField("userObfuscation", standardShareModes()),
+				tenantConfigField("timeZone", standardShareModes()),
+				operationalField("epsRateLimit", allModes()),
+				operationalField("jsonArrayToggle", allModes()),
+				tenantConfigField("siemType", standardShareModes()),
+				operationalField("maxBatchSize", allModes()),
+				sensitiveIdentifierField("connectionURL"),
+				secretField("authenticationToken"),
+				secretField("connectionHeaders"),
+				operationalField("lastSuccessFullTest", standardShareModes()),
+				operationalField("testConnectivityCode", allModes()),
+				secretField("base64EncodedCertificate"),
+				operationalField("nssType", allModes()),
+				secretField("clientId"),
+				secretField("clientSecret"),
+				sensitiveIdentifierField("authenticationUrl"),
+				tenantConfigField("grantType", standardShareModes()),
+				secretField("scope"),
+				operationalField("cloudNss", allModes()),
+				operationalField("oauthAuthentication", allModes()),
+				sensitiveIdentifierField("serverIps"),
+				sensitiveIdentifierField("clientIps"),
+				sensitiveIdentifierField("domains"),
+				tenantConfigField("dnsRequestTypes", standardShareModes()),
+				tenantConfigField("dnsResponseTypes", standardShareModes()),
+				tenantConfigField("dnsResponses", standardShareModes()),
+				tenantConfigField("durations", standardShareModes()),
+				tenantConfigField("dnsActions", standardShareModes()),
+				tenantConfigField("firewallLoggingMode", standardShareModes()),
+				sensitiveIdentifierField("clientSourceIps"),
+				tenantConfigField("firewallActions", standardShareModes()),
+				operationalField("countries", standardShareModes()),
+				secretField("serverSourcePorts"),
+				secretField("clientSourcePorts"),
+				tenantConfigField("actionFilter", standardShareModes()),
+				tenantConfigField("emailDlpPolicyAction", standardShareModes()),
+				tenantConfigField("direction", standardShareModes()),
+				tenantConfigField("event", standardShareModes()),
+				tenantConfigField("policyReasons", standardShareModes()),
+				tenantConfigField("protocolTypes", standardShareModes()),
+				sensitiveIdentifierField("userAgents"),
+				tenantConfigField("requestMethods", standardShareModes()),
+				tenantConfigField("casbPolicyTypes", standardShareModes()),
+				tenantConfigField("urlSuperCategories", standardShareModes()),
+				tenantConfigField("responseCodes", standardShareModes()),
+				tenantConfigField("nwApplications", standardShareModes()),
+				tenantConfigField("natActions", standardShareModes()),
+				tenantConfigField("tunnelTypes", standardShareModes()),
+				tenantConfigField("auditLogType", standardShareModes()),
+				sensitiveIdentifierField("projectName"),
+				sensitiveIdentifierField("repoName"),
+				sensitiveIdentifierField("objectName"),
+				sensitiveIdentifierField("channelName"),
+				sensitiveIdentifierField("fileSource"),
+				sensitiveIdentifierField("fileName"),
+				tenantConfigField("sessionCounts", standardShareModes()),
+				sensitiveIdentifierField("refererUrls"),
+				sensitiveIdentifierField("hostNames"),
+				sensitiveIdentifierField("fullUrls"),
+				tenantConfigField("threatNames", standardShareModes()),
+				tenantConfigField("pageRiskIndexes", standardShareModes()),
+				sensitiveIdentifierField("clientDestinationPorts"),
+				sensitiveIdentifierField("tunnelSourcePort"),
+				secretField("customEscapedCharacter"),
+				secretField("casbSeverity"),
+				secretField("casbApplications"),
+				secretField("casbAction"),
+				secretField("webApplications"),
+				secretField("webApplicationClasses"),
+				secretField("malwareNames"),
+				secretField("urlClasses"),
+				secretField("malwareClasses"),
+				secretField("advancedThreats"),
+				secretField("trafficForwards"),
+				secretField("webTrafficForwards"),
+				secretField("alerts"),
+				secretField("objectType"),
+				secretField("activity"),
+				secretField("objectType1"),
+				secretField("objectType2"),
+				secretField("endPointDLPLogType"),
+				secretField("emailDLPLogType"),
+				tenantConfigField("fileTypeSuperCategories", standardShareModes()),
+				tenantConfigField("fileTypeCategories", standardShareModes()),
+				tenantConfigField("casbFileType", standardShareModes()),
+				tenantConfigField("casbFileTypeSuperCategories", standardShareModes()),
+				tenantConfigField("messageSize", standardShareModes()),
+				tenantConfigField("fileSizes", standardShareModes()),
+				tenantConfigField("requestSizes", standardShareModes()),
+				tenantConfigField("responseSizes", standardShareModes()),
+				tenantConfigField("transactionSizes", standardShareModes()),
+				tenantConfigField("inBoundBytes", standardShareModes()),
+				tenantConfigField("outBoundBytes", standardShareModes()),
+				tenantConfigField("downloadTime", standardShareModes()),
+				tenantConfigField("scanTime", standardShareModes()),
+				sensitiveIdentifierField("serverSourceIps"),
+				sensitiveIdentifierField("serverDestinationIps"),
+				sensitiveIdentifierField("tunnelIps"),
+				sensitiveIdentifierField("internalIps"),
+				sensitiveIdentifierField("tunnelSourceIps"),
+				sensitiveIdentifierField("tunnelDestIps"),
+				sensitiveIdentifierField("clientDestinationIps"),
+				sensitiveIdentifierField("advUserAgents"),
+				idNameExtensionsField("externalOwners", standardOnlyMode()),
+				idNameExtensionsField("externalCollaborators", standardOnlyMode()),
+				idNameExtensionsField("internalCollaborators", standardOnlyMode()),
+				idNameExtensionsField("itsmObjectType", standardOnlyMode()),
+				idNameExtensionsField("urlCategories", standardOnlyMode()),
+				idNameExtensionsField("dlpEngines", standardOnlyMode()),
+				idNameExtensionsField("dlpDictionaries", standardOnlyMode()),
+				idNameExtensionsField("rules", standardOnlyMode()),
+				idNameExtensionsField("nwServices", standardOnlyMode()),
+				secretField("casbTenant"),
+				secretField("locations"),
+				secretField("locationGroups"),
+				secretField("users"),
+				secretField("departments"),
+				secretField("senderName"),
+				secretField("buckets"),
+				secretField("vpnCredentials"),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "file-type-rules",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA file type rule description"),
+				operationalField("state", allModes()),
+				operationalField("order", allModes()),
+				operationalField("rank", allModes()),
+				tenantConfigField("filteringAction", standardShareModes()),
+				operationalField("timeQuota", standardShareModes()),
+				operationalField("sizeQuota", standardShareModes()),
+				operationalField("accessControl", standardShareModes()),
+				operationalField("capturePCAP", allModes()),
+				secretField("passwordProtected"),
+				tenantConfigField("operation", standardShareModes()),
+				operationalField("activeContent", allModes()),
+				operationalField("unscannable", allModes()),
+				sensitiveIdentifierField("browserEunTemplateId"),
+				tenantConfigField("cloudApplications", standardShareModes()),
+				tenantConfigField("fileTypes", standardShareModes()),
+				operationalField("minSize", standardShareModes()),
+				operationalField("maxSize", standardShareModes()),
+				tenantConfigField("protocols", standardShareModes()),
+				tenantConfigField("urlCategories", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+				secretField("lastModifiedBy"),
+				idNameExtensionsField("locations", standardOnlyMode()),
+				idNameExtensionsField("locationGroups", standardOnlyMode()),
+				idNameExtensionsField("groups", standardOnlyMode()),
+				idNameExtensionsField("departments", standardOnlyMode()),
+				idNameExtensionsField("users", standardOnlyMode()),
+				idNameExtensionsField("timeWindows", standardShareModes()),
+				idNameExtensionsField("labels", standardShareModes()),
+				idNameExtensionsField("deviceGroups", standardOnlyMode()),
+				idNameExtensionsField("devices", standardOnlyMode()),
+				tenantConfigField("deviceTrustLevels", standardShareModes()),
+				idNameExternalIDField("zpaAppSegments", standardOnlyMode()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "sandbox-rules",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA sandbox rule description"),
+				operationalField("state", allModes()),
+				operationalField("order", allModes()),
+				operationalField("rank", allModes()),
+				tenantConfigField("baRuleAction", standardShareModes()),
+				operationalField("firstTimeEnable", allModes()),
+				tenantConfigField("firstTimeOperation", standardShareModes()),
+				operationalField("mlActionEnabled", allModes()),
+				operationalField("byThreatScore", standardShareModes()),
+				operationalField("accessControl", standardShareModes()),
+				tenantConfigField("protocols", standardShareModes()),
+				tenantConfigField("baPolicyCategories", standardShareModes()),
+				tenantConfigField("fileTypes", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+				secretField("lastModifiedBy"),
+				idNameExtensionsField("locations", standardOnlyMode()),
+				idNameExtensionsField("locationGroups", standardOnlyMode()),
+				idNameExtensionsField("groups", standardOnlyMode()),
+				idNameExtensionsField("departments", standardOnlyMode()),
+				idNameExtensionsField("users", standardOnlyMode()),
+				idNameExtensionsField("timeWindows", standardShareModes()),
+				idNameExtensionsField("labels", standardShareModes()),
+				idNameExtensionsField("deviceGroups", standardOnlyMode()),
+				idNameExtensionsField("devices", standardOnlyMode()),
+				tenantConfigField("urlCategories", standardShareModes()),
+				idNameExternalIDField("zpaAppSegments", standardOnlyMode()),
+				operationalField("defaultRule", allModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "firewall-dns-rules",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("order", allModes()),
+				operationalField("rank", allModes()),
+				operationalField("accessControl", standardShareModes()),
+				tenantConfigField("action", standardShareModes()),
+				operationalField("state", allModes()),
+				freeTextField("description", "ZIA firewall DNS rule description"),
+				sensitiveIdentifierField("redirectIp"),
+				tenantConfigField("blockResponseCode", standardShareModes()),
+				operationalField("lastModifiedTime", standardShareModes()),
+				secretField("lastModifiedBy"),
+				sensitiveIdentifierField("srcIps"),
+				sensitiveIdentifierField("destAddresses"),
+				sensitiveIdentifierField("destIpCategories"),
+				operationalField("destCountries", standardShareModes()),
+				operationalField("sourceCountries", standardShareModes()),
+				sensitiveIdentifierField("resCategories"),
+				tenantConfigField("applications", standardShareModes()),
+				tenantConfigField("dnsRuleRequestTypes", standardShareModes()),
+				tenantConfigField("protocols", standardShareModes()),
+				operationalField("defaultRule", allModes()),
+				operationalField("capturePCAP", allModes()),
+				operationalField("predefined", allModes()),
+				operationalField("isWebEunEnabled", allModes()),
+				operationalField("defaultDnsRuleNameUsed", allModes()),
+				idNameExtensionsField("applicationGroups", standardShareModes()),
+				idNameField("dnsGateway", standardOnlyMode()),
+				idNameField("zpaIpGroup", standardOnlyMode()),
+				idNameField("ednsEcsObject", standardOnlyMode()),
+				idNameExtensionsField("locations", standardOnlyMode()),
+				idNameExtensionsField("locationGroups", standardOnlyMode()),
+				idNameExtensionsField("departments", standardOnlyMode()),
+				idNameExtensionsField("groups", standardOnlyMode()),
+				idNameExtensionsField("users", standardOnlyMode()),
+				idNameExtensionsField("timeWindows", standardShareModes()),
+				idNameExtensionsField("labels", standardShareModes()),
+				idNameExtensionsField("destIpGroups", standardOnlyMode()),
+				idNameExtensionsField("destIpv6Groups", standardOnlyMode()),
+				idNameExtensionsField("srcIpGroups", standardOnlyMode()),
+				idNameExtensionsField("srcIpv6Groups", standardOnlyMode()),
+				idNameExtensionsField("deviceGroups", standardOnlyMode()),
+				idNameExtensionsField("devices", standardOnlyMode()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "custom-file-types",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA custom file type description"),
+				tenantConfigField("extension", standardShareModes()),
+				operationalField("fileTypeId", allModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "zpa-gateways",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA ZPA gateway description"),
+				idNameExternalIDField("zpaServerGroup", standardOnlyMode()),
+				idNameExternalIDField("zpaAppSegments", standardOnlyMode()),
+				sensitiveIdentifierField("zpaTenantId"),
+				secretField("lastModifiedBy"),
+				operationalField("lastModifiedTime", standardShareModes()),
+				operationalField("type", allModes()),
 			},
 		},
 	}

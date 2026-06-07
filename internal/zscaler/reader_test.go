@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
+	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
@@ -600,6 +601,67 @@ func TestSourceRecordReferenceHelpersStripExtensions(t *testing.T) {
 				t.Errorf("%s source = %#v, want no extension canary", tt.name, tt.got)
 			}
 		})
+	}
+}
+
+func TestReaderListAuthSettingsProjectsSingletonThroughAllowList(t *testing.T) {
+	t.Parallel()
+
+	const (
+		kerberosCanary = "kerberos-password-canary"
+		strengthCanary = "password-strength-canary"
+		expiryCanary   = "password-expiry-canary"
+	)
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceAuthSettings}: newSingletonHandler(
+				resourceAuthSettings,
+				func(context.Context) (*authsettings.AuthenticationSettings, error) {
+					return &authsettings.AuthenticationSettings{
+						OrgAuthType:                       "SAML",
+						OneTimeAuth:                       "DISABLED",
+						SamlEnabled:                       true,
+						KerberosEnabled:                   true,
+						KerberosPwd:                       kerberosCanary,
+						AuthFrequency:                     "CUSTOM",
+						AuthCustomFrequency:               30,
+						PasswordStrength:                  strengthCanary,
+						PasswordExpiry:                    expiryCanary,
+						LastSyncStartTime:                 1712345000,
+						LastSyncEndTime:                   1712345600,
+						MobileAdminSamlIdpEnabled:         false,
+						AutoProvision:                     true,
+						DirectorySyncMigrateToScimEnabled: true,
+					}, nil
+				},
+				authSettingsSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceAuthSettings)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, auth-settings) error = %v, want nil", err)
+	}
+	got := projectOneRecord(t, resources.ProductZIA, resourceAuthSettings, records)
+	for _, field := range []string{"kerberosPwd", "passwordStrength", "passwordExpiry"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("projected auth-settings = %#v, want no %s", got, field)
+		}
+	}
+	assertNoCanaries(t, "auth-settings", got, kerberosCanary, strengthCanary, expiryCanary)
+	if got["orgAuthType"] != "SAML" {
+		t.Errorf("projected auth-settings orgAuthType = %v, want SAML", got["orgAuthType"])
+	}
+	if got["authFrequency"] != "CUSTOM" {
+		t.Errorf("projected auth-settings authFrequency = %v, want CUSTOM", got["authFrequency"])
+	}
+	if got["authCustomFrequency"] != 30 {
+		t.Errorf("projected auth-settings authCustomFrequency = %v, want 30", got["authCustomFrequency"])
+	}
+	if got["autoProvision"] != true {
+		t.Errorf("projected auth-settings autoProvision = %v, want true", got["autoProvision"])
 	}
 }
 
@@ -2627,6 +2689,72 @@ func TestReaderUnsupportedResourceFailsClosed(t *testing.T) {
 	_, err := reader.List(context.Background(), resources.ProductZPA, "applications")
 	if !errors.Is(err, ErrUnsupportedResource) {
 		t.Fatalf("SDKReader.List(zpa, applications) error = %v, want ErrUnsupportedResource", err)
+	}
+}
+
+func TestReaderListOnlyHandlerRejectsGet(t *testing.T) {
+	t.Parallel()
+
+	const resourceName = "list-only-test"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceName}: newListOnlyHandler(
+				resourceName,
+				func(context.Context) ([]rulelabels.RuleLabels, error) {
+					return []rulelabels.RuleLabels{{
+						ID:   10,
+						Name: "List only",
+					}}, nil
+				},
+				ruleLabelSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceName)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, %s) error = %v, want nil", resourceName, err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("SDKReader.List(zia, %s) records length = %d, want 1", resourceName, len(records))
+	}
+	_, err = reader.Get(context.Background(), resources.ProductZIA, resourceName, "10")
+	if !errors.Is(err, ErrUnsupportedResource) {
+		t.Fatalf("SDKReader.Get(zia, %s, 10) error = %v, want ErrUnsupportedResource", resourceName, err)
+	}
+}
+
+func TestReaderSingletonHandlerListsOneRecordAndRejectsGet(t *testing.T) {
+	t.Parallel()
+
+	const resourceName = "singleton-test"
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceName}: newSingletonHandler(
+				resourceName,
+				func(context.Context) (*rulelabels.RuleLabels, error) {
+					return &rulelabels.RuleLabels{
+						ID:   11,
+						Name: "Singleton",
+					}, nil
+				},
+				ruleLabelSourceRecord,
+			),
+		},
+	}
+
+	records, err := reader.List(context.Background(), resources.ProductZIA, resourceName)
+	if err != nil {
+		t.Fatalf("SDKReader.List(zia, %s) error = %v, want nil", resourceName, err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("SDKReader.List(zia, %s) records length = %d, want 1", resourceName, len(records))
+	}
+	_, err = reader.Get(context.Background(), resources.ProductZIA, resourceName, "11")
+	if !errors.Is(err, ErrUnsupportedResource) {
+		t.Fatalf("SDKReader.Get(zia, %s, 11) error = %v, want ErrUnsupportedResource", resourceName, err)
 	}
 }
 

@@ -68,6 +68,7 @@ type App struct {
 	env       []string
 	stdoutTTY bool
 	reader    ResourceReader
+	catalog   resources.ResourceCatalog
 }
 
 func New(out, err io.Writer, env []string) *App {
@@ -88,11 +89,27 @@ type resourceSessionProvider interface {
 type Options struct {
 	StdoutTTY bool
 	Reader    ResourceReader
+	Catalog   resources.ResourceCatalog
 }
 
 func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 	envCopy := append([]string(nil), env...)
-	return &App{out: out, err: err, env: envCopy, stdoutTTY: opts.StdoutTTY, reader: opts.Reader}
+	catalog := append(resources.ResourceCatalog(nil), opts.Catalog...)
+	return &App{
+		out:       out,
+		err:       err,
+		env:       envCopy,
+		stdoutTTY: opts.StdoutTTY,
+		reader:    opts.Reader,
+		catalog:   catalog,
+	}
+}
+
+func (a *App) resourceCatalog() resources.ResourceCatalog {
+	if len(a.catalog) > 0 {
+		return append(resources.ResourceCatalog(nil), a.catalog...)
+	}
+	return resources.Catalog()
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
@@ -454,7 +471,7 @@ func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions
 	if len(args) != 1 || args[0] != "list" {
 		return UsageError{Message: "usage: zscalerctl schema list"}
 	}
-	catalog := resources.Catalog()
+	catalog := a.resourceCatalog()
 	if err := resources.AssertReadOnly(catalog...); err != nil {
 		return err
 	}
@@ -490,12 +507,15 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if op != "list" && op != "get" {
 		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> list|get", productName)}
 	}
-	spec, ok := resources.FindSpec(product, resource)
+	spec, ok := a.resourceCatalog().FindSpec(product, resource)
 	if !ok {
 		return ResourceNotFoundError{Product: product, Resource: resource}
 	}
 	if err := resources.AssertReadOnly(spec); err != nil {
 		return err
+	}
+	if !spec.SupportsReadOperation(op) {
+		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s", op, product, resource)}
 	}
 	reader, err := a.resourceReader(cfg, opts)
 	if err != nil {
@@ -543,7 +563,7 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if err != nil {
 		return err
 	}
-	selectedResources, err := parseDumpResources(*resourcesFlag, products, resources.Catalog())
+	selectedResources, err := parseDumpResources(*resourcesFlag, products, a.resourceCatalog())
 	if err != nil {
 		return err
 	}
@@ -627,7 +647,7 @@ func (a *App) collectDump(
 	continueOnError bool,
 ) (dump.Result, error) {
 	result := dump.Result{}
-	catalog := resources.Catalog()
+	catalog := a.resourceCatalog()
 	if err := resources.AssertReadOnly(catalog...); err != nil {
 		return result, err
 	}
