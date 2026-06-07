@@ -65,7 +65,8 @@ The secret file must be readable only by the current user. Inline
 `ZSCALERCTL_CLIENT_SECRET` is supported for automation systems that already
 provide protected environment variables, but file-based secret delivery is safer
 for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
-reading ZPA resources; ZIA resources do not require it.
+reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
+OneAPI credential set without an extra product customer ID.
 
 ZIA legacy auth is available for read-only ZIA resources when OneAPI
 credentials are not available. Use only `ZSCALERCTL_ZIA_*` variables; raw SDK

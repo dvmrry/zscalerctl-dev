@@ -73,13 +73,15 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 
 ## Recommended Sequence
 
-1. Keep ZPA resource work separate from this plan until the parked ZPA stack has
-   one focused production OneAPI smoke pass.
-2. Start ZTW as the first separate non-ZIA/ZPA product family. It has the
-   strongest config-like SDK surface and maps most directly to Cloud Connector /
-   workload inventory.
-3. Add a focused ZTW reference batch first, prove product auth and live smoke,
-   then decide whether to continue into policy/control surfaces.
+1. Keep product-family batches focused and promote only after production
+   OneAPI smoke. ZPA, ZTW, and Zidentity have each proven at least one focused
+   production OneAPI path.
+2. Continue ZTW only through reviewed governance or configuration inventory
+   slices. Initial reference resources and admin governance have passed
+   production OneAPI smoke; policy/control surfaces still need explicit review.
+3. Keep Zidentity to top-level read-only inventory unless a child-query command
+   shape is designed. Resource servers, groups, and users have passed production
+   OneAPI smoke; group membership remains a separate follow-up.
 4. Defer ZCC until endpoint/auth/entitlement behavior is understood. The first
    production OneAPI smoke for ZCC PAPI v2 list endpoints returned 404 across
    the initial reference batch.
@@ -87,11 +89,8 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
    ZDX configuration APIs. The current SDK surfaces are report/telemetry.
 6. Do not implement ZWA before `v1.0.0` unless Zscaler exposes deterministic
    ZWA configuration APIs. The current SDK surfaces are audit/incident data.
-7. Treat Zidentity as a partial inventory track: the current vendored SDK
-   exposes resource servers, groups, and users as service packages. They can be
-   read-only administrator inventory when the CLI binds only read helpers; group
-   membership child lookups need a separate command shape, and any future
-   entitlement package must be reviewed from source before it is queued.
+7. Any future Zidentity entitlement package must be reviewed from source before
+   it is queued.
 
 ## ZCC
 
@@ -236,15 +235,17 @@ Apply these before any resource PR from this plan:
 7. Do not use dev/preprod 404s as proof that a resource is invalid in
    production; record them as entitlement or deployment-shape unknowns.
 
-## First Branch Recommendations
+## Completed First Branches
 
-Suggested independent branches, in order:
+These first-branch probes established product posture and should not be treated
+as open recommendations:
 
 | Branch | Scope | Expected outcome |
 | --- | --- | --- |
-| `feature/ztw-workload-groups` | Verify OneAPI SDK call path for ZTW and scaffold the first ZTW reference batch. | Establish Cloud/Workload product semantics without touching provisioning credentials. |
-| `feature/zcc-scope-plan` | Verify OneAPI SDK call path for ZCC and scaffold `trusted_network_v2` or `notification_template`. | Establish whether ZCC can use the current service boundary cleanly. |
-| `feature/zidentity-reference-batch` | Scope resource servers, groups, and users. | Keep Zidentity to read-only inventory; membership expansion remains a follow-up child-query design. |
+| `feature/zpa-safe-surface-batch` | Verified the shared OneAPI service path for ZPA and promoted the Tier-1 ZPA reference surface after production smoke. | Established the `ZSCALERCTL_ZPA_CUSTOMER_ID` requirement and trimmed unavailable private-cloud endpoints. |
+| `feature/ztw-workload-groups` | Verified the OneAPI SDK call path for ZTW and promoted the first ZTW reference batch after production smoke. | Cloud/Workload product semantics established without touching provisioning credentials. |
+| `feature/zcc-scope-plan` | Probed conservative ZCC PAPI v2 references. | Production OneAPI returned 404 for the initial batch; ZCC remains an endpoint/auth/entitlement investigation. |
+| `feature/zidentity-reference-batch` | Scoped resource servers, groups, and users. | Top-level Zidentity read-only inventory passed production smoke; membership expansion remains a follow-up child-query design. |
 
 ZWA is deliberately not in the first-branch queue. Do not open a ZWA branch
 before `v1.0.0` unless Zscaler exposes deterministic configuration APIs.
