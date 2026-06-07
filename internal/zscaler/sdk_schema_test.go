@@ -21,6 +21,9 @@ import (
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
+	dlpincidentreceivers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_incident_receiver_servers"
+	dlpnotificationtemplates "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_notification_templates"
+	emailprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/email_profiles"
 	endusernotification "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/end_user_notification"
 	filetypecontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol"
 	customfiletypes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol/custom_file_types"
@@ -32,6 +35,8 @@ import (
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
+	networkapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplications"
+	networkservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservicegroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
@@ -1072,6 +1077,47 @@ func reviewedSDKShapes() []sdkShapeReview {
 			),
 		},
 		{
+			name:         "networkservicegroups.NetworkServiceGroups",
+			resource:     resources.ProductZIA,
+			resourceName: resourceNetworkSvcGroups,
+			typ:          reflect.TypeOf(networkservicegroups.NetworkServiceGroups{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"services",
+			},
+		},
+		{
+			name: "networkservicegroups.Services",
+			typ:  reflect.TypeOf(networkservicegroups.Services{}),
+			ignoredFields: ignoredBecause(
+				"ZIA network service groups render child services as id/name references only; query network-services for service details",
+				"id",
+				"name",
+				"tag",
+				"srcTcpPorts",
+				"destTcpPorts",
+				"srcUdpPorts",
+				"destUdpPorts",
+				"type",
+				"description",
+				"isNameL10nTag",
+			),
+		},
+		{
+			name:         "networkapplications.NetworkApplications",
+			resource:     resources.ProductZIA,
+			resourceName: resourceNetworkApps,
+			typ:          reflect.TypeOf(networkapplications.NetworkApplications{}),
+			catalogFields: []string{
+				"id",
+				"parentCategory",
+				"description",
+				"deprecated",
+			},
+		},
+		{
 			name:         "applicationservices.ApplicationServicesLite",
 			resource:     resources.ProductZIA,
 			resourceName: resourceAppServices,
@@ -1848,6 +1894,34 @@ func reviewedSDKShapes() []sdkShapeReview {
 			},
 		},
 		{
+			name:         "dlpincidentreceivers.IncidentReceiverServers",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDLPIncidentRcvs,
+			typ:          reflect.TypeOf(dlpincidentreceivers.IncidentReceiverServers{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"url",
+				"status",
+				"flags",
+			},
+		},
+		{
+			name:         "dlpnotificationtemplates.DlpNotificationTemplates",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDLPNotifyTmpls,
+			typ:          reflect.TypeOf(dlpnotificationtemplates.DlpNotificationTemplates{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"subject",
+				"attachContent",
+				"plainTextMessage",
+				"htmlMessage",
+				"tlsEnabled",
+			},
+		},
+		{
 			name:         "filetypecontrol.FileTypeRules",
 			resource:     resources.ProductZIA,
 			resourceName: resourceFileTypeRules,
@@ -2222,6 +2296,18 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"externalId",
 				"extensions",
 			),
+		},
+		{
+			name:         "emailprofiles.EmailProfiles",
+			resource:     resources.ProductZIA,
+			resourceName: resourceEmailProfiles,
+			typ:          reflect.TypeOf(emailprofiles.EmailProfiles{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"emails",
+			},
 		},
 		{
 			name:          "advancedsettings.AdvancedSettings",

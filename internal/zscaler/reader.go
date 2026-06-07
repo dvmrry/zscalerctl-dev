@@ -32,6 +32,9 @@ import (
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
+	dlpincidentreceivers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_incident_receiver_servers"
+	dlpnotificationtemplates "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_notification_templates"
+	emailprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/email_profiles"
 	endusernotification "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/end_user_notification"
 	filetypecontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol"
 	customfiletypes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/filetypecontrol/custom_file_types"
@@ -43,6 +46,8 @@ import (
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
+	networkapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplications"
+	networkservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservicegroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
@@ -136,6 +141,8 @@ const (
 	resourceIPSourceGroups   = "ip-source-groups"
 	resourceIPDestGroups     = "ip-destination-groups"
 	resourceNetworkServices  = "network-services"
+	resourceNetworkSvcGroups = "network-service-groups"
+	resourceNetworkApps      = "network-applications"
 	resourceAppServices      = "application-services"
 	resourceAppServiceGroups = "application-service-groups"
 	resourceNetworkAppGroups = "network-application-groups"
@@ -157,6 +164,8 @@ const (
 	resourceVZENClusters     = "vzen-clusters"
 	resourceVZENNodes        = "vzen-nodes"
 	resourceDLPICAPServers   = "dlp-icap-servers"
+	resourceDLPIncidentRcvs  = "dlp-incident-receiver-servers"
+	resourceDLPNotifyTmpls   = "dlp-notification-templates"
 	resourceRiskProfiles     = "risk-profiles"
 	resourceNSSServers       = "nss-servers"
 	resourceNSSFeeds         = "nss-feeds"
@@ -169,9 +178,9 @@ const (
 	resourceForwardingGWs    = "forwarding-gateways"
 	resourceECGroups         = "ec-groups"
 	resourceIPGroups         = "ip-groups"
-	resourceNetworkSvcGroups = "network-service-groups"
 	resourceAdminUsers       = "admin-users"
 	resourceAdminRoles       = "admin-roles"
+	resourceEmailProfiles    = "email-profiles"
 
 	resourceAdvancedSettings           = "advanced-settings"
 	resourceAdvancedThreatSettings     = "advanced-threat-settings"
@@ -599,6 +608,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			}),
 			networkServiceSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceNetworkSvcGroups}: newListGetHandler(
+			resourceNetworkSvcGroups,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkservicegroups.NetworkServiceGroups, error) {
+				return networkservicegroups.GetAllNetworkServiceGroups(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkservicegroups.NetworkServiceGroups, error) {
+				return networkservicegroups.GetNetworkServiceGroups(ctx, service, id)
+			}),
+			networkServiceGroupSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceNetworkApps}: newListGetHandler(
+			resourceNetworkApps,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkapplications.NetworkApplications, error) {
+				return getNetworkApplicationsPage(ctx, service)
+			}),
+			ziaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*networkapplications.NetworkApplications, error) {
+				return networkapplications.GetNetworkApplication(ctx, service, id, "")
+			}),
+			networkApplicationSourceRecord,
+		),
 		{product: resources.ProductZIA, name: resourceAppServices}: newListGetHandler(
 			resourceAppServices,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
@@ -843,6 +872,26 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			}),
 			dlpICAPServerSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceDLPIncidentRcvs}: newListGetHandler(
+			resourceDLPIncidentRcvs,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpincidentreceivers.IncidentReceiverServers, error) {
+				return dlpincidentreceivers.GetAll(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpincidentreceivers.IncidentReceiverServers, error) {
+				return dlpincidentreceivers.Get(ctx, service, id)
+			}),
+			dlpIncidentReceiverSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDLPNotifyTmpls}: newListGetHandler(
+			resourceDLPNotifyTmpls,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpnotificationtemplates.DlpNotificationTemplates, error) {
+				return dlpnotificationtemplates.GetAll(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpnotificationtemplates.DlpNotificationTemplates, error) {
+				return dlpnotificationtemplates.Get(ctx, service, id)
+			}),
+			dlpNotificationTemplateSourceRecord,
+		),
 		{product: resources.ProductZIA, name: resourceRiskProfiles}: newListGetHandler(
 			resourceRiskProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]riskprofiles.RiskProfiles, error) {
@@ -922,6 +971,16 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return zpagateways.Get(ctx, service, id)
 			}),
 			zpaGatewaySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceEmailProfiles}: newListGetHandler(
+			resourceEmailProfiles,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]emailprofiles.EmailProfiles, error) {
+				return emailprofiles.GetAll(ctx, service, nil)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*emailprofiles.EmailProfiles, error) {
+				return emailprofiles.Get(ctx, service, id)
+			}),
+			emailProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceAdvancedSettings}: newSingletonHandler(
 			resourceAdvancedSettings,
@@ -1305,6 +1364,15 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			zidentityResourceServerSourceRecord,
 		),
 	}
+}
+
+func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]networkapplications.NetworkApplications, error) {
+	var applications []networkapplications.NetworkApplications
+	// The SDK package's GetAll uses ReadAllPages, which can loop indefinitely
+	// when this static catalog endpoint ignores page/pageSize and keeps
+	// returning a full page. Read one large SDK page instead.
+	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)
+	return applications, err
 }
 
 type listGetHandler[T any] struct {
@@ -2600,6 +2668,27 @@ func networkServiceSourceRecord(service networkservices.NetworkServices) resourc
 	return resources.NewSourceRecord(fields)
 }
 
+func networkServiceGroupSourceRecord(group networkservicegroups.NetworkServiceGroups) resources.SourceRecord {
+	fields := map[string]any{
+		"id":          group.ID,
+		"name":        group.Name,
+		"description": group.Description,
+	}
+	if len(group.Services) > 0 {
+		fields["services"] = networkServiceRefsSource(group.Services)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func networkApplicationSourceRecord(app networkapplications.NetworkApplications) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":             app.ID,
+		"parentCategory": app.ParentCategory,
+		"description":    app.Description,
+		"deprecated":     app.Deprecated,
+	})
+}
+
 func applicationServiceSourceRecord(service applicationservices.ApplicationServicesLite) resources.SourceRecord {
 	return resources.NewSourceRecord(map[string]any{
 		"id":          service.ID,
@@ -3203,6 +3292,28 @@ func dlpICAPServerSourceRecord(server dlpicapservers.DLPICAPServers) resources.S
 	})
 }
 
+func dlpIncidentReceiverSourceRecord(receiver dlpincidentreceivers.IncidentReceiverServers) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":     receiver.ID,
+		"name":   receiver.Name,
+		"url":    receiver.URL,
+		"status": receiver.Status,
+		"flags":  receiver.Flags,
+	})
+}
+
+func dlpNotificationTemplateSourceRecord(template dlpnotificationtemplates.DlpNotificationTemplates) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":               template.ID,
+		"name":             template.Name,
+		"subject":          template.Subject,
+		"attachContent":    template.AttachContent,
+		"plainTextMessage": template.PlainTextMessage,
+		"htmlMessage":      template.HtmlMessage,
+		"tlsEnabled":       template.TLSEnabled,
+	})
+}
+
 func riskProfileSourceRecord(profile riskprofiles.RiskProfiles) resources.SourceRecord {
 	fields := map[string]any{
 		"id":                        profile.ID,
@@ -3542,6 +3653,16 @@ func zpaGatewaySourceRecord(gateway zpagateways.ZPAGateways) resources.SourceRec
 		fields["zpaAppSegments"] = zpaGatewayAppSegmentsSource(gateway.ZPAAppSegments)
 	}
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", gateway.LastModifiedBy)
+	return resources.NewSourceRecord(fields)
+}
+
+func emailProfileSourceRecord(profile emailprofiles.EmailProfiles) resources.SourceRecord {
+	fields := map[string]any{
+		"id":          profile.ID,
+		"name":        profile.Name,
+		"description": profile.Description,
+	}
+	addStringSlice(fields, "emails", profile.Emails)
 	return resources.NewSourceRecord(fields)
 }
 
@@ -4032,6 +4153,17 @@ func ztwNetworkPortsSource(values []ztwnetworkservices.NetworkPorts) []any {
 }
 
 func ztwNetworkServiceRefsSource(values []ztwnetworkservicegroups.Services) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"id":   value.ID,
+			"name": value.Name,
+		})
+	}
+	return out
+}
+
+func networkServiceRefsSource(values []networkservicegroups.Services) []any {
 	out := make([]any, 0, len(values))
 	for _, value := range values {
 		out = append(out, map[string]any{

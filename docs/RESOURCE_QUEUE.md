@@ -93,7 +93,7 @@ Product-track status:
 
 | Product | Resources | Status | Next action |
 | --- | --- | --- | --- |
-| ZIA | Current queued legacy-ZIA resources and singleton settings | Live-smoked and merged. | Continue only through the remaining shape-decision tracks below. |
+| ZIA | Current queued legacy-ZIA resources, singleton settings, and the focused ordinary-recheck batch for `zia/network-service-groups`, `zia/network-applications`, `zia/email-profiles`, `zia/dlp-incident-receiver-servers`, and `zia/dlp-notification-templates` | Live-smoked and merged for the earlier catalog; focused ordinary-recheck batch passed work-machine live smoke before merge. | Merge the focused ordinary-recheck batch after CI/review, then continue only through the remaining shape-decision tracks below. |
 | ZPA | Tier-1 resources plus `zpa/application-segments` | Production OneAPI smoke passed after trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused smoke/trim discipline. |
 | ZTW | Initial reference batch plus admin-governance resources (`admin-users`, `admin-roles`) | Production OneAPI smoke passed for both the initial reference batch and admin-governance batch. | Continue policy/control surfaces only after explicit review. |
 | ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Production OneAPI smoke returned 404 for all three list endpoints. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
@@ -218,16 +218,11 @@ boundary issue, or a deliberate privacy/material hold.
 
 | Resource | Last evidence | Required next probe |
 | --- | --- | --- |
-| `zia/network-service-groups` | Early live-smoke request failure; exact status not recorded. | Retry under current legacy-ZIA config with improved smoke summary; record status and endpoint. |
-| `zia/network-applications` | Early live-smoke request failure while `zia/network-application-groups` passed; exact status not recorded. | Retry as a paired probe with `zia/network-application-groups` so endpoint behavior can be compared. |
 | `zia/departments` | Legacy-ZIA list request failed; exact status not recorded. | Retry as identity-like metadata only; record status before deciding whether this is endpoint/auth failure or privacy hold. |
 | `zia/users` | Legacy-ZIA list request failed; exact status not recorded. | Retry only as a privacy-scoped probe; even if reachable, user output still needs PII review before cataloging. |
 | `zia/devices` | Legacy-ZIA list request failed; exact status not recorded. | Retry only as a privacy-scoped probe; even if reachable, device output still needs PII/device review before cataloging. |
-| `zia/email-profiles` | Legacy-ZIA list request failed; exact status not recorded. | Retry under current legacy-ZIA config; likely ordinary config if reachable, but record status and shape first. |
 | `zia/dlp-engines` | Legacy-ZIA list request failed; exact status not recorded. | Retry DLP endpoints as a small family, not mixed with unrelated policy resources. |
 | `zia/dlp-dictionaries` | Legacy-ZIA list request failed; exact status not recorded. | Retry with DLP family; inspect dictionary fields for sensitive sample/content values before cataloging. |
-| `zia/dlp-incident-receiver-servers` | Legacy-ZIA list request failed; exact status not recorded. | Retry with DLP family; keep receiver destination/contact fields standard-only or dropped until reviewed. |
-| `zia/dlp-notification-templates` | Legacy-ZIA list request failed; exact status not recorded. | Retry with DLP family; inspect for free-text notification body fields before cataloging. |
 | `zia/ips-signature-rules` | Legacy-ZIA list request failed; exact status not recorded. | Retry before `ips_policies`; do not use IPS policy adjacency as proof either way. |
 | `zia/c2c-incident-receivers` | Legacy-ZIA live smoke failed with `live_access_failed`; exact status not recorded. | Retry as a single endpoint probe; receiver details may be sensitive destination metadata if reachable. |
 | `zia/dlp-edm-schemas` | Legacy-ZIA live smoke failed with `live_access_failed`; exact status not recorded. | Retry with DLP family; EDM schema names/columns may be sensitive and need conservative projection. |

@@ -20,6 +20,9 @@ import (
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
 	dlpicapservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_icap_servers"
+	dlpincidentreceivers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_incident_receiver_servers"
+	dlpnotificationtemplates "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_notification_templates"
+	emailprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/email_profiles"
 	applicationservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/applicationservices"
 	appservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/appservicegroups"
 	dnsgateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/dns_gateways"
@@ -27,6 +30,8 @@ import (
 	ipdestinationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipdestinationgroups"
 	ipsourcegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/ipsourcegroups"
 	networkapplicationgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplicationgroups"
+	networkapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkapplications"
+	networkservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservicegroups"
 	networkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/networkservices"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/firewallpolicies/timewindow"
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
@@ -1830,6 +1835,144 @@ func TestReaderListNetworkApplicationGroupsProjectsSDKShapeThroughAllowList(t *t
 	apps, ok := got["networkApplications"].([]string)
 	if !ok || len(apps) != 2 {
 		t.Fatalf("projected network-application-groups networkApplications = %T %#v, want two applications", got["networkApplications"], got["networkApplications"])
+	}
+}
+
+func TestZIADeferredOrdinaryBatchProjectionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	const (
+		canary            = "zia-deferred-batch-psk-canary"
+		bareFreeTextToken = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	cases := []struct {
+		name         string
+		record       resources.SourceRecord
+		wantStandard map[string]any
+		absentFields []string
+	}{
+		{
+			name: resourceNetworkSvcGroups,
+			record: networkServiceGroupSourceRecord(networkservicegroups.NetworkServiceGroups{
+				ID:          510,
+				Name:        "network service group",
+				Description: "temporary psk=" + canary + " " + bareFreeTextToken,
+				Services: []networkservicegroups.Services{
+					{
+						ID:          10,
+						Name:        "service",
+						Tag:         "tag psk=" + canary,
+						Description: "service psk=" + canary,
+					},
+				},
+			}),
+			wantStandard: map[string]any{"services": "present"},
+		},
+		{
+			name: resourceNetworkApps,
+			record: networkApplicationSourceRecord(networkapplications.NetworkApplications{
+				ID:             "APP_CANARY",
+				ParentCategory: "parent",
+				Description:    "temporary psk=" + canary + " " + bareFreeTextToken,
+				Deprecated:     true,
+			}),
+			wantStandard: map[string]any{"deprecated": true},
+		},
+		{
+			name: resourceEmailProfiles,
+			record: emailProfileSourceRecord(emailprofiles.EmailProfiles{
+				ID:          511,
+				Name:        "email profile",
+				Description: "temporary psk=" + canary + " " + bareFreeTextToken,
+				Emails:      []string{"recipient@example.invalid"},
+			}),
+			wantStandard: map[string]any{"emails": "present"},
+		},
+		{
+			name: resourceDLPIncidentRcvs,
+			record: dlpIncidentReceiverSourceRecord(dlpincidentreceivers.IncidentReceiverServers{
+				ID:     512,
+				Name:   "incident receiver",
+				URL:    "https://receiver.example.invalid/ingest",
+				Status: "ENABLED",
+				Flags:  7,
+			}),
+			wantStandard: map[string]any{"url": "present"},
+		},
+		{
+			name: resourceDLPNotifyTmpls,
+			record: dlpNotificationTemplateSourceRecord(dlpnotificationtemplates.DlpNotificationTemplates{
+				ID:               513,
+				Name:             "notification template",
+				Subject:          "subject psk=" + canary + " " + bareFreeTextToken,
+				AttachContent:    true,
+				PlainTextMessage: "plain body psk=" + canary,
+				HtmlMessage:      "<p>html body psk=" + canary + "</p>",
+				TLSEnabled:       true,
+			}),
+			wantStandard: map[string]any{"attachContent": true},
+			absentFields: []string{
+				"plainTextMessage",
+				"htmlMessage",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := projectOneRecord(t, resources.ProductZIA, tc.name, []resources.SourceRecord{tc.record})
+			assertNoCanaries(t, tc.name, got, canary, bareFreeTextToken)
+			for field, want := range tc.wantStandard {
+				value, ok := got[field]
+				if !ok {
+					t.Fatalf("projected %s missing standard field %q", tc.name, field)
+				}
+				if want != "present" && value != want {
+					t.Fatalf("projected %s field %q = %v, want %v", tc.name, field, value, want)
+				}
+			}
+			for _, field := range tc.absentFields {
+				if _, ok := got[field]; ok {
+					t.Fatalf("projected %s unexpectedly included %q", tc.name, field)
+				}
+			}
+
+			share := projectOneRecordInMode(t, resources.ProductZIA, tc.name, redact.ModeShare, []resources.SourceRecord{tc.record})
+			assertNoCanaries(t, tc.name+" share", share, canary, bareFreeTextToken)
+			if _, ok := share["emails"]; ok {
+				t.Fatalf("share projection for %s included emails", tc.name)
+			}
+			if _, ok := share["url"]; ok {
+				t.Fatalf("share projection for %s included url", tc.name)
+			}
+			if _, ok := share["services"]; ok {
+				t.Fatalf("share projection for %s included services", tc.name)
+			}
+			if _, ok := share["attachContent"]; ok {
+				t.Fatalf("share projection for %s included attachContent", tc.name)
+			}
+		})
+	}
+}
+
+func TestNetworkApplicationsListAvoidsUnboundedSDKPagination(t *testing.T) {
+	t.Parallel()
+
+	body, err := os.ReadFile("reader.go")
+	if err != nil {
+		t.Fatalf("ReadFile(reader.go) error = %v, want nil", err)
+	}
+	source := string(body)
+
+	if strings.Contains(source, "return networkapplications.GetAll(ctx, service") {
+		t.Fatalf("network-applications list uses SDK GetAll; want bounded single-page read")
+	}
+	want := `ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)`
+	if !strings.Contains(source, want) {
+		t.Fatalf("network-applications list missing bounded SDK page read %q", want)
 	}
 }
 
@@ -5040,11 +5183,17 @@ func fakeGRETunnelsResourceHandler(client fakeZIAGRETunnelsClient) resourceHandl
 func projectOneRecord(t *testing.T, product resources.Product, name string, records []resources.SourceRecord) map[string]any {
 	t.Helper()
 
+	return projectOneRecordInMode(t, product, name, redact.ModeStandard, records)
+}
+
+func projectOneRecordInMode(t *testing.T, product resources.Product, name string, mode redact.Mode, records []resources.SourceRecord) map[string]any {
+	t.Helper()
+
 	spec, ok := resources.FindSpec(product, name)
 	if !ok {
 		t.Fatalf("FindSpec(%s, %s) ok = false, want true", product, name)
 	}
-	projected, _, err := resources.ProjectRecords(spec, redact.ModeStandard, records)
+	projected, _, err := resources.ProjectRecords(spec, mode, records)
 	if err != nil {
 		t.Fatalf("ProjectRecords(%s %s) error = %v, want nil", product, name, err)
 	}
@@ -5052,7 +5201,7 @@ func projectOneRecord(t *testing.T, product resources.Product, name string, reco
 		t.Fatalf("ProjectRecords(%s %s) records = %d, want 1", product, name, len(projected.Records()))
 	}
 	got := projected.Records()[0].Fields()
-	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
+	if err := resources.AssertRenderedSubset(spec, mode, got); err != nil {
 		t.Fatalf("AssertRenderedSubset(projected %s %s SDK shape) error = %v, want nil", product, name, err)
 	}
 	return got

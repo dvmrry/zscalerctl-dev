@@ -417,6 +417,41 @@ Fields:
 | `type`, `isNameL10nTag` | Operational metadata | `standard`, `share`, `paranoid` | Service type and localization flag. |
 | `srcTcpPorts`, `destTcpPorts`, `srcUdpPorts`, `destUdpPorts` | Tenant configuration | `standard`, `share` | Port ranges render reviewed `start`/`end` values only. |
 
+## ZIA Network Service Groups
+
+Commands:
+
+```sh
+zscalerctl zia network-service-groups list
+zscalerctl zia network-service-groups get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Network service group identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `services` | Tenant configuration | `standard` | Local-only service references render reviewed `id`/`name` fields only. Query `zia/network-services` for service details. |
+
+## ZIA Network Applications
+
+Commands:
+
+```sh
+zscalerctl zia network-applications list
+zscalerctl zia network-applications get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `deprecated` | Operational metadata | `standard`, `share`, `paranoid` | Network application identifier and deprecated flag. |
+| `parentCategory` | Tenant configuration | `standard`, `share` | ZIA network application parent category. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+
 ## ZIA Application Services
 
 Commands:
@@ -841,6 +876,42 @@ Fields:
 | `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `url` | Sensitive identifier | `standard` | Local-only ICAP server endpoint. |
 
+## ZIA Dlp Incident Receiver Servers
+
+Commands:
+
+```sh
+zscalerctl zia dlp-incident-receiver-servers list
+zscalerctl zia dlp-incident-receiver-servers get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `flags` | Operational metadata | `standard`, `share`, `paranoid` for `id`; `standard`, `share` for flags | Incident receiver identifier and SDK flag value. |
+| `name`, `status` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `url` | Sensitive identifier | `standard` | Local-only incident receiver endpoint. |
+
+## ZIA Dlp Notification Templates
+
+Commands:
+
+```sh
+zscalerctl zia dlp-notification-templates list
+zscalerctl zia dlp-notification-templates get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | DLP notification template identifier. |
+| `name`, `tlsEnabled` | Tenant configuration | `standard`, `share` | Template name and TLS flag. |
+| `subject` | Free text | `standard` | Notification subject; scanned before output, including bare high-entropy tokens. |
+| `attachContent` | Tenant configuration | `standard` | Local-only attachment behavior because it can indicate whether violating content is emailed. |
+| `plainTextMessage`, `htmlMessage` | Secret | never | Notification bodies may contain incident context, placeholders, or internal response instructions and are dropped. |
+
 ## ZIA Risk Profiles
 
 Commands:
@@ -988,6 +1059,24 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `zpaTenantId`, `zpaServerGroup`, `zpaAppSegments` | Sensitive identifier / tenant configuration | `standard` | Local-only ZPA tenant and reference metadata render reviewed `id`/`name` fields only. |
 | `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
+
+## ZIA Email Profiles
+
+Commands:
+
+```sh
+zscalerctl zia email-profiles list
+zscalerctl zia email-profiles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Email recipient profile identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `emails` | Sensitive identifier | `standard` | Local-only recipient addresses. |
 
 ## ZIA Advanced Settings
 
@@ -1753,14 +1842,6 @@ Fields:
 
 ## Deferred Resource Follow-Ups
 
-- `zia/network-service-groups`: generated and locally validated, but removed
-  from the first policy-reference batch after live smoke reported a request
-  failure. Investigate the live endpoint behavior separately before enabling it
-  in the catalog.
-- `zia/network-applications`: generated and locally validated, but removed
-  from the application-reference batch after live smoke reported a request
-  failure while `zia/network-application-groups` succeeded. Investigate the live
-  endpoint behavior separately before enabling it in the catalog.
 - `zia/departments`: generated and locally validated, but removed from the
   identity-reference batch after live smoke reported a list request failure under
   ZIA legacy credentials. Investigate the live endpoint behavior separately
@@ -1773,10 +1854,6 @@ Fields:
   identity-reference batch after live smoke reported a list request failure under
   ZIA legacy credentials. Investigate the live endpoint behavior separately
   before enabling it in the catalog.
-- `zia/email-profiles`: generated and locally validated, but removed from the
-  security-profile batch after live smoke reported a list request failure under
-  ZIA legacy credentials. Investigate the live endpoint behavior separately
-  before enabling it in the catalog.
 - `zia/dlp-engines`: generated and locally validated, but removed from the
   DLP-reference batch after live smoke reported a list request failure under
   ZIA legacy credentials. Investigate the live endpoint behavior separately
@@ -1785,14 +1862,6 @@ Fields:
   DLP-reference batch after live smoke reported a list request failure under
   ZIA legacy credentials. Investigate the live endpoint behavior separately
   before enabling it in the catalog.
-- `zia/dlp-incident-receiver-servers`: generated and locally validated, but
-  removed from the DLP-reference batch after live smoke reported a list request
-  failure under ZIA legacy credentials. Investigate the live endpoint behavior
-  separately before enabling it in the catalog.
-- `zia/dlp-notification-templates`: generated and locally validated, but
-  removed from the DLP-reference batch after live smoke reported a list request
-  failure under ZIA legacy credentials. Investigate the live endpoint behavior
-  separately before enabling it in the catalog.
 - `zia/c2c-incident-receivers`, `zia/dlp-edm-schemas`,
   `zia/dlp-idm-profile-lite`, `zia/dlp-idm-profiles`, `zia/dlp-web-rules`,
   `zia/traffic-capture-rules`, and `zia/extranets`: generated and locally

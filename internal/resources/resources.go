@@ -1564,6 +1564,28 @@ func Catalog() ResourceCatalog {
 		},
 		{
 			Product:    ProductZIA,
+			Name:       "network-service-groups",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA network service group description"),
+				idNameField("services", standardOnlyMode()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "network-applications",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("parentCategory", standardShareModes()),
+				freeTextField("description", "ZIA network application description"),
+				operationalField("deprecated", allModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
 			Name:       "application-services",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{
@@ -1916,6 +1938,32 @@ func Catalog() ResourceCatalog {
 		},
 		{
 			Product:    ProductZIA,
+			Name:       "dlp-incident-receiver-servers",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				sensitiveIdentifierField("url"),
+				tenantConfigField("status", standardShareModes()),
+				operationalField("flags", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "dlp-notification-templates",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("subject", "DLP notification template subject"),
+				tenantConfigField("attachContent", standardOnlyMode()),
+				secretField("plainTextMessage"),
+				secretField("htmlMessage"),
+				tenantConfigField("tlsEnabled", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
 			Name:       "risk-profiles",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{
@@ -2258,6 +2306,17 @@ func Catalog() ResourceCatalog {
 				secretField("lastModifiedBy"),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("type", allModes()),
+			},
+		},
+		{
+			Product:    ProductZIA,
+			Name:       "email-profiles",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZIA email recipient profile description"),
+				sensitiveIdentifierField("emails"),
 			},
 		},
 		{
