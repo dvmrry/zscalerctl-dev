@@ -27,6 +27,22 @@ func TestRunHelpReturnsSuccess(t *testing.T) {
 	}
 }
 
+func TestRunHelpFlagReturnsSuccess(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"--help"}, &stdout, &stderr, nil)
+	if code != 0 {
+		t.Fatalf("run(--help) exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "usage: zscalerctl") {
+		t.Errorf("run(--help) stdout = %q, want usage text", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("run(--help) stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunUsageErrorReturnsTwo(t *testing.T) {
 	t.Parallel()
 

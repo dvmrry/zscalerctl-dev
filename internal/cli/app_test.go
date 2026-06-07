@@ -176,6 +176,102 @@ func TestDoctorNoColorOverridesAlways(t *testing.T) {
 	}
 }
 
+func TestGlobalFlagsMayFollowCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "format after command args",
+			args: []string{"schema", "list", "--format", "json"},
+		},
+		{
+			name: "format between command args",
+			args: []string{"schema", "--format", "json", "list"},
+		},
+		{
+			name: "format before command",
+			args: []string{"--format", "json", "schema", "list"},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var out, errOut bytes.Buffer
+			app := cli.New(&out, &errOut, nil)
+
+			err := app.Run(context.Background(), tt.args)
+			if err != nil {
+				t.Fatalf("App.Run(%v) error = %v, want nil", tt.args, err)
+			}
+			if !json.Valid(out.Bytes()) {
+				t.Fatalf("App.Run(%v) stdout = %q, want valid JSON", tt.args, out.String())
+			}
+			if errOut.Len() != 0 {
+				t.Errorf("App.Run(%v) stderr = %q, want empty", tt.args, errOut.String())
+			}
+		})
+	}
+}
+
+func TestHelpFlagsReturnUsage(t *testing.T) {
+	t.Parallel()
+
+	tests := [][]string{
+		{"--help"},
+		{"-h"},
+		{"schema", "list", "--help"},
+		{"dump", "--help"},
+	}
+	for _, args := range tests {
+		args := args
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
+
+			var out, errOut bytes.Buffer
+			app := cli.New(&out, &errOut, []string{
+				config.EnvClientSecretFile + "=/path/that/must/not/be/read",
+			})
+
+			err := app.Run(context.Background(), args)
+			if err != nil {
+				t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+			}
+			if !strings.Contains(out.String(), "usage: zscalerctl") {
+				t.Errorf("App.Run(%v) stdout = %q, want usage text", args, out.String())
+			}
+			if errOut.Len() != 0 {
+				t.Errorf("App.Run(%v) stderr = %q, want empty", args, errOut.String())
+			}
+		})
+	}
+}
+
+func TestUsageListsKnownProducts(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	err := app.Run(context.Background(), []string{"help"})
+	if err != nil {
+		t.Fatalf("App.Run(help) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"products: zia, zpa",
+		"zia <resource> list|get",
+		"zpa <resource> list|get",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
+		}
+	}
+}
+
 func TestRedactionOffIsUsageError(t *testing.T) {
 	t.Parallel()
 

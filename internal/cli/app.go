@@ -73,19 +73,23 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if opts.help {
+		a.writeUsage(a.out)
+		return nil
+	}
 	if len(rest) == 0 {
 		a.writeUsage(a.err)
 		return UsageError{Message: "missing command"}
 	}
-	switch rest[0] {
-	case "help", "-h", "--help":
+	switch {
+	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
 		a.writeUsage(a.out)
 		return nil
-	case "version":
+	case rest[0] == "version":
 		return a.runVersion(opts, rest[1:])
-	case "completion":
+	case rest[0] == "completion":
 		return a.runCompletion(rest[1:])
-	case "doctor", "auth", "config", "schema", "dump", "zia", "zpa":
+	case isRunnableCommand(rest[0]):
 	default:
 		a.writeUsage(a.err)
 		return UsageError{Message: fmt.Sprintf("unknown command %q", rest[0])}
@@ -108,9 +112,10 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runSchema(ctx, cfg, opts, rest[1:])
 	case "dump":
 		return a.runDump(ctx, cfg, opts, rest[1:])
-	case "zia", "zpa":
-		return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
 	default:
+		if knownProductCommand(rest[0]) {
+			return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
+		}
 		a.writeUsage(a.err)
 		return UsageError{Message: fmt.Sprintf("unknown command %q", rest[0])}
 	}
@@ -125,6 +130,7 @@ type globalOptions struct {
 	redactionSet bool
 	noCache      bool
 	colorMode    output.ColorMode
+	help         bool
 }
 
 func parseGlobal(args []string) (globalOptions, []string, error) {
@@ -138,7 +144,11 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noCache := fs.Bool("no-cache", false, "bypass API cache where supported")
 	colorFlag := fs.String("color", string(output.ColorAuto), "color output: auto, always, never")
 	noColor := fs.Bool("no-color", false, "disable color output")
-	if err := fs.Parse(args); err != nil {
+	globalArgs, rest, help, err := splitGlobalArgs(args)
+	if err != nil {
+		return globalOptions{}, nil, err
+	}
+	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
 	}
 	parsedFormat, err := output.ParseFormat(*format)
@@ -173,7 +183,65 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		redactionSet: redactionSet,
 		noCache:      *noCache,
 		colorMode:    colorMode,
-	}, fs.Args(), nil
+		help:         help,
+	}, rest, nil
+}
+
+func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
+	var global []string
+	var rest []string
+	help := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			rest = append(rest, args[i+1:]...)
+			break
+		}
+		if arg == "-h" || arg == "--help" {
+			help = true
+			continue
+		}
+		name, hasValue := flagName(arg)
+		if !isGlobalFlag(name) {
+			rest = append(rest, arg)
+			continue
+		}
+		global = append(global, arg)
+		if hasValue || isGlobalBoolFlag(name) {
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, nil, false, UsageError{Message: fmt.Sprintf("flag needs an argument: -%s", name)}
+		}
+		i++
+		global = append(global, args[i])
+	}
+	return global, rest, help, nil
+}
+
+func flagName(arg string) (string, bool) {
+	if !strings.HasPrefix(arg, "--") || arg == "--" {
+		return "", false
+	}
+	name := strings.TrimPrefix(arg, "--")
+	before, _, found := strings.Cut(name, "=")
+	if found {
+		return before, true
+	}
+	return name, false
+}
+
+func isGlobalFlag(name string) bool {
+	switch name {
+	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGlobalBoolFlag(name string) bool {
+	return name == "no-cache" || name == "no-color"
 }
 
 func applyOptions(cfg *config.Config, opts globalOptions) {
@@ -551,6 +619,8 @@ func (a *App) writeProjectedRecords(
 func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: zscalerctl [global flags] <command> [args]")
 	fmt.Fprintln(w)
+	fmt.Fprintf(w, "products: %s\n", strings.Join(productNames(knownProducts()), ", "))
+	fmt.Fprintln(w)
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  doctor")
 	fmt.Fprintln(w, "  auth status")
@@ -559,8 +629,9 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  dump --out <dir> [--resources names] [--continue-on-error]")
 	fmt.Fprintln(w, "  completion bash|zsh|fish")
 	fmt.Fprintln(w, "  version")
-	fmt.Fprintln(w, "  zia <resource> list|get")
-	fmt.Fprintln(w, "  zpa <resource> list|get")
+	for _, product := range knownProducts() {
+		fmt.Fprintf(w, "  %s <resource> list|get\n", product)
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "global flags:")
 	fmt.Fprintln(w, "  --profile <name>")
@@ -640,6 +711,39 @@ func dumpUsage() string {
 	return "usage: zscalerctl dump --out <dir> [--products zia,zpa] [--resources names] [--continue-on-error]"
 }
 
+func knownProducts() []resources.Product {
+	return []resources.Product{
+		resources.ProductZIA,
+		resources.ProductZPA,
+	}
+}
+
+func knownProductCommand(name string) bool {
+	for _, product := range knownProducts() {
+		if name == string(product) {
+			return true
+		}
+	}
+	return false
+}
+
+func isRunnableCommand(name string) bool {
+	switch name {
+	case "doctor", "auth", "config", "schema", "dump":
+		return true
+	default:
+		return knownProductCommand(name)
+	}
+}
+
+func productNames(products []resources.Product) []string {
+	names := make([]string, len(products))
+	for i, product := range products {
+		names[i] = string(product)
+	}
+	return names
+}
+
 func credentialStatus(cfg config.Config) string {
 	switch cfg.EffectiveAuthMode() {
 	case config.AuthModeZIALegacy:
@@ -706,18 +810,18 @@ func valueOrUnset(value string) string {
 
 func parseProducts(value string) (map[resources.Product]bool, error) {
 	if strings.TrimSpace(value) == "" {
-		return map[resources.Product]bool{
-			resources.ProductZIA: true,
-			resources.ProductZPA: true,
-		}, nil
+		products := map[resources.Product]bool{}
+		for _, product := range knownProducts() {
+			products[product] = true
+		}
+		return products, nil
 	}
 	products := map[resources.Product]bool{}
 	for _, item := range strings.Split(value, ",") {
 		product := resources.Product(strings.TrimSpace(strings.ToLower(item)))
-		switch product {
-		case resources.ProductZIA, resources.ProductZPA:
+		if knownProductCommand(string(product)) {
 			products[product] = true
-		default:
+		} else {
 			return nil, UsageError{Message: fmt.Sprintf("unsupported product %q", item)}
 		}
 	}
