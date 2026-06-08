@@ -359,6 +359,29 @@ The SDK also returns admin, user, group, department, device, and ZPA segment
 objects. The reader maps those structures, but the catalog keeps them out of
 rendered output until they are separately modeled.
 
+## ZIA IPs Signature Rules
+
+Commands:
+
+```sh
+zscalerctl zia ips-signature-rules list
+zscalerctl zia ips-signature-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | IPS signature rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `enabled`, `deleted`, `dynamicValidationSubmitted`, `dynamicValidationRejected`, `dynamicValidationSucceeded`, `disabledFromZSCM`, `dynamicValRejectCode` | Operational metadata | `standard`, `share`, `paranoid` | Rule state and dynamic-validation status flags. |
+| `promoteTime`, `ruleTextModTime` | Operational metadata | `standard`, `share` | Non-principal rule timestamps. |
+
+The SDK also returns the signature rule text and category reference. The reader
+keeps the detection text and category out of rendered output until they are
+separately modeled.
+
 ## ZIA IPs Policies
 
 Commands:
@@ -1500,6 +1523,36 @@ Fields:
 
 This is list-only because the SDK exposes list and name lookup for PAC files,
 but no base integer ID `get` path.
+
+## ZIA Cloud App Control
+
+Commands:
+
+```sh
+zscalerctl zia cloud-app-control list
+zscalerctl dump --products zia --resources zia/cloud-app-control --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Cloud App Control rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `state`, `rank`, `type`, `order`, `cascadingEnabled`, `numberOfApplications`, `eunEnabled`, `eunTemplateId`, `browserEunTemplateId`, `predefined`, `enforceTimeValidity` | Operational metadata | `standard`, `share`, `paranoid` | Rule state, type, ordering, and feature flags. |
+| `accessControl`, `validityStartTime`, `validityEndTime`, `validityTimeZoneId`, `lastModifiedTime` | Operational metadata | `standard`, `share` | Non-principal rule metadata. |
+| `actions`, `applications`, `userAgentTypes`, `deviceTrustLevels`, `userRiskScoreLevels`, `timeQuota`, `sizeQuota` | Tenant configuration | `standard`, `share` | Reviewed rule action, application, and quota criteria. |
+| `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Nested references render reviewed `id`/`name` fields only. |
+| `locations`, `locationGroups`, `tenancyProfileIds` | Tenant configuration | `standard` | Local-only scope and tenancy references. Nested unreviewed fields are dropped. |
+
+Cloud App Control has no flat list endpoint; the reader enumerates the rule
+types and concatenates each type's rules. Only `list` is supported (per-rule
+`get` requires a rule-type and id pair).
+
+The SDK also returns user, group, department, and device references plus nested
+cloud-app-instance, risk-profile, and isolation-profile structures. The reader
+keeps those out of rendered output until they are separately modeled.
 
 ## ZIA Cloud Application Policy
 

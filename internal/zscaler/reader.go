@@ -167,6 +167,8 @@ const (
 	resourceIPSPolicies       = "ips-policies"
 	resourceDNSGateways       = "dns-gateways"
 	resourceNATRules          = "nat-control-rules"
+	resourceCloudAppControl   = "cloud-app-control"
+	resourceIPSSignatureRules = "ips-signature-rules"
 	resourceGroups            = "groups"
 	resourceDepartments       = "departments"
 	resourceUsers             = "users"

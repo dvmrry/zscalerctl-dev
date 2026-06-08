@@ -85,6 +85,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_control_settin
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudappcontrol
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss
@@ -124,6 +125,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_pol
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/intermediatecacertificates
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_policies
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_signature_rules
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/malware_protection

@@ -2,6 +2,7 @@ package zscaler
 
 import (
 	"context"
+	"sort"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	activation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/activation"
@@ -17,6 +18,7 @@ import (
 	browserisolation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation"
 	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
+	cloudappcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudappcontrol"
 	cloudapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	cloudnss "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss"
@@ -55,6 +57,7 @@ import (
 	ftpcontrolpolicy "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy"
 	intermediatecacertificates "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/intermediatecacertificates"
 	ipspolicies "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_policies"
+	ipssignaturerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_signature_rules"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	malwareprotection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/malware_protection"
@@ -383,6 +386,16 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return bandwidthcontrolrules.Get(ctx, service, id)
 			}),
 			bandwidthControlRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceIPSSignatureRules}: newListGetHandler(
+			resourceIPSSignatureRules,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipssignaturerules.IPSSignatureRules, error) {
+				return ipssignaturerules.GetAll(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ipssignaturerules.IPSSignatureRules, error) {
+				return ipssignaturerules.Get(ctx, service, id)
+			}),
+			ipsSignatureRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceIPSPolicies}: newListGetHandler(
 			resourceIPSPolicies,
@@ -787,6 +800,50 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			}),
 			pacFileSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceCloudAppControl}: newListOnlyHandler(
+			resourceCloudAppControl,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudappcontrol.WebApplicationRules, error) {
+				// Cloud App Control has no flat list endpoint; enumerate the rule
+				// types and concatenate each type's rules (sorted for determinism).
+				mapping, err := cloudappcontrol.GetRuleTypeMapping(ctx, service)
+				if err != nil {
+					return nil, err
+				}
+				// The mapping's direction (rule-type code vs display name) is not
+				// guaranteed, so probe both keys and values; invalid entries are
+				// skipped by the tolerant GetByRuleType loop below.
+				seen := map[string]struct{}{}
+				ruleTypes := make([]string, 0, len(mapping)*2)
+				for k, v := range mapping {
+					for _, candidate := range []string{k, v} {
+						if candidate == "" {
+							continue
+						}
+						if _, ok := seen[candidate]; ok {
+							continue
+						}
+						seen[candidate] = struct{}{}
+						ruleTypes = append(ruleTypes, candidate)
+					}
+				}
+				if len(ruleTypes) == 0 {
+					ruleTypes = cloudAppControlRuleTypes
+				}
+				sort.Strings(ruleTypes)
+				var all []cloudappcontrol.WebApplicationRules
+				for _, ruleType := range ruleTypes {
+					rules, err := cloudappcontrol.GetByRuleType(ctx, service, ruleType)
+					if err != nil {
+						// A rule type can be unavailable or not entitled in a given
+						// tenant; skip it rather than failing the whole list.
+						continue
+					}
+					all = append(all, rules...)
+				}
+				return all, nil
+			}),
+			cloudAppControlSourceRecord,
+		),
 		{product: resources.ProductZIA, name: resourceCloudAppPolicy}: newListOnlyHandler(
 			resourceCloudAppPolicy,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudapplications.CloudApplications, error) {
@@ -969,4 +1026,83 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 	for k, v := range entries {
 		addHandler(m, k, v)
 	}
+}
+
+func ipsSignatureRuleSourceRecord(rule ipssignaturerules.IPSSignatureRules) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":                         rule.ID,
+		"name":                       rule.Name,
+		"description":                rule.Description,
+		"enabled":                    rule.Enabled,
+		"deleted":                    rule.Deleted,
+		"promoteTime":                rule.PromoteTime,
+		"ruleTextModTime":            rule.RuleTextModTime,
+		"dynamicValidationSubmitted": rule.DynamicValidationSubmitted,
+		"dynamicValidationRejected":  rule.DynamicValidationRejected,
+		"dynamicValidationSucceeded": rule.DynamicValidationSucceeded,
+		"disabledFromZSCM":           rule.DisabledFromZSCM,
+		"dynamicValRejectCode":       rule.DynamicValRejectCode,
+	})
+}
+
+// cloudAppControlRuleTypes is a fallback list of Cloud App Control rule-type
+// codes used only when the live ruleTypeMapping endpoint returns nothing.
+var cloudAppControlRuleTypes = []string{
+	"AI_ML",
+	"BUSINESS_PRODUCTIVITY",
+	"CONSUMER",
+	"CUSTOM_CAPP",
+	"DNS_OVER_HTTPS",
+	"ENTERPRISE_COLLABORATION",
+	"FILE_SHARE",
+	"FINANCE",
+	"HEALTH_CARE",
+	"HOSTING_PROVIDER",
+	"HUMAN_RESOURCES",
+	"INSTANT_MESSAGING",
+	"IT_SERVICES",
+	"LEGAL",
+	"SALES_AND_MARKETING",
+	"SOCIAL_NETWORKING",
+	"STREAMING_MEDIA",
+	"SYSTEM_AND_DEVELOPMENT",
+	"WEBMAIL",
+	"WEB_CONFERENCING",
+}
+
+func cloudAppControlSourceRecord(rule cloudappcontrol.WebApplicationRules) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                   rule.ID,
+		"name":                 rule.Name,
+		"description":          rule.Description,
+		"state":                rule.State,
+		"rank":                 rule.Rank,
+		"type":                 rule.Type,
+		"order":                rule.Order,
+		"timeQuota":            rule.TimeQuota,
+		"sizeQuota":            rule.SizeQuota,
+		"cascadingEnabled":     rule.CascadingEnabled,
+		"accessControl":        rule.AccessControl,
+		"numberOfApplications": rule.NumberOfApplications,
+		"eunEnabled":           rule.EunEnabled,
+		"eunTemplateId":        rule.EunTemplateID,
+		"browserEunTemplateId": rule.BrowserEunTemplateID,
+		"predefined":           rule.Predefined,
+		"validityStartTime":    rule.ValidityStartTime,
+		"validityEndTime":      rule.ValidityEndTime,
+		"validityTimeZoneId":   rule.ValidityTimeZoneID,
+		"lastModifiedTime":     rule.LastModifiedTime,
+		"enforceTimeValidity":  rule.EnforceTimeValidity,
+	}
+	addStringSlice(fields, "actions", rule.Actions)
+	addStringSlice(fields, "applications", rule.Applications)
+	addStringSlice(fields, "userAgentTypes", rule.UserAgentTypes)
+	addStringSlice(fields, "deviceTrustLevels", rule.DeviceTrustLevels)
+	addStringSlice(fields, "userRiskScoreLevels", rule.UserRiskScoreLevels)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "locations", rule.Locations)
+	addIDNameExtensionsSlice(fields, "locationGroups", rule.LocationGroups)
+	addIDNameExtensionsSlice(fields, "tenancyProfileIds", rule.TenancyProfileIDs)
+	return resources.NewSourceRecord(fields)
 }

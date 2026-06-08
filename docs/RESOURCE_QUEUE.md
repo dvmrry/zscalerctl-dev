@@ -230,6 +230,8 @@ boundary issue, or a deliberate privacy/material hold.
 | `zcc/notification-templates` | ZCC endpoint probe failed with status 404. | Include in the same ZCC endpoint-boundary probe; do not interpret three 404s as three independent resource failures until the product route is proven. |
 | `zcc/zia-postures` | ZCC endpoint probe failed with status 404. | Include in the same ZCC endpoint-boundary probe; if the product route is corrected, re-evaluate posture criteria fields before cataloging. |
 | `zia/password-expiry-settings` | ZIA endpoint probe failed with status 403. | Treat as endpoint-specific permission, role, or product-feature availability. Retry only if admin-policy read scope changes or an alternate documented read path is identified. |
+| `zia/traffic-capture-rules` | Live-smoke returned 403 under both OneAPI and legacy ZIA auth. Surface confirmed in pinned SDK v3.8.38 (`traffic_capture.TrafficCaptureRules`, list/get). | Treat as Traffic Capture feature entitlement or admin-role read permission, not a mapping issue. Retry only once the feature is licensed and the API role gains read access. |
+| `zia/extranet` | Live-smoke returned 403 under both OneAPI and legacy ZIA auth. Surface confirmed in pinned SDK v3.8.38 (`trafficforwarding/extranet.Extranet`, list/get; nested DNS/IP-pool lists deferred). | Treat as Extranet feature entitlement or admin-role read permission. Retry only once the feature is licensed and the API role gains read access; model the nested DNS server and IP pool lists when promoting. |
 
 ## Return-To-Work Checklist
 

@@ -18,6 +18,7 @@ import (
 	browserisolation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation"
 	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
+	cloudappcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudappcontrol"
 	cloudapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	cloudnss "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss"
@@ -57,6 +58,7 @@ import (
 	ftpcontrolpolicy "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy"
 	intermediatecacertificates "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/intermediatecacertificates"
 	ipspolicies "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_policies"
+	ipssignaturerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_signature_rules"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	malwareprotection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/malware_protection"
@@ -1739,6 +1741,56 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			},
 		},
 		{
+			name:         "cloudappcontrol.WebApplicationRules",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCloudAppControl,
+			typ:          reflect.TypeOf(cloudappcontrol.WebApplicationRules{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"actions",
+				"state",
+				"rank",
+				"type",
+				"order",
+				"timeQuota",
+				"sizeQuota",
+				"cascadingEnabled",
+				"accessControl",
+				"applications",
+				"numberOfApplications",
+				"eunEnabled",
+				"eunTemplateId",
+				"browserEunTemplateId",
+				"predefined",
+				"validityStartTime",
+				"validityEndTime",
+				"validityTimeZoneId",
+				"userAgentTypes",
+				"lastModifiedTime",
+				"enforceTimeValidity",
+				"deviceTrustLevels",
+				"userRiskScoreLevels",
+				"labels",
+				"timeWindows",
+				"locations",
+				"locationGroups",
+				"tenancyProfileIds",
+			},
+			ignoredFields: ignoredBecause(
+				"user/group/device references and nested instance/profile structures are held until separately modeled",
+				"cbiProfile",
+				"cloudAppInstances",
+				"cloudAppRiskProfile",
+				"departments",
+				"deviceGroups",
+				"devices",
+				"groups",
+				"users",
+			),
+		},
+		{
 			name:         "cloudapplications.CloudApplications (policy)",
 			resource:     resources.ProductZIA,
 			resourceName: resourceCloudAppPolicy,
@@ -2297,6 +2349,31 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"users",
 				"zpaIpGroup",
 			},
+		},
+		{
+			name:         "ips_signature_rules.IPSSignatureRules",
+			resource:     resources.ProductZIA,
+			resourceName: resourceIPSSignatureRules,
+			typ:          reflect.TypeOf(ipssignaturerules.IPSSignatureRules{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"deleted",
+				"promoteTime",
+				"ruleTextModTime",
+				"dynamicValidationSubmitted",
+				"dynamicValidationRejected",
+				"dynamicValidationSucceeded",
+				"disabledFromZSCM",
+				"dynamicValRejectCode",
+			},
+			ignoredFields: ignoredBecause(
+				"signature detection text and category reference are held until separately modeled",
+				"category",
+				"ruleText",
+			),
 		},
 		{
 			name:         "ipspolicies.FirewallIPSRules",
