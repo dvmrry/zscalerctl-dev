@@ -162,7 +162,7 @@ resource handler.
 
 ## Remaining SDK Package Review
 
-The current enabled catalog contains 82 ZIA resources, 16 ZPA resources, and 20
+The current enabled catalog contains 95 ZIA resources, 16 ZPA resources, and 20
 ZTW resources. The rows below are package-level scouting notes, not a promise
 that every surface should become a resource.
 
@@ -186,8 +186,8 @@ Remaining work is grouped by the decision that blocks catalog work:
 
 | Track | Surfaces | Decision before catalog work |
 | --- | --- | --- |
-| List-only or name-get candidates | `location/locationlite`, PAC files, cloud application policy lists | Add explicit list-only/dump-only or name-get semantics before queueing. `locationlite` should wait for a concrete performance or pagination reason because it overlaps `locations` and `sublocations`. |
-| SaaS/CASB split candidates | `saas_security_api`, `saas_security_api/casb_dlp_rules`, `saas_security_api/casb_malware_rules` | Split `saas_security_api` into separate resources such as domain profiles, quarantine tombstone templates, CASB email labels, CASB tenants, and SaaS scan info. CASB DLP/malware rules can use list/dump via `/all`, but `get` needs a rule-type decision. |
+| List-only or name-get candidates | `location/locationlite` | Add explicit list-only/dump-only or name-get semantics before queueing. `locationlite` should wait for a concrete performance or pagination reason because it overlaps `locations` and `sublocations`. |
+| SaaS/CASB follow-ups | CASB tenant tag policy and SaaS scan info | The core SaaS/CASB config surfaces are staged as list-only resources. Tenant tag policy needs a tenant-ID child-query design, and scan info is telemetry rather than config. |
 | Deferred live/auth failures | See [Deferred Resource SDK Recheck](DEFERRED_RESOURCE_RECHECK.md). | Retry only as focused endpoint/auth probes that record exact status code, auth mode, product cloud, endpoint path, SDK version, and source commit. |
 | Adjacent-to-failure scout | `ips_control_policies/ips_policies` | Ordinary list/get shape, but adjacent to the failed IPS signature-rule endpoint. Probe separately before queueing. |
 | Privacy, identity, export, or material surfaces | `adminauditlogs`, ZIA `adminuserrolemgmt/admins`, ZIA `adminuserrolemgmt/roles`, `intermediatecacertificates`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. ZTW admin governance is tracked separately in the product scope plan. |

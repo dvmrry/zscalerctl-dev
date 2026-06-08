@@ -14,9 +14,11 @@ import (
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
+	browsercontrolsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_control_settings"
 	browserisolation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation"
 	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
+	cloudapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	cloudnss "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss"
 	nssservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/nss_servers"
@@ -52,15 +54,22 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	zpagateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/zpa_gateways"
+	ftpcontrolpolicy "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	malwareprotection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/malware_protection"
 	mobilethreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/mobile_threat_settings"
 	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	organizationdetails "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/organization_details"
+	pacfiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/pacfiles"
+	remoteassistance "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/remote_assistance"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	saassecurityapi "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api"
+	casbdlprules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_dlp_rules"
+	casbmalwarerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_malware_rules"
 	sandboxrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_rules"
 	sandboxsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_settings"
+	securebrowsing "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/secure_browsing"
 	securitypolicysettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/security_policy_settings"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	tenancyrestriction "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction"
@@ -2578,6 +2587,260 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"prefixMask",
 				"dnsPrefix",
 				"nonEditable",
+			},
+		},
+		{
+			name:         "pacfiles.PACFileConfig",
+			resource:     resources.ProductZIA,
+			resourceName: resourcePACFiles,
+			typ:          reflect.TypeOf(pacfiles.PACFileConfig{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"domain",
+				"pacUrl",
+				"pacContent",
+				"editable",
+				"pacSubURL",
+				"pacUrlObfuscated",
+				"pacVerificationStatus",
+				"pacVersionStatus",
+				"pacVersion",
+				"pacCommitMessage",
+				"totalHits",
+				"lastModificationTime",
+				"lastModifiedBy",
+				"createTime",
+			},
+		},
+		{
+			name:         "cloudapplications.CloudApplications (policy)",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCloudAppPolicy,
+			typ:          reflect.TypeOf(cloudapplications.CloudApplications{}),
+			catalogFields: []string{
+				"app",
+				"appName",
+				"parent",
+				"parentName",
+			},
+		},
+		{
+			name:         "cloudapplications.CloudApplications (ssl policy)",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCloudAppSSLPol,
+			typ:          reflect.TypeOf(cloudapplications.CloudApplications{}),
+			catalogFields: []string{
+				"app",
+				"appName",
+				"parent",
+				"parentName",
+			},
+		},
+		{
+			name:         "saassecurityapi.DomainProfiles",
+			resource:     resources.ProductZIA,
+			resourceName: resourceDomainProfiles,
+			typ:          reflect.TypeOf(saassecurityapi.DomainProfiles{}),
+			catalogFields: []string{
+				"profileId",
+				"profileName",
+				"includeCompanyDomains",
+				"includeSubdomains",
+				"description",
+				"customDomains",
+				"predefinedEmailDomains",
+			},
+		},
+		{
+			name:         "saassecurityapi.QuarantineTombstoneLite",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCASBTombstones,
+			typ:          reflect.TypeOf(saassecurityapi.QuarantineTombstoneLite{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+			},
+		},
+		{
+			name:         "saassecurityapi.CasbEmailLabel",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCASBEmailLabels,
+			typ:          reflect.TypeOf(saassecurityapi.CasbEmailLabel{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"labelDesc",
+				"labelColor",
+				"labelDeleted",
+			},
+		},
+		{
+			name:         "saassecurityapi.CasbTenants",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCASBTenants,
+			typ:          reflect.TypeOf(saassecurityapi.CasbTenants{}),
+			catalogFields: []string{
+				"tenantId",
+				"modifiedTime",
+				"lastTenantValidationTime",
+				"tenantDeleted",
+				"tenantWebhookEnabled",
+				"reAuth",
+				"featuresSupported",
+				"status",
+				"enterpriseTenantId",
+				"tenantName",
+				"saasApplication",
+				"zscalerAppTenantId",
+			},
+		},
+		{
+			name:         "casbdlprules.CasbDLPRules",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCASBDLPRules,
+			typ:          reflect.TypeOf(casbdlprules.CasbDLPRules{}),
+			catalogFields: []string{
+				"type",
+				"id",
+				"order",
+				"rank",
+				"lastModifiedTime",
+				"name",
+				"state",
+				"action",
+				"severity",
+				"description",
+				"bucketOwner",
+				"externalAuditorEmail",
+				"contentLocation",
+				"numberOfInternalCollaborators",
+				"numberOfExternalCollaborators",
+				"recipient",
+				"quarantineLocation",
+				"accessControl",
+				"watermarkDeleteOldVersion",
+				"includeCriteriaDomainProfile",
+				"includeEmailRecipientProfile",
+				"withoutContentInspection",
+				"includeEntityGroups",
+				"fileTypes",
+				"collaborationScope",
+				"domains",
+				"components",
+				"deviceTrustLevels",
+				"objectTypes",
+				"buckets",
+				"labels",
+				"includedDomainProfiles",
+				"excludedDomainProfiles",
+				"criteriaDomainProfiles",
+				"emailRecipientProfiles",
+				"devices",
+				"deviceGroups",
+				"entityGroups",
+				"cloudAppTenants",
+				"users",
+				"groups",
+				"departments",
+				"dlpEngines",
+				"lastModifiedBy",
+				"auditor",
+				"zscalerIncidentReceiver",
+				"auditorNotification",
+				"tag",
+				"watermarkProfile",
+				"redactionProfile",
+				"casbEmailLabel",
+				"casbTombstoneTemplate",
+				"receiver",
+			},
+		},
+		{
+			name:         "casbmalwarerules.CasbMalwareRules",
+			resource:     resources.ProductZIA,
+			resourceName: resourceCASBMalwareRules,
+			typ:          reflect.TypeOf(casbmalwarerules.CasbMalwareRules{}),
+			catalogFields: []string{
+				"type",
+				"id",
+				"order",
+				"name",
+				"state",
+				"action",
+				"quarantineLocation",
+				"scanInboundEmailLink",
+				"lastModifiedTime",
+				"accessControl",
+				"lastModifiedBy",
+				"casbEmailLabel",
+				"casbTombstoneTemplate",
+				"buckets",
+				"labels",
+				"cloudAppTenantIds",
+				"cloudAppTenants",
+				"cloudApplicationTenant",
+			},
+		},
+		{
+			name:         "browsercontrolsettings.BrowserControlSettings",
+			resource:     resources.ProductZIA,
+			resourceName: resourceBrowserControl,
+			typ:          reflect.TypeOf(browsercontrolsettings.BrowserControlSettings{}),
+			catalogFields: []string{
+				"pluginCheckFrequency",
+				"bypassPlugins",
+				"bypassApplications",
+				"blockedInternetExplorerVersions",
+				"blockedChromeVersions",
+				"blockedFirefoxVersions",
+				"blockedSafariVersions",
+				"blockedOperaVersions",
+				"smartIsolationUsers",
+				"smartIsolationGroups",
+				"smartIsolationProfile",
+				"bypassAllBrowsers",
+				"allowAllBrowsers",
+				"enableWarnings",
+				"enableSmartBrowserIsolation",
+				"smartIsolationProfileId",
+			},
+		},
+		{
+			name:         "securebrowsing.SupportedBrowserVersion",
+			resource:     resources.ProductZIA,
+			resourceName: resourceSupportedBrowsers,
+			typ:          reflect.TypeOf(securebrowsing.SupportedBrowserVersion{}),
+			catalogFields: []string{
+				"browserType",
+				"versions",
+				"olderVersions",
+			},
+		},
+		{
+			name:         "ftpcontrolpolicy.FTPControlPolicy",
+			resource:     resources.ProductZIA,
+			resourceName: resourceFTPControl,
+			typ:          reflect.TypeOf(ftpcontrolpolicy.FTPControlPolicy{}),
+			catalogFields: []string{
+				"ftpOverHttpEnabled",
+				"ftpEnabled",
+				"urlCategories",
+				"urls",
+			},
+		},
+		{
+			name:         "remoteassistance.RemoteAssistance",
+			resource:     resources.ProductZIA,
+			resourceName: resourceRemoteAssistance,
+			typ:          reflect.TypeOf(remoteassistance.RemoteAssistance{}),
+			catalogFields: []string{
+				"viewOnlyUntil",
+				"fullAccessUntil",
+				"usernameObfuscated",
+				"deviceInfoObfuscate",
 			},
 		},
 		{

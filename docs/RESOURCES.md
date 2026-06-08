@@ -1386,6 +1386,250 @@ Fields:
 
 This is a list-only prefix catalog.
 
+## ZIA Pac Files
+
+Commands:
+
+```sh
+zscalerctl zia pac-files list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `editable`, `pacUrlObfuscated`, `pacVersion` | Operational metadata | `standard`, `share`, `paranoid` | PAC identity, editability, and version metadata. |
+| `totalHits`, `lastModificationTime`, `createTime` | Operational metadata | `standard`, `share` | PAC usage and lifecycle metadata. |
+| `name`, `pacVersionStatus`, `pacVerificationStatus` | Tenant configuration / operational metadata | `standard`, `share` | PAC name and state. |
+| `description`, `pacContent`, `pacCommitMessage` | Free text | `standard` | Admin-controlled text and PAC script content; scanned before output and dropped from shared modes. |
+| `domain`, `pacUrl`, `pacSubURL` | Sensitive identifier | `standard` | Tenant domain and PAC URL values. |
+| `lastModifiedBy` | Secret | never | Admin identity is mapped into source records but dropped by projection. |
+
+This is list-only because the SDK exposes list and name lookup for PAC files,
+but no base integer ID `get` path.
+
+## ZIA Cloud Application Policy
+
+Commands:
+
+```sh
+zscalerctl zia cloud-application-policy list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `app`, `appName`, `parent`, `parentName` | Tenant configuration | `standard`, `share` | Cloud application and category identifiers returned by the policy catalog. |
+
+This is a list-only catalog resource.
+
+## ZIA Cloud Application Ssl Policy
+
+Commands:
+
+```sh
+zscalerctl zia cloud-application-ssl-policy list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `app`, `appName`, `parent`, `parentName` | Tenant configuration | `standard`, `share` | Cloud application and category identifiers returned by the SSL policy catalog. |
+
+This is a list-only catalog resource.
+
+## ZIA Domain Profiles
+
+Commands:
+
+```sh
+zscalerctl zia domain-profiles list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `profileId`, `includeCompanyDomains`, `includeSubdomains` | Operational metadata | `standard`, `share`, `paranoid` | Domain-profile identity and flags. |
+| `profileName` | Tenant configuration | `standard`, `share` | Domain-profile name; scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Admin-controlled text; scanned before output. |
+| `customDomains` | Sensitive identifier | `standard` | Tenant-defined domains. |
+| `predefinedEmailDomains` | Tenant configuration | `standard` | Provider domain catalog references. |
+
+This is a list-only SaaS Security API resource.
+
+## ZIA Casb Tombstone Templates
+
+Commands:
+
+```sh
+zscalerctl zia casb-tombstone-templates list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Template identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Template name; scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | Tombstone text; scanned before output and dropped from shared modes. |
+
+This is a list-only SaaS Security API resource.
+
+## ZIA Casb Email Labels
+
+Commands:
+
+```sh
+zscalerctl zia casb-email-labels list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `labelDeleted` | Operational metadata | `standard`, `share`, `paranoid` | Label identity and deletion flag. |
+| `name`, `labelColor` | Tenant configuration | `standard`, `share` | Label name and color. |
+| `labelDesc` | Free text | `standard` | Label description; scanned before output. |
+
+This is a list-only SaaS Security API resource.
+
+## ZIA Casb Tenants
+
+Commands:
+
+```sh
+zscalerctl zia casb-tenants list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `tenantId`, `tenantDeleted`, `tenantWebhookEnabled`, `reAuth` | Operational metadata | `standard`, `share`, `paranoid` | Tenant identity and state flags. |
+| `modifiedTime` | Operational metadata | `standard`, `share` | Tenant lifecycle metadata. |
+| `lastTenantValidationTime`, `zscalerAppTenantId` | Operational metadata / tenant configuration | `standard` | Tenant validation and app-tenant reference details. |
+| `featuresSupported`, `status`, `saasApplication` | Tenant configuration | `standard`, `share` | SaaS tenant feature and status metadata. |
+| `enterpriseTenantId`, `tenantName` | Sensitive identifier | `standard` | External tenant identifiers and names. |
+
+This is a list-only SaaS Security API resource.
+
+## ZIA Casb Dlp Rules
+
+Commands:
+
+```sh
+zscalerctl zia casb-dlp-rules list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `order`, `rank`, `lastModifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Rule identity, order, rank, and lifecycle metadata. |
+| `type`, `name`, `state`, `action`, `severity`, `accessControl`, `fileTypes`, `collaborationScope`, `components`, `deviceTrustLevels`, `watermarkDeleteOldVersion`, `includeCriteriaDomainProfile`, `includeEmailRecipientProfile`, `withoutContentInspection`, `includeEntityGroups`, `numberOfInternalCollaborators`, `numberOfExternalCollaborators` | Tenant configuration | `standard`, `share` | Rule configuration and matching flags. |
+| `description` | Free text | `standard` | Admin-controlled rule text; scanned before output. |
+| `bucketOwner`, `externalAuditorEmail`, `contentLocation`, `recipient`, `quarantineLocation`, `domains` | Sensitive identifier | `standard` | Tenant, recipient, domain, and storage-location identifiers. |
+| `objectTypes`, `buckets`, `includedDomainProfiles`, `excludedDomainProfiles`, `criteriaDomainProfiles`, `emailRecipientProfiles`, `devices`, `deviceGroups`, `entityGroups`, `cloudAppTenants`, `users`, `groups`, `departments`, `dlpEngines`, `auditor`, `zscalerIncidentReceiver`, `auditorNotification`, `tag`, `watermarkProfile`, `redactionProfile`, `casbEmailLabel`, `casbTombstoneTemplate`, `receiver` | Tenant configuration | `standard` | Nested references render constrained `id`/`name` fields only. |
+| `labels` | Tenant configuration | `standard`, `share` | Rule labels. |
+| `lastModifiedBy` | Secret | never | Admin identity is mapped into source records but dropped by projection. |
+
+This is list-only because the SDK's ID `get` path requires a rule type in
+addition to the rule ID.
+
+## ZIA Casb Malware Rules
+
+Commands:
+
+```sh
+zscalerctl zia casb-malware-rules list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `order` | Operational metadata | `standard`, `share`, `paranoid` | Rule identity and order. |
+| `lastModifiedTime` | Operational metadata | `standard`, `share` | Rule lifecycle metadata. |
+| `type`, `name`, `state`, `action`, `accessControl` | Tenant configuration | `standard`, `share` | Rule configuration and state. |
+| `quarantineLocation`, `scanInboundEmailLink` | Sensitive identifier | `standard` | Tenant storage and email-link identifiers. |
+| `casbEmailLabel`, `casbTombstoneTemplate`, `buckets`, `cloudAppTenantIds`, `cloudAppTenants`, `cloudApplicationTenant` | Tenant configuration | `standard` | Nested CASB references render constrained fields only. |
+| `labels` | Tenant configuration | `standard`, `share` | Rule labels. |
+| `lastModifiedBy` | Secret | never | Admin identity is mapped into source records but dropped by projection. |
+
+This is list-only because the SDK's ID `get` path requires a rule type in
+addition to the rule ID.
+
+## ZIA Browser Control Settings
+
+Commands:
+
+```sh
+zscalerctl zia browser-control-settings show
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `pluginCheckFrequency`, `bypassAllBrowsers`, `allowAllBrowsers`, `enableWarnings`, `enableSmartBrowserIsolation` | Tenant configuration | `standard`, `share` | Browser warning and Smart Isolation controls. |
+| `bypassPlugins`, `bypassApplications`, `blockedInternetExplorerVersions`, `blockedChromeVersions`, `blockedFirefoxVersions`, `blockedSafariVersions`, `blockedOperaVersions` | Sensitive identifier | `standard` | Application/plugin and browser-version targeting. |
+| `smartIsolationProfileId`, `smartIsolationUsers`, `smartIsolationGroups`, `smartIsolationProfile` | Tenant configuration | `standard` | Smart Isolation references render constrained fields only. |
+
+This is a singleton settings resource.
+
+## ZIA Supported Browser Versions
+
+Commands:
+
+```sh
+zscalerctl zia supported-browser-versions list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `browserType`, `versions`, `olderVersions` | Tenant configuration | `standard`, `share` | Browser support catalog values returned by the Browser Control API. |
+
+This is a list-only browser-support catalog.
+
+## ZIA Ftp Control Policy
+
+Commands:
+
+```sh
+zscalerctl zia ftp-control-policy show
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `ftpOverHttpEnabled`, `ftpEnabled`, `urlCategories` | Tenant configuration | `standard`, `share` | FTP enablement and category controls. |
+| `urls` | Sensitive identifier | `standard` | Tenant-defined FTP URL entries. |
+
+This is a singleton settings resource.
+
+## ZIA Remote Assistance
+
+Commands:
+
+```sh
+zscalerctl zia remote-assistance show
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `viewOnlyUntil`, `fullAccessUntil` | Operational metadata | `standard`, `share` | Remote-assistance access timestamps. |
+| `usernameObfuscated`, `deviceInfoObfuscate` | Tenant configuration | `standard`, `share` | Dashboard obfuscation controls. |
+
+This is a singleton settings resource.
+
 ## ZIA Email Profiles
 
 Commands:

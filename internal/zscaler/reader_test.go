@@ -16,8 +16,10 @@ import (
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
+	browsercontrolsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_control_settings"
 	browserisolation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
+	cloudapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications"
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/devicegroups"
 	dlpedmlite "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/dlp/dlp_exact_data_match_lite"
@@ -40,10 +42,17 @@ import (
 	forwardingrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/forwarding_rules"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
+	ftpcontrolpolicy "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
+	pacfiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/pacfiles"
+	remoteassistance "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/remote_assistance"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	saassecurityapi "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api"
+	casbdlprules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_dlp_rules"
+	casbmalwarerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_malware_rules"
+	securebrowsing "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/secure_browsing"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	tenancyrestriction "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction"
 	timeintervals "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals"
@@ -3953,6 +3962,225 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 			}),
 			standardPresent: []string{"prefixMask"},
 			shareAbsent:     []string{"prefixMask"},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			standard := projectOneRecordInMode(t, resources.ProductZIA, tc.resource, redact.ModeStandard, []resources.SourceRecord{tc.record})
+			for _, field := range tc.standardPresent {
+				if _, ok := standard[field]; !ok {
+					t.Errorf("standard projected %s missing %s", tc.resource, field)
+				}
+			}
+			for _, field := range tc.standardAbsent {
+				if _, ok := standard[field]; ok {
+					t.Errorf("standard projected %s includes %s, want dropped", tc.resource, field)
+				}
+			}
+			assertNoCanaries(t, tc.resource+" standard", standard, canary)
+
+			for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+				got := projectOneRecordInMode(t, resources.ProductZIA, tc.resource, mode, []resources.SourceRecord{tc.record})
+				for _, field := range tc.shareAbsent {
+					if _, ok := got[field]; ok {
+						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
+					}
+				}
+				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
+			}
+		})
+	}
+}
+
+func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	const canary = "synthetic-sensitive-canary"
+	tests := []struct {
+		name            string
+		resource        string
+		record          resources.SourceRecord
+		standardPresent []string
+		standardAbsent  []string
+		shareAbsent     []string
+	}{
+		{
+			name:     "pac file content and URLs are standard-only",
+			resource: resourcePACFiles,
+			record: pacFileSourceRecord(pacfiles.PACFileConfig{
+				ID:         1,
+				Name:       "PAC",
+				Domain:     "example.invalid",
+				PACUrl:     "https://pac.example.invalid/proxy.pac",
+				PACContent: "function FindProxyForURL() { return \"DIRECT\"; }",
+				PACSubURL:  "obfuscated.example.invalid",
+				LastModifiedBy: pacfiles.LastModifiedBy{
+					ID:   2,
+					Name: canary,
+				},
+			}),
+			standardPresent: []string{"domain", "pacUrl", "pacContent", "pacSubURL"},
+			standardAbsent:  []string{"lastModifiedBy"},
+			shareAbsent:     []string{"domain", "pacUrl", "pacContent", "pacSubURL", "lastModifiedBy"},
+		},
+		{
+			name:     "cloud application policy remains shareable",
+			resource: resourceCloudAppPolicy,
+			record: cloudApplicationPolicySourceRecord(cloudapplications.CloudApplications{
+				App:        "APP",
+				AppName:    "Application",
+				Parent:     "PARENT",
+				ParentName: "Parent",
+			}),
+			standardPresent: []string{"app", "appName", "parent", "parentName"},
+		},
+		{
+			name:     "cloud application ssl policy remains shareable",
+			resource: resourceCloudAppSSLPol,
+			record: cloudApplicationPolicySourceRecord(cloudapplications.CloudApplications{
+				App:        "APP",
+				AppName:    "Application",
+				Parent:     "PARENT",
+				ParentName: "Parent",
+			}),
+			standardPresent: []string{"app", "appName", "parent", "parentName"},
+		},
+		{
+			name:     "domain profile custom domains are standard-only",
+			resource: resourceDomainProfiles,
+			record: domainProfileSourceRecord(saassecurityapi.DomainProfiles{
+				ProfileID:     1,
+				ProfileName:   "Domain profile",
+				CustomDomains: []string{"example.invalid"},
+			}),
+			standardPresent: []string{"customDomains"},
+			shareAbsent:     []string{"description", "customDomains", "predefinedEmailDomains"},
+		},
+		{
+			name:     "casb tombstone text is standard-only",
+			resource: resourceCASBTombstones,
+			record: casbTombstoneTemplateSourceRecord(saassecurityapi.QuarantineTombstoneLite{
+				ID:          1,
+				Name:        "Tombstone",
+				Description: "template text",
+			}),
+			standardPresent: []string{"description"},
+			shareAbsent:     []string{"description"},
+		},
+		{
+			name:     "casb email label description is standard-only",
+			resource: resourceCASBEmailLabels,
+			record: casbEmailLabelSourceRecord(saassecurityapi.CasbEmailLabel{
+				ID:        1,
+				Name:      "Label",
+				LabelDesc: "label text",
+			}),
+			standardPresent: []string{"labelDesc"},
+			shareAbsent:     []string{"labelDesc"},
+		},
+		{
+			name:     "casb tenant identifiers are standard-only",
+			resource: resourceCASBTenants,
+			record: casbTenantSourceRecord(saassecurityapi.CasbTenants{
+				TenantID:           1,
+				EnterpriseTenantID: "enterprise-tenant",
+				TenantName:         "Tenant",
+				SaaSApplication:    "SaaS",
+			}),
+			standardPresent: []string{"enterpriseTenantId", "tenantName"},
+			shareAbsent:     []string{"lastTenantValidationTime", "enterpriseTenantId", "tenantName", "zscalerAppTenantId"},
+		},
+		{
+			name:     "casb dlp rule identifiers and admin identity are constrained",
+			resource: resourceCASBDLPRules,
+			record: casbDLPRuleSourceRecord(casbdlprules.CasbDLPRules{
+				ID:                   1,
+				Name:                 "CASB DLP",
+				BucketOwner:          "owner@example.invalid",
+				ExternalAuditorEmail: "auditor@example.invalid",
+				Domains:              []string{"example.invalid"},
+				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: canary},
+				Receiver: &casbdlprules.Receiver{
+					ID:   3,
+					Name: "Receiver",
+					Tenant: &ziacommon.IDNameExtensions{
+						ID:   4,
+						Name: "Tenant",
+					},
+				},
+			}),
+			standardPresent: []string{"bucketOwner", "externalAuditorEmail", "domains", "receiver"},
+			standardAbsent:  []string{"lastModifiedBy"},
+			shareAbsent:     []string{"bucketOwner", "externalAuditorEmail", "domains", "lastModifiedBy", "receiver"},
+		},
+		{
+			name:     "casb malware rule identifiers and admin identity are constrained",
+			resource: resourceCASBMalwareRules,
+			record: casbMalwareRuleSourceRecord(casbmalwarerules.CasbMalwareRules{
+				ID:                   1,
+				Name:                 "CASB Malware",
+				QuarantineLocation:   "quarantine://folder",
+				ScanInboundEmailLink: "https://mail.example.invalid",
+				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: canary},
+			}),
+			standardPresent: []string{"quarantineLocation", "scanInboundEmailLink"},
+			standardAbsent:  []string{"lastModifiedBy"},
+			shareAbsent:     []string{"quarantineLocation", "scanInboundEmailLink", "lastModifiedBy"},
+		},
+		{
+			name:     "browser control targeting and profile URL are standard-only",
+			resource: resourceBrowserControl,
+			record: browserControlSettingsSourceRecord(browsercontrolsettings.BrowserControlSettings{
+				PluginCheckFrequency: "DAILY",
+				BypassPlugins:        []string{"PLUGIN"},
+				SmartIsolationUsers: []ziacommon.IDNameExtensions{
+					{ID: 1, Name: "User"},
+				},
+				SmartIsolationProfile: browsercontrolsettings.SmartIsolationProfile{
+					ID:   "profile-id",
+					Name: "Profile",
+					URL:  "https://isolation.example.invalid",
+				},
+			}),
+			standardPresent: []string{"pluginCheckFrequency", "bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
+			shareAbsent:     []string{"bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
+		},
+		{
+			name:     "supported browser versions remain shareable",
+			resource: resourceSupportedBrowsers,
+			record: structSourceRecord(securebrowsing.SupportedBrowserVersion{
+				BrowserType:   "CHROME",
+				Versions:      []string{"120"},
+				OlderVersions: []string{"119"},
+			}),
+			standardPresent: []string{"browserType", "versions", "olderVersions"},
+		},
+		{
+			name:     "ftp control URLs are standard-only",
+			resource: resourceFTPControl,
+			record: structSourceRecord(ftpcontrolpolicy.FTPControlPolicy{
+				FtpOverHttpEnabled: true,
+				FtpEnabled:         true,
+				UrlCategories:      []string{"BUSINESS_AND_ECONOMY"},
+				Urls:               []string{"ftp.example.invalid"},
+			}),
+			standardPresent: []string{"ftpOverHttpEnabled", "ftpEnabled", "urlCategories", "urls"},
+			shareAbsent:     []string{"urls"},
+		},
+		{
+			name:     "remote assistance settings remain shareable",
+			resource: resourceRemoteAssistance,
+			record: structSourceRecord(remoteassistance.RemoteAssistance{
+				ViewOnlyUntil:       1,
+				FullAccessUntil:     2,
+				UsernameObfuscated:  true,
+				DeviceInfoObfuscate: true,
+			}),
+			standardPresent: []string{"viewOnlyUntil", "fullAccessUntil", "usernameObfuscated", "deviceInfoObfuscate"},
 		},
 	}
 

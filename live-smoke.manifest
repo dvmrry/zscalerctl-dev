@@ -3,10 +3,16 @@
 # scripts/live-smoke.sh auto-uses this file on feature branches when it differs
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
-zia/browser-isolation-profiles
-zia/dlp-edm-schemas-lite
-zia/dc-exclusions
-zia/sub-clouds
-zia/ipv6-config
-zia/ipv6-dns64-prefixes
-zia/ipv6-nat64-prefixes
+zia/pac-files
+zia/cloud-application-policy
+zia/cloud-application-ssl-policy
+zia/domain-profiles
+zia/casb-tombstone-templates
+zia/casb-email-labels
+zia/casb-tenants
+zia/casb-dlp-rules
+zia/casb-malware-rules
+zia/browser-control-settings
+zia/supported-browser-versions
+zia/ftp-control-policy
+zia/remote-assistance

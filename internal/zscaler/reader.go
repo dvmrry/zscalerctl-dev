@@ -25,9 +25,11 @@ import (
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
 	bandwidthcontrolrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_control_rules"
+	browsercontrolsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_control_settings"
 	browserisolation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/browser_isolation"
 	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
 	cloudappinstances "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloud_app_instances"
+	cloudapplications "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/cloudapplications"
 	riskprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudapplications/risk_profiles"
 	cloudnss "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/cloudnss"
 	nssservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/cloudnss/nss_servers"
@@ -63,15 +65,22 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxies"
 	proxygateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/proxy_gateways"
 	zpagateways "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/forwarding_control_policy/zpa_gateways"
+	ftpcontrolpolicy "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ftp_control_policy"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationmanagement"
 	malwareprotection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/malware_protection"
 	mobilethreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/mobile_threat_settings"
 	natcontrol "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/nat_control_policies"
 	organizationdetails "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/organization_details"
+	pacfiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/pacfiles"
+	remoteassistance "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/remote_assistance"
 	rulelabels "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
+	saassecurityapi "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api"
+	casbdlprules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_dlp_rules"
+	casbmalwarerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/saas_security_api/casb_malware_rules"
 	sandboxrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_rules"
 	sandboxsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_settings"
+	securebrowsing "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/secure_browsing"
 	securitypolicysettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/security_policy_settings"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection"
 	tenancyrestriction "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction"
@@ -148,84 +157,97 @@ var (
 const defaultTimeout = 30 * time.Second
 
 const (
-	resourceLocations        = "locations"
-	resourceLocationGroups   = "location-groups"
-	resourceRuleLabels       = "rule-labels"
-	resourceAuthSettings     = "auth-settings"
-	resourceStaticIPs        = "static-ips"
-	resourceGRETunnels       = "gre-tunnels"
-	resourceSublocations     = "sublocations"
-	resourceSSLRules         = "ssl-inspection-rules"
-	resourceURLCategories    = "url-categories"
-	resourceURLRules         = "url-filtering-rules"
-	resourceFirewallRules    = "firewall-filtering-rules"
-	resourceForwardingRules  = "forwarding-rules"
-	resourceIPSourceGroups   = "ip-source-groups"
-	resourceIPDestGroups     = "ip-destination-groups"
-	resourceNetworkServices  = "network-services"
-	resourceNetworkSvcGroups = "network-service-groups"
-	resourceNetworkApps      = "network-applications"
-	resourceAppServices      = "application-services"
-	resourceAppServiceGroups = "application-service-groups"
-	resourceNetworkAppGroups = "network-application-groups"
-	resourceTimeWindows      = "time-windows"
-	resourceProxies          = "proxies"
-	resourceProxyGateways    = "proxy-gateways"
-	resourceDedicatedIPGWs   = "dedicated-ip-gateways"
-	resourceTimeIntervals    = "time-intervals"
-	resourceBandwidthClasses = "bandwidth-classes"
-	resourceBandwidthRules   = "bandwidth-control-rules"
-	resourceDNSGateways      = "dns-gateways"
-	resourceNATRules         = "nat-control-rules"
-	resourceGroups           = "groups"
-	resourceDepartments      = "departments"
-	resourceUsers            = "users"
-	resourceDeviceGroups     = "device-groups"
-	resourceDevices          = "devices"
-	resourceWorkloadGroups   = "workload-groups"
-	resourceAlertSubs        = "alert-subscriptions"
-	resourceCloudAppInsts    = "cloud-app-instances"
-	resourceTenancyProfiles  = "tenancy-restriction-profiles"
-	resourceVZENClusters     = "vzen-clusters"
-	resourceVZENNodes        = "vzen-nodes"
-	resourceBrowserIsolation = "browser-isolation-profiles"
-	resourceDLPEngines       = "dlp-engines"
-	resourceDLPDictionaries  = "dlp-dictionaries"
-	resourceDLPEDMSchemas    = "dlp-edm-schemas"
-	resourceDLPEDMLite       = "dlp-edm-schemas-lite"
-	resourceDLPIDMLite       = "dlp-idm-profile-lite"
-	resourceDLPIDMProfiles   = "dlp-idm-profiles"
-	resourceDLPWebRules      = "dlp-web-rules"
-	resourceDLPICAPServers   = "dlp-icap-servers"
-	resourceDLPIncidentRcvs  = "dlp-incident-receiver-servers"
-	resourceDLPNotifyTmpls   = "dlp-notification-templates"
-	resourceC2CIncidentRcvs  = "c2c-incident-receivers"
-	resourceRiskProfiles     = "risk-profiles"
-	resourceNSSServers       = "nss-servers"
-	resourceNSSFeeds         = "nss-feeds"
-	resourceFileTypeRules    = "file-type-rules"
-	resourceSandboxRules     = "sandbox-rules"
-	resourceFirewallDNSRules = "firewall-dns-rules"
-	resourceCustomFileTypes  = "custom-file-types"
-	resourceZPAGateways      = "zpa-gateways"
-	resourceDCExclusions     = "dc-exclusions"
-	resourceSubClouds        = "sub-clouds"
-	resourceIPv6Config       = "ipv6-config"
-	resourceIPv6DNS64Prefix  = "ipv6-dns64-prefixes"
-	resourceIPv6NAT64Prefix  = "ipv6-nat64-prefixes"
-	resourcePublicCloudAccts = "public-cloud-accounts"
-	resourceForwardingGWs    = "forwarding-gateways"
-	resourceECGroups         = "ec-groups"
-	resourceIPGroups         = "ip-groups"
-	resourceAdminUsers       = "admin-users"
-	resourceAdminRoles       = "admin-roles"
-	resourceLocationTmpls    = "location-templates"
-	resourceAccountGroups    = "account-groups"
-	resourcePublicCloudInfo  = "public-cloud-info"
-	resourceZTWZPAAppSegs    = "zpa-application-segments"
-	resourceTrafficDNSRules  = "traffic-dns-rules"
-	resourceTrafficLogRules  = "traffic-log-rules"
-	resourceEmailProfiles    = "email-profiles"
+	resourceLocations         = "locations"
+	resourceLocationGroups    = "location-groups"
+	resourceRuleLabels        = "rule-labels"
+	resourceAuthSettings      = "auth-settings"
+	resourceStaticIPs         = "static-ips"
+	resourceGRETunnels        = "gre-tunnels"
+	resourceSublocations      = "sublocations"
+	resourceSSLRules          = "ssl-inspection-rules"
+	resourceURLCategories     = "url-categories"
+	resourceURLRules          = "url-filtering-rules"
+	resourceFirewallRules     = "firewall-filtering-rules"
+	resourceForwardingRules   = "forwarding-rules"
+	resourceIPSourceGroups    = "ip-source-groups"
+	resourceIPDestGroups      = "ip-destination-groups"
+	resourceNetworkServices   = "network-services"
+	resourceNetworkSvcGroups  = "network-service-groups"
+	resourceNetworkApps       = "network-applications"
+	resourceAppServices       = "application-services"
+	resourceAppServiceGroups  = "application-service-groups"
+	resourceNetworkAppGroups  = "network-application-groups"
+	resourceTimeWindows       = "time-windows"
+	resourceProxies           = "proxies"
+	resourceProxyGateways     = "proxy-gateways"
+	resourceDedicatedIPGWs    = "dedicated-ip-gateways"
+	resourceTimeIntervals     = "time-intervals"
+	resourceBandwidthClasses  = "bandwidth-classes"
+	resourceBandwidthRules    = "bandwidth-control-rules"
+	resourceDNSGateways       = "dns-gateways"
+	resourceNATRules          = "nat-control-rules"
+	resourceGroups            = "groups"
+	resourceDepartments       = "departments"
+	resourceUsers             = "users"
+	resourceDeviceGroups      = "device-groups"
+	resourceDevices           = "devices"
+	resourceWorkloadGroups    = "workload-groups"
+	resourceAlertSubs         = "alert-subscriptions"
+	resourceCloudAppInsts     = "cloud-app-instances"
+	resourceTenancyProfiles   = "tenancy-restriction-profiles"
+	resourceVZENClusters      = "vzen-clusters"
+	resourceVZENNodes         = "vzen-nodes"
+	resourceBrowserIsolation  = "browser-isolation-profiles"
+	resourceDLPEngines        = "dlp-engines"
+	resourceDLPDictionaries   = "dlp-dictionaries"
+	resourceDLPEDMSchemas     = "dlp-edm-schemas"
+	resourceDLPEDMLite        = "dlp-edm-schemas-lite"
+	resourceDLPIDMLite        = "dlp-idm-profile-lite"
+	resourceDLPIDMProfiles    = "dlp-idm-profiles"
+	resourceDLPWebRules       = "dlp-web-rules"
+	resourceDLPICAPServers    = "dlp-icap-servers"
+	resourceDLPIncidentRcvs   = "dlp-incident-receiver-servers"
+	resourceDLPNotifyTmpls    = "dlp-notification-templates"
+	resourceC2CIncidentRcvs   = "c2c-incident-receivers"
+	resourceRiskProfiles      = "risk-profiles"
+	resourceNSSServers        = "nss-servers"
+	resourceNSSFeeds          = "nss-feeds"
+	resourceFileTypeRules     = "file-type-rules"
+	resourceSandboxRules      = "sandbox-rules"
+	resourceFirewallDNSRules  = "firewall-dns-rules"
+	resourceCustomFileTypes   = "custom-file-types"
+	resourceZPAGateways       = "zpa-gateways"
+	resourceDCExclusions      = "dc-exclusions"
+	resourceSubClouds         = "sub-clouds"
+	resourceIPv6Config        = "ipv6-config"
+	resourceIPv6DNS64Prefix   = "ipv6-dns64-prefixes"
+	resourceIPv6NAT64Prefix   = "ipv6-nat64-prefixes"
+	resourcePACFiles          = "pac-files"
+	resourceCloudAppPolicy    = "cloud-application-policy"
+	resourceCloudAppSSLPol    = "cloud-application-ssl-policy"
+	resourceDomainProfiles    = "domain-profiles"
+	resourceCASBTombstones    = "casb-tombstone-templates"
+	resourceCASBEmailLabels   = "casb-email-labels"
+	resourceCASBTenants       = "casb-tenants"
+	resourceCASBDLPRules      = "casb-dlp-rules"
+	resourceCASBMalwareRules  = "casb-malware-rules"
+	resourceBrowserControl    = "browser-control-settings"
+	resourceSupportedBrowsers = "supported-browser-versions"
+	resourceFTPControl        = "ftp-control-policy"
+	resourceRemoteAssistance  = "remote-assistance"
+	resourcePublicCloudAccts  = "public-cloud-accounts"
+	resourceForwardingGWs     = "forwarding-gateways"
+	resourceECGroups          = "ec-groups"
+	resourceIPGroups          = "ip-groups"
+	resourceAdminUsers        = "admin-users"
+	resourceAdminRoles        = "admin-roles"
+	resourceLocationTmpls     = "location-templates"
+	resourceAccountGroups     = "account-groups"
+	resourcePublicCloudInfo   = "public-cloud-info"
+	resourceZTWZPAAppSegs     = "zpa-application-segments"
+	resourceTrafficDNSRules   = "traffic-dns-rules"
+	resourceTrafficLogRules   = "traffic-log-rules"
+	resourceEmailProfiles     = "email-profiles"
 
 	resourceAdvancedSettings           = "advanced-settings"
 	resourceAdvancedThreatSettings     = "advanced-threat-settings"
@@ -1163,6 +1185,91 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 				return ipv6config.GetNat64Prefix(ctx, service)
 			}),
 			ipv6ConfigPrefixSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourcePACFiles}: newListOnlyHandler(
+			resourcePACFiles,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]pacfiles.PACFileConfig, error) {
+				return pacfiles.GetPacFiles(ctx, service, "")
+			}),
+			pacFileSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCloudAppPolicy}: newListOnlyHandler(
+			resourceCloudAppPolicy,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudapplications.CloudApplications, error) {
+				return cloudapplications.GetCloudApplicationPolicy(ctx, service, map[string]any{})
+			}),
+			cloudApplicationPolicySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCloudAppSSLPol}: newListOnlyHandler(
+			resourceCloudAppSSLPol,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudapplications.CloudApplications, error) {
+				return cloudapplications.GetCloudApplicationSSLPolicy(ctx, service, map[string]any{})
+			}),
+			cloudApplicationPolicySourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceDomainProfiles}: newListOnlyHandler(
+			resourceDomainProfiles,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.DomainProfiles, error) {
+				return saassecurityapi.GetDomainProfiles(ctx, service)
+			}),
+			domainProfileSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCASBTombstones}: newListOnlyHandler(
+			resourceCASBTombstones,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.QuarantineTombstoneLite, error) {
+				return saassecurityapi.GetQuarantineTombstoneLite(ctx, service)
+			}),
+			casbTombstoneTemplateSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCASBEmailLabels}: newListOnlyHandler(
+			resourceCASBEmailLabels,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.CasbEmailLabel, error) {
+				return saassecurityapi.GetCasbEmailLabelLite(ctx, service)
+			}),
+			casbEmailLabelSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCASBTenants}: newListOnlyHandler(
+			resourceCASBTenants,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.CasbTenants, error) {
+				return saassecurityapi.GetCasbTenantLite(ctx, service, map[string]any{})
+			}),
+			casbTenantSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCASBDLPRules}: newListOnlyHandler(
+			resourceCASBDLPRules,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]casbdlprules.CasbDLPRules, error) {
+				return casbdlprules.GetAll(ctx, service)
+			}),
+			casbDLPRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceCASBMalwareRules}: newListOnlyHandler(
+			resourceCASBMalwareRules,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]casbmalwarerules.CasbMalwareRules, error) {
+				return casbmalwarerules.GetAll(ctx, service)
+			}),
+			casbMalwareRuleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceBrowserControl}: newSingletonHandler(
+			resourceBrowserControl,
+			ziaSDKShow(client, browsercontrolsettings.GetBrowserControlSettings),
+			browserControlSettingsSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceSupportedBrowsers}: newListOnlyHandler(
+			resourceSupportedBrowsers,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]securebrowsing.SupportedBrowserVersion, error) {
+				return securebrowsing.GetSupportedBrowserVersions(ctx, service)
+			}),
+			structSourceRecord[securebrowsing.SupportedBrowserVersion],
+		),
+		{product: resources.ProductZIA, name: resourceFTPControl}: newSingletonHandler(
+			resourceFTPControl,
+			ziaSDKShow(client, ftpcontrolpolicy.GetFTPControlPolicy),
+			structSourceRecord[ftpcontrolpolicy.FTPControlPolicy],
+		),
+		{product: resources.ProductZIA, name: resourceRemoteAssistance}: newSingletonHandler(
+			resourceRemoteAssistance,
+			ziaSDKShow(client, remoteassistance.GetRemoteAssistance),
+			structSourceRecord[remoteassistance.RemoteAssistance],
 		),
 		{product: resources.ProductZIA, name: resourceEmailProfiles}: newListGetHandler(
 			resourceEmailProfiles,
@@ -4515,6 +4622,246 @@ func ipv6ConfigPrefixSource(prefix ipv6config.IPv6ConfigPrefix) map[string]any {
 		"dnsPrefix":   prefix.DnsPrefix,
 		"nonEditable": prefix.NonEditable,
 	}
+}
+
+func pacFileSourceRecord(file pacfiles.PACFileConfig) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                    file.ID,
+		"name":                  file.Name,
+		"description":           file.Description,
+		"domain":                file.Domain,
+		"pacUrl":                file.PACUrl,
+		"pacContent":            file.PACContent,
+		"editable":              file.Editable,
+		"pacSubURL":             file.PACSubURL,
+		"pacUrlObfuscated":      file.PACUrlObfuscated,
+		"pacVerificationStatus": file.PACVerificationStatus,
+		"pacVersionStatus":      file.PACVersionStatus,
+		"pacVersion":            file.PACVersion,
+		"pacCommitMessage":      file.PACCommitMessage,
+		"totalHits":             file.TotalHits,
+		"lastModificationTime":  file.LastModificationTime,
+		"createTime":            file.CreateTime,
+	}
+	if file.LastModifiedBy.ID != 0 || file.LastModifiedBy.Name != "" || file.LastModifiedBy.ExternalID != "" {
+		fields["lastModifiedBy"] = map[string]any{
+			"id":         file.LastModifiedBy.ID,
+			"name":       file.LastModifiedBy.Name,
+			"externalId": file.LastModifiedBy.ExternalID,
+			"extensions": file.LastModifiedBy.Extensions,
+		}
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func cloudApplicationPolicySourceRecord(app cloudapplications.CloudApplications) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"app":        app.App,
+		"appName":    app.AppName,
+		"parent":     app.Parent,
+		"parentName": app.ParentName,
+	})
+}
+
+func domainProfileSourceRecord(profile saassecurityapi.DomainProfiles) resources.SourceRecord {
+	fields := map[string]any{
+		"profileId":             profile.ProfileID,
+		"profileName":           profile.ProfileName,
+		"includeCompanyDomains": profile.IncludeCompanyDomains,
+		"includeSubdomains":     profile.IncludeSubdomains,
+		"description":           profile.Description,
+	}
+	addStringSlice(fields, "customDomains", profile.CustomDomains)
+	addStringSlice(fields, "predefinedEmailDomains", profile.PredefinedEmailDomains)
+	return resources.NewSourceRecord(fields)
+}
+
+func casbTombstoneTemplateSourceRecord(template saassecurityapi.QuarantineTombstoneLite) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":          template.ID,
+		"name":        template.Name,
+		"description": template.Description,
+	})
+}
+
+func casbEmailLabelSourceRecord(label saassecurityapi.CasbEmailLabel) resources.SourceRecord {
+	return resources.NewSourceRecord(map[string]any{
+		"id":           label.ID,
+		"name":         label.Name,
+		"labelDesc":    label.LabelDesc,
+		"labelColor":   label.LabelColor,
+		"labelDeleted": label.LabelDeleted,
+	})
+}
+
+func casbTenantSourceRecord(tenant saassecurityapi.CasbTenants) resources.SourceRecord {
+	return resources.NewSourceRecord(casbTenantSource(tenant))
+}
+
+func casbTenantSource(tenant saassecurityapi.CasbTenants) map[string]any {
+	fields := map[string]any{
+		"tenantId":                 tenant.TenantID,
+		"modifiedTime":             tenant.ModifiedTime,
+		"lastTenantValidationTime": tenant.LastTenantValidationTime,
+		"tenantDeleted":            tenant.TenantDeleted,
+		"tenantWebhookEnabled":     tenant.TenantWebhookEnabled,
+		"reAuth":                   tenant.ReAuth,
+		"enterpriseTenantId":       tenant.EnterpriseTenantID,
+		"tenantName":               tenant.TenantName,
+		"saasApplication":          tenant.SaaSApplication,
+	}
+	addStringSlice(fields, "featuresSupported", tenant.FeaturesSupported)
+	addStringSlice(fields, "status", tenant.Status)
+	if tenant.ZscalerAppTenantID != nil {
+		fields["zscalerAppTenantId"] = idNameSource(tenant.ZscalerAppTenantID)
+	}
+	return fields
+}
+
+func casbDLPRuleSourceRecord(rule casbdlprules.CasbDLPRules) resources.SourceRecord {
+	fields := map[string]any{
+		"type":                          rule.Type,
+		"id":                            rule.ID,
+		"order":                         rule.Order,
+		"rank":                          rule.Rank,
+		"lastModifiedTime":              rule.LastModifiedTime,
+		"name":                          rule.Name,
+		"state":                         rule.State,
+		"action":                        rule.Action,
+		"severity":                      rule.Severity,
+		"description":                   rule.Description,
+		"bucketOwner":                   rule.BucketOwner,
+		"externalAuditorEmail":          rule.ExternalAuditorEmail,
+		"contentLocation":               rule.ContentLocation,
+		"numberOfInternalCollaborators": rule.NumberOfInternalCollaborators,
+		"numberOfExternalCollaborators": rule.NumberOfExternalCollaborators,
+		"recipient":                     rule.Recipient,
+		"quarantineLocation":            rule.QuarantineLocation,
+		"accessControl":                 rule.AccessControl,
+		"watermarkDeleteOldVersion":     rule.WatermarkDeleteOldVersion,
+		"includeCriteriaDomainProfile":  rule.IncludeCriteriaDomainProfile,
+		"includeEmailRecipientProfile":  rule.IncludeEmailRecipientProfile,
+		"withoutContentInspection":      rule.WithoutContentInspection,
+		"includeEntityGroups":           rule.IncludeEntityGroups,
+	}
+	addStringSlice(fields, "fileTypes", rule.FileTypes)
+	addStringSlice(fields, "collaborationScope", rule.CollaborationScope)
+	addStringSlice(fields, "domains", rule.Domains)
+	addStringSlice(fields, "components", rule.Components)
+	addStringSlice(fields, "deviceTrustLevels", rule.DeviceTrustLevels)
+	addIDNameExtensionsSlice(fields, "objectTypes", rule.ObjectTypes)
+	addIDNameExtensionsSlice(fields, "buckets", rule.Buckets)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "includedDomainProfiles", rule.IncludedDomainProfiles)
+	addIDNameExtensionsSlice(fields, "excludedDomainProfiles", rule.ExcludedDomainProfiles)
+	addIDNameExtensionsSlice(fields, "criteriaDomainProfiles", rule.CriteriaDomainProfiles)
+	addIDNameExtensionsSlice(fields, "emailRecipientProfiles", rule.EmailRecipientProfiles)
+	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
+	addIDNameExtensionsSlice(fields, "entityGroups", rule.EntityGroups)
+	addIDNameExtensionsSlice(fields, "cloudAppTenants", rule.CloudAppTenants)
+	addIDNameExtensionsSlice(fields, "users", rule.Users)
+	addIDNameExtensionsSlice(fields, "groups", rule.Groups)
+	addIDNameExtensionsSlice(fields, "departments", rule.Departments)
+	addIDNameExtensionsSlice(fields, "dlpEngines", rule.DLPEngines)
+	if rule.LastModifiedBy != nil {
+		fields["lastModifiedBy"] = idNameExtensionsSource(rule.LastModifiedBy)
+	}
+	addIDCustomPtr(fields, "auditor", rule.Auditor)
+	addIDCustomPtr(fields, "zscalerIncidentReceiver", rule.ZscalerIncidentReceiver)
+	addIDCustomPtr(fields, "auditorNotification", rule.AuditorNotification)
+	addIDCustomPtr(fields, "tag", rule.Tag)
+	addIDCustomPtr(fields, "watermarkProfile", rule.WatermarkProfile)
+	addIDCustomPtr(fields, "redactionProfile", rule.RedactionProfile)
+	addIDCustomPtr(fields, "casbEmailLabel", rule.CasbEmailLabel)
+	addIDCustomPtr(fields, "casbTombstoneTemplate", rule.CasbTombstoneTemplate)
+	if rule.Receiver != nil {
+		fields["receiver"] = casbReceiverSource(rule.Receiver)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func casbMalwareRuleSourceRecord(rule casbmalwarerules.CasbMalwareRules) resources.SourceRecord {
+	fields := map[string]any{
+		"type":                 rule.Type,
+		"id":                   rule.ID,
+		"order":                rule.Order,
+		"name":                 rule.Name,
+		"state":                rule.State,
+		"action":               rule.Action,
+		"quarantineLocation":   rule.QuarantineLocation,
+		"scanInboundEmailLink": rule.ScanInboundEmailLink,
+		"lastModifiedTime":     rule.LastModifiedTime,
+		"accessControl":        rule.AccessControl,
+	}
+	if rule.LastModifiedBy != nil {
+		fields["lastModifiedBy"] = idNameExtensionsSource(rule.LastModifiedBy)
+	}
+	addIDCustomPtr(fields, "casbEmailLabel", rule.CasbEmailLabel)
+	addIDCustomPtr(fields, "casbTombstoneTemplate", rule.CasbTombstoneTemplate)
+	addIDNameExtensionsSlice(fields, "buckets", rule.Buckets)
+	addIDNameExtensionsSlice(fields, "labels", rule.Labels)
+	addIDNameExtensionsSlice(fields, "cloudAppTenantIds", rule.CloudAppTenantIDs)
+	addIDNameExtensionsSlice(fields, "cloudAppTenants", rule.CloudAppTenants)
+	if len(rule.CloudApplicationTenant) > 0 {
+		out := make([]map[string]any, 0, len(rule.CloudApplicationTenant))
+		for _, tenant := range rule.CloudApplicationTenant {
+			out = append(out, casbTenantSource(tenant))
+		}
+		fields["cloudApplicationTenant"] = out
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func browserControlSettingsSourceRecord(settings browsercontrolsettings.BrowserControlSettings) resources.SourceRecord {
+	fields := map[string]any{
+		"pluginCheckFrequency":            settings.PluginCheckFrequency,
+		"bypassPlugins":                   settings.BypassPlugins,
+		"bypassApplications":              settings.BypassApplications,
+		"blockedInternetExplorerVersions": settings.BlockedInternetExplorerVersions,
+		"blockedChromeVersions":           settings.BlockedChromeVersions,
+		"blockedFirefoxVersions":          settings.BlockedFirefoxVersions,
+		"blockedSafariVersions":           settings.BlockedSafariVersions,
+		"blockedOperaVersions":            settings.BlockedOperaVersions,
+		"bypassAllBrowsers":               settings.BypassAllBrowsers,
+		"allowAllBrowsers":                settings.AllowAllBrowsers,
+		"enableWarnings":                  settings.EnableWarnings,
+		"enableSmartBrowserIsolation":     settings.EnableSmartBrowserIsolation,
+		"smartIsolationProfileId":         settings.SmartIsolationProfileID,
+	}
+	addIDNameExtensionsSlice(fields, "smartIsolationUsers", settings.SmartIsolationUsers)
+	addIDNameExtensionsSlice(fields, "smartIsolationGroups", settings.SmartIsolationGroups)
+	if settings.SmartIsolationProfile.ID != "" || settings.SmartIsolationProfile.Name != "" || settings.SmartIsolationProfile.URL != "" {
+		fields["smartIsolationProfile"] = map[string]any{
+			"id":             settings.SmartIsolationProfile.ID,
+			"name":           settings.SmartIsolationProfile.Name,
+			"url":            settings.SmartIsolationProfile.URL,
+			"defaultProfile": settings.SmartIsolationProfile.DefaultProfile,
+		}
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func addIDCustomPtr(fields map[string]any, name string, value *ziacommon.IDCustom) {
+	if value == nil {
+		return
+	}
+	fields[name] = map[string]any{
+		"id":   value.ID,
+		"name": value.Name,
+	}
+}
+
+func casbReceiverSource(receiver *casbdlprules.Receiver) map[string]any {
+	fields := map[string]any{
+		"id":   receiver.ID,
+		"name": receiver.Name,
+		"type": receiver.Type,
+	}
+	if receiver.Tenant != nil {
+		fields["tenant"] = idNameExtensionsSource(receiver.Tenant)
+	}
+	return fields
 }
 
 func c2cIncidentReceiverSourceRecord(receiver c2cincidentreceiver.C2CIncidentReceiver) resources.SourceRecord {
