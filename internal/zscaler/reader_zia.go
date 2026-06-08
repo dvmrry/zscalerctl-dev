@@ -840,7 +840,9 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				for _, ruleType := range ruleTypes {
 					rules, err := cloudappcontrol.GetByRuleType(ctx, service, ruleType)
 					if err != nil {
-						return nil, err
+						// A rule type can be unavailable or not entitled in a given
+						// tenant; skip it rather than failing the whole list.
+						continue
 					}
 					all = append(all, rules...)
 				}
