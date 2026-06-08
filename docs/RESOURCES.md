@@ -1670,22 +1670,6 @@ Fields:
 | `policyAccess`, `alertingAccess`, `dashboardAccess`, `reportAccess`, `analysisAccess`, `usernameAccess`, `adminAcctAccess`, `deviceInfoAccess`, `permissions`, `logsLimit`, `reportTimeDuration` | Tenant configuration | `standard` | Detailed authorization and log-access inventory. |
 | `featurePermissions`, `extFeaturePermissions` | Secret | never | Arbitrary permission maps are dropped until modeled with a stable shape. |
 
-## ZIA Password Expiry Settings
-
-Commands:
-
-```sh
-zscalerctl zia password-expiry-settings show
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `passwordExpirationEnabled`, `passwordExpiryDays` | Tenant configuration | `standard`, `share` | Admin password-expiry policy. |
-
-This is a singleton settings resource.
-
 ## ZIA Email Profiles
 
 Commands:

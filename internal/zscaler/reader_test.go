@@ -4269,15 +4269,6 @@ func TestZIAAdminGovernanceProjectionBoundaries(t *testing.T) {
 			standardAbsent:  []string{"featurePermissions", "extFeaturePermissions"},
 			shareAbsent:     []string{"policyAccess", "permissions", "featurePermissions", "extFeaturePermissions"},
 		},
-		{
-			name:     "password expiry settings are shareable policy",
-			resource: resourcePasswordExpiry,
-			record: structSourceRecord(ziaadminusers.PasswordExpiry{
-				PasswordExpirationEnabled: true,
-				PasswordExpiryDays:        90,
-			}),
-			standardPresent: []string{"passwordExpirationEnabled", "passwordExpiryDays"},
-		},
 	}
 
 	for _, tc := range tests {

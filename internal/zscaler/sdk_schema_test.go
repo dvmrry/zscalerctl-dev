@@ -2902,16 +2902,6 @@ func reviewedSDKShapes() []sdkShapeReview {
 			},
 		},
 		{
-			name:         "ziaadminusers.PasswordExpiry",
-			resource:     resources.ProductZIA,
-			resourceName: resourcePasswordExpiry,
-			typ:          reflect.TypeOf(ziaadminusers.PasswordExpiry{}),
-			catalogFields: []string{
-				"passwordExpirationEnabled",
-				"passwordExpiryDays",
-			},
-		},
-		{
 			name:         "dlpidmprofilelite.DLPIDMProfileLite",
 			resource:     resources.ProductZIA,
 			resourceName: resourceDLPIDMLite,

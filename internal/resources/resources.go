@@ -3031,25 +3031,6 @@ func Catalog() ResourceCatalog {
 		},
 		{
 			Product:    ProductZIA,
-			Name:       "password-expiry-settings",
-			Operations: ShowOperation(),
-			Fields: []FieldSpec{
-				{
-					Name:                "passwordExpirationEnabled",
-					Classification:      ClassTenantConfig,
-					AllowedModes:        standardShareModes(),
-					SensitiveNameReason: "password expiry policy metadata, not password material",
-				},
-				{
-					Name:                "passwordExpiryDays",
-					Classification:      ClassTenantConfig,
-					AllowedModes:        standardShareModes(),
-					SensitiveNameReason: "password expiry policy metadata, not password material",
-				},
-			},
-		},
-		{
-			Product:    ProductZIA,
 			Name:       "email-profiles",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{

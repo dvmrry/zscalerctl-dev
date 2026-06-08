@@ -243,7 +243,6 @@ const (
 	resourceIPGroups          = "ip-groups"
 	resourceAdminUsers        = "admin-users"
 	resourceAdminRoles        = "admin-roles"
-	resourcePasswordExpiry    = "password-expiry-settings"
 	resourceLocationTmpls     = "location-templates"
 	resourceAccountGroups     = "account-groups"
 	resourcePublicCloudInfo   = "public-cloud-info"
@@ -1294,11 +1293,6 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			}),
 			ziaAdminRoleSourceRecord,
 		),
-		{product: resources.ProductZIA, name: resourcePasswordExpiry}: newSingletonHandler(
-			resourcePasswordExpiry,
-			ziaSDKShow(client, ziaPasswordExpirySettings),
-			structSourceRecord[ziaadminusers.PasswordExpiry],
-		),
 		{product: resources.ProductZIA, name: resourceEmailProfiles}: newListGetHandler(
 			resourceEmailProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]emailprofiles.EmailProfiles, error) {
@@ -1784,17 +1778,6 @@ func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]n
 	// returning a full page. Read one large SDK page instead.
 	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)
 	return applications, err
-}
-
-func ziaPasswordExpirySettings(ctx context.Context, service *zsdk.Service) (*ziaadminusers.PasswordExpiry, error) {
-	settings, err := ziaadminusers.GetPasswordExpirySettings(ctx, service)
-	if err != nil {
-		return nil, err
-	}
-	if len(settings) == 0 {
-		return nil, errors.New("empty sdk password-expiry-settings response")
-	}
-	return &settings[0], nil
 }
 
 type listGetHandler[T any] struct {

@@ -162,7 +162,7 @@ resource handler.
 
 ## Remaining SDK Package Review
 
-The current enabled catalog contains 98 ZIA resources, 16 ZPA resources, and 20
+The current enabled catalog contains 95 ZIA resources, 16 ZPA resources, and 20
 ZTW resources. The rows below are package-level scouting notes, not a promise
 that every surface should become a resource.
 
@@ -229,6 +229,7 @@ boundary issue, or a deliberate privacy/material hold.
 | `zcc/trusted-networks` | ZCC endpoint probe failed with status 404. | Probe the ZCC endpoint boundary before catalog work: compare OneAPI `/zcc/papi/public/v2/trusted-networks` routing against documented/product-local ZCC PAPI behavior and confirm whether 404 is path, cloud, entitlement, or SDK mismatch. |
 | `zcc/notification-templates` | ZCC endpoint probe failed with status 404. | Include in the same ZCC endpoint-boundary probe; do not interpret three 404s as three independent resource failures until the product route is proven. |
 | `zcc/zia-postures` | ZCC endpoint probe failed with status 404. | Include in the same ZCC endpoint-boundary probe; if the product route is corrected, re-evaluate posture criteria fields before cataloging. |
+| `zia/password-expiry-settings` | ZIA endpoint probe failed with status 403. | Treat as endpoint-specific permission, role, or product-feature availability. Retry only if admin-policy read scope changes or an alternate documented read path is identified. |
 
 ## Return-To-Work Checklist
 
