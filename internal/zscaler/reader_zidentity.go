@@ -45,6 +45,6 @@ func addZidentityHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		),
 	}
 	for k, v := range entries {
-		m[k] = v
+		addHandler(m, k, v)
 	}
 }

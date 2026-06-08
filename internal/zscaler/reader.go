@@ -517,6 +517,18 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 	return m
 }
 
+// addHandler registers h under key, panicking on a duplicate. Before the
+// per-product split the handler registry was a single map literal, where a
+// duplicate {product,name} key was a compile error; this restores that
+// guarantee at construction time so a collision across product files fails
+// loudly instead of silently overwriting.
+func addHandler(m map[resourceKey]resourceHandler, key resourceKey, h resourceHandler) {
+	if _, exists := m[key]; exists {
+		panic(fmt.Sprintf("duplicate resource handler: %s/%s", key.product, key.name))
+	}
+	m[key] = h
+}
+
 func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]networkapplications.NetworkApplications, error) {
 	var applications []networkapplications.NetworkApplications
 	// The SDK package's GetAll uses ReadAllPages, which can loop indefinitely
