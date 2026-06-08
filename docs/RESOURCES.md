@@ -1,5 +1,7 @@
 # Resource Reference
 
+**Note on Output Fields:** Output field names mirror the upstream Zscaler SDK/API JSON tags verbatim, including known upstream oddities (such as the doubled-scope `adminScopescopeGroupMemberEntities`). This ensures output cross-references cleanly against the API. Do not rename SDK fields in output.
+
 This document describes the currently enabled resource catalog. The catalog is
 the output allow-list: reader adapters map SDK response shapes into source
 records, and projection decides which fields can render for each redaction mode.
