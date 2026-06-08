@@ -19,6 +19,8 @@ import (
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	sdkzia "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia"
+	ziaadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/admins"
+	ziaadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/roles"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
@@ -241,6 +243,7 @@ const (
 	resourceIPGroups          = "ip-groups"
 	resourceAdminUsers        = "admin-users"
 	resourceAdminRoles        = "admin-roles"
+	resourcePasswordExpiry    = "password-expiry-settings"
 	resourceLocationTmpls     = "location-templates"
 	resourceAccountGroups     = "account-groups"
 	resourcePublicCloudInfo   = "public-cloud-info"
@@ -1271,6 +1274,31 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 			ziaSDKShow(client, remoteassistance.GetRemoteAssistance),
 			structSourceRecord[remoteassistance.RemoteAssistance],
 		),
+		{product: resources.ProductZIA, name: resourceAdminUsers}: newListGetHandler(
+			resourceAdminUsers,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ziaadminusers.AdminUsers, error) {
+				return ziaadminusers.GetAllAdminUsers(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ziaadminusers.AdminUsers, error) {
+				return ziaadminusers.GetAdminUsers(ctx, service, id)
+			}),
+			ziaAdminUserSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourceAdminRoles}: newListGetHandler(
+			resourceAdminRoles,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ziaadminroles.AdminRoles, error) {
+				return ziaadminroles.GetAllAdminRoles(ctx, service)
+			}),
+			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ziaadminroles.AdminRoles, error) {
+				return ziaadminroles.Get(ctx, service, id)
+			}),
+			ziaAdminRoleSourceRecord,
+		),
+		{product: resources.ProductZIA, name: resourcePasswordExpiry}: newSingletonHandler(
+			resourcePasswordExpiry,
+			ziaSDKShow(client, ziaPasswordExpirySettings),
+			structSourceRecord[ziaadminusers.PasswordExpiry],
+		),
 		{product: resources.ProductZIA, name: resourceEmailProfiles}: newListGetHandler(
 			resourceEmailProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]emailprofiles.EmailProfiles, error) {
@@ -1756,6 +1784,17 @@ func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]n
 	// returning a full page. Read one large SDK page instead.
 	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)
 	return applications, err
+}
+
+func ziaPasswordExpirySettings(ctx context.Context, service *zsdk.Service) (*ziaadminusers.PasswordExpiry, error) {
+	settings, err := ziaadminusers.GetPasswordExpirySettings(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	if len(settings) == 0 {
+		return nil, errors.New("empty sdk password-expiry-settings response")
+	}
+	return &settings[0], nil
 }
 
 type listGetHandler[T any] struct {
@@ -4840,6 +4879,92 @@ func browserControlSettingsSourceRecord(settings browsercontrolsettings.BrowserC
 		}
 	}
 	return resources.NewSourceRecord(fields)
+}
+
+func ziaAdminUserSourceRecord(user ziaadminusers.AdminUsers) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                          user.ID,
+		"loginName":                   user.LoginName,
+		"userName":                    user.UserName,
+		"email":                       user.Email,
+		"comments":                    user.Comments,
+		"disabled":                    user.Disabled,
+		"password":                    user.Password,
+		"pwdLastModifiedTime":         user.PasswordLastModifiedTime,
+		"isNonEditable":               user.IsNonEditable,
+		"isPasswordLoginAllowed":      user.IsPasswordLoginAllowed,
+		"isPasswordExpired":           user.IsPasswordExpired,
+		"isAuditor":                   user.IsAuditor,
+		"isSecurityReportCommEnabled": user.IsSecurityReportCommEnabled,
+		"isServiceUpdateCommEnabled":  user.IsServiceUpdateCommEnabled,
+		"isProductUpdateCommEnabled":  user.IsProductUpdateCommEnabled,
+		"isExecMobileAppEnabled":      user.IsExecMobileAppEnabled,
+		"adminScopeType":              user.AdminScopeType,
+	}
+	addIDNameExtensionsSlice(fields, "adminScopescopeGroupMemberEntities", user.AdminScopeGroupMemberEntities)
+	addIDNameExtensionsSlice(fields, "adminScopeScopeEntities", user.AdminScopeEntities)
+	if user.Role != nil {
+		fields["role"] = ziaAdminUserRoleSource(user.Role)
+	}
+	if len(user.ExecMobileAppTokens) > 0 {
+		fields["execMobileAppTokens"] = ziaExecMobileAppTokensSource(user.ExecMobileAppTokens)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func ziaAdminRoleSourceRecord(role ziaadminroles.AdminRoles) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                    role.ID,
+		"rank":                  role.Rank,
+		"name":                  role.Name,
+		"policyAccess":          role.PolicyAccess,
+		"alertingAccess":        role.AlertingAccess,
+		"usernameAccess":        role.UsernameAccess,
+		"deviceInfoAccess":      role.DeviceInfoAccess,
+		"dashboardAccess":       role.DashboardAccess,
+		"reportAccess":          role.ReportAccess,
+		"analysisAccess":        role.AnalysisAccess,
+		"adminAcctAccess":       role.AdminAcctAccess,
+		"isAuditor":             role.IsAuditor,
+		"featurePermissions":    role.FeaturePermissions,
+		"extFeaturePermissions": role.ExtFeaturePermissions,
+		"isNonEditable":         role.IsNonEditable,
+		"logsLimit":             role.LogsLimit,
+		"roleType":              role.RoleType,
+		"reportTimeDuration":    role.ReportTimeDuration,
+	}
+	addStringSlice(fields, "permissions", role.Permissions)
+	return resources.NewSourceRecord(fields)
+}
+
+func ziaAdminUserRoleSource(role *ziaadminusers.Role) map[string]any {
+	fields := map[string]any{
+		"id":            role.ID,
+		"name":          role.Name,
+		"isNameL10nTag": role.IsNameL10Tag,
+	}
+	if len(role.Extensions) > 0 {
+		fields["extensions"] = role.Extensions
+	}
+	return fields
+}
+
+func ziaExecMobileAppTokensSource(values []ziaadminusers.ExecMobileAppTokens) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, map[string]any{
+			"cloud":       value.Cloud,
+			"orgId":       value.OrgId,
+			"name":        value.Name,
+			"tokenId":     value.TokenId,
+			"token":       value.Token,
+			"tokenExpiry": value.TokenExpiry,
+			"createTime":  value.CreateTime,
+			"deviceId":    value.DeviceId,
+			"deviceName":  value.DeviceName,
+		})
+	}
+	return out
 }
 
 func addIDCustomPtr(fields map[string]any, name string, value *ziacommon.IDCustom) {

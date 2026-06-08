@@ -12,6 +12,8 @@ import (
 	"time"
 
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
+	ziaadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/admins"
+	ziaadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/roles"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
 	authsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/auth_settings"
 	bandwidthclasses "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/bandwidth_control/bandwidth_classes"
@@ -4181,6 +4183,100 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				DeviceInfoObfuscate: true,
 			}),
 			standardPresent: []string{"viewOnlyUntil", "fullAccessUntil", "usernameObfuscated", "deviceInfoObfuscate"},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			standard := projectOneRecordInMode(t, resources.ProductZIA, tc.resource, redact.ModeStandard, []resources.SourceRecord{tc.record})
+			for _, field := range tc.standardPresent {
+				if _, ok := standard[field]; !ok {
+					t.Errorf("standard projected %s missing %s", tc.resource, field)
+				}
+			}
+			for _, field := range tc.standardAbsent {
+				if _, ok := standard[field]; ok {
+					t.Errorf("standard projected %s includes %s, want dropped", tc.resource, field)
+				}
+			}
+			assertNoCanaries(t, tc.resource+" standard", standard, canary)
+
+			for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+				got := projectOneRecordInMode(t, resources.ProductZIA, tc.resource, mode, []resources.SourceRecord{tc.record})
+				for _, field := range tc.shareAbsent {
+					if _, ok := got[field]; ok {
+						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
+					}
+				}
+				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
+			}
+		})
+	}
+}
+
+func TestZIAAdminGovernanceProjectionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	const canary = "synthetic-admin-secret-canary"
+	tests := []struct {
+		name            string
+		resource        string
+		record          resources.SourceRecord
+		standardPresent []string
+		standardAbsent  []string
+		shareAbsent     []string
+	}{
+		{
+			name:     "admin user identifiers are standard-only and material is dropped",
+			resource: resourceAdminUsers,
+			record: ziaAdminUserSourceRecord(ziaadminusers.AdminUsers{
+				ID:                1,
+				LoginName:         "admin@example.invalid",
+				UserName:          "Admin User",
+				Email:             "admin@example.invalid",
+				Comments:          "admin note",
+				Password:          canary,
+				AdminScopeType:    "ORG",
+				IsPasswordExpired: true,
+				Role: &ziaadminusers.Role{
+					ID:         2,
+					Name:       "Admin role",
+					Extensions: map[string]interface{}{"secret": canary},
+				},
+				ExecMobileAppTokens: []ziaadminusers.ExecMobileAppTokens{
+					{Token: canary, DeviceName: "device"},
+				},
+			}),
+			standardPresent: []string{"loginName", "userName", "email", "comments", "role"},
+			standardAbsent:  []string{"password", "isPasswordExpired", "execMobileAppTokens"},
+			shareAbsent:     []string{"loginName", "userName", "email", "comments", "password", "role", "execMobileAppTokens"},
+		},
+		{
+			name:     "admin role permission maps are dropped",
+			resource: resourceAdminRoles,
+			record: ziaAdminRoleSourceRecord(ziaadminroles.AdminRoles{
+				ID:                    1,
+				Name:                  "Admin role",
+				PolicyAccess:          "READ_WRITE",
+				Permissions:           []string{"POLICY"},
+				FeaturePermissions:    map[string]interface{}{"feature": canary},
+				ExtFeaturePermissions: map[string]interface{}{"external": canary},
+			}),
+			standardPresent: []string{"name", "policyAccess", "permissions"},
+			standardAbsent:  []string{"featurePermissions", "extFeaturePermissions"},
+			shareAbsent:     []string{"policyAccess", "permissions", "featurePermissions", "extFeaturePermissions"},
+		},
+		{
+			name:     "password expiry settings are shareable policy",
+			resource: resourcePasswordExpiry,
+			record: structSourceRecord(ziaadminusers.PasswordExpiry{
+				PasswordExpirationEnabled: true,
+				PasswordExpiryDays:        90,
+			}),
+			standardPresent: []string{"passwordExpirationEnabled", "passwordExpiryDays"},
 		},
 	}
 
