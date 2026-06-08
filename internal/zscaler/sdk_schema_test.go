@@ -8,6 +8,8 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
+	ziaadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/admins"
+	ziaadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/roles"
 	advancedsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advanced_settings"
 	advancedthreatsettings "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/advancedthreatsettings"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/alerts"
@@ -2841,6 +2843,62 @@ func reviewedSDKShapes() []sdkShapeReview {
 				"fullAccessUntil",
 				"usernameObfuscated",
 				"deviceInfoObfuscate",
+			},
+		},
+		{
+			name:         "ziaadminusers.AdminUsers",
+			resource:     resources.ProductZIA,
+			resourceName: resourceAdminUsers,
+			typ:          reflect.TypeOf(ziaadminusers.AdminUsers{}),
+			catalogFields: []string{
+				"id",
+				"loginName",
+				"userName",
+				"email",
+				"comments",
+				"disabled",
+				"password",
+				"pwdLastModifiedTime",
+				"isNonEditable",
+				"isPasswordLoginAllowed",
+				"isPasswordExpired",
+				"isAuditor",
+				"isSecurityReportCommEnabled",
+				"isServiceUpdateCommEnabled",
+				"isProductUpdateCommEnabled",
+				"isExecMobileAppEnabled",
+				"adminScopescopeGroupMemberEntities",
+				"adminScopeScopeEntities",
+				"adminScopeType",
+				"role",
+				"execMobileAppTokens",
+			},
+		},
+		{
+			name:         "ziaadminroles.AdminRoles",
+			resource:     resources.ProductZIA,
+			resourceName: resourceAdminRoles,
+			typ:          reflect.TypeOf(ziaadminroles.AdminRoles{}),
+			catalogFields: []string{
+				"id",
+				"rank",
+				"name",
+				"policyAccess",
+				"alertingAccess",
+				"usernameAccess",
+				"deviceInfoAccess",
+				"dashboardAccess",
+				"reportAccess",
+				"analysisAccess",
+				"adminAcctAccess",
+				"isAuditor",
+				"permissions",
+				"featurePermissions",
+				"extFeaturePermissions",
+				"isNonEditable",
+				"logsLimit",
+				"roleType",
+				"reportTimeDuration",
 			},
 		},
 		{

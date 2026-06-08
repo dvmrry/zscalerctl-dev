@@ -1630,6 +1630,46 @@ Fields:
 
 This is a singleton settings resource.
 
+## ZIA Admin Users
+
+Commands:
+
+```sh
+zscalerctl zia admin-users list
+zscalerctl zia admin-users get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `disabled`, `isNonEditable`, `isAuditor` | Operational metadata | `standard`, `share`, `paranoid` | Admin identity and state flags. |
+| `pwdLastModifiedTime` | Operational metadata | `standard` | Password lifecycle timestamp. |
+| `loginName`, `userName`, `email` | Sensitive identifier | `standard` | Admin person identifiers. |
+| `comments` | Free text | `standard` | Admin-controlled notes; scanned before output. |
+| `isSecurityReportCommEnabled`, `isServiceUpdateCommEnabled`, `isProductUpdateCommEnabled`, `isExecMobileAppEnabled`, `adminScopeType` | Tenant configuration | `standard`, `share` | Admin communication, app-access, and scope-type controls. |
+| `adminScopescopeGroupMemberEntities`, `adminScopeScopeEntities`, `role` | Tenant configuration | `standard` | Admin scope and role references render constrained fields only. |
+| `password`, `isPasswordLoginAllowed`, `isPasswordExpired`, `execMobileAppTokens` | Secret | never | Password, password-state, and token material are mapped into source records but dropped by projection. |
+
+## ZIA Admin Roles
+
+Commands:
+
+```sh
+zscalerctl zia admin-roles list
+zscalerctl zia admin-roles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isAuditor`, `isNonEditable` | Operational metadata | `standard`, `share`, `paranoid` | Role identity and state flags. |
+| `rank` | Operational metadata | `standard` | Admin-rank metadata. |
+| `name`, `roleType` | Tenant configuration | `standard`, `share` | Role name and type. |
+| `policyAccess`, `alertingAccess`, `dashboardAccess`, `reportAccess`, `analysisAccess`, `usernameAccess`, `adminAcctAccess`, `deviceInfoAccess`, `permissions`, `logsLimit`, `reportTimeDuration` | Tenant configuration | `standard` | Detailed authorization and log-access inventory. |
+| `featurePermissions`, `extFeaturePermissions` | Secret | never | Arbitrary permission maps are dropped until modeled with a stable shape. |
+
 ## ZIA Email Profiles
 
 Commands:
