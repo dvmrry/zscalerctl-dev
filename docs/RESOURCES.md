@@ -333,6 +333,33 @@ The SDK also returns admin, user, group, department, device, and ZPA segment
 references. The reader maps those structures, but the catalog keeps them out of
 rendered output until they are separately modeled.
 
+## ZIA Traffic Capture Rules
+
+Commands:
+
+```sh
+zscalerctl zia traffic-capture-rules list
+zscalerctl zia traffic-capture-rules get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Traffic capture rule identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `state`, `order`, `rank`, `defaultRule`, `predefined`, `excludeSrcCountries` | Operational metadata | `standard`, `share`, `paranoid` | Rule state, ordering, and default/predefined flags. |
+| `accessControl`, `sourceCountries`, `destCountries`, `lastModifiedTime` | Operational metadata | `standard`, `share` | Non-principal rule metadata. |
+| `action`, `nwApplications`, `txnSizeLimit`, `txnSampling`, `deviceTrustLevels` | Tenant configuration | `standard`, `share` | Reviewed rule action and traffic-capture criteria metadata. |
+| `srcIps`, `destAddresses`, `destIpCategories` | Sensitive identifier | `standard` | Local-only IP and destination category criteria. |
+| `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Nested references render reviewed `id`/`name` fields only. |
+| `locations`, `locationGroups`, `srcIpGroups`, `srcIpv6Groups`, `destIpGroups`, `destIpv6Groups`, `nwServices`, `nwServiceGroups`, `nwApplicationGroups`, `appServiceGroups`, `workloadGroups` | Tenant configuration | `standard` | Local-only scope and service references. Nested unreviewed fields are dropped. |
+
+The SDK also returns admin, user, group, department, and device references. The
+reader maps those structures, but the catalog keeps them out of rendered output
+until they are separately modeled.
+
 ## ZIA Forwarding Rules
 
 Commands:

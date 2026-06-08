@@ -143,6 +143,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/security_policy_settin
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sslinspection
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/tenancy_restriction
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/time_intervals
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/traffic_capture
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/dc_exclusions
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/gretunnels
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/trafficforwarding/ipv6_config
