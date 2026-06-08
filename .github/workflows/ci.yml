@@ -3,18 +3,22 @@ name: ci
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  mod-integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: '1.26.4'
@@ -22,6 +26,36 @@ jobs:
       - run: go mod tidy
       - run: go mod vendor
       - run: git diff --exit-code -- go.mod go.sum vendor
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - run: go test -mod=vendor ./...
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - run: go test -race -mod=vendor ./...
+
+  verify-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - run: make fmt-check
       - run: bash scripts/verify-sdk-boundary.sh
       - run: bash scripts/test-verify-sdk-boundary.sh
       - run: bash scripts/verify-ci-no-live-creds.sh
@@ -29,21 +63,58 @@ jobs:
       - run: bash scripts/verify-actions-pinned.sh
       - run: bash scripts/test-verify-actions-pinned.sh
       - run: bash scripts/test-live-smoke.sh
+      - run: bash scripts/verify-docs.sh
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - run: go vet -mod=vendor ./...
+      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+      - run: staticcheck ./...
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
       - run: python3 -m pip install --user semgrep==1.164.0
       - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: bash scripts/verify-semgrep.sh
-      - run: make fmt-check
-      - run: go test -mod=vendor ./...
-      - run: go test -race -mod=vendor ./...
-      - run: go vet -mod=vendor ./...
-      - run: bash scripts/verify-docs.sh
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: govulncheck ./...
-      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
-      - run: staticcheck ./...
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_VERSION: 8.30.1
+
+  # Single stable check for branch protection: succeeds only if every job above
+  # succeeded. Lets protection require one check instead of tracking each job.
+  required:
+    if: ${{ always() }}
+    needs:
+      - mod-integrity
+      - unit
+      - race
+      - verify-gates
+      - static-analysis
+      - secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI jobs to succeed
+        run: |
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: ${results}"
+          for r in ${results}; do
+            if [ "${r}" != "success" ]; then
+              echo "::error::a required CI job did not succeed"
+              exit 1
+            fi
+          done
