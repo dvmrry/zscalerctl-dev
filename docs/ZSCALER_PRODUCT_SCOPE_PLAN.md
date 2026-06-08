@@ -78,7 +78,7 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
    focused OneAPI path.
 2. Continue ZTW only through reviewed governance or configuration inventory
    slices. Initial reference resources, admin governance, and the pinned-SDK
-   close-out configuration batch are cataloged or queued for focused runtime
+   close-out configuration batch are cataloged after focused runtime
    validation; newly exposed SDK packages still need explicit source review
    before cataloging.
 3. Keep Zidentity to top-level read-only inventory unless a child-query command
