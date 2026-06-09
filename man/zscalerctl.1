@@ -40,6 +40,11 @@ Bypass the API cache where supported.
 .BI \-\-log-level " off|error|warn|info|debug"
 Diagnostic logging to stderr. Defaults to off. Diagnostics are metadata only
 and never include record values, credentials, or secrets.
+.TP
+.BI \-\-fields " a,b,c"
+Comma-separated list of output fields to keep, applied across all formats. It
+can only narrow the already-sanitized output; it cannot reveal a dropped or
+secret field. An unknown field name is a usage error.
 .SH COMMANDS
 .TP
 .B <product> <resource> list

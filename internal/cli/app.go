@@ -237,6 +237,7 @@ type globalOptions struct {
 	noCache      bool
 	colorMode    output.ColorMode
 	logLevel     string
+	fields       []string
 	help         bool
 }
 
@@ -275,6 +276,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	colorFlag := fs.String("color", string(output.ColorAuto), "color output: auto, always, never")
 	noColor := fs.Bool("no-color", false, "disable color output")
 	logLevel := fs.String("log-level", "off", "diagnostic logging to stderr: off, error, warn, info, debug")
+	fieldsFlag := fs.String("fields", "", "comma-separated output fields to keep (narrows the sanitized output)")
 	globalArgs, rest, help, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
@@ -318,8 +320,22 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		noCache:      *noCache,
 		colorMode:    colorMode,
 		logLevel:     *logLevel,
+		fields:       parseFieldsList(*fieldsFlag),
 		help:         help,
 	}, rest, nil
+}
+
+func parseFieldsList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func RequestedFormat(args []string) output.Format {
@@ -406,7 +422,7 @@ func flagName(arg string) (string, bool) {
 
 func isGlobalFlag(name string) bool {
 	switch name {
-	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level":
+	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level", "fields":
 		return true
 	default:
 		return false
@@ -813,6 +829,36 @@ func (a *App) collectDump(
 	return result, nil
 }
 
+// effectiveFields returns the field order to render: the renderable fields for
+// the mode, optionally narrowed to --fields. --fields can only select from the
+// already-renderable set; an unknown field name (not in the catalog at all) is
+// a usage error, while a known-but-not-rendered field (secret or mode-excluded)
+// is silently skipped, so --fields can never widen the sanitized output.
+func effectiveFields(spec resources.ResourceSpec, mode redact.Mode, requested []string) ([]string, error) {
+	order := spec.FieldOrder(mode)
+	if len(requested) == 0 {
+		return order, nil
+	}
+	catalog := make(map[string]struct{}, len(spec.Fields))
+	for _, field := range spec.Fields {
+		catalog[field.JSONField()] = struct{}{}
+	}
+	renderable := make(map[string]struct{}, len(order))
+	for _, name := range order {
+		renderable[name] = struct{}{}
+	}
+	out := make([]string, 0, len(requested))
+	for _, name := range requested {
+		if _, ok := catalog[name]; !ok {
+			return nil, UsageError{Message: fmt.Sprintf("--fields: %q is not a field of %s/%s", name, spec.Product, spec.Name)}
+		}
+		if _, ok := renderable[name]; ok {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
 func (a *App) writeProjectedRecord(
 	cfg config.Config,
 	opts globalOptions,
@@ -820,14 +866,21 @@ func (a *App) writeProjectedRecord(
 	record resources.ProjectedRecord,
 	operation string,
 ) error {
+	fields, err := effectiveFields(spec, cfg.Defaults.Redaction, opts.fields)
+	if err != nil {
+		return err
+	}
+	if len(opts.fields) > 0 {
+		record = record.Select(fields)
+	}
 	switch opts.format {
 	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, record)
 	case output.FormatTable:
 		if operation == "show" {
-			return a.renderer(cfg, opts).WriteText(a.out, renderRecordKeyValues(spec, cfg.Defaults.Redaction, record, a.style(opts)))
+			return a.renderer(cfg, opts).WriteText(a.out, renderRecordKeyValues(fields, record, a.style(opts)))
 		}
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource %s", opts.format, operation)
 	}
@@ -839,11 +892,18 @@ func (a *App) writeProjectedRecords(
 	spec resources.ResourceSpec,
 	records resources.ProjectedRecords,
 ) error {
+	fields, err := effectiveFields(spec, cfg.Defaults.Redaction, opts.fields)
+	if err != nil {
+		return err
+	}
+	if len(opts.fields) > 0 {
+		records = records.Select(fields)
+	}
 	switch opts.format {
 	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, records)
 	case output.FormatTable:
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(spec, cfg.Defaults.Redaction, records, a.style(opts)))
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, records, a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource list", opts.format)
 	}
@@ -876,6 +936,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --no-color")
 	fmt.Fprintln(w, "  --no-cache")
 	fmt.Fprintln(w, "  --log-level off|error|warn|info|debug")
+	fmt.Fprintln(w, "  --fields <a,b,c>")
 }
 
 func writeOutputFile(path string, body []byte) error {
@@ -903,12 +964,10 @@ func (a *App) renderer(cfg config.Config, _ globalOptions) output.Renderer {
 }
 
 func renderRecordsTable(
-	spec resources.ResourceSpec,
-	mode redact.Mode,
+	fields []string,
 	records resources.ProjectedRecords,
 	style output.Style,
 ) output.SafeText {
-	fields := spec.FieldOrder(mode)
 	var body strings.Builder
 	for i, field := range fields {
 		if i > 0 {
@@ -931,12 +990,10 @@ func renderRecordsTable(
 }
 
 func renderRecordKeyValues(
-	spec resources.ResourceSpec,
-	mode redact.Mode,
+	fields []string,
 	record resources.ProjectedRecord,
 	style output.Style,
 ) output.SafeText {
-	fields := spec.FieldOrder(mode)
 	values := record.Fields()
 	rows := make([]output.KV, 0, len(fields))
 	for _, field := range fields {

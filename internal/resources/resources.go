@@ -194,6 +194,20 @@ func (r ProjectedRecord) Value(key string) (any, bool) {
 	return copyAny(value), true
 }
 
+// Select returns a copy of the record narrowed to keys, in the given order,
+// including only keys that are present. It can only narrow the already-projected
+// field set; it never adds or resurrects a dropped or secret field, so it is
+// safe to apply after projection and redaction.
+func (r ProjectedRecord) Select(keys []string) ProjectedRecord {
+	out := make(map[string]any, len(keys))
+	for _, key := range keys {
+		if value, ok := r.fields[key]; ok {
+			out[key] = copyAny(value)
+		}
+	}
+	return ProjectedRecord{fields: out}
+}
+
 type ProjectedRecords struct {
 	records []ProjectedRecord
 }
@@ -212,6 +226,15 @@ func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {
 		out[i] = record.Fields()
 	}
 	return json.Marshal(out)
+}
+
+// Select narrows every record to keys (see ProjectedRecord.Select).
+func (rs ProjectedRecords) Select(keys []string) ProjectedRecords {
+	out := make([]ProjectedRecord, len(rs.records))
+	for i, record := range rs.records {
+		out[i] = record.Select(keys)
+	}
+	return ProjectedRecords{records: out}
 }
 
 func (rs ProjectedRecords) Records() []ProjectedRecord {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
@@ -65,5 +66,41 @@ func TestNewDiagLoggerLevelsAndLeakSafety(t *testing.T) {
 	// Invalid level is rejected.
 	if _, err := newDiagLogger(&buf, "bogus"); err == nil {
 		t.Error("newDiagLogger(bogus) error = nil, want validation error")
+	}
+}
+
+func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
+	t.Parallel()
+	spec := resources.ResourceSpec{
+		Product: "zia",
+		Name:    "things",
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
+			{Name: "token", Classification: resources.ClassSecret},
+		},
+	}
+
+	// No --fields: full renderable order.
+	got, err := effectiveFields(spec, redact.ModeStandard, nil)
+	if err != nil || strings.Join(got, ",") != "id,name" {
+		t.Fatalf("default = %v, %v; want [id name], nil", got, err)
+	}
+
+	// Narrowed and reordered to the request.
+	got, err = effectiveFields(spec, redact.ModeStandard, []string{"name", "id"})
+	if err != nil || strings.Join(got, ",") != "name,id" {
+		t.Fatalf("narrow = %v, %v; want [name id], nil", got, err)
+	}
+
+	// A secret (non-rendered) field is known but silently dropped: cannot widen.
+	got, err = effectiveFields(spec, redact.ModeStandard, []string{"token"})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("secret request = %v, %v; want [], nil", got, err)
+	}
+
+	// An unknown field is a usage error.
+	if _, err := effectiveFields(spec, redact.ModeStandard, []string{"nope"}); err == nil {
+		t.Fatal("unknown field: err = nil, want usage error")
 	}
 }
