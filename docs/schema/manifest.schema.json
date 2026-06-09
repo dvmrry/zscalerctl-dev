@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dvmrry/zscalerctl/blob/main/docs/schema/manifest.schema.json",
+  "title": "zscalerctl dump manifest",
+  "description": "Schema for the manifest.json written at the root of a `zscalerctl dump` directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "redaction", "warning", "status", "resources"],
+  "properties": {
+    "schema": {
+      "const": "zscalerctl.dump.manifest.v1",
+      "description": "Versioned schema identifier for this artifact."
+    },
+    "redaction": {
+      "type": "string",
+      "enum": ["standard", "share", "paranoid"],
+      "description": "Redaction mode the dump was produced under."
+    },
+    "warning": {
+      "type": "string",
+      "description": "Operator warning that sanitized dumps remain confidential operational data."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial"],
+      "description": "Whether every selected resource succeeded (complete) or some failed (partial)."
+    },
+    "errors": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of per-resource failures; omitted when zero."
+    },
+    "errors_path": {
+      "type": "string",
+      "description": "Relative path to errors.ndjson; omitted when there are no errors."
+    },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/manifestResource" }
+    }
+  },
+  "$defs": {
+    "manifestResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "name", "status", "records"],
+      "properties": {
+        "product": { "type": "string", "description": "Product family, e.g. zia, zpa, ztw, zcc, zidentity." },
+        "name": { "type": "string", "description": "Resource name within the product." },
+        "shape": { "type": "string", "description": "Resource shape (e.g. singleton); omitted for ordinary list resources." },
+        "status": { "type": "string", "enum": ["ok", "error"], "description": "Per-resource collection status." },
+        "path": { "type": "string", "description": "Relative path to the resource's JSON file; omitted on error." },
+        "records": { "type": "integer", "minimum": 0, "description": "Number of projected records written." },
+        "operation": { "type": "string", "description": "Read operation used (list or show)." },
+        "error_kind": { "type": "string", "description": "Failure classification when status is error." }
+      }
+    }
+  }
+}

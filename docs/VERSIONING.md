@@ -24,7 +24,9 @@ Breaking changes are allowed in `0.x` minor releases, but not in patch releases.
 `semver:major` is reserved until after `v1.0.0`.
 
 Machine-readable output schemas are part of the release contract. This includes
-dump manifests, redaction reports, and partial-dump error records.
+dump manifests, redaction reports, and partial-dump error records. The published
+JSON Schemas for these artifacts live in [schema/](schema/) and carry versioned
+`schema` ids; a drift test keeps them in sync with the emitting structs.
 Backward-compatible schema additions are minor releases; incompatible schema
 changes are breaking changes.
 
