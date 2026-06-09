@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -475,5 +474,3 @@ func (s *smoke) validateFileMode(label, path, want string) {
 	}
 	s.rep.pass("%s mode is %s", label, want)
 }
-
-var _ = filepath.Join
