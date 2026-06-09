@@ -95,14 +95,126 @@ Product-track status:
 | Product | Resources | Status | Next action |
 | --- | --- | --- | --- |
 | ZIA | Current queued legacy-ZIA resources, singleton settings, focused ordinary-recheck batch, identity/device recheck for `zia/departments`, `zia/users`, and `zia/devices`, the focused DLP/capture sensitive batch, plus the list-only/static batch | Prior surfaces cataloged after focused runtime validation and review; the list-only/static batch remains runtime-gated until its focused smoke pass. | Continue only through the remaining shape-decision tracks below. |
-| ZPA | Tier-1 resources plus `zpa/application-segments` | Cataloged after focused runtime validation and trimming unavailable private-cloud endpoints. | Continue later from the remaining ZPA SDK surface; keep focused trim discipline. |
-| ZTW | Initial reference batch, admin-governance resources, and the pinned-SDK close-out configuration/policy batch | Cataloged after focused runtime validation and review. | Keep ZTW closed unless a future SDK bump exposes new read-only config packages. |
-| ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Deferred after `404` endpoint responses across the first ZCC list batch. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
+| ZPA | 28 read-only config/reference resources across connectors, connector groups, app/server/service-edge references, app segments, browser/PRA/inspection app segments, portals, client/platform/version metadata, and microtenants. | Closed for the current validated OneAPI config catalog after focused runtime validation and trimming or deferring unavailable endpoints. | Keep ZPA closed unless scopes/features change, a future SDK exposes new read-only config surfaces, or one of the non-coverage buckets below gets an explicit design. |
+| ZTW | Initial reference batch, admin-governance resources, the pinned-SDK close-out configuration/policy batch, and `ztw/activation-status` | Cataloged after focused runtime validation and review. | Keep ZTW closed unless a future SDK bump exposes new read-only config packages. |
+| ZCC | 11 read-only config/reference resources: fail-open policy, forwarding profiles, trusted networks, web app services, application profiles, custom/predefined/process-based IP apps, devices, admin roles, and company info. | Cataloged after focused runtime validation over the OneAPI v1 ZCC routes; the earlier "404 wall" was a stale v2-path probe. Five surfaces trimmed and deferred (see the ZCC non-coverage record and the backlog). | Keep ZCC to the validated v1 read surface; retry the deferred entries only on shape/entitlement/`userType` changes. |
 | Zidentity | `groups`, `users`, `resource-servers` | Cataloged after focused runtime validation and review. | Keep membership expansion as a separate child-query design. |
 
 Do not merge product stacks on green CI alone. Promote only runtime-validated
 resources, and trim or defer any endpoints that fail with tenant/auth
 availability errors.
+
+## ZPA Non-Coverage Record
+
+The ZPA catalog intentionally covers only runtime-validated, read-only
+configuration and reference inventory. It does not claim that every pinned SDK
+package belongs in `dump`. The current catalog covers these ZPA resources:
+
+- `app-connector-groups`, `app-connectors`, `app-servers`,
+  `application-segments`;
+- `branch-connectors`, `browser-access`, `c2c-ip-ranges`,
+  `cbi-zpa-profiles`, `client-types`;
+- `cloud-connector-groups`, `cloud-connectors`, `config-overrides`;
+- `inspection-app-segments`, `isolation-profiles`, `machine-groups`,
+  `microtenants`;
+- `platforms`, `posture-profiles`, `pra-app-segments`, `segment-groups`;
+- `server-groups`, `service-edge-groups`, `service-edges`,
+  `trusted-networks`;
+- `user-portal-aups`, `user-portal-links`, `user-portals`,
+  `version-profiles`.
+
+The following ZPA SDK surfaces are intentionally not covered by the current
+catalog:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Runtime, entitlement, or feature holds | `zpa/private-cloud-groups`, `zpa/private-cloud-controllers`, `zpa/app-connector-schedule`, `zpa/service-edge-schedule`, `zpa/cbi-banners`, `zpa/cbi-profiles`, `zpa/cbi-regions`, `zpa/inspection-profiles`, `zpa/inspection-custom-controls`, `zpa/inspection-predefined-controls`, `zpa/pra-approvals`, `zpa/pra-consoles`, `zpa/pra-portals`, `zpa/tag-groups`, `zpa/tag-keys`, `zpa/tag-namespaces` | Generated and reviewed, then deferred after focused endpoint probes. Keep them in the deferred table below and retry only when entitlement, feature enablement, or scope changes. |
+| Credential, certificate, or provisioning material | `api_keys`, `provisioningkey`, `enrollmentcert`, `bacertificate` | These are credential, enrollment, certificate, or provisioning surfaces rather than ordinary inventory. They need a separate material-handling policy before any read path is considered. |
+| Mutating or operational control helpers | `applicationsegment_move`, `applicationsegment_share`, `custom_config_controller`, `customer_controller`, `customer_dr_tool`, `emergencyaccess`, `extranet_resource`, `np_client`, `oauth2_user` | These packages are control, move/share, customer operation, emergency-access, or execution-adjacent APIs. The read-only inventory CLI does not execute them as dump resources. |
+| Identity, admin, SCIM, SAML, or auth administration | `admin_sso_controller`, `administrator_controller`, `idpcontroller`, `role_controller`, `scim_api`, `scimattributeheader`, `scimgroup`, `samlattribute`, `step_up_auth` | These belong to an identity/admin boundary, not the current ZPA config-reference catalog. If enabled later, they need privacy/admin classification and a focused command shape. |
+| Policy-set controllers | `policysetcontroller`, `policysetcontrollerv2` | These are policy-rule control APIs with mutating neighbors. Treat as a future policy-rule track, not part of the current reference/config close-out. |
+| Lookup helpers, alternate views, or nonstandard command shapes | `applicationsegmentbytype`, `branch_connector_group`, `browser_protection`, `client_settings`, `location_controller`, `lssconfigcontroller`, `managed_browser`, `workload_tag_group` | These look like helper, alternate-view, singleton/settings, or nonstandard child-query surfaces. Do not catalog them until the command semantics and field classifications are explicit. |
+
+## ZIA Non-Coverage Record
+
+The ZIA catalog covers 102 runtime-validated, read-only configuration and
+reference resources. As with ZPA, this does not claim that every pinned SDK
+package belongs in `dump`. Several ZIA SDK packages back resources that are
+already cataloged (for example `secure_browsing` backs `browser-control-settings`
+and `supported-browser-versions`; `user_authentication_settings` backs
+`auth-exempted-urls`; `cloudapplications/cloudapplications` backs
+`cloud-application-policy` and `cloud-application-ssl-policy`), so package count
+is not resource count.
+
+The following ZIA SDK surfaces are intentionally not covered by the current
+catalog:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Reporting, discovery, log, or export telemetry | `adminauditlogs`, `eventlogentryreport`, `iotreport`, `shadowitreport`, `policy_export`, `sandbox/sandbox_report` | Report, discovery, audit-log, and export surfaces are telemetry, not configuration inventory. Treat as a future report/telemetry command track rather than dump resources. |
+| Submission or execution-adjacent | `sandbox/sandbox_submission`, and the activate action behind `activation` (only `activation-status` is read) | File-submission and activation actions mutate or execute. The read-only dumper reads status but does not invoke them. |
+| Credential, certificate, or material | `trafficforwarding/vpncredentials`, plus the key-material, CSR, attestation, and download operations on `intermediatecacertificates` (its ordinary metadata is cataloged as `intermediate-ca-certificates`) | Secret, credential, and certificate material need a separate material-handling policy before any read path is considered. |
+| Identity or SCIM administration | `scim_api` | A SCIM provisioning/identity-admin boundary, not ZIA configuration inventory. If enabled later it needs privacy/admin classification and a focused command shape. |
+| Lookup, diagnostic, or alternate-view helpers | `apptotal`, `trafficforwarding/region`, `trafficforwarding/greinternalipranges`, `trafficforwarding/gretunnelinfo`, `trafficforwarding/virtualipaddress`, `location/locationlite` | Lookup, diagnostic, or lite/overlapping views with nonstandard command shapes. Do not force into config-dump semantics; `locationlite` overlaps `locations`/`sublocations`. |
+| Feature or entitlement holds | `traffic_capture`, `trafficforwarding/extranet` | Generated and reviewed, then deferred after 403 under both OneAPI and legacy ZIA auth. Keep them in the deferred table below and retry only when entitlement or scope changes. |
+
+## Zidentity Non-Coverage Record
+
+The Zidentity catalog covers three top-level read-only identity-inventory
+resources — `groups`, `users`, and `resource-servers`. Zidentity is
+identity-plane data and is treated as privacy- and authorization-sensitive, so
+coverage is deliberately limited to administrator-visible inventory objects with
+identifier stripping (for example, arbitrary `customAttrsInfo` on users is
+dropped).
+
+The following Zidentity surfaces are intentionally not covered by the current
+catalog:
+
+| Bucket | Surface | Why not covered |
+| --- | --- | --- |
+| Membership child queries | Group-to-user and user-to-group membership reads (`groups.GetUsers`, `users.GetGroupsByUser`) | Membership belongs to an explicit child-query command design, not top-level group/user inventory. Model later if a concrete need appears. |
+| Membership or account mutation | Add/remove/update/delete group membership, reset-password, and other mutating helpers that sit next to the read methods | The read-only CLI never wires mutating helpers, and handlers must bind only the specific read functions a resource uses. |
+| Entitlements | User/role entitlement surfaces described in the Zidentity API docs | Absent from the pinned SDK revision (no `user_entitlement` package). Scout from source before queueing if a future SDK release exposes them. |
+| Credential or administration surfaces | Zidentity admin-API surfaces beyond the three cataloged inventory objects | Out of scope for the current read-only inventory; they need identity/privacy review and an explicit command shape before any read path. |
+
+## ZTW Non-Coverage Record
+
+The ZTW catalog covers 20 runtime-validated, read-only configuration and
+reference resources (admin management, DNS/forwarding gateways, EC groups,
+locations and location templates, forwarding/traffic policy rules, IP and
+network policy resources, partner-integration cloud accounts and info, and
+workload groups). The ZTW SDK surface is nearly fully cataloged; the remaining
+packages are intentionally not covered:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Activation or execution actions | `activation_cli`, and the activate action itself | Execution/activation actions mutate state and are not inventory. The read-only dumper does not invoke them. |
+| Credential or provisioning material | `provisioning/api_keys`, `provisioning/provisioning_url` | API keys and provisioning/enrollment URLs are credential and enrollment material; they need a separate material-handling policy before any read path is considered. |
+| Lookup or alternate-view helpers | `locationmanagement/locationlite` | A lite/overlapping view of `locations` with a nonstandard lookup shape. Do not force into config-dump semantics. |
+
+The one read-only candidate that was not excluded — `activation.GetActivationStatus`
+(ZTW activation status), mirroring `zia/activation-status` — has since been
+wired and runtime-validated as `ztw/activation-status`.
+
+## ZCC Non-Coverage Record
+
+The ZCC catalog covers 11 runtime-validated, read-only resources over the
+OneAPI v1 ZCC routes (`/zcc/papi/public/v1/...`). ZCC rides the shared OneAPI
+service, so no separate ZCC auth is needed; the earlier "404 wall" was a stale
+probe against the v2 paths. Device and admin inventory is cataloged with PII
+labeled as sensitive identifiers (device names, owners, users, MAC, hostnames,
+DNS, file paths, contact email/phone) so it is surfaced in standard mode but
+withheld from share/paranoid; passwords, OTPs, tokens, data blobs, signature/
+certificate payloads, admin identity, and tenant IDs are dropped.
+
+The following ZCC surfaces are intentionally not covered by the current catalog:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Live-smoke failures (deferred) | `zcc/notification-templates`, `zcc/zia-posture-profiles` (404, v2 routes), `zcc/admin-users` (400, SDK sends empty `userType`), `zcc/zpa-group-entitlements`, `zcc/zdx-group-entitlements` (live-access error; single-object response vs paginated reader, or feature off) | Generated and reviewed, then trimmed after live-smoke. Kept in the deferred backlog with route, status, and SDK version; retry only on shape/entitlement/`userType` changes. |
+| Credential, secret, or password material | `secrets` (`getotp`, `getpasswords`), `manage_pass` | One-time passcodes, password retrieval, and password management are credential/secret surfaces, not inventory. Out of scope under any auth mode. |
+| Mutating or device-export actions | `download_devices`, `remove_devices`, and the update/activate helpers beside the read methods (e.g. `web_privacy` set, entitlement update) | Export, removal, and mutation are not read-only dump resources. |
+| Lookup, diagnostic, or alternate-view helpers | `web_policy` (untyped `[]map[string]interface{}` list), per-ID detail helpers (`devices` cleanup/detail views) | Nonstandard or untyped command shapes; do not catalog until the shape and field classifications are explicit. |
 
 ## No-Live Work Mode
 
@@ -162,9 +274,10 @@ resource handler.
 
 ## Remaining SDK Package Review
 
-The current enabled catalog contains 100 ZIA resources, 16 ZPA resources, and 20
-ZTW resources. The rows below are package-level scouting notes, not a promise
-that every surface should become a resource.
+The current enabled catalog contains 102 ZIA resources, 28 ZPA resources, 21
+ZTW resources, 11 ZCC resources, and 3 Zidentity resources. The rows below are
+package-level scouting notes, not a promise that every surface should become a
+resource.
 
 The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.38) remains the
 implementation authority. The Python SDK is useful only as scout evidence for
