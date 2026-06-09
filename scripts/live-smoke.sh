@@ -83,10 +83,10 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*|zpa/*|ztw/*|zidentity/*)
+    zia/*|zpa/*|ztw/*|zcc/*|zidentity/*)
       ;;
     */*)
-      echo "--resources supports only zia/, zpa/, ztw/, or zidentity/ qualified resources; got: $resource" >&2
+      echo "--resources supports only zia/, zpa/, ztw/, zcc/, or zidentity/ qualified resources; got: $resource" >&2
       exit 2
       ;;
     *)
@@ -700,7 +700,7 @@ load_smoke_resources() {
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zidentity")
+      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zcc" or .product == "zidentity")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
       | [.product, .name]
     ]
