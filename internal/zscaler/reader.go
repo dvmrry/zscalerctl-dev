@@ -545,12 +545,23 @@ func addHandler(m map[resourceKey]resourceHandler, key resourceKey, h resourceHa
 }
 
 func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]networkapplications.NetworkApplications, error) {
+	const pageCeiling = 5000
 	var applications []networkapplications.NetworkApplications
 	// The SDK package's GetAll uses ReadAllPages, which can loop indefinitely
 	// when this static catalog endpoint ignores page/pageSize and keeps
 	// returning a full page. Read one large SDK page instead.
-	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)
-	return applications, err
+	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, pageCeiling)
+	if err != nil {
+		return nil, err
+	}
+	// This endpoint does not paginate, so a result that fills the single page is
+	// indistinguishable from a truncated one. Fail closed rather than present a
+	// possibly-incomplete list as complete — silent truncation is worse than a
+	// visible error for an audit/diff tool.
+	if len(applications) >= pageCeiling {
+		return nil, fmt.Errorf("zia network-applications returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", pageCeiling)
+	}
+	return applications, nil
 }
 
 type listGetHandler[T any] struct {

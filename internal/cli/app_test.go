@@ -1684,8 +1684,8 @@ func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T
 			ErrorKind: resource.ErrorKind,
 		}
 	}
-	if got := resourcesByName["zia/locations"]; got.Status != "complete" || got.Path != "resources/zia/locations.json" || got.Records != 1 {
-		t.Errorf("partial manifest zia/locations = %#v, want complete resource entry", got)
+	if got := resourcesByName["zia/locations"]; got.Status != "ok" || got.Path != "resources/zia/locations.json" || got.Records != 1 {
+		t.Errorf("partial manifest zia/locations = %#v, want ok resource entry", got)
 	}
 	if got := resourcesByName["zia/rule-labels"]; got.Status != "error" || got.Operation != "list" || got.ErrorKind != "list_failed" || got.Path != "" {
 		t.Errorf("partial manifest zia/rule-labels = %#v, want value-free error entry", got)

@@ -162,7 +162,7 @@ func Write(dir string, mode redact.Mode, result Result) error {
 			Product: target.product,
 			Name:    target.name,
 			Shape:   manifestResourceShape(target.entry.Spec),
-			Status:  "complete",
+			Status:  "ok",
 			Path:    filepath.ToSlash(target.relPath),
 			Records: recordCount,
 		})
@@ -304,28 +304,47 @@ func rejectExisting(path string) error {
 }
 
 func writeFileExclusive(path string, body []byte) error {
-	if err := ensureDir(filepath.Dir(path)); err != nil {
+	dir := filepath.Dir(path)
+	if err := ensureDir(dir); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+	// Write to a temp file in the same directory, fsync it, then atomically
+	// rename it into place. A crash mid-write can then never leave a partial
+	// file at the final path — which rejectExisting would otherwise treat as an
+	// unsafe pre-existing output, blocking reruns to that directory.
+	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
 	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, path)
-		}
 		return fmt.Errorf("create dump file: %w", err)
 	}
+	tmpPath := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(path)
+			_ = os.Remove(tmpPath)
 		}
 	}()
-	if _, err := file.Write(body); err != nil {
-		_ = file.Close()
+	if err := tmp.Chmod(filePerm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("set dump file mode: %w", err)
+	}
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write dump file: %w", err)
 	}
-	if err := file.Close(); err != nil {
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync dump file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close dump file: %w", err)
+	}
+	// Preserve the no-overwrite guarantee at the final path: nothing should have
+	// created it between the up-front rejectExisting sweep and now.
+	if err := rejectExisting(path); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("finalize dump file: %w", err)
 	}
 	cleanup = false
 	return nil

@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/dvmrry/zscalerctl/internal/redact"
+	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 // TestPublishedSchemasMatchStructs guards the hand-written JSON Schemas under
@@ -46,6 +49,91 @@ func TestPublishedSchemasMatchStructs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestManifestStatusValuesMatchSchemaEnums drives a real dump containing both a
+// successful and a failed resource, then asserts every status value the code
+// emits is a member of the corresponding schema enum. The field-name check
+// above does not look at enum values, so this is what catches a code/schema
+// status-vocabulary mismatch (e.g. emitting "complete" where the per-resource
+// enum is ["ok","error"]).
+func TestManifestStatusValuesMatchSchemaEnums(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	entry := projectedDumpEntry(t, resources.ProductZIA, "locations", []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ", "description": ""}),
+	})
+	result := Result{
+		Entries: []ResourceDump{entry},
+		Errors:  []ResourceError{NewResourceError(resources.ProductZIA, "rule-labels", "list", "list_failed")},
+	}
+	if err := Write(dir, redact.ModeStandard, result); err != nil {
+		t.Fatalf("Write(partial dump) error = %v, want nil", err)
+	}
+
+	var manifest Manifest
+	readJSON(t, filepath.Join(dir, "manifest.json"), &manifest)
+
+	topEnum := schemaEnum(t, "manifest.schema.json", []string{"properties", "status"})
+	if !contains(topEnum, manifest.Status) {
+		t.Errorf("manifest status %q not in schema enum %v", manifest.Status, topEnum)
+	}
+	resEnum := schemaEnum(t, "manifest.schema.json", []string{"$defs", "manifestResource", "properties", "status"})
+	for _, r := range manifest.Resources {
+		if !contains(resEnum, r.Status) {
+			t.Errorf("manifest resource %s/%s status %q not in schema enum %v", r.Product, r.Name, r.Status, resEnum)
+		}
+	}
+}
+
+func schemaEnum(t *testing.T, file string, path []string) []string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("..", "..", "docs", "schema", file))
+	if err != nil {
+		t.Fatalf("read %s: %v", file, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("parse %s: %v", file, err)
+	}
+	var cur any = doc
+	for _, seg := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			t.Fatalf("%s: %q is not an object while walking %v", file, seg, path)
+		}
+		cur, ok = m[seg]
+		if !ok {
+			t.Fatalf("%s: missing %q while walking %v", file, seg, path)
+		}
+	}
+	node, ok := cur.(map[string]any)
+	if !ok {
+		t.Fatalf("%s: node at %v is not an object", file, path)
+	}
+	raw, ok := node["enum"].([]any)
+	if !ok {
+		t.Fatalf("%s: no enum at %v", file, path)
+	}
+	values := make([]string, 0, len(raw))
+	for _, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			t.Fatalf("%s: non-string enum value %v at %v", file, v, path)
+		}
+		values = append(values, s)
+	}
+	return values
+}
+
+func contains(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 func jsonFieldNames(typ reflect.Type) []string {

@@ -2140,9 +2140,15 @@ func TestNetworkApplicationsListAvoidsUnboundedSDKPagination(t *testing.T) {
 	if strings.Contains(source, "return networkapplications.GetAll(ctx, service") {
 		t.Fatalf("network-applications list uses SDK GetAll; want bounded single-page read")
 	}
-	want := `ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, 5000)`
+	want := `ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/networkApplications", 1, &applications, pageCeiling)`
 	if !strings.Contains(source, want) {
 		t.Fatalf("network-applications list missing bounded SDK page read %q", want)
+	}
+	// The single-page read must fail closed when it fills the ceiling, since the
+	// endpoint does not paginate and a full page is indistinguishable from a
+	// truncated one.
+	if !strings.Contains(source, "len(applications) >= pageCeiling") {
+		t.Fatalf("network-applications list missing overflow guard; want a len>=ceiling check that fails closed")
 	}
 }
 

@@ -33,6 +33,33 @@ func TestEnsureDirRejectsSymlink(t *testing.T) {
 	}
 }
 
+func TestWriteFileExclusiveWritesAtomicallyAndLeavesNoTemp(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	if err := writeFileExclusive(path, []byte("payload")); err != nil {
+		t.Fatalf("writeFileExclusive(new) error = %v, want nil", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) error = %v, want nil", path, err)
+	}
+	if string(got) != "payload" {
+		t.Errorf("final file content = %q, want %q", got, "payload")
+	}
+	assertMode(t, path, filePerm)
+
+	// The temp+rename path must not leave the intermediate file behind.
+	leftovers, err := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+	if err != nil {
+		t.Fatalf("glob temp files error = %v", err)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("temp files left after write = %v, want none", leftovers)
+	}
+}
+
 func TestWriteFileExclusiveRefusesExistingPath(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +154,7 @@ func TestWriteCompleteDumpShapePermissionsAndRedaction(t *testing.T) {
 	wantResource := ManifestResource{
 		Product: "zia",
 		Name:    "locations",
-		Status:  "complete",
+		Status:  "ok",
 		Path:    "resources/zia/locations.json",
 		Records: 2,
 	}
