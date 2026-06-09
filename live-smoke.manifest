@@ -3,3 +3,47 @@
 # scripts/live-smoke.sh auto-uses this file on feature branches when it differs
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
+
+# --- ZPA config batch (feature/zpa-config-batch) ---
+
+# Microtenants / version & client metadata / schedules
+zpa/microtenants
+zpa/version-profiles
+zpa/client-types
+zpa/platforms
+zpa/app-connector-schedule
+zpa/service-edge-schedule
+
+# Inspection
+zpa/inspection-profiles
+zpa/inspection-custom-controls
+zpa/inspection-predefined-controls
+
+# Tags
+zpa/tag-groups
+zpa/tag-keys
+zpa/tag-namespaces
+
+# Cloud Browser Isolation
+zpa/cbi-banners
+zpa/cbi-profiles
+zpa/cbi-regions
+zpa/isolation-profiles
+
+# Branch connector
+zpa/branch-connectors
+
+# Privileged Remote Access
+zpa/pra-approvals
+zpa/pra-consoles
+zpa/pra-portals
+
+# User portal
+zpa/user-portals
+zpa/user-portal-aups
+zpa/user-portal-links
+
+# Application-segment variants
+zpa/browser-access
+zpa/inspection-app-segments
+zpa/pra-app-segments
