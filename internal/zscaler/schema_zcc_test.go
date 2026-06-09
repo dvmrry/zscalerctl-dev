@@ -6,20 +6,16 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
 	zccadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/admin_roles"
-	zccadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/admin_users"
 	zccappprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/application_profiles"
 	zcccompany "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/company"
 	zcccustomip "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/custom_ip_apps"
 	zccdevices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/devices"
-	zccentitlements "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/entitlements"
 	zccfailopen "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/failopen_policy"
 	zccfwdprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/forwarding_profile"
-	zccnotiftmpl "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template"
 	zccpredefip "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/predefined_ip_apps"
 	zccprocessapps "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/process_based_apps"
 	zcctrustednet "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network"
 	zccwebappsvc "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/web_app_service"
-	zccziaposture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture"
 )
 
 func reviewedSDKShapesZCC() []sdkShapeReview {
@@ -240,71 +236,6 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 			},
 		},
 		{
-			name:         "zccentitlements.ZpaGroupEntitlements",
-			resource:     resources.ProductZCC,
-			resourceName: resourceZCCZPAEntitle,
-			typ:          reflect.TypeOf(zccentitlements.ZpaGroupEntitlements{}),
-			catalogFields: []string{
-				"computeDeviceGroupsForZPA",
-				"deviceGroupList",
-				"groupList",
-				"machineTunEnabledForAll",
-				"totalCount",
-				"zpaEnableForAll",
-			},
-		},
-		{
-			name:         "zccentitlements.ZdxGroupEntitlements",
-			resource:     resources.ProductZCC,
-			resourceName: resourceZCCZDXEntitle,
-			typ:          reflect.TypeOf(zccentitlements.ZdxGroupEntitlements{}),
-			catalogFields: []string{
-				"collectZdxLocation",
-				"computeDeviceGroupsForZDX",
-				"logoutZCCForZDXService",
-				"totalCount",
-				"upmDeviceGroupList",
-				"upmEnableForAll",
-				"upmGroupList",
-			},
-		},
-		{
-			name:         "zccnotiftmpl.NotificationTemplate",
-			resource:     resources.ProductZCC,
-			resourceName: resourceZCCNotifTmpls,
-			typ:          reflect.TypeOf(zccnotiftmpl.NotificationTemplate{}),
-			catalogFields: []string{
-				"id",
-				"name",
-				"isDefaultTemplate",
-				"enableClient",
-				"enableZia",
-				"enableAppUpdates",
-				"enableServiceStatus",
-				"durationInSeconds",
-				"enablePersistent",
-				"enableDoNotDisturb",
-				"createdBy",
-				"editedBy",
-				"ziaNotificationTemplate",
-				"zpaNotificationTemplate",
-			},
-		},
-		{
-			name:         "zccziaposture.ZIAPosture",
-			resource:     resources.ProductZCC,
-			resourceName: resourceZCCZIAPostures,
-			typ:          reflect.TypeOf(zccziaposture.ZIAPosture{}),
-			catalogFields: []string{
-				"id",
-				"name",
-				"platform",
-				"highTrustCriteria",
-				"mediumTrustCriteria",
-				"lowTrustCriteria",
-			},
-		},
-		{
 			name:         "zccdevices.GetDevices",
 			resource:     resources.ProductZCC,
 			resourceName: resourceZCCDevices,
@@ -335,22 +266,6 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"user",
 				"vpnState",
 				"zappArch",
-			},
-		},
-		{
-			name:         "zccadminusers.AdminUser",
-			resource:     resources.ProductZCC,
-			resourceName: resourceZCCAdminUsers,
-			typ:          reflect.TypeOf(zccadminusers.AdminUser{}),
-			catalogFields: []string{
-				"accountEnabled",
-				"companyId",
-				"companyRole",
-				"editEnabled",
-				"id",
-				"isDefaultAdmin",
-				"serviceType",
-				"userName",
 			},
 		},
 		{

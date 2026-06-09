@@ -5,20 +5,16 @@ import (
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	zccadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/admin_roles"
-	zccadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/admin_users"
 	zccappprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/application_profiles"
 	zcccompany "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/company"
 	zcccustomip "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/custom_ip_apps"
 	zccdevices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/devices"
-	zccentitlements "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/entitlements"
 	zccfailopen "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/failopen_policy"
 	zccfwdprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/forwarding_profile"
-	zccnotiftmpl "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/notification_template"
 	zccpredefip "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/predefined_ip_apps"
 	zccprocessapps "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/process_based_apps"
 	zcctrustednet "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/trusted_network"
 	zccwebappsvc "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/web_app_service"
-	zccziaposture "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/zia_posture"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
@@ -105,47 +101,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			}),
 			structSourceRecord[zccprocessapps.ProcessBasedApp],
 		),
-		{product: resources.ProductZCC, name: resourceZCCZPAEntitle}: newListOnlyHandler(
-			resourceZCCZPAEntitle,
-			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccentitlements.ZpaGroupEntitlements, error) {
-				return zccentitlements.GetZpaGroupEntitlements(ctx, service, "", zccProbePageSize)
-			}),
-			structSourceRecord[zccentitlements.ZpaGroupEntitlements],
-		),
-		{product: resources.ProductZCC, name: resourceZCCZDXEntitle}: newListOnlyHandler(
-			resourceZCCZDXEntitle,
-			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccentitlements.ZdxGroupEntitlements, error) {
-				return zccentitlements.GetZdxGroupEntitlements(ctx, service, "", zccProbePageSize)
-			}),
-			structSourceRecord[zccentitlements.ZdxGroupEntitlements],
-		),
-		{product: resources.ProductZCC, name: resourceZCCNotifTmpls}: newListOnlyHandler(
-			resourceZCCNotifTmpls,
-			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccnotiftmpl.NotificationTemplate, error) {
-				return zccnotiftmpl.GetAll(ctx, service, nil)
-			}),
-			structSourceRecord[zccnotiftmpl.NotificationTemplate],
-		),
-		{product: resources.ProductZCC, name: resourceZCCZIAPostures}: newListOnlyHandler(
-			resourceZCCZIAPostures,
-			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccziaposture.ZIAPosture, error) {
-				return zccziaposture.GetAll(ctx, service, nil)
-			}),
-			structSourceRecord[zccziaposture.ZIAPosture],
-		),
 		{product: resources.ProductZCC, name: resourceZCCDevices}: newListOnlyHandler(
 			resourceZCCDevices,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccdevices.GetDevices, error) {
 				return zccdevices.GetAll(ctx, service, "", "")
 			}),
 			structSourceRecord[zccdevices.GetDevices],
-		),
-		{product: resources.ProductZCC, name: resourceZCCAdminUsers}: newListOnlyHandler(
-			resourceZCCAdminUsers,
-			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccadminusers.AdminUser, error) {
-				return zccadminusers.GetAdminUsers(ctx, service, "")
-			}),
-			structSourceRecord[zccadminusers.AdminUser],
 		),
 		{product: resources.ProductZCC, name: resourceZCCAdminRoles}: newListOnlyHandler(
 			resourceZCCAdminRoles,

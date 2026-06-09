@@ -4,7 +4,7 @@
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
 
-# Full ZCC read batch
+# ZCC read batch (survivors after trimming 404/400/live-access failures)
 zcc/fail-open-policy
 zcc/forwarding-profiles
 zcc/trusted-networks
@@ -13,11 +13,6 @@ zcc/application-profiles
 zcc/custom-ip-apps
 zcc/predefined-ip-apps
 zcc/process-based-apps
-zcc/zpa-group-entitlements
-zcc/zdx-group-entitlements
-zcc/notification-templates
-zcc/zia-posture-profiles
 zcc/devices
-zcc/admin-users
 zcc/admin-roles
 zcc/company-info
