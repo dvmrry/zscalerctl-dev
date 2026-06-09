@@ -143,6 +143,17 @@ mkdir -p ~/.config/fish/completions
 zscalerctl completion fish > ~/.config/fish/completions/zscalerctl.fish
 ```
 
+## Man Page
+
+A man page ships in the repository at `man/zscalerctl.1`. Install it into a
+`man1` directory on your `MANPATH`, for example:
+
+```sh
+mkdir -p ~/.local/share/man/man1
+cp man/zscalerctl.1 ~/.local/share/man/man1/
+man zscalerctl
+```
+
 ## Local Alias
 
 ```sh

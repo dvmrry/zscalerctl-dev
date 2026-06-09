@@ -1,0 +1,125 @@
+.TH ZSCALERCTL 1 "" "zscalerctl" "User Commands"
+.SH NAME
+zscalerctl \- read-only Zscaler configuration query and sanitized dump tool
+.SH SYNOPSIS
+.B zscalerctl
+[\fIglobal flags\fR] \fIcommand\fR [\fIargs\fR]
+.SH DESCRIPTION
+.B zscalerctl
+is a read-only command-line tool for authorized Zscaler administrators to
+query configuration, inspect inventory, and produce sanitized dumps. It is
+machine-first: stdout carries data, stderr carries diagnostics, exit codes are
+stable, and output is allow-list projected and redacted before it is written.
+It never mutates tenant state and never emits secret material in normal output.
+.SH GLOBAL OPTIONS
+.TP
+.BI \-\-profile " name"
+Configuration profile to use.
+.TP
+.BI \-\-format " table|json"
+Output format. Defaults to table.
+.TP
+.BI \-\-output " path"
+Write command output to a file instead of stdout (not valid with dump).
+.TP
+.BI \-\-timeout " duration"
+Per-request timeout (e.g. 30s). Must be positive.
+.TP
+.BI \-\-redaction " standard|share|paranoid"
+Redaction mode applied to rendered fields.
+.TP
+.BI \-\-color " auto|always|never"
+Color policy for human output.
+.TP
+.B \-\-no-color
+Disable color output (equivalent to \-\-color never; NO_COLOR is also honored).
+.TP
+.B \-\-no-cache
+Bypass the API cache where supported.
+.TP
+.BI \-\-log-level " off|error|warn|info|debug"
+Diagnostic logging to stderr. Defaults to off. Diagnostics are metadata only
+and never include record values, credentials, or secrets.
+.SH COMMANDS
+.TP
+.B <product> <resource> list
+List a resource for a product (\fBzia\fR, \fBzpa\fR, \fBztw\fR, \fBzcc\fR,
+\fBzidentity\fR), e.g. \fBzscalerctl zia locations list\fR.
+.TP
+.B <product> <resource> get <id>
+Get a single resource by id, where the resource supports it.
+.TP
+.B <product> <resource> show
+Show a singleton/status resource that yields one record.
+.TP
+.B dump \-\-out <dir> [\-\-products ...] [\-\-resources ...] [\-\-continue-on-error]
+Write a sanitized multi-resource dump (manifest.json, redaction_report.json,
+per-resource files, and errors.ndjson on failure) into a new directory.
+.TP
+.B schema list
+Print the resource catalog (products, resources, operations, field model).
+.TP
+.B doctor
+Report configuration, auth mode, and live-API reachability without exposing
+secrets.
+.TP
+.B auth status
+Report credential presence and live-API reachability.
+.TP
+.B config show
+Render the active, secret-safe configuration.
+.TP
+.B completion bash|zsh|fish
+Print a shell completion script.
+.TP
+.B version
+Print version, commit, and build date.
+.TP
+.B help
+Print usage.
+.SH ENVIRONMENT
+Credentials and settings are read only from the \fBZSCALERCTL_*\fR namespace;
+the tool deliberately ignores the SDK's own environment variables.
+.TP
+.B ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, ZSCALERCTL_VANITY_DOMAIN
+OneAPI (Zidentity) credentials. \fBZSCALERCTL_CLIENT_SECRET_FILE\fR reads the
+secret from an owner-only file.
+.TP
+.B ZSCALERCTL_ZPA_CUSTOMER_ID, ZSCALERCTL_ZPA_MICROTENANT_ID
+Required ZPA customer id and optional microtenant id.
+.TP
+.B ZSCALERCTL_ZIA_USERNAME, ZSCALERCTL_ZIA_PASSWORD, ZSCALERCTL_ZIA_API_KEY, ZSCALERCTL_ZIA_CLOUD
+Legacy ZIA credentials (with \fB_FILE\fR variants for password and API key)
+when \fBZSCALERCTL_AUTH_MODE=zia-legacy\fR.
+.TP
+.B ZSCALERCTL_PROFILE, ZSCALERCTL_REDACTION, ZSCALERCTL_NO_CACHE, ZSCALERCTL_CLOUD
+Optional defaults mirroring the matching flags.
+.TP
+.B ZSCALERCTL_PROXY_URL, ZSCALERCTL_PROXY_FROM_ENV
+Explicit proxy settings; ambient HTTP_PROXY/HTTPS_PROXY discovery is off by
+default.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Internal error.
+.TP
+.B 2
+Usage error.
+.TP
+.B 3
+Missing or invalid credentials.
+.TP
+.B 4
+Resource not found / unsupported.
+.TP
+.B 5
+Live API access failure.
+.TP
+.B 6
+Partial dump (some resources failed; see errors.ndjson).
+.SH SEE ALSO
+Project documentation under \fBdocs/\fR, including ARCHITECTURE.md,
+THREAT_MODEL.md, and the published dump schemas in docs/schema/.
