@@ -84,9 +84,9 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 3. Keep Zidentity to top-level read-only inventory unless a child-query command
    shape is designed. Resource servers, groups, and users are cataloged; group
    membership remains a separate follow-up.
-4. Defer ZCC until endpoint/auth/entitlement behavior is understood. The first
-   ZCC PAPI v2 list endpoint probe returned 404 across the initial reference
-   batch.
+4. ZCC is cataloged: 11 read-only resources over the OneAPI v1 ZCC routes. The
+   earlier v2-path probe 404s were a wrong-path artifact, not a wall. Keep ZCC
+   to the validated v1 read surface and the deferred backlog.
 5. Do not implement ZDX before `v1.0.0` unless Zscaler exposes deterministic
    ZDX configuration APIs. The current SDK surfaces are report/telemetry.
 6. Do not implement ZWA before `v1.0.0` unless Zscaler exposes deterministic
@@ -96,13 +96,15 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 
 ## ZCC
 
-ZCC has configuration-shaped resources, but several SDK packages sit next to
-mutating helpers, device data, or secret-like read functions. The first
-conservative ZCC PAPI v2 endpoint probe (`trusted_network_v2`,
-`notification_template`, and `zia_posture`) returned status 404 for every list
-endpoint. Treat ZCC as deferred until a focused
-endpoint/auth/entitlement scout proves which ZCC API path is reachable from the
-shared OneAPI boundary.
+ZCC is cataloged with 11 read-only resources over the OneAPI **v1** ZCC routes
+(`/zcc/papi/public/v1/...`), reached through the shared OneAPI service. The
+initial deferral came from a v2-path probe (`trusted_network_v2`,
+`notification_template`, `zia_posture`) that returned 404; the reachable surface
+is the v1 routes, validated by live-smoke. Several SDK packages still sit next to
+mutating helpers, device export, or secret-like reads and stay excluded — see the
+ZCC non-coverage record and deferred backlog in
+[Resource Queue](RESOURCE_QUEUE.md). The per-package scout table below is the
+original pre-catalog scouting note, superseded by the enabled catalog.
 
 | Candidate | SDK package | Scout category | Queue posture |
 | --- | --- | --- | --- |
@@ -257,7 +259,9 @@ as open recommendations:
 | `feature/zpa-safe-surface-batch` | Verified the shared OneAPI service path for ZPA and promoted the Tier-1 ZPA reference surface. | Established the `ZSCALERCTL_ZPA_CUSTOMER_ID` requirement and trimmed unavailable private-cloud endpoints. |
 | `feature/zpa-config-batch` | Promoted the remaining validated ZPA config/reference batch and recorded the explicit non-coverage buckets for feature-gated, credential/material, identity/admin, policy-control, and helper surfaces. | Treat ZPA as closed for the current validated config catalog; future work must start from the non-coverage record or a newly exposed read-only SDK surface. |
 | `feature/ztw-workload-groups` | Verified the OneAPI SDK call path for ZTW and promoted the first ZTW reference batch. | Cloud/Workload product semantics established without touching provisioning credentials. |
-| `feature/zcc-scope-plan` | Probed conservative ZCC PAPI v2 references. | Initial endpoint probe returned 404; ZCC remains an endpoint/auth/entitlement investigation. |
+| `feature/zcc-scope-plan` | Probed conservative ZCC PAPI v2 references. | Initial endpoint probe returned 404; superseded by the v1 ZCC batch below. |
+| `feature/zcc-probe` | Proved ZCC reachability on the OneAPI v1 routes and promoted the full conservative ZCC read batch (11 resources), trimming five unavailable/material surfaces. | ZCC cataloged; PII labeled as sensitive identifiers (standard-only), secrets/credentials/admin-identity dropped. Deferred entries recorded in the queue. |
+| `feature/ztw-activation-status` | Wired the one remaining ZTW read candidate, `ztw/activation-status`, as a show singleton. | Closes the ZTW read surface flagged in the ZTW non-coverage record. |
 | `feature/zidentity-reference-batch` | Scoped resource servers, groups, and users. | Top-level Zidentity read-only inventory is cataloged; membership expansion remains a follow-up child-query design. |
 
 ZWA is deliberately not in the first-branch queue. Do not open a ZWA branch

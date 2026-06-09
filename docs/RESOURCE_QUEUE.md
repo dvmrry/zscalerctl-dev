@@ -96,8 +96,8 @@ Product-track status:
 | --- | --- | --- | --- |
 | ZIA | Current queued legacy-ZIA resources, singleton settings, focused ordinary-recheck batch, identity/device recheck for `zia/departments`, `zia/users`, and `zia/devices`, the focused DLP/capture sensitive batch, plus the list-only/static batch | Prior surfaces cataloged after focused runtime validation and review; the list-only/static batch remains runtime-gated until its focused smoke pass. | Continue only through the remaining shape-decision tracks below. |
 | ZPA | 28 read-only config/reference resources across connectors, connector groups, app/server/service-edge references, app segments, browser/PRA/inspection app segments, portals, client/platform/version metadata, and microtenants. | Closed for the current validated OneAPI config catalog after focused runtime validation and trimming or deferring unavailable endpoints. | Keep ZPA closed unless scopes/features change, a future SDK exposes new read-only config surfaces, or one of the non-coverage buckets below gets an explicit design. |
-| ZTW | Initial reference batch, admin-governance resources, and the pinned-SDK close-out configuration/policy batch | Cataloged after focused runtime validation and review. | Keep ZTW closed unless a future SDK bump exposes new read-only config packages. |
-| ZCC | `trusted-networks`, `notification-templates`, `zia-postures` | Deferred after `404` endpoint responses across the first ZCC list batch. | Deferred; investigate endpoint/auth/entitlement behavior before retrying ZCC. |
+| ZTW | Initial reference batch, admin-governance resources, the pinned-SDK close-out configuration/policy batch, and `ztw/activation-status` | Cataloged after focused runtime validation and review. | Keep ZTW closed unless a future SDK bump exposes new read-only config packages. |
+| ZCC | 11 read-only config/reference resources: fail-open policy, forwarding profiles, trusted networks, web app services, application profiles, custom/predefined/process-based IP apps, devices, admin roles, and company info. | Cataloged after focused runtime validation over the OneAPI v1 ZCC routes; the earlier "404 wall" was a stale v2-path probe. Five surfaces trimmed and deferred (see the ZCC non-coverage record and the backlog). | Keep ZCC to the validated v1 read surface; retry the deferred entries only on shape/entitlement/`userType` changes. |
 | Zidentity | `groups`, `users`, `resource-servers` | Cataloged after focused runtime validation and review. | Keep membership expansion as a separate child-query design. |
 
 Do not merge product stacks on green CI alone. Promote only runtime-validated
@@ -192,10 +192,29 @@ packages are intentionally not covered:
 | Credential or provisioning material | `provisioning/api_keys`, `provisioning/provisioning_url` | API keys and provisioning/enrollment URLs are credential and enrollment material; they need a separate material-handling policy before any read path is considered. |
 | Lookup or alternate-view helpers | `locationmanagement/locationlite` | A lite/overlapping view of `locations` with a nonstandard lookup shape. Do not force into config-dump semantics. |
 
-One read-only candidate is **not** excluded: `activation.GetActivationStatus`
-(ZTW activation status) is a clean status read mirroring `zia/activation-status`
-that simply has not been wired yet. It is tracked as a focused resource-branch
-candidate, not part of this non-coverage record.
+The one read-only candidate that was not excluded — `activation.GetActivationStatus`
+(ZTW activation status), mirroring `zia/activation-status` — has since been
+wired and runtime-validated as `ztw/activation-status`.
+
+## ZCC Non-Coverage Record
+
+The ZCC catalog covers 11 runtime-validated, read-only resources over the
+OneAPI v1 ZCC routes (`/zcc/papi/public/v1/...`). ZCC rides the shared OneAPI
+service, so no separate ZCC auth is needed; the earlier "404 wall" was a stale
+probe against the v2 paths. Device and admin inventory is cataloged with PII
+labeled as sensitive identifiers (device names, owners, users, MAC, hostnames,
+DNS, file paths, contact email/phone) so it is surfaced in standard mode but
+withheld from share/paranoid; passwords, OTPs, tokens, data blobs, signature/
+certificate payloads, admin identity, and tenant IDs are dropped.
+
+The following ZCC surfaces are intentionally not covered by the current catalog:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Live-smoke failures (deferred) | `zcc/notification-templates`, `zcc/zia-posture-profiles` (404, v2 routes), `zcc/admin-users` (400, SDK sends empty `userType`), `zcc/zpa-group-entitlements`, `zcc/zdx-group-entitlements` (live-access error; single-object response vs paginated reader, or feature off) | Generated and reviewed, then trimmed after live-smoke. Kept in the deferred backlog with route, status, and SDK version; retry only on shape/entitlement/`userType` changes. |
+| Credential, secret, or password material | `secrets` (`getotp`, `getpasswords`), `manage_pass` | One-time passcodes, password retrieval, and password management are credential/secret surfaces, not inventory. Out of scope under any auth mode. |
+| Mutating or device-export actions | `download_devices`, `remove_devices`, and the update/activate helpers beside the read methods (e.g. `web_privacy` set, entitlement update) | Export, removal, and mutation are not read-only dump resources. |
+| Lookup, diagnostic, or alternate-view helpers | `web_policy` (untyped `[]map[string]interface{}` list), per-ID detail helpers (`devices` cleanup/detail views) | Nonstandard or untyped command shapes; do not catalog until the shape and field classifications are explicit. |
 
 ## No-Live Work Mode
 
@@ -255,9 +274,10 @@ resource handler.
 
 ## Remaining SDK Package Review
 
-The current enabled catalog contains 102 ZIA resources, 28 ZPA resources, 20
-ZTW resources, and 3 Zidentity resources. The rows below are package-level
-scouting notes, not a promise that every surface should become a resource.
+The current enabled catalog contains 102 ZIA resources, 28 ZPA resources, 21
+ZTW resources, 11 ZCC resources, and 3 Zidentity resources. The rows below are
+package-level scouting notes, not a promise that every surface should become a
+resource.
 
 The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.38) remains the
 implementation authority. The Python SDK is useful only as scout evidence for
