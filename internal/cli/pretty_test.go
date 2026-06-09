@@ -280,3 +280,50 @@ func TestHelpRoutesToResourceAndProductScope(t *testing.T) {
 		})
 	}
 }
+
+// TestResourceListCanaryAbsentAcrossFormatsAndModes asserts the no-leak
+// guarantee holds end-to-end for every output format and redaction mode, not
+// just JSON/standard: secret values, secret-shaped free text, and bare
+// high-entropy tokens must never reach stdout in table or pretty, in share or
+// paranoid, any combination.
+func TestResourceListCanaryAbsentAcrossFormatsAndModes(t *testing.T) {
+	t.Parallel()
+
+	const (
+		secretCanary   = "list-secret-canary-zzz"
+		freeTextCanary = "free-text-canary-yyy"
+		bareToken      = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	)
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":           "1",
+			"name":         "HQ",
+			"ipAddresses":  []any{"192.0.2.10"},
+			"description":  "note psk=" + freeTextCanary + " " + bareToken,
+			"preSharedKey": secretCanary,
+		})},
+	}
+
+	for _, format := range []string{"json", "table", "pretty"} {
+		for _, mode := range []string{"standard", "share", "paranoid"} {
+			format, mode := format, mode
+			t.Run(format+"/"+mode, func(t *testing.T) {
+				t.Parallel()
+				var out, errOut bytes.Buffer
+				app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+				args := []string{"--format", format, "--redaction", mode, "--color", "never", "zia", "locations", "list"}
+				if err := app.Run(context.Background(), args); err != nil {
+					t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+				}
+				for _, canary := range []string{secretCanary, freeTextCanary, bareToken} {
+					if strings.Contains(out.String(), canary) {
+						t.Errorf("%s/%s stdout leaked canary %q: %q", format, mode, canary, out.String())
+					}
+					if strings.Contains(errOut.String(), canary) {
+						t.Errorf("%s/%s stderr leaked canary %q: %q", format, mode, canary, errOut.String())
+					}
+				}
+			})
+		}
+	}
+}

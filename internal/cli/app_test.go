@@ -1223,11 +1223,11 @@ func TestDumpUsesSingleReaderSessionForAllZIAResources(t *testing.T) {
 	if session.closeCalls != 1 {
 		t.Errorf("countingResourceSession.Close calls = %d, want 1", session.closeCalls)
 	}
-	if !strings.Contains(out.String(), "dump written: "+outDir) {
-		t.Errorf("App.Run(dump --products zia --out) stdout = %q, want dump written line", out.String())
+	if !strings.Contains(errOut.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump --products zia --out) stderr = %q, want dump written line", errOut.String())
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump --products zia --out) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --products zia --out) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -1292,11 +1292,11 @@ func TestDumpResourceFilterWritesOnlySelectedResources(t *testing.T) {
 			t.Errorf("filtered dump manifest resources = %#v, want %s", gotNames, want)
 		}
 	}
-	if !strings.Contains(out.String(), "dump written: "+outDir) {
-		t.Errorf("App.Run(dump --resources) stdout = %q, want dump written line", out.String())
+	if !strings.Contains(errOut.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump --resources) stderr = %q, want dump written line", errOut.String())
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump --resources) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --resources) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -1323,11 +1323,11 @@ func TestDumpResourceFilterSupportsQualifiedResourceName(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "resources", "zia", "rule-labels.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("os.Stat(filtered rule-labels dump) error = %v, want os.ErrNotExist", err)
 	}
-	if out.Len() == 0 {
-		t.Errorf("App.Run(dump --resources zia/locations) stdout = empty, want dump written line")
+	if errOut.Len() == 0 {
+		t.Errorf("App.Run(dump --resources zia/locations) stderr = empty, want dump written line")
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump --resources zia/locations) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --resources zia/locations) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -1378,11 +1378,11 @@ func TestDumpResourceFilterWritesSingletonAsObject(t *testing.T) {
 	if got.Product != "zia" || got.Name != "advanced-settings" || got.Records != 1 {
 		t.Errorf("singleton dump manifest resource = %#v, want zia/advanced-settings records=1", got)
 	}
-	if !strings.Contains(out.String(), "dump written: "+outDir) {
-		t.Errorf("App.Run(dump singleton) stdout = %q, want dump written line", out.String())
+	if !strings.Contains(errOut.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump singleton) stderr = %q, want dump written line", errOut.String())
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump singleton) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump singleton) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -1529,8 +1529,8 @@ func TestDumpWritesSingletonResourceAsOneRecordWithManifestShape(t *testing.T) {
 	if records[0]["name"] != "Auth settings" {
 		t.Errorf("singleton-settings record name = %v, want Auth settings", records[0]["name"])
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump singleton-settings) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump singleton-settings) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -1603,14 +1603,14 @@ func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T
 	if !errors.Is(err, cli.ErrPartialDump) {
 		t.Fatalf("App.Run(dump --continue-on-error) error = %v, want ErrPartialDump", err)
 	}
-	if !strings.Contains(out.String(), "partial dump written: "+outDir) {
-		t.Errorf("App.Run(dump --continue-on-error) stdout = %q, want partial dump written line", out.String())
+	if !strings.Contains(errOut.String(), "partial dump written: "+outDir) {
+		t.Errorf("App.Run(dump --continue-on-error) stderr = %q, want partial dump written line", errOut.String())
 	}
-	if strings.Contains(out.String(), leakedErrorText) {
-		t.Errorf("App.Run(dump --continue-on-error) stdout = %q, want no raw error text", out.String())
+	if strings.Contains(errOut.String(), leakedErrorText) || strings.Contains(out.String(), leakedErrorText) {
+		t.Errorf("App.Run(dump --continue-on-error) output = %q / %q, want no raw error text", out.String(), errOut.String())
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump --continue-on-error) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --continue-on-error) stdout = %q, want empty", out.String())
 	}
 
 	locationPath := filepath.Join(outDir, "resources", "zia", "locations.json")
@@ -1805,11 +1805,11 @@ func TestDumpFallsBackWhenReaderDoesNotSupportProductSession(t *testing.T) {
 	if got, want := reader.directShowCalls, len(ziaShowResourceSpecs(t)); got != want {
 		t.Errorf("unsupportedSessionResourceReader.Show calls = %d, want %d", got, want)
 	}
-	if !strings.Contains(out.String(), "dump written: "+outDir) {
-		t.Errorf("App.Run(dump with unsupported session --out) stdout = %q, want dump written line", out.String())
+	if !strings.Contains(errOut.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump with unsupported session --out) stderr = %q, want dump written line", errOut.String())
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("App.Run(dump with unsupported session --out) stderr = %q, want empty", errOut.String())
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump with unsupported session --out) stdout = %q, want empty", out.String())
 	}
 }
 

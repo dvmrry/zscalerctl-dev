@@ -715,16 +715,19 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
 		return err
 	}
+	// Dump emits no resource data on stdout (it writes files), so its status
+	// notice is a diagnostic and goes to stderr, keeping stdout clean per the
+	// stdout=data / stderr=diagnostics contract.
 	if len(result.Errors) > 0 {
 		if err := a.renderer(cfg, opts).WriteText(
-			a.out,
+			a.err,
 			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", *outDir, len(result.Errors))),
 		); err != nil {
 			return err
 		}
 		return PartialDumpError{Dir: *outDir, Errors: len(result.Errors)}
 	}
-	return a.renderer(cfg, opts).WriteText(a.out, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
+	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
 }
 
 func (a *App) resourceReader(cfg config.Config, opts globalOptions) (ResourceReader, error) {
