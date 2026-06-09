@@ -29,3 +29,6 @@ GitHub security policy.
 - [VERSIONING.md](VERSIONING.md)
 - [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md)
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
+- [SCRIPTS.md](SCRIPTS.md) — registry of `scripts/` ownership and validation.
+- [releases/](releases/) — curated release notes (most releases use generated
+  notes; this holds the hand-written ones).

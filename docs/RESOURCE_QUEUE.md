@@ -10,6 +10,9 @@ record candidates, scaffold intent, and endpoint investigation notes here; apply
 only one small batch to production files when a live smoke operator is
 available. Queue entries are not validation evidence.
 
+For the source-level SDK recheck of resources that were tried and deferred after
+a live failure, see [DEFERRED_RESOURCE_RECHECK.md](DEFERRED_RESOURCE_RECHECK.md).
+
 ## Operating Rules
 
 - Queue only read/list/get surfaces. Write, update, delete, activate, or import

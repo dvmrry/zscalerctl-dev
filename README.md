@@ -20,13 +20,13 @@ A single Go binary, agentic/pipeline-first by design, so one reviewed command ca
 - **Sanitized, fail-closed dumps** — releases ship checksums, per-target SBOMs, and provenance attestations.
 - **Stable automation contract** — documented exit codes and JSON error envelopes.
 
-Reviewed read/list/show coverage spans **ZIA, ZPA, and ZTW**. The catalog is the source of truth:
+Reviewed read/list/show coverage spans **ZIA, ZPA, ZTW, ZCC, and Zidentity**. The catalog is the source of truth:
 
 ```sh
 zscalerctl --format json schema list
 ```
 
-See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/RESOURCE_QUEUE.md](docs/RESOURCE_QUEUE.md) for deferred and queued work. (ZCC is deferred pending endpoint/auth/entitlement investigation.)
+See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/RESOURCE_QUEUE.md](docs/RESOURCE_QUEUE.md) for deferred and queued work.
 
 ## Install
 
@@ -84,14 +84,14 @@ Exit codes are stable for scripting:
 | `1` | Internal or unclassified failure |
 | `2` | Usage or argument error |
 | `3` | Missing or invalid credentials |
-| `4` | Product/resource not found |
+| `4` | Product/resource not found or unsupported |
 | `5` | Live Zscaler API access failure |
 | `6` | Partial dump written (inspect `manifest.json` and `errors.ndjson`) |
 
-With `--format json`, a failing command emits a redacted envelope on stderr:
+Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`. With `--format json` — or the default `auto` when stdout is not a terminal — a failing command emits a redacted envelope on stderr:
 
 ```json
-{ "error": { "kind": "missing_credentials", "message": "ZSCALERCTL_CLIENT_ID is required" } }
+{ "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
 ## Security posture
@@ -122,7 +122,7 @@ Full model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · [docs/DATA_CLASSIFIC
 ## Development
 
 ```sh
-make check        # full gate: tests, vet, vuln, staticcheck, semgrep, doc + registry verifiers
+make check        # full gate: tests, vet, vuln, staticcheck, semgrep, secret scan, doc + registry verifiers
 make live-smoke   # validate the live-smoke resource manifest (artifacts to a temp dir)
 ```
 

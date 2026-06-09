@@ -2,7 +2,9 @@
 
 This note records a source-only recheck of deferred resource candidates against
 the pinned Go SDK. It exists to prevent the deferred list from becoming a bag of
-"it failed once" entries with no explanation.
+"it failed once" entries with no explanation. The deferred and queued candidates
+themselves live in [RESOURCE_QUEUE.md](RESOURCE_QUEUE.md); this is the SDK
+source review that backs them.
 
 This is not live validation and does not promote any resource. It only answers:
 
