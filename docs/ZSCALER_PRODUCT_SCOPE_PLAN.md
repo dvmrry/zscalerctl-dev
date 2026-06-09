@@ -255,6 +255,7 @@ as open recommendations:
 | Branch | Scope | Expected outcome |
 | --- | --- | --- |
 | `feature/zpa-safe-surface-batch` | Verified the shared OneAPI service path for ZPA and promoted the Tier-1 ZPA reference surface. | Established the `ZSCALERCTL_ZPA_CUSTOMER_ID` requirement and trimmed unavailable private-cloud endpoints. |
+| `feature/zpa-config-batch` | Promoted the remaining validated ZPA config/reference batch and recorded the explicit non-coverage buckets for feature-gated, credential/material, identity/admin, policy-control, and helper surfaces. | Treat ZPA as closed for the current validated config catalog; future work must start from the non-coverage record or a newly exposed read-only SDK surface. |
 | `feature/ztw-workload-groups` | Verified the OneAPI SDK call path for ZTW and promoted the first ZTW reference batch. | Cloud/Workload product semantics established without touching provisioning credentials. |
 | `feature/zcc-scope-plan` | Probed conservative ZCC PAPI v2 references. | Initial endpoint probe returned 404; ZCC remains an endpoint/auth/entitlement investigation. |
 | `feature/zidentity-reference-batch` | Scoped resource servers, groups, and users. | Top-level Zidentity read-only inventory is cataloged; membership expansion remains a follow-up child-query design. |
