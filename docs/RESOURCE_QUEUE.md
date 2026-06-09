@@ -177,6 +177,26 @@ catalog:
 | Entitlements | User/role entitlement surfaces described in the Zidentity API docs | Absent from the pinned SDK revision (no `user_entitlement` package). Scout from source before queueing if a future SDK release exposes them. |
 | Credential or administration surfaces | Zidentity admin-API surfaces beyond the three cataloged inventory objects | Out of scope for the current read-only inventory; they need identity/privacy review and an explicit command shape before any read path. |
 
+## ZTW Non-Coverage Record
+
+The ZTW catalog covers 20 runtime-validated, read-only configuration and
+reference resources (admin management, DNS/forwarding gateways, EC groups,
+locations and location templates, forwarding/traffic policy rules, IP and
+network policy resources, partner-integration cloud accounts and info, and
+workload groups). The ZTW SDK surface is nearly fully cataloged; the remaining
+packages are intentionally not covered:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Activation or execution actions | `activation_cli`, and the activate action itself | Execution/activation actions mutate state and are not inventory. The read-only dumper does not invoke them. |
+| Credential or provisioning material | `provisioning/api_keys`, `provisioning/provisioning_url` | API keys and provisioning/enrollment URLs are credential and enrollment material; they need a separate material-handling policy before any read path is considered. |
+| Lookup or alternate-view helpers | `locationmanagement/locationlite` | A lite/overlapping view of `locations` with a nonstandard lookup shape. Do not force into config-dump semantics. |
+
+One read-only candidate is **not** excluded: `activation.GetActivationStatus`
+(ZTW activation status) is a clean status read mirroring `zia/activation-status`
+that simply has not been wired yet. It is tracked as a focused resource-branch
+candidate, not part of this non-coverage record.
+
 ## No-Live Work Mode
 
 When read-only tenant credentials are unavailable, do not create more
