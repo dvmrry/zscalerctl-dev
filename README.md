@@ -14,7 +14,7 @@ A single Go binary, agentic/pipeline-first by design, so one reviewed command ca
 ## What you get
 
 - **Read-only by design** — no write commands and no raw API executor (and none planned for v1).
-- **Agentic-first output** — explicit, deterministic JSON for pipelines; human tables are best-effort.
+- **Agentic-first output** — deterministic JSON whenever output is piped or redirected; a styled `pretty` view on a terminal, both rendered from the same sanitized data.
 - **Explicit auth only** — reads only `ZSCALERCTL_*` config; never the Zscaler SDK's own env vars or files.
 - **Leak-resistant** — allow-list projection into safe views; redaction and secret scanning as defense-in-depth.
 - **Sanitized, fail-closed dumps** — releases ship checksums, per-target SBOMs, and provenance attestations.
@@ -58,7 +58,7 @@ zscalerctl ztw workload-groups list
 zscalerctl dump --products zia --out ./dump
 ```
 
-JSON is the automation surface — add `--format json` to any read command. Use `--output <path>` to write a single command's output to a restricted file; use `dump --out <dir>` for dump directories (the two are intentionally not combined).
+Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to write a single command's output to a restricted file; use `dump --out <dir>` for dump directories (the two are intentionally not combined).
 
 ## Authentication
 

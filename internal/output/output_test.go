@@ -13,7 +13,7 @@ import (
 func TestParseFormatSupportsImplementedFormatsOnly(t *testing.T) {
 	t.Parallel()
 
-	for _, value := range []string{"table", "json"} {
+	for _, value := range []string{"auto", "table", "json", "pretty"} {
 		value := value
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
@@ -32,7 +32,7 @@ func TestParseFormatSupportsImplementedFormatsOnly(t *testing.T) {
 			if err == nil {
 				t.Fatalf("ParseFormat(%q) error = nil, want unsupported format error", value)
 			}
-			if !strings.Contains(err.Error(), "supported: table, json") {
+			if !strings.Contains(err.Error(), "supported: auto, table, json, pretty") {
 				t.Errorf("ParseFormat(%q) error = %q, want supported formats", value, err.Error())
 			}
 		})

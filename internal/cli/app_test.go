@@ -240,7 +240,7 @@ func TestDoctorReportsReadOnlyMode(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, nil)
 
-	err := app.Run(context.Background(), []string{"doctor"})
+	err := app.Run(context.Background(), []string{"--format", "table", "doctor"})
 	if err != nil {
 		t.Fatalf("App.Run(doctor) error = %v, want nil", err)
 	}
@@ -259,7 +259,7 @@ func TestDoctorColorAlwaysUsesANSI(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, []string{"TERM=xterm-256color"})
 
-	err := app.Run(context.Background(), []string{"--color", "always", "doctor"})
+	err := app.Run(context.Background(), []string{"--color", "always", "--format", "table", "doctor"})
 	if err != nil {
 		t.Fatalf("App.Run(--color always doctor) error = %v, want nil", err)
 	}
@@ -274,7 +274,7 @@ func TestDoctorNoColorOverridesAlways(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, []string{"TERM=xterm-256color"})
 
-	err := app.Run(context.Background(), []string{"--color", "always", "--no-color", "doctor"})
+	err := app.Run(context.Background(), []string{"--color", "always", "--no-color", "--format", "table", "doctor"})
 	if err != nil {
 		t.Fatalf("App.Run(--color always --no-color doctor) error = %v, want nil", err)
 	}
@@ -504,7 +504,7 @@ func TestEnvRedactionIsNotDowngradedByAbsentFlag(t *testing.T) {
 			var out, errOut bytes.Buffer
 			app := cli.New(&out, &errOut, []string{config.EnvRedaction + "=" + mode})
 
-			err := app.Run(context.Background(), []string{"doctor"})
+			err := app.Run(context.Background(), []string{"--format", "table", "doctor"})
 			if err != nil {
 				t.Fatalf("App.Run(doctor) error = %v, want nil", err)
 			}
@@ -682,7 +682,7 @@ func TestSchemaListTableIncludesReadOperations(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, nil)
 
-	err := app.Run(context.Background(), []string{"schema", "list"})
+	err := app.Run(context.Background(), []string{"--format", "table", "schema", "list"})
 	if err != nil {
 		t.Fatalf("App.Run(schema list) error = %v, want nil", err)
 	}
@@ -873,17 +873,17 @@ func TestUnsupportedFormatsFailBeforeReader(t *testing.T) {
 		{
 			name: "list yaml",
 			args: []string{"--format", "yaml", "zia", "locations", "list"},
-			want: `unsupported output format "yaml"; supported: table, json`,
+			want: `unsupported output format "yaml"; supported: auto, table, json, pretty`,
 		},
 		{
 			name: "get ndjson",
 			args: []string{"--format", "ndjson", "zia", "locations", "get", "123"},
-			want: `unsupported output format "ndjson"; supported: table, json`,
+			want: `unsupported output format "ndjson"; supported: auto, table, json, pretty`,
 		},
 		{
 			name: "show yaml",
 			args: []string{"--format", "yaml", "zia", "advanced-settings", "show"},
-			want: `unsupported output format "yaml"; supported: table, json`,
+			want: `unsupported output format "yaml"; supported: auto, table, json, pretty`,
 		},
 	}
 	for _, tt := range tests {

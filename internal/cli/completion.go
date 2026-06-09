@@ -12,7 +12,7 @@ import (
 
 var (
 	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields"}
-	completionFormats   = []string{"table", "json"}
+	completionFormats   = []string{"auto", "table", "json", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
 	completionShells    = []string{"bash", "zsh", "fish"}

@@ -250,7 +250,7 @@ Initial global flags:
 
 ```text
 --profile
---format table|json|yaml|ndjson
+--format auto|table|json|pretty
 --output
 --timeout
 --redaction standard|share|paranoid
@@ -283,10 +283,18 @@ variables such as product-specific or OneAPI variables before implementation.
 
 ## Output And Dumps
 
-Human-readable commands may default to stable tables. Machine-readable workflows
-should ask for an explicit format such as JSON or NDJSON.
+The default format is `auto`: it resolves to the human-readable `pretty`
+renderer when stdout is a terminal and to `json` otherwise (pipe, redirect, or
+`--output` file), so interactive use is readable while pipelines and agents get
+deterministic JSON without passing a flag. `--format` can override it with an
+explicit `table`, `json`, or `pretty`.
 
-Pretty output should remain script-safe:
+The `pretty` renderer is a presentation overlay only: it consumes the same
+already-projected, already-redacted records as every other format and adds no
+new data path. Its output still passes through the final redaction byte-scan
+before stdout, and it is byte-clean (no ANSI escapes) whenever color is off.
+
+Pretty output remains script-safe:
 
 - No color unless output is a TTY.
 - Respect `NO_COLOR` and provide `--no-color` before adding color.
