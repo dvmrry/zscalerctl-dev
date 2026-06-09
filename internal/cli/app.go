@@ -181,7 +181,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		a.logger = logger
 	}
 	if opts.help {
-		a.writeUsage(a.out)
+		a.writeHelp(a.out, rest)
 		return nil
 	}
 	if len(rest) == 0 {
@@ -972,6 +972,24 @@ func (a *App) writeProjectedRecords(
 	}
 }
 
+// writeHelp prints help scoped to what the user asked for: a known resource's
+// operations and renderable fields for `<product> <resource> --help`, the
+// product's resources for `<product> --help`, or the global usage otherwise.
+func (a *App) writeHelp(w io.Writer, rest []string) {
+	if len(rest) >= 1 && knownProductCommand(rest[0]) {
+		product := resources.Product(rest[0])
+		if len(rest) >= 2 {
+			if spec, ok := a.resourceCatalog().FindSpec(product, rest[1]); ok {
+				fmt.Fprintln(w, resourceUsage(product, spec))
+				return
+			}
+		}
+		fmt.Fprintln(w, productCommandUsage(product))
+		return
+	}
+	a.writeUsage(w)
+}
+
 func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: zscalerctl [global flags] <command> [args]")
 	fmt.Fprintln(w)
@@ -1159,7 +1177,14 @@ func (a *App) resolveFormat(opts globalOptions) output.Format {
 
 func (a *App) style(opts globalOptions) output.Style {
 	stdoutTTY := a.stdoutTTY && opts.output == ""
-	color := output.ShouldColor(opts.colorMode, a.env, stdoutTTY)
+	colorMode := opts.colorMode
+	// Never write ANSI escapes into a file: --output is a non-terminal sink, so
+	// even an explicit --color always is suppressed. Otherwise escapes land in
+	// the saved file, which the byte-scan does not strip.
+	if opts.output != "" {
+		colorMode = output.ColorNever
+	}
+	color := output.ShouldColor(colorMode, a.env, stdoutTTY)
 	style := output.NewStyle(color, output.Supports256Color(a.env))
 	if stdoutTTY {
 		style.Width = output.TerminalWidth(a.out)

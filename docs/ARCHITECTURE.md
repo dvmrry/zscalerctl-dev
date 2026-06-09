@@ -229,24 +229,26 @@ leaks harder and easier to test.
 
 ## Command Model
 
-Initial commands:
+Commands:
 
 ```text
 zscalerctl doctor
 zscalerctl auth status
 zscalerctl config show
-zscalerctl zia <resource> list|get
-zscalerctl zpa <resource> list|get
+zscalerctl <product> <resource> list|get|show   # ops vary by resource
 zscalerctl dump --products zia,zpa --out ./dump
-zscalerctl diff ./dump-a ./dump-b
 zscalerctl schema list
+zscalerctl version
 zscalerctl completion bash|zsh|fish
 ```
+
+`diff` (compare two dump directories) is planned, not yet implemented; the
+`internal/diff/` package is groundwork for it.
 
 Completion output is static public project data. Generating completions must not
 read credential files, initialize the live reader, or contact Zscaler.
 
-Initial global flags:
+Global flags:
 
 ```text
 --profile
@@ -254,7 +256,11 @@ Initial global flags:
 --output
 --timeout
 --redaction standard|share|paranoid
+--color auto|always|never
+--no-color
 --no-cache
+--log-level off|error|warn|info|debug
+--fields a,b,c
 ```
 
 There is no `--redaction off`.

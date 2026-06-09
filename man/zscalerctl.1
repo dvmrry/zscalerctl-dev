@@ -101,8 +101,16 @@ Required ZPA customer id and optional microtenant id.
 Legacy ZIA credentials (with \fB_FILE\fR variants for password and API key)
 when \fBZSCALERCTL_AUTH_MODE=zia-legacy\fR.
 .TP
-.B ZSCALERCTL_PROFILE, ZSCALERCTL_REDACTION, ZSCALERCTL_NO_CACHE, ZSCALERCTL_CLOUD
+.B ZSCALERCTL_PROFILE, ZSCALERCTL_REDACTION, ZSCALERCTL_NO_CACHE
 Optional defaults mirroring the matching flags.
+.TP
+.B ZSCALERCTL_AUTH_MODE
+Authentication mode: \fBoneapi\fR (the default) or \fBzia-legacy\fR. There is no
+flag equivalent.
+.TP
+.B ZSCALERCTL_CLOUD
+OneAPI cloud to target (for example \fBPRODUCTION\fR). Environment-only; there is
+no flag equivalent.
 .TP
 .B ZSCALERCTL_PROXY_URL, ZSCALERCTL_PROXY_FROM_ENV
 Explicit proxy settings; ambient HTTP_PROXY/HTTPS_PROXY discovery is off by

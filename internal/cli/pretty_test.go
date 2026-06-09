@@ -219,3 +219,64 @@ func TestUnknownCommandHintsAtSwallowedProduct(t *testing.T) {
 		t.Errorf("unknown-command error = %q, want resource/flag hint", msg)
 	}
 }
+
+func TestColorAlwaysSuppressedForOutputFile(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, []string{"TERM=xterm-256color"}, cli.Options{
+		StdoutTTY: true,
+		Reader:    locationsReader(),
+	})
+
+	dir := t.TempDir()
+	path := dir + "/locations.txt"
+	// --color always must NOT put ANSI escapes into a file sink.
+	if err := app.Run(context.Background(), []string{"--color", "always", "--format", "table", "--output", path, "zia", "locations", "list"}); err != nil {
+		t.Fatalf("App.Run(--color always --output) error = %v, want nil", err)
+	}
+	body := readFile(t, path)
+	if strings.Contains(body, "\x1b[") {
+		t.Errorf("output file = %q, want no ANSI escapes", body)
+	}
+	if !strings.Contains(body, "HQ") {
+		t.Errorf("output file = %q, want record content", body)
+	}
+}
+
+func TestHelpRoutesToResourceAndProductScope(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		args []string
+		want []string
+		deny []string
+	}{
+		{"resource help", []string{"zia", "locations", "--help"}, []string{"zia locations list|get", "fields:", "ipAddresses"}, nil},
+		{"product help", []string{"zia", "--help"}, []string{"zia <resource>"}, []string{"fields:"}},
+		{"global help", []string{"--help"}, []string{"usage: zscalerctl [global flags]"}, nil},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errOut bytes.Buffer
+			app := cli.New(&out, &errOut, nil)
+			if err := app.Run(context.Background(), tc.args); err != nil {
+				t.Fatalf("App.Run(%v) error = %v, want nil", tc.args, err)
+			}
+			got := out.String()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("App.Run(%v) stdout = %q, want %q", tc.args, got, want)
+				}
+			}
+			for _, deny := range tc.deny {
+				if strings.Contains(got, deny) {
+					t.Errorf("App.Run(%v) stdout = %q, want no %q", tc.args, got, deny)
+				}
+			}
+		})
+	}
+}
