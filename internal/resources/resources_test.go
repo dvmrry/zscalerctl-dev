@@ -830,6 +830,88 @@ func TestResourceSpecValidationAllowsSensitiveNameWithDocumentedReason(t *testin
 	}
 }
 
+func TestResourceSpecValidationRejectsGenericFieldNameWithoutReason(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"value", "data", "content", "payload", "body"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "bad-generic",
+				Operations: resources.ReadOperations(),
+				Fields: []resources.FieldSpec{{
+					Name:           name,
+					Classification: resources.ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			}
+			if err := spec.Validate(); !errors.Is(err, resources.ErrInvalidResourceSpec) {
+				t.Errorf("Validate(generic %q without reason) error = %v, want ErrInvalidResourceSpec", name, err)
+			}
+
+			spec.Fields[0].SensitiveNameReason = "enum value of the parent policy action, not user data"
+			if err := spec.Validate(); err != nil {
+				t.Errorf("Validate(generic %q with reason) error = %v, want nil", name, err)
+			}
+		})
+	}
+}
+
+func TestResourceSpecValidationRejectsBareIdentifierBeyondStandard(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"email", "username", "loginName", "userId", "userPrincipalName", "domain", "fqdn", "hostname"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// Allowed in share without justification → rejected.
+			spec := resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "bad-identifier",
+				Operations: resources.ReadOperations(),
+				Fields: []resources.FieldSpec{{
+					Name:           name,
+					Classification: resources.ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				}},
+			}
+			if err := spec.Validate(); !errors.Is(err, resources.ErrInvalidResourceSpec) {
+				t.Errorf("Validate(identifier %q in share) error = %v, want ErrInvalidResourceSpec", name, err)
+			}
+
+			// Standard-only is fine without justification.
+			spec.Fields[0].AllowedModes = []redact.Mode{redact.ModeStandard}
+			if err := spec.Validate(); err != nil {
+				t.Errorf("Validate(identifier %q standard-only) error = %v, want nil", name, err)
+			}
+
+			// Explicit reason permits wider exposure.
+			spec.Fields[0].AllowedModes = []redact.Mode{redact.ModeStandard, redact.ModeShare}
+			spec.Fields[0].SensitiveNameReason = "configured policy domain, not a subject identifier"
+			if err := spec.Validate(); err != nil {
+				t.Errorf("Validate(identifier %q with reason) error = %v, want nil", name, err)
+			}
+		})
+	}
+}
+
+func TestCatalogHasNoDuplicateResourceKeys(t *testing.T) {
+	t.Parallel()
+
+	seen := map[string]string{}
+	for _, spec := range resources.Catalog() {
+		key := string(spec.Product) + "/" + spec.Name
+		if _, dup := seen[key]; dup {
+			t.Errorf("catalog has duplicate resource key %q; FindSpec is first-match, so a duplicate would be silently shadowed", key)
+		}
+		seen[key] = key
+	}
+}
+
 func TestResourceSpecValidationRequiresStandardFreeTextReason(t *testing.T) {
 	t.Parallel()
 
