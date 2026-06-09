@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dvmrry/zscalerctl/blob/main/docs/schema/dump-error.schema.json",
+  "title": "zscalerctl dump error",
+  "description": "Schema for each newline-delimited JSON object in a dump's errors.ndjson. Each line is a value-free per-resource failure record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "product", "name", "operation", "kind"],
+  "properties": {
+    "schema": {
+      "const": "zscalerctl.dump.error.v1",
+      "description": "Versioned schema identifier for this artifact."
+    },
+    "product": { "type": "string", "description": "Product family of the failed resource." },
+    "name": { "type": "string", "description": "Resource name of the failed resource." },
+    "operation": { "type": "string", "description": "Read operation attempted (list or show)." },
+    "kind": { "type": "string", "description": "Failure classification; never includes live values." }
+  }
+}

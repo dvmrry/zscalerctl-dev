@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dvmrry/zscalerctl/blob/main/docs/schema/redaction-report.schema.json",
+  "title": "zscalerctl dump redaction report",
+  "description": "Schema for the redaction_report.json written at the root of a `zscalerctl dump` directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "redaction", "resources"],
+  "properties": {
+    "schema": {
+      "const": "zscalerctl.redaction_report.v1",
+      "description": "Versioned schema identifier for this artifact."
+    },
+    "redaction": {
+      "type": "string",
+      "enum": ["standard", "share", "paranoid"],
+      "description": "Redaction mode the dump was produced under."
+    },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resourceReport" }
+    }
+  },
+  "$defs": {
+    "resourceReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "name", "path", "records"],
+      "properties": {
+        "product": { "type": "string" },
+        "name": { "type": "string" },
+        "path": { "type": "string", "description": "Relative path to the resource's JSON file." },
+        "records": { "type": "integer", "minimum": 0 },
+        "included_fields": { "type": "array", "items": { "type": "string" }, "description": "Field keys rendered for this resource." },
+        "dropped_fields": { "type": "array", "items": { "type": "string" }, "description": "Field keys dropped by projection/redaction." },
+        "redacted_fields": { "type": "array", "items": { "type": "string" }, "description": "Field keys whose values were replaced with redaction markers." }
+      }
+    }
+  }
+}
