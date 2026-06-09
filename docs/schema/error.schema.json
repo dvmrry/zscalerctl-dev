@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zscalerctl.error.v1",
+  "title": "zscalerctl error envelope",
+  "description": "Structured error written to stderr when a command fails and the resolved output format is JSON. The message is redaction-filtered and never contains raw secrets or live tenant values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Stable error classification, e.g. usage, partial_dump, not_found, missing_credentials, invalid_resource_id, unsupported_resource, live_access_failed, invalid_proxy_config, invalid_config, internal."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable, redaction-filtered error message."
+        },
+        "product": {
+          "type": "string",
+          "description": "Product context, when applicable."
+        },
+        "resource": {
+          "type": "string",
+          "description": "Resource context, when applicable."
+        },
+        "operation": {
+          "type": "string",
+          "description": "Operation context, when applicable."
+        }
+      }
+    }
+  }
+}

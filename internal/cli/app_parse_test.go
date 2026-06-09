@@ -56,6 +56,28 @@ func TestRequestedFormatHandlesDashStylesAndBoundary(t *testing.T) {
 	}
 }
 
+func TestRequestedFormatRawPreservesAutoAndPretty(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want output.Format
+	}{
+		{"default is auto", []string{"zia", "locations", "list"}, output.FormatAuto},
+		{"explicit auto", []string{"--format", "auto", "schema", "list"}, output.FormatAuto},
+		{"explicit pretty", []string{"--format", "pretty", "schema", "list"}, output.FormatPretty},
+		{"explicit pretty equals", []string{"--format=pretty", "schema", "list"}, output.FormatPretty},
+		{"explicit json", []string{"--format", "json", "schema", "list"}, output.FormatJSON},
+		{"explicit table", []string{"--format", "table", "schema", "list"}, output.FormatTable},
+		{"unparseable falls back to auto", []string{"--format", "yaml", "schema", "list"}, output.FormatAuto},
+		{"terminator stops scan", []string{"--", "--format", "json"}, output.FormatAuto},
+	}
+	for _, tc := range cases {
+		if got := RequestedFormatRaw(tc.args); got != tc.want {
+			t.Errorf("%s: RequestedFormatRaw(%v) = %q, want %q", tc.name, tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestParseDumpResourcesRejectsAmbiguousUnqualifiedName(t *testing.T) {
 	products := map[resources.Product]bool{
 		resources.ProductZIA: true,

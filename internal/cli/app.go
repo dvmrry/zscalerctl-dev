@@ -353,6 +353,35 @@ func parseFieldsList(raw string) []string {
 	return out
 }
 
+// RequestedFormatRaw returns the --format value as parsed (auto/table/json/
+// pretty), defaulting to auto, without resolving auto against a TTY. The error
+// renderer in main uses it so error output follows the same format the data
+// path will use.
+func RequestedFormatRaw(args []string) output.Format {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return output.FormatAuto
+		}
+		name, hasValue := flagName(arg)
+		if name != "format" {
+			continue
+		}
+		value := ""
+		if hasValue {
+			_, after, _ := strings.Cut(arg, "=")
+			value = after
+		} else if i+1 < len(args) {
+			value = args[i+1]
+		}
+		if f, err := output.ParseFormat(value); err == nil {
+			return f
+		}
+		return output.FormatAuto
+	}
+	return output.FormatAuto
+}
+
 func RequestedFormat(args []string) output.Format {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

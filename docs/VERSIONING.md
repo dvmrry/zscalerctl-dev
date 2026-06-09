@@ -24,11 +24,20 @@ Breaking changes are allowed in `0.x` minor releases, but not in patch releases.
 `semver:major` is reserved until after `v1.0.0`.
 
 Machine-readable output schemas are part of the release contract. This includes
-dump manifests, redaction reports, and partial-dump error records. The published
-JSON Schemas for these artifacts live in [schema/](schema/) and carry versioned
-`schema` ids; a drift test keeps them in sync with the emitting structs.
+dump manifests, redaction reports, partial-dump error records, and the stderr
+JSON error envelope emitted by a failing command under JSON output. The
+published JSON Schemas for these artifacts live in [schema/](schema/) and carry
+versioned `schema` ids; drift tests keep them in sync with the emitting structs.
 Backward-compatible schema additions are minor releases; incompatible schema
 changes are breaking changes.
+
+Process exit codes are also part of the contract: `0` success, `1` internal
+error, `2` usage (including invalid CLI flags, an invalid resource id, an
+invalid `ZSCALERCTL_*` configuration value, and invalid proxy configuration),
+`3` missing or invalid credentials, `4` resource not found or unsupported
+(including a product/resource the tenant is not entitled to), `5` live API
+access failure, and `6` partial dump. Changing the meaning of an exit code is a
+breaking change.
 
 ## After 1.0.0
 
