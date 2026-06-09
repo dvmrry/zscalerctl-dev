@@ -153,9 +153,17 @@ Initial modes:
   and redacts secret-shaped values, including bare high-entropy tokens in
   emitted string fields. Free-text fields are standard-only catalog exceptions
   and must carry a `standard_free_text_reason`.
-- `share`: intended for sharing outside the immediate admin context. Adds
-  stronger removal or masking of identifiers such as users, emails, IPs,
-  domains, tenant identifiers, and free-text fields.
+- `share`: intended for sharing outside the immediate admin context. It removes
+  identifier and free-text fields by projection — fields classified as sensitive
+  identifiers (users, login names, emails, host/tenant identity) and free-text
+  fields are standard-only, so they are dropped entirely rather than emitted. As
+  defense-in-depth on the fields that do render, it additionally byte-masks
+  email addresses and IPv4 addresses. Note that the byte-scan covers only emails
+  and IPv4; protection for domains, hostnames, and tenant identifiers comes from
+  the projection allow-list (their fields being classified standard-only), not
+  from a content scanner — so correct field classification is the control. The
+  catalog validator enforces that bare identifier-named fields stay standard-only
+  unless explicitly justified.
 - `paranoid`: intended for maximum minimization. It may sacrifice cross-dump
   diffability until a safe tokenization and key-management design exists.
 

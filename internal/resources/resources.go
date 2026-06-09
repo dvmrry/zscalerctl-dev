@@ -675,6 +675,13 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		if SecretLikeFieldName(jsonName) && field.Classification != ClassSecret && field.SensitiveNameReason == "" {
 			return fmt.Errorf("%w: %s/%s field %s has sensitive-looking name but is not secret", ErrInvalidResourceSpec, product, resource, path)
 		}
+		normalizedName := normalizeFieldName(jsonName)
+		if _, ok := genericFieldNames[normalizedName]; ok && field.Classification != ClassSecret && field.SensitiveNameReason == "" {
+			return fmt.Errorf("%w: %s/%s field %s has a context-free name; classify it deliberately and set SensitiveNameReason", ErrInvalidResourceSpec, product, resource, path)
+		}
+		if _, ok := bareIdentifierFieldNames[normalizedName]; ok && field.SensitiveNameReason == "" && allowedBeyondStandard(field) {
+			return fmt.Errorf("%w: %s/%s field %s is a bare identifier name allowed beyond standard redaction; make it a sensitiveIdentifierField (standard-only) or set SensitiveNameReason", ErrInvalidResourceSpec, product, resource, path)
+		}
 		if field.Classification == ClassSecret && len(field.AllowedModes) != 0 {
 			return fmt.Errorf("%w: %s/%s secret field %s cannot be allowed", ErrInvalidResourceSpec, product, resource, path)
 		}
@@ -986,6 +993,46 @@ func normalizeFieldName(name string) string {
 		}
 	}
 	return b.String()
+}
+
+// genericFieldNames are context-free names that reveal nothing about what they
+// hold. A field with one of these names must be classified deliberately (set a
+// SensitiveNameReason) instead of rendering on a bare, ambiguous name. Keys are
+// in normalizeFieldName form (lowercase, alphanumeric only).
+var genericFieldNames = map[string]struct{}{
+	"value":   {},
+	"data":    {},
+	"content": {},
+	"payload": {},
+	"body":    {},
+}
+
+// bareIdentifierFieldNames look like direct subject identifiers (PII or tenant
+// identity). share/paranoid have no byte-scan backstop for these shapes, so such
+// a field must stay standard-only (a sensitiveIdentifierField) unless the author
+// explicitly justifies wider exposure via SensitiveNameReason. Keys are in
+// normalizeFieldName form.
+var bareIdentifierFieldNames = map[string]struct{}{
+	"email":             {},
+	"username":          {},
+	"loginname":         {},
+	"userid":            {},
+	"userprincipalname": {},
+	"domain":            {},
+	"fqdn":              {},
+	"hostname":          {},
+}
+
+// allowedBeyondStandard reports whether a field renders in any mode stronger
+// than standard (share or paranoid).
+func allowedBeyondStandard(field FieldSpec) bool {
+	for _, mode := range field.AllowedModes {
+		switch redact.EffectiveMode(mode) {
+		case redact.ModeShare, redact.ModeParanoid:
+			return true
+		}
+	}
+	return false
 }
 
 var sensitiveFieldFragments = []string{

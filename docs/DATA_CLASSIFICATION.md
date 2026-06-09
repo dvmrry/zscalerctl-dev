@@ -153,8 +153,13 @@ The default output rule is fail closed:
   survive if it lands in an emitted field; fail-closed field naming,
   ambiguous-name holdouts, and live-smoke inspection remain the controls for
   that residual.
-- Context-sensitive generic field names, such as `value`, must be classified per
-  resource. They must not be allowed merely because the name is generic.
+- Context-sensitive generic field names, such as `value`, `data`, `content`,
+  `payload`, and `body`, must be classified per resource. They must not be
+  allowed merely because the name is generic. The catalog validator enforces
+  this: such a name requires an explicit `SensitiveNameReason`. The validator
+  likewise keeps bare identifier names (`email`, `username`, `domain`, `fqdn`,
+  `hostname`, and similar) standard-only unless explicitly justified, since
+  `share`/`paranoid` rely on projection rather than a byte-scan for these.
 
 See [ZSCALER_SENSITIVE_DATA.md](ZSCALER_SENSITIVE_DATA.md) for the current
 Zscaler-specific source-backed inventory.
