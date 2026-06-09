@@ -123,6 +123,7 @@ func reviewedSDKShapes() []sdkShapeReview {
 	shapes = append(shapes, reviewedSDKShapesZIA()...)
 	shapes = append(shapes, reviewedSDKShapesZPA()...)
 	shapes = append(shapes, reviewedSDKShapesZTW()...)
+	shapes = append(shapes, reviewedSDKShapesZCC()...)
 	shapes = append(shapes, reviewedSDKShapesZidentity()...)
 	return shapes
 }

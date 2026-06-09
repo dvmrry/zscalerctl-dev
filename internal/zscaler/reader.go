@@ -234,6 +234,18 @@ const (
 	resourceZTWZPAAppSegs     = "zpa-application-segments"
 	resourceTrafficDNSRules   = "traffic-dns-rules"
 	resourceTrafficLogRules   = "traffic-log-rules"
+	resourceZCCFailOpenPolicy = "fail-open-policy"
+	resourceZCCFwdProfiles    = "forwarding-profiles"
+	resourceZCCTrustedNets    = "trusted-networks"
+	resourceZCCWebAppServices = "web-app-services"
+	resourceZCCAppProfiles    = "application-profiles"
+	resourceZCCCustomIPApps   = "custom-ip-apps"
+	resourceZCCPredefIPApps   = "predefined-ip-apps"
+	resourceZCCProcessApps    = "process-based-apps"
+	resourceZCCDevices        = "devices"
+	resourceZCCAdminRoles     = "admin-roles"
+	resourceZCCCompanyInfo    = "company-info"
+	resourceZTWActivationStat = "activation-status"
 	resourceEmailProfiles     = "email-profiles"
 
 	resourceAdvancedSettings           = "advanced-settings"
@@ -380,7 +392,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
 	switch product {
-	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZidentity:
+	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZCC, resources.ProductZidentity:
 	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
@@ -527,6 +539,7 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 	addZIAHandlers(m, client)
 	addZPAHandlers(m, client)
 	addZTWHandlers(m, client)
+	addZCCHandlers(m, client)
 	addZidentityHandlers(m, client)
 	return m
 }
@@ -743,6 +756,21 @@ func ziaSDKShow[T any](
 ) func(context.Context) (*T, error) {
 	return func(ctx context.Context) (*T, error) {
 		service, cleanup, err := client.service(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service)
+	}
+}
+
+func sdkProductShow[T any](
+	product resources.Product,
+	client sdkClient,
+	call func(context.Context, *zsdk.Service) (*T, error),
+) func(context.Context) (*T, error) {
+	return func(ctx context.Context) (*T, error) {
+		service, cleanup, err := client.productService(ctx, product)
 		if err != nil {
 			return nil, err
 		}

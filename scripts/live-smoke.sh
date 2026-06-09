@@ -6,7 +6,7 @@ cd "$repo_root"
 
 denied_exact_keys_json='["preSharedKey","vpnCredentials","createdBy","lastModifiedBy","managedBy","city","primaryDestVip","secondaryDestVip"]'
 denied_resource_exact_keys_json='{"location-groups":["lastModUser","dynamicLocationGroupCriteria","locations"]}'
-allowed_resource_denied_keys_json='{"atp-malware-policy":["blockPasswordProtectedArchiveFiles"],"mobile-threat-settings":["blockAppsSendingUnencryptedUserCredentials"],"org-information":["city"],"intermediate-ca-certificates":["certStartDate","certExpDate","defaultCertificate"]}'
+allowed_resource_denied_keys_json='{"atp-malware-policy":["blockPasswordProtectedArchiveFiles"],"mobile-threat-settings":["blockAppsSendingUnencryptedUserCredentials"],"org-information":["city"],"intermediate-ca-certificates":["certStartDate","certExpDate","defaultCertificate"],"application-profiles":["refreshKerberosToken"],"company-info":["zpaClientCertExpInDays"]}'
 denied_key_pattern='(?i)(password|secret|token|api[_-]?key|preSharedKey|credential|cert|fingerprint)'
 manifest_warning='sanitized dumps remain confidential operational data'
 
@@ -83,10 +83,10 @@ normalize_requested_resource() {
   fi
 
   case "$resource" in
-    zia/*|zpa/*|ztw/*|zidentity/*)
+    zia/*|zpa/*|ztw/*|zcc/*|zidentity/*)
       ;;
     */*)
-      echo "--resources supports only zia/, zpa/, ztw/, or zidentity/ qualified resources; got: $resource" >&2
+      echo "--resources supports only zia/, zpa/, ztw/, zcc/, or zidentity/ qualified resources; got: $resource" >&2
       exit 2
       ;;
     *)
@@ -700,7 +700,7 @@ load_smoke_resources() {
   done < <(jq -r '
     [
       .[]
-      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zidentity")
+      | select(.product == "zia" or .product == "zpa" or .product == "ztw" or .product == "zcc" or .product == "zidentity")
       | select(any(.operations[]?; (.name == "list" or .name == "show") and .capability == "read"))
       | [.product, .name]
     ]

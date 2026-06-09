@@ -5,6 +5,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
+	ztwactivation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/activation"
 	ztwadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles"
 	ztwadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers"
 	ztwdnsgateway "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway"
@@ -29,6 +30,21 @@ import (
 
 func reviewedSDKShapesZTW() []sdkShapeReview {
 	return []sdkShapeReview{
+		{
+			name:         "ztwactivation.ECAdminActivation",
+			resource:     resources.ProductZTW,
+			resourceName: resourceZTWActivationStat,
+			typ:          reflect.TypeOf(ztwactivation.ECAdminActivation{}),
+			catalogFields: []string{
+				"orgEditStatus",
+				"orgLastActivateStatus",
+				"adminActivateStatus",
+			},
+			ignoredFields: ignoredBecause(
+				"admin-by-name activation status map is unmodeled tenant-identifying detail; the scalar org/admin status fields are projected instead",
+				"adminStatusMap",
+			),
+		},
 		{
 			name:         "ztwworkloadgroups.WorkloadGroup",
 			resource:     resources.ProductZTW,

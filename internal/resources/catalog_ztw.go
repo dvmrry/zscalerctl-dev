@@ -4,6 +4,16 @@ func catalogZTW() ResourceCatalog {
 	return ResourceCatalog{
 		{
 			Product:    ProductZTW,
+			Name:       "activation-status",
+			Operations: ShowOperation(),
+			Fields: []FieldSpec{
+				operationalField("orgEditStatus", standardShareModes()),
+				operationalField("orgLastActivateStatus", standardShareModes()),
+				operationalField("adminActivateStatus", standardShareModes()),
+			},
+		},
+		{
+			Product:    ProductZTW,
 			Name:       "workload-groups",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{

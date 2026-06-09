@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	ztwactivation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/activation"
 	ztwadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles"
 	ztwadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers"
 	ztwdnsgateway "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/dns_gateway"
@@ -31,6 +32,11 @@ import (
 
 func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 	entries := map[resourceKey]resourceHandler{
+		{product: resources.ProductZTW, name: resourceZTWActivationStat}: newSingletonHandler(
+			resourceZTWActivationStat,
+			sdkProductShow(resources.ProductZTW, client, ztwactivation.GetActivationStatus),
+			structSourceRecord[ztwactivation.ECAdminActivation],
+		),
 		{product: resources.ProductZTW, name: resourceWorkloadGroups}: newListGetHandler(
 			resourceWorkloadGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwworkloadgroups.WorkloadGroup, error) {
