@@ -12,6 +12,7 @@ registered path exists.
 | --- | --- | --- | --- |
 | `scripts/catalog-draft.go` | dev | Manual `go run`; exercised by `scripts/test-catalog-draft.sh` | `make verify-catalog-draft` |
 | `scripts/live-smoke.sh` | smoke | `make live-smoke`; manual live tenant validation | `scripts/test-live-smoke.sh` |
+| `scripts/live-smoke.go` | smoke | `make live-smoke-go`; manual live tenant validation (Go port of live-smoke.sh) | `go test ./internal/livesmoke/...` |
 | `scripts/next-version.sh` | release | `.github/workflows/release.yml` | `scripts/test-next-version.sh` |
 | `scripts/pr-labels-for-commit.sh` | release | `.github/workflows/release.yml` | `scripts/test-pr-labels-for-commit.sh` |
 | `scripts/scaffold-resource.sh` | dev | `make scaffold-resource`; manual resource scaffolding | `scripts/test-scaffold-resource.sh` |
