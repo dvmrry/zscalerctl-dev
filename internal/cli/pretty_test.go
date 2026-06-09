@@ -182,3 +182,40 @@ func TestPrettyShowRendersKeyValues(t *testing.T) {
 		t.Errorf("pretty show --color never output = %q, want no ANSI escapes", got)
 	}
 }
+
+func TestResourceUsageListsOperationsAndFields(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	// Known resource, missing operation -> resource-specific help.
+	err := app.Run(context.Background(), []string{"zia", "locations"})
+	if err == nil {
+		t.Fatal("App.Run(zia locations) error = nil, want usage error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"zia locations list|get", "fields:", "ipAddresses"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("resource usage = %q, want %q", msg, want)
+		}
+	}
+}
+
+func TestUnknownCommandHintsAtSwallowedProduct(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	// --fields with no value consumes "zia"; the leftover "locations" is a
+	// known resource, so the error should hint at the swallowed product.
+	err := app.Run(context.Background(), []string{"--fields", "zia", "locations", "list"})
+	if err == nil {
+		t.Fatal("App.Run(--fields zia locations list) error = nil, want usage error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "is a resource") || !strings.Contains(msg, "--fields") {
+		t.Errorf("unknown-command error = %q, want resource/flag hint", msg)
+	}
+}

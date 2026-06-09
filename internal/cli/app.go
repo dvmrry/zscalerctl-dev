@@ -199,7 +199,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	case isRunnableCommand(rest[0]):
 	default:
 		a.writeUsage(a.err)
-		return UsageError{Message: fmt.Sprintf("unknown command %q", rest[0])}
+		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
 
 	cfg, err := config.LoadEnv(a.env)
@@ -224,8 +224,22 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 			return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
 		}
 		a.writeUsage(a.err)
-		return UsageError{Message: fmt.Sprintf("unknown command %q", rest[0])}
+		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
+}
+
+// unknownCommandMessage reports an unknown command, and when the token is in
+// fact a known resource name, hints that a value-taking flag (e.g. --fields)
+// likely consumed the product name before it — the common cause of, say,
+// `--fields zia locations list` being parsed as command "locations".
+func unknownCommandMessage(name string) string {
+	msg := fmt.Sprintf("unknown command %q", name)
+	for _, resource := range allResourceNames() {
+		if resource == name {
+			return msg + fmt.Sprintf("; %q is a resource — run it as \"<product> %s ...\" and check that a value-taking flag (such as --fields) did not consume the product name", name, name)
+		}
+	}
+	return msg
 }
 
 type globalOptions struct {
@@ -559,22 +573,34 @@ func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions
 
 func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOptions, productName string, args []string) error {
 	product := resources.Product(productName)
-	if len(args) < 2 {
-		return UsageError{Message: productCommandUsage(product)}
+	resource := ""
+	if len(args) >= 1 {
+		resource = args[0]
 	}
-	resource := args[0]
+	// When the resource is recognized, prefer help that lists its actual
+	// operations and renderable fields over the generic per-product usage.
+	helpSpec, helpSpecOK := a.resourceCatalog().FindSpec(product, resource)
+	usage := func() string {
+		if helpSpecOK {
+			return resourceUsage(product, helpSpec)
+		}
+		return productCommandUsage(product)
+	}
+	if len(args) < 2 {
+		return UsageError{Message: usage()}
+	}
 	op := args[1]
 	if op == "list" && len(args) != 2 {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> list", productName)}
+		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s %s list", productName, resource)}
 	}
 	if op == "get" && len(args) != 3 {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> get <id>", productName)}
+		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s %s get <id>", productName, resource)}
 	}
 	if op == "show" && len(args) != 2 {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s <resource> show", productName)}
+		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s %s show", productName, resource)}
 	}
 	if op != "list" && op != "get" && op != "show" {
-		return UsageError{Message: productCommandUsage(product)}
+		return UsageError{Message: usage()}
 	}
 	spec, ok := a.resourceCatalog().FindSpec(product, resource)
 	if !ok {
@@ -584,7 +610,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return err
 	}
 	if !spec.SupportsReadOperation(op) {
-		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s", op, product, resource)}
+		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec))}
 	}
 	reader, err := a.resourceReader(cfg, opts)
 	if err != nil {
@@ -927,7 +953,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  auth status")
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  schema list")
-	fmt.Fprintln(w, "  dump --out <dir> [--resources names] [--continue-on-error]")
+	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error]")
 	fmt.Fprintln(w, "  completion bash|zsh|fish")
 	fmt.Fprintln(w, "  version")
 	for _, product := range knownProducts() {
@@ -1048,7 +1074,15 @@ func renderRecordPretty(
 	return output.RenderRecordPretty(rows, style)
 }
 
+// formatTableValue renders a value for the text-based renderers (table, pretty,
+// key-value). It sanitizes control characters so a value containing a newline or
+// tab cannot break the tab-separated or border-delimited layout; the JSON
+// renderer uses a separate path and keeps raw values.
 func formatTableValue(value any) string {
+	return sanitizeCellValue(rawTableValue(value))
+}
+
+func rawTableValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return ""
@@ -1059,12 +1093,24 @@ func formatTableValue(value any) string {
 	case []any:
 		parts := make([]string, len(v))
 		for i, item := range v {
-			parts[i] = formatTableValue(item)
+			parts[i] = rawTableValue(item)
 		}
 		return strings.Join(parts, ",")
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+// sanitizeCellValue collapses control characters (newline, tab, carriage return,
+// and other C0/DEL bytes) to single spaces so multi-line or tabbed values render
+// on one logical cell instead of corrupting row or column boundaries.
+func sanitizeCellValue(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' || r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 // resolveFormat collapses the auto format to a concrete one at the point where
@@ -1153,6 +1199,22 @@ func productCommandUsage(product resources.Product) string {
 		product,
 		strings.Join(productReadOperationNames(product), "|"),
 	)
+}
+
+// resourceUsage builds help for a known resource: its supported read operations
+// plus the renderable field names (standard mode), so the operator can discover
+// what to pass to --fields without consulting `schema list`.
+func resourceUsage(product resources.Product, spec resources.ResourceSpec) string {
+	msg := fmt.Sprintf(
+		"usage: zscalerctl %s %s %s",
+		product,
+		spec.Name,
+		strings.Join(readOperationNames(spec), "|"),
+	)
+	if fields := spec.FieldOrder(redact.ModeStandard); len(fields) > 0 {
+		msg += "\nfields: " + strings.Join(fields, ", ")
+	}
+	return msg
 }
 
 func productReadOperationNames(product resources.Product) []string {
