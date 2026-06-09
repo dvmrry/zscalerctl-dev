@@ -1,0 +1,6 @@
+# Input for the hash-pinned semgrep requirements used by CI.
+# Regenerate with:
+#   uv pip compile .github/requirements/semgrep.in \
+#     --generate-hashes --universal --python-version 3.12 \
+#     --output-file .github/requirements/semgrep.txt
+semgrep==1.164.0

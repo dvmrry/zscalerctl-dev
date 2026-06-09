@@ -37,7 +37,7 @@ jobs:
           cache: true
 
       - name: Install Semgrep
-        run: python3 -m pip install --user semgrep==1.164.0
+        run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
 
       - name: Add user Python bin to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
