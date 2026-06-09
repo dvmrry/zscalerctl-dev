@@ -235,6 +235,21 @@ const (
 	resourceTrafficDNSRules   = "traffic-dns-rules"
 	resourceTrafficLogRules   = "traffic-log-rules"
 	resourceZCCFailOpenPolicy = "fail-open-policy"
+	resourceZCCFwdProfiles    = "forwarding-profiles"
+	resourceZCCTrustedNets    = "trusted-networks"
+	resourceZCCWebAppServices = "web-app-services"
+	resourceZCCAppProfiles    = "application-profiles"
+	resourceZCCCustomIPApps   = "custom-ip-apps"
+	resourceZCCPredefIPApps   = "predefined-ip-apps"
+	resourceZCCProcessApps    = "process-based-apps"
+	resourceZCCZPAEntitle     = "zpa-group-entitlements"
+	resourceZCCZDXEntitle     = "zdx-group-entitlements"
+	resourceZCCNotifTmpls     = "notification-templates"
+	resourceZCCZIAPostures    = "zia-posture-profiles"
+	resourceZCCDevices        = "devices"
+	resourceZCCAdminUsers     = "admin-users"
+	resourceZCCAdminRoles     = "admin-roles"
+	resourceZCCCompanyInfo    = "company-info"
 	resourceEmailProfiles     = "email-profiles"
 
 	resourceAdvancedSettings           = "advanced-settings"
@@ -745,6 +760,21 @@ func ziaSDKShow[T any](
 ) func(context.Context) (*T, error) {
 	return func(ctx context.Context) (*T, error) {
 		service, cleanup, err := client.service(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return call(ctx, service)
+	}
+}
+
+func sdkProductShow[T any](
+	product resources.Product,
+	client sdkClient,
+	call func(context.Context, *zsdk.Service) (*T, error),
+) func(context.Context) (*T, error) {
+	return func(ctx context.Context) (*T, error) {
+		service, cleanup, err := client.productService(ctx, product)
 		if err != nil {
 			return nil, err
 		}

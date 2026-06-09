@@ -4,5 +4,20 @@
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
 
-# ZCC OneAPI reachability probe: does /zcc/papi/ route on this tenant?
+# Full ZCC read batch
 zcc/fail-open-policy
+zcc/forwarding-profiles
+zcc/trusted-networks
+zcc/web-app-services
+zcc/application-profiles
+zcc/custom-ip-apps
+zcc/predefined-ip-apps
+zcc/process-based-apps
+zcc/zpa-group-entitlements
+zcc/zdx-group-entitlements
+zcc/notification-templates
+zcc/zia-posture-profiles
+zcc/devices
+zcc/admin-users
+zcc/admin-roles
+zcc/company-info

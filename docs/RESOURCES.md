@@ -2944,6 +2944,268 @@ Fields:
 
 This is a ZCC OneAPI reachability probe (`/zcc/papi/public/v1/webFailOpenPolicy`). ZCC coverage expands only after a live-smoke pass confirms the `/zcc/papi/` route is reachable on the tenant.
 
+
+## ZCC Forwarding Profiles
+
+Commands:
+
+```sh
+zscalerctl zcc forwarding-profiles list
+zscalerctl dump --products zcc --resources zcc/forwarding-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `conditionType`, `enableLWFDriver`, `predefinedTnAll`, `enableUnifiedTunnel`, `enableAllDefaultAdaptersTN`, `enableSplitVpnTN`, `evaluateTrustedNetwork`, `skipTrustedCriteriaMatch` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `dnsServers`, `dnsSearchDomains`, `hostname`, `resolvedIpsForHostname`, `trustedSubnets`, `trustedGateways`, `trustedDhcpServers`, `trustedEgressIps` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `predefinedTrustedNetworks`, `forwardingProfileActions`, `forwardingProfileZpaActions`, `unifiedTunnel`, `trustedNetworkIds`, `trustedNetworks`, `trustedNetworkIdsSelected` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Trusted Networks
+
+Commands:
+
+```sh
+zscalerctl zcc trusted-networks list
+zscalerctl dump --products zcc --resources zcc/trusted-networks --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `conditionType` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `networkName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `dnsSearchDomains`, `dnsServers`, `hostnames`, `resolvedIpsForHostname`, `ssids`, `trustedDhcpServers`, `trustedEgressIps`, `trustedGateways`, `trustedSubnets` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `guid`, `companyId`, `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Web App Services
+
+Commands:
+
+```sh
+zscalerctl zcc web-app-services list
+zscalerctl dump --products zcc --resources zcc/web-app-services --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `appVersion`, `appSvcId`, `version`, `editedTimestamp` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `appName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `uid`, `appDataBlob`, `appDataBlobV6`, `zappDataBlob`, `zappDataBlobV6`, `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Application Profiles
+
+Commands:
+
+```sh
+zscalerctl zcc application-profiles list
+zscalerctl dump --products zcc --resources zcc/application-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `deviceType`, `active`, `ruleOrder`, `logMode`, `logLevel`, `logFileSize`, `reauth_period`, `reactivateWebSecurityMinutes`, `highlightActiveControl`, `sendDisableServiceReason`, `enableDeviceGroups`, `onNetPolicy`, `notificationTemplateId`, `forwardingProfileId`, `ziaPostureConfigId`, `tunnelZappTraffic`, `groupAll`, `showVPNTunNotification`, `useTunnelSDK4_3`, `ipv6Mode` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `refreshKerberosToken` | Operational metadata | `standard`, `share`, `paranoid` | Operational control flag. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `pac_url` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `passcode`, `logout_password`, `disable_password`, `uninstall_password`, `policyToken`, `groups`, `deviceGroups`, `users`, `notificationTemplateContract`, `policyExtension`, `disasterRecovery`, `ziaPostureConfig`, `groupIds`, `deviceGroupIds`, `userIds`, `bypassAppIds`, `appServiceIds`, `bypassCustomAppIds`, `bypassApps`, `bypassCustomApps`, `appServices` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Custom IP Apps
+
+Commands:
+
+```sh
+zscalerctl zcc custom-ip-apps list
+zscalerctl dump --products zcc --resources zcc/custom-ip-apps --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `editedTimestamp` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `appName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `uid`, `appDataBlob`, `appDataBlobV6`, `zappDataBlob`, `zappDataBlobV6`, `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Predefined IP Apps
+
+Commands:
+
+```sh
+zscalerctl zcc predefined-ip-apps list
+zscalerctl dump --products zcc --resources zcc/predefined-ip-apps --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `appVersion`, `appSvcId`, `editedTimestamp` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `appName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `uid`, `appDataBlob`, `appDataBlobV6`, `zappDataBlob`, `zappDataBlobV6`, `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Process Based Apps
+
+Commands:
+
+```sh
+zscalerctl zcc process-based-apps list
+zscalerctl dump --products zcc --resources zcc/process-based-apps --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `matchingCriteria`, `editedTimestamp` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `appName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `fileNames`, `filePaths` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `signaturePayload`, `certificatePayload`, `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Zpa Group Entitlements
+
+Commands:
+
+```sh
+zscalerctl zcc zpa-group-entitlements list
+zscalerctl dump --products zcc --resources zcc/zpa-group-entitlements --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `computeDeviceGroupsForZPA`, `machineTunEnabledForAll`, `zpaEnableForAll`, `totalCount` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `deviceGroupList`, `groupList` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Zdx Group Entitlements
+
+Commands:
+
+```sh
+zscalerctl zcc zdx-group-entitlements list
+zscalerctl dump --products zcc --resources zcc/zdx-group-entitlements --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `collectZdxLocation`, `computeDeviceGroupsForZDX`, `logoutZCCForZDXService`, `upmEnableForAll`, `totalCount` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `upmDeviceGroupList`, `upmGroupList` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Notification Templates
+
+Commands:
+
+```sh
+zscalerctl zcc notification-templates list
+zscalerctl dump --products zcc --resources zcc/notification-templates --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isDefaultTemplate`, `enableClient`, `enableZia`, `enableAppUpdates`, `enableServiceStatus`, `durationInSeconds`, `enablePersistent`, `enableDoNotDisturb` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `ziaNotificationTemplate`, `zpaNotificationTemplate` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `createdBy`, `editedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Zia Posture Profiles
+
+Commands:
+
+```sh
+zscalerctl zcc zia-posture-profiles list
+zscalerctl dump --products zcc --resources zcc/zia-posture-profiles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `platform` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `highTrustCriteria`, `mediumTrustCriteria`, `lowTrustCriteria` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Devices
+
+Commands:
+
+```sh
+zscalerctl zcc devices list
+zscalerctl dump --products zcc --resources zcc/devices --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `agentVersion`, `config_download_time`, `deregistrationTimestamp`, `download_count`, `keepAliveTime`, `last_seen_time`, `osVersion`, `policyName`, `registrationState`, `registration_time`, `state`, `tunnelVersion`, `type`, `upmVersion`, `vpnState`, `zappArch`, `manufacturer` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `companyName`, `machineHostname`, `macAddress`, `owner`, `user`, `udid` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `hardwareFingerprint`, `detail` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Admin Users
+
+Commands:
+
+```sh
+zscalerctl zcc admin-users list
+zscalerctl dump --products zcc --resources zcc/admin-users --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `accountEnabled`, `editEnabled`, `isDefaultAdmin`, `serviceType`, `companyRole` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `userName` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `companyId` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Admin Roles
+
+Commands:
+
+```sh
+zscalerctl zcc admin-roles list
+zscalerctl dump --products zcc --resources zcc/admin-roles --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `isEditable`, `adminManagement`, `administratorGroup`, `androidProfile`, `appBypass`, `appProfileGroup`, `auditLogs`, `authSetting`, `clientConnectorAppStore`, `clientConnectorIdp`, `clientConnectorNotifications`, `clientConnectorSupport`, `dashboard`, `ddilConfiguration`, `dedicatedProxyPorts`, `deviceGroups`, `deviceOverview`, `devicePosture`, `enrolledDevicesGroup`, `forwardingProfile`, `iosProfile`, `linuxProfile`, `macProfile`, `machineTunnel`, `obfuscateData`, `partnerDeviceOverview`, `publicApi`, `trustedNetwork`, `userAgent`, `windowsProfile`, `zpaPartnerLogin`, `zscalerDeception`, `zscalerEntitlement` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `roleName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `companyId`, `createdBy`, `updatedBy` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+## ZCC Company Info
+
+Commands:
+
+```sh
+zscalerctl zcc company-info show
+zscalerctl dump --products zcc --resources zcc/company-info --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `activationCopy`, `mdmStatus`, `sendEmail`, `proxyEnabled`, `zpnEnabled`, `upmEnabled`, `zadEnabled`, `enableDeceptionForAll`, `dlpEnabled`, `tunnelProtocolType`, `secureAgentBasic`, `secureAgentAdvanced`, `supportEnabled`, `fetchLogsForAdminsEnabled`, `enableRectifyUtils`, `supportTicketEnabled`, `disableLoggingControls`, `defaultAuthType`, `version`, `policyActivationRequired`, `enableAutofillUsername`, `autoFillUsingLoginHint`, `dcServiceReadOnly`, `enableTunnelZappTrafficToggle`, `machineIdpAuth`, `linuxVisibility`, `usePollsetForSocketReactor`, `enableDtlsForZpa`, `useV8JsEngine`, `disableParallelIpv4AndIPv6`, `send64BitBuild`, `useAddIfscopeRoute`, `useClearArpCache`, `useDnsPriorityOrdering`, `enableBrowserAuth`, `enablePublicAPI`, `disableReasonVisibility`, `followRoutingTable`, `useDefaultAdapterForDNS`, `enableMinimumDeviceCleanupAsOne`, `dnsPriorityOrderingForTrustedDnsCriteria`, `machineTunnelPosture`, `zpaPartnerLogin`, `proxyPort`, `dnsCacheTtlWindows`, `dnsCacheTtlMac`, `dnsCacheTtlAndroid`, `dnsCacheTtlIos`, `dnsCacheTtlLinux`, `zpaClientCertExpInDays`, `enableFlowLogger`, `flowLoggingBufferLimit`, `flowLoggingTimeInterval`, `postureBasedService`, `enablePostureBasedProfile`, `disasterRecovery`, `enableReactUI`, `launchReactUIbyDefault`, `dlpNotification`, `vpnGatewayCharLimit`, `deviceGroupsCount`, `vpnBypassRefreshInterval`, `destIncludeExcludeCharLimit`, `ipV6SupportForTunnel2`, `destIncludeExcludeCharLimitForIpv6`, `enableSetProxyOnVPNAdapters`, `disableDNSRouteExclusion`, `showVPNTunNotification`, `addAppBypassToVPNGateway`, `enableZscalerFirewall`, `persistentZscalerFirewall`, `clearMupCache`, `executeGpoUpdate`, `enablePortBasedZPAFilter`, `enableAntiTampering`, `zpaReauthEnabled`, `zpaAutoReauthTimeout`, `enableZpaAuthUserName`, `enableGlobalZCCTelemetry`, `configureTunnel2fallbackForZia`, `webAppConfig`, `enableInstallWebView2`, `enableCustomProxyPorts`, `interceptZIATrafficAllAdapters`, `enableOneIdAdmin`, `enableOneIdUser`, `restrictAdminAccess`, `enableZiaUserDepartmentSync`, `enableUDPTransportSelection`, `computeDeviceGroupsForZIA`, `computeDeviceGroupsForZPA`, `computeDeviceGroupsForZDX`, `computeDeviceGroupsForZAD`, `useTunnel2SmeForTunnel1`, `maCloudName`, `ziaCloudName`, `zt2HealthProbeInterval`, `devicePostureFrequency`, `zdxManualRollout`, `winZdxLiteEnabled`, `telemetryDefault` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `name`, `businessName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `businessContactNumber`, `activationRecipient`, `supportAdminEmail`, `registryPathForPac`, `ziaGlobalDbUrlForDR`, `swaggerLink` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
+| `orgId`, `masterCustomerId` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
 ## ZIDENTITY Groups
 
 Commands:
