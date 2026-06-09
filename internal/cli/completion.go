@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache"}
+	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level"}
 	completionFormats   = []string{"table", "json"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
@@ -146,6 +146,7 @@ complete -c zscalerctl -l redaction -x -a '%s' -d 'Redaction mode'
 complete -c zscalerctl -l color -x -a '%s' -d 'Color mode'
 complete -c zscalerctl -l no-color -d 'Disable color output'
 complete -c zscalerctl -l no-cache -d 'Bypass API cache where supported'
+complete -c zscalerctl -l log-level -x -a 'off error warn info debug' -d 'Diagnostic log level'
 complete -c zscalerctl -n '__fish_use_subcommand' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from completion' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from auth' -a 'status'

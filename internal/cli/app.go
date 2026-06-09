@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -69,6 +70,42 @@ type App struct {
 	stdoutTTY bool
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
+	logger    *slog.Logger
+}
+
+// diagLogger returns the diagnostic logger, defaulting to a disabled one so log
+// calls are always safe even before --log-level is parsed.
+func (a *App) diagLogger() *slog.Logger {
+	if a.logger == nil {
+		return disabledLogger()
+	}
+	return a.logger
+}
+
+func disabledLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// newDiagLogger builds a stderr diagnostic logger at the requested level.
+// Diagnostics are metadata-only and go to stderr so stdout stays clean for
+// data; "off" (the default) discards everything.
+func newDiagLogger(w io.Writer, level string) (*slog.Logger, error) {
+	var lvl slog.Level
+	switch level {
+	case "", "off":
+		return disabledLogger(), nil
+	case "error":
+		lvl = slog.LevelError
+	case "warn":
+		lvl = slog.LevelWarn
+	case "info":
+		lvl = slog.LevelInfo
+	case "debug":
+		lvl = slog.LevelDebug
+	default:
+		return nil, fmt.Errorf("invalid log level %q: want off, error, warn, info, or debug", level)
+	}
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: lvl})), nil
 }
 
 func New(out, err io.Writer, env []string) *App {
@@ -139,6 +176,9 @@ func (a *App) Run(ctx context.Context, args []string) error {
 }
 
 func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) error {
+	if logger, err := newDiagLogger(a.err, opts.logLevel); err == nil {
+		a.logger = logger
+	}
 	if opts.help {
 		a.writeUsage(a.out)
 		return nil
@@ -196,6 +236,7 @@ type globalOptions struct {
 	redactionSet bool
 	noCache      bool
 	colorMode    output.ColorMode
+	logLevel     string
 	help         bool
 }
 
@@ -233,6 +274,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noCache := fs.Bool("no-cache", false, "bypass API cache where supported")
 	colorFlag := fs.String("color", string(output.ColorAuto), "color output: auto, always, never")
 	noColor := fs.Bool("no-color", false, "disable color output")
+	logLevel := fs.String("log-level", "off", "diagnostic logging to stderr: off, error, warn, info, debug")
 	globalArgs, rest, help, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
@@ -263,6 +305,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	if *noColor {
 		colorMode = output.ColorNever
 	}
+	if _, err := newDiagLogger(io.Discard, *logLevel); err != nil {
+		return globalOptions{}, nil, UsageError{Message: err.Error()}
+	}
 	return globalOptions{
 		profile:      *profile,
 		format:       parsedFormat,
@@ -272,6 +317,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		redactionSet: redactionSet,
 		noCache:      *noCache,
 		colorMode:    colorMode,
+		logLevel:     *logLevel,
 		help:         help,
 	}, rest, nil
 }
@@ -360,7 +406,7 @@ func flagName(arg string) (string, bool) {
 
 func isGlobalFlag(name string) bool {
 	switch name {
-	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color":
+	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level":
 		return true
 	default:
 		return false
@@ -588,6 +634,12 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if err != nil {
 		return err
 	}
+	for _, re := range result.Errors {
+		a.diagLogger().Warn("dump resource failed",
+			"product", re.Product, "resource", re.Name, "operation", re.Operation, "kind", re.Kind)
+	}
+	a.diagLogger().Info("dump complete",
+		"resources", len(result.Entries), "errors", len(result.Errors))
 	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
 		return err
 	}
@@ -693,6 +745,7 @@ func (a *App) collectDump(
 			// Register cleanup once per product session, not once per resource.
 			defer cleanup()
 		}
+		a.diagLogger().Debug("dump reading resource", "product", spec.Product, "resource", spec.Name)
 		if spec.SupportsReadOperation("show") {
 			record, err := reader.Show(ctx, spec.Product, spec.Name)
 			if err != nil {
@@ -822,6 +875,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --color auto|always|never")
 	fmt.Fprintln(w, "  --no-color")
 	fmt.Fprintln(w, "  --no-cache")
+	fmt.Fprintln(w, "  --log-level off|error|warn|info|debug")
 }
 
 func writeOutputFile(path string, body []byte) error {
