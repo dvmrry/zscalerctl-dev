@@ -1,6 +1,10 @@
 name: gosec
 
 on:
+  pull_request:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '45 11 * * 2'
   workflow_dispatch:
@@ -11,6 +15,9 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -21,10 +28,19 @@ jobs:
           go-version: '1.26.4'
           cache: true
 
+      # Advisory, not a merge blocker: gosec findings surface in the Security tab
+      # via SARIF rather than failing the build (continue-on-error keeps a finding
+      # from blocking while still publishing it).
       - run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -fmt sarif -out gosec.sarif ./...
         continue-on-error: true
 
+      - uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: gosec-sarif
           path: gosec.sarif

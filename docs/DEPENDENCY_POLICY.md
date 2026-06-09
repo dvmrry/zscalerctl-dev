@@ -103,5 +103,18 @@ PRs with the SDK upgrade runbook requirement.
 
 CodeQL, OSV-Scanner, and gosec provide breadth signal on top of the project
 specific gates. They start as advisory workflows instead of merge blockers.
-Promote a finding class to a blocking gate only after it is triaged and the rule
-is known to be stable for this repository.
+gosec runs on every pull request and uploads its results as SARIF to the
+Security tab (`continue-on-error`, so a finding surfaces without blocking the
+build). Promote a finding class to a blocking gate only after it is triaged and
+the rule is known to be stable for this repository.
+
+## Blocking Gates
+
+Secret scanning and the bounded fuzz smoke are merge blockers, not advisory.
+`make secret-scan` (part of `make check`) runs gitleaks over the working tree
+with the same `.gitleaks.toml` config as CI's `secret-scan` job, so an allowlist
+gap or a real leak is caught locally. The `fuzz-smoke` CI job runs the redaction
+and projection fuzz targets for a short bounded budget on every pull request so a
+fuzzer-discovered no-leak bypass fails the build; the deeper weekly sweep lives
+in `fuzz.yml`. `fuzz-smoke` is deliberately kept out of local `make check` to
+keep the local loop fast.

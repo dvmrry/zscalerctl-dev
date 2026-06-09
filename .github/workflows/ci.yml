@@ -72,6 +72,19 @@ jobs:
       - run: |
           go list -mod=vendor ./... | grep -vE '/internal/(cli|resources)(/|$)' | xargs go test -race -mod=vendor
 
+  # Bounded fuzz smoke: runs the seed corpus plus a short fuzz budget per target
+  # so a redaction/projection bypass blocks the merge. The deeper weekly sweep
+  # lives in fuzz.yml; this is intentionally short and is NOT in local make check.
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - run: make fuzz-smoke FUZZTIME=20s
+
   verify-gates:
     runs-on: ubuntu-latest
     steps:
@@ -129,6 +142,7 @@ jobs:
       - race-cli
       - race-resources
       - race-rest
+      - fuzz-smoke
       - verify-gates
       - static-analysis
       - secret-scan
