@@ -176,6 +176,7 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup

@@ -4,6 +4,27 @@ func catalogZPA() ResourceCatalog {
 	return ResourceCatalog{
 		{
 			Product:    ProductZPA,
+			Name:       "microtenants",
+			Operations: ReadOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				freeTextField("description", "ZPA microtenant description"),
+				operationalField("enabled", allModes()),
+				tenantConfigField("criteriaAttribute", standardShareModes()),
+				sensitiveIdentifierField("criteriaAttributeValues"),
+				operationalField("privilegedApprovalsEnabled", allModes()),
+				operationalField("operator", allModes()),
+				operationalField("priority", allModes()),
+				operationalField("creationTime", allModes()),
+				operationalField("modifiedBy", allModes()),
+				operationalField("modifiedTime", allModes()),
+				secretField("roles"),
+				secretField("user"),
+			},
+		},
+		{
+			Product:    ProductZPA,
 			Name:       "server-groups",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{

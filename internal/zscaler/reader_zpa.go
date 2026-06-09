@@ -16,6 +16,7 @@ import (
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
+	zpamicrotenants "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
@@ -37,6 +38,16 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return zpaservergroup.Get(ctx, service, id)
 			}),
 			jsonSourceRecord[zpaservergroup.ServerGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPAMicrotenants}: newListGetHandler(
+			resourceZPAMicrotenants,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpamicrotenants.MicroTenant, *http.Response, error) {
+				return zpamicrotenants.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpamicrotenants.MicroTenant, *http.Response, error) {
+				return zpamicrotenants.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpamicrotenants.MicroTenant],
 		),
 		{product: resources.ProductZPA, name: resourceZPASegmentGroups}: newListGetHandler(
 			resourceZPASegmentGroups,

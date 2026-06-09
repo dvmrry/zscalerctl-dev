@@ -18,6 +18,7 @@ import (
 	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
+	zpamicrotenants "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
@@ -32,6 +33,28 @@ import (
 
 func reviewedSDKShapesZPA() []sdkShapeReview {
 	return []sdkShapeReview{
+		{
+			name:         "zpamicrotenants.MicroTenant",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAMicrotenants,
+			typ:          reflect.TypeOf(zpamicrotenants.MicroTenant{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"criteriaAttribute",
+				"criteriaAttributeValues",
+				"privilegedApprovalsEnabled",
+				"operator",
+				"priority",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"roles",
+				"user",
+			},
+		},
 		{
 			name:         "zpaservergroup.ServerGroup",
 			resource:     resources.ProductZPA,

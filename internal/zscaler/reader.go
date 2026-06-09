@@ -251,6 +251,7 @@ const (
 	resourceSecurityPolicyURLAllowlist = "url-allow-list"
 	resourceSecurityPolicyURLDenylist  = "url-deny-list"
 	resourceZPAServerGroups            = "server-groups"
+	resourceZPAMicrotenants            = "microtenants"
 	resourceZPASegmentGroups           = "segment-groups"
 	resourceZPAAppSegments             = "application-segments"
 	resourceZPAAppConnectors           = "app-connectors"

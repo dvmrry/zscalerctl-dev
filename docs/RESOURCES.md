@@ -1993,6 +1993,29 @@ zscalerctl zia url-deny-list show
 This singleton settings page renders the global URL deny list only in
 `standard`. The allow-list field is explicitly modeled and dropped.
 
+## ZPA Microtenants
+
+Commands:
+
+```sh
+zscalerctl zpa microtenants list
+zscalerctl zpa microtenants get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Microtenant identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `enabled`, `privilegedApprovalsEnabled`, `operator`, `priority`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Microtenant state and metadata. |
+| `criteriaAttribute` | Tenant configuration | `standard`, `share` | Scoping criteria attribute. |
+| `criteriaAttributeValues` | Sensitive identifier | `standard` | Local-only criteria values. |
+
+The SDK also returns nested role and user structures (`roles`, `user`); the
+catalog keeps those out of rendered output until they are separately modeled.
+
 ## ZPA Server Groups
 
 Commands:
