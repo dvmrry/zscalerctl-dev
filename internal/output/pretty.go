@@ -58,7 +58,16 @@ func RenderRecordsPretty(headers []string, rows [][]string, style Style) SafeTex
 			}
 			return cellStyle
 		})
-	return NewSafeText(t.Render() + "\n")
+
+	rendered := t.Render()
+	// Only constrain the width when the natural table would overflow the
+	// terminal; otherwise a narrow table would be stretched to fill the screen.
+	// With a width set, lipgloss wraps cell contents (wrap defaults to true)
+	// instead of letting a long value run off the line and smear the borders.
+	if style.Width > 0 && lipgloss.Width(rendered) > style.Width {
+		rendered = t.Width(style.Width).Render()
+	}
+	return NewSafeText(rendered + "\n")
 }
 
 // RenderRecordPretty renders a single record as an aligned key/value block with

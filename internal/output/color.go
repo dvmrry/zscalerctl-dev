@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/charmbracelet/x/term"
 )
 
 type ColorMode string
@@ -38,6 +40,21 @@ func IsTerminal(w io.Writer) bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// TerminalWidth returns the column count of the terminal behind w, or 0 when w
+// is not a terminal or the size cannot be determined. The pretty renderer uses
+// it to wrap wide tables to the visible width instead of overflowing the line.
+func TerminalWidth(w io.Writer) int {
+	file, ok := w.(*os.File)
+	if !ok {
+		return 0
+	}
+	width, _, err := term.GetSize(file.Fd())
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
 }
 
 func ShouldColor(mode ColorMode, env []string, stdoutTTY bool) bool {

@@ -104,3 +104,26 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 		t.Fatal("unknown field: err = nil, want usage error")
 	}
 }
+
+func TestSanitizeCellValueCollapsesControlChars(t *testing.T) {
+	t.Parallel()
+
+	got := sanitizeCellValue("line one\nline two\twith tab\rend")
+	if strings.ContainsAny(got, "\n\t\r") {
+		t.Errorf("sanitizeCellValue = %q, want no control chars", got)
+	}
+	if got != "line one line two with tab end" {
+		t.Errorf("sanitizeCellValue = %q, want control chars collapsed to spaces", got)
+	}
+}
+
+func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
+	t.Parallel()
+
+	if got := formatTableValue("a\nb"); got != "a b" {
+		t.Errorf("formatTableValue(string with newline) = %q, want %q", got, "a b")
+	}
+	if got := formatTableValue([]any{"x\ty", "z"}); got != "x y,z" {
+		t.Errorf("formatTableValue([]any with tab) = %q, want %q", got, "x y,z")
+	}
+}

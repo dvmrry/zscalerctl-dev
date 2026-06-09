@@ -8,6 +8,10 @@ import (
 type Style struct {
 	Color    bool
 	Color256 bool
+	// Width is the terminal column count, or 0 when unknown. Only the pretty
+	// renderer uses it, to wrap tables wider than the terminal; other renderers
+	// ignore it.
+	Width int
 }
 
 func NewStyle(color, color256 bool) Style {

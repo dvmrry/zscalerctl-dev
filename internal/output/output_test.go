@@ -39,6 +39,50 @@ func TestParseFormatSupportsImplementedFormatsOnly(t *testing.T) {
 	}
 }
 
+func TestRenderRecordsPrettyWrapsWideTableToWidth(t *testing.T) {
+	t.Parallel()
+
+	style := output.NewStyle(false, false) // color off -> byte-clean, easy width math
+	style.Width = 50
+	long := "192.0.2.10,192.0.2.11,192.0.2.12,192.0.2.13,192.0.2.14,192.0.2.15"
+	got := output.RenderRecordsPretty(
+		[]string{"id", "name", "ipAddresses"},
+		[][]string{{"123", "HQ", long}},
+		style,
+	).String()
+
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("pretty (color off) output = %q, want no ANSI escapes", got)
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if w := len([]rune(line)); w > style.Width {
+			t.Errorf("line width = %d (> %d): %q", w, style.Width, line)
+		}
+	}
+	// The long value must still be present, just wrapped across lines.
+	if !strings.Contains(strings.ReplaceAll(got, "\n", ""), "192.0.2.15") {
+		t.Errorf("pretty output = %q, want wrapped long value retained", got)
+	}
+}
+
+func TestRenderRecordsPrettyDoesNotStretchNarrowTable(t *testing.T) {
+	t.Parallel()
+
+	style := output.NewStyle(false, false)
+	style.Width = 120 // far wider than the content needs
+	got := output.RenderRecordsPretty(
+		[]string{"id", "name"},
+		[][]string{{"1", "HQ"}},
+		style,
+	).String()
+
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if w := len([]rune(line)); w > 40 {
+			t.Errorf("narrow table line width = %d, want it left compact (<=40): %q", w, line)
+		}
+	}
+}
+
 func TestRendererWriteJSONUsesSecretSafeMarshalAndBackstopRedaction(t *testing.T) {
 	t.Parallel()
 
