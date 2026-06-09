@@ -3,3 +3,30 @@
 # scripts/live-smoke.sh auto-uses this file on feature branches when it differs
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
+
+# --- ZPA config batch: scope/entitlement re-smoke set ---
+# These 12 failed the first smoke (CBI/Inspection/PRA/Tags) with mixed
+# 400/401/403 across feature families - the fingerprint of API-scope /
+# module-licensing gaps rather than wiring bugs. Re-run after verifying the
+# OneAPI client's ZPA scopes and module licensing. Whatever still fails gets
+# trimmed + deferred; whatever recovers stays in the batch.
+
+# Cloud Browser Isolation (cbiconfig microservice)
+zpa/cbi-banners
+zpa/cbi-profiles
+zpa/cbi-regions
+
+# Inspection
+zpa/inspection-profiles
+zpa/inspection-custom-controls
+zpa/inspection-predefined-controls
+
+# Privileged Remote Access
+zpa/pra-approvals
+zpa/pra-consoles
+zpa/pra-portals
+
+# Tags
+zpa/tag-groups
+zpa/tag-keys
+zpa/tag-namespaces
