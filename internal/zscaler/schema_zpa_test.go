@@ -12,11 +12,16 @@ import (
 	zpaappconnschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorschedule"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
 	zpaappservercontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller"
+	zpabranchconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/branch_connector"
 	zpac2cipranges "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges"
 	zpaclienttypes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/clienttypes"
 	zpacloudconnector "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector"
 	zpacloudconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group"
+	zpacbibanner "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbibannercontroller"
+	zpacbiprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbiprofilecontroller"
+	zpacbiregions "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbiregions"
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
+	zpaisolationprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/isolationprofile"
 	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpaversionprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/customerversionprofile"
@@ -27,6 +32,9 @@ import (
 	zpamicrotenants "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants"
 	zpaplatforms "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/platforms"
 	zpapostureprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile"
+	zpapraapproval "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praapproval"
+	zpapraconsole "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praconsole"
+	zpapraportal "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praportal"
 	zpasegmentgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup"
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
@@ -36,6 +44,9 @@ import (
 	zpatagkey "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key"
 	zpatagnamespace "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
+	zpauserportalaup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/aup"
+	zpauserportal "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/portal_controller"
+	zpauserportallink "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/portal_link"
 	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
 	ztwnetworkservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/policyresources/networkservicegroups"
 	ztwnetworkservices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/policyresources/networkservices"
@@ -223,6 +234,257 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			catalogFields: []string{
 				"id", "name", "description", "enabled", "origin", "type",
 				"microtenantId", "microtenantName",
+			},
+		},
+		{
+			name:         "zpacbibanner.CBIBannerController",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPACBIBanners,
+			typ:          reflect.TypeOf(zpacbibanner.CBIBannerController{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"primaryColor",
+				"textColor",
+				"notificationTitle",
+				"notificationText",
+				"logo",
+				"banner",
+				"isDefault",
+				"persist",
+			},
+		},
+		{
+			name:         "zpacbiprofile.IsolationProfile",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPACBIProfiles,
+			typ:          reflect.TypeOf(zpacbiprofile.IsolationProfile{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"cbiTenantId",
+				"cbiProfileId",
+				"cbiUrl",
+				"bannerId",
+				"securityControls",
+				"isDefault",
+				"regions",
+				"regionIds",
+				"href",
+				"userExperience",
+				"certificates",
+				"certificateIds",
+				"banner",
+				"debugMode",
+			},
+		},
+		{
+			name:         "zpacbiregions.CBIRegions",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPACBIRegions,
+			typ:          reflect.TypeOf(zpacbiregions.CBIRegions{}),
+			catalogFields: []string{
+				"id",
+				"name",
+			},
+		},
+		{
+			name:         "zpaisolationprofile.IsolationProfile",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAIsolationProfiles,
+			typ:          reflect.TypeOf(zpaisolationprofile.IsolationProfile{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"isolationProfileId",
+				"isolationTenantId",
+				"isolationUrl",
+			},
+		},
+		{
+			name:         "zpabranchconnector.BranchConnector",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPABranchConnectors,
+			typ:          reflect.TypeOf(zpabranchconnector.BranchConnector{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"branchConnectorGroupId",
+				"branchConnectorGroupName",
+				"edgeConnectorGroupId",
+				"edgeConnectorGroupName",
+				"enrollmentCert",
+				"fingerprint",
+				"ipAcl",
+				"issuedCertId",
+			},
+		},
+		{
+			name:         "zpapraapproval.PrivilegedApproval",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAPRAApprovals,
+			typ:          reflect.TypeOf(zpapraapproval.PrivilegedApproval{}),
+			catalogFields: []string{
+				"id",
+				"applications",
+				"creationTime",
+				"emailIds",
+				"endTime",
+				"microtenantId",
+				"microtenantName",
+				"modifiedBy",
+				"modifiedTime",
+				"startTime",
+				"status",
+				"workingHours",
+			},
+		},
+		{
+			name:         "zpapraconsole.PRAConsole",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAPRAConsoles,
+			typ:          reflect.TypeOf(zpapraconsole.PRAConsole{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"iconText",
+				"microtenantId",
+				"microtenantName",
+				"praApplication",
+				"praPortals",
+			},
+		},
+		{
+			name:         "zpapraportal.PRAPortal",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAPRAPortals,
+			typ:          reflect.TypeOf(zpapraportal.PRAPortal{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"action",
+				"approvalReviewers",
+				"cName",
+				"certManagedByZsRadio",
+				"certificateId",
+				"certificateName",
+				"domain",
+				"extDomain",
+				"extDomainName",
+				"extDomainTranslation",
+				"extLabel",
+				"getcName",
+				"hideInfoTooltip",
+				"isSRAPortal",
+				"managedByZs",
+				"microtenantId",
+				"microtenantName",
+				"objectType",
+				"restrictedEntity",
+				"scopeName",
+				"userNotification",
+				"userNotificationEnabled",
+				"userPortalGid",
+				"userPortalName",
+			},
+		},
+		{
+			name:         "zpauserportal.UserPortalController",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAUserPortals,
+			typ:          reflect.TypeOf(zpauserportal.UserPortalController{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"certificateId",
+				"certificateName",
+				"domain",
+				"extDomain",
+				"extDomainName",
+				"extDomainTranslation",
+				"extLabel",
+				"getcName",
+				"imageData",
+				"managedByZs",
+				"microtenantId",
+				"microtenantName",
+				"userNotification",
+				"userNotificationEnabled",
+			},
+		},
+		{
+			name:         "zpauserportalaup.UserPortalAup",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAUserPortalAups,
+			typ:          reflect.TypeOf(zpauserportalaup.UserPortalAup{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"aup",
+				"email",
+				"microtenantId",
+				"microtenantName",
+				"phoneNum",
+			},
+		},
+		{
+			name:         "zpauserportallink.UserPortalLink",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAUserPortalLinks,
+			typ:          reflect.TypeOf(zpauserportallink.UserPortalLink{}),
+			catalogFields: []string{
+				"id",
+				"name",
+				"description",
+				"enabled",
+				"creationTime",
+				"modifiedBy",
+				"modifiedTime",
+				"applicationId",
+				"iconText",
+				"link",
+				"linkPath",
+				"microtenantId",
+				"microtenantName",
+				"nameWithoutTrim",
+				"protocol",
+				"userPortalId",
+				"userPortals",
 			},
 		},
 		{

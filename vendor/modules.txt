@@ -170,11 +170,16 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorschedule
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appservercontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/branch_connector
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/c2c_ip_ranges
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/clienttypes
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloud_connector_group
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbibannercontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbiprofilecontroller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbiregions
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/isolationprofile
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/customerversionprofile
@@ -185,6 +190,9 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/platforms
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/postureprofile
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praapproval
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praconsole
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/privilegedremoteaccess/praportal
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/segmentgroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller
@@ -194,6 +202,9 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_gro
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/aup
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/portal_controller
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/userportal/portal_link
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminusers

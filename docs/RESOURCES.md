@@ -2215,6 +2215,215 @@ Fields:
 The SDK also returns nested role and user structures (`roles`, `user`); the
 catalog keeps those out of rendered output until they are separately modeled.
 
+## ZPA Cbi Banners
+
+Commands:
+
+```sh
+zscalerctl zpa cbi-banners list
+zscalerctl zpa cbi-banners get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `banner`, `isDefault`, `persist` | Operational metadata | `standard`, `share`, `paranoid` | Banner identifier and toggles. |
+| `name`, `primaryColor`, `textColor`, `notificationTitle`, `notificationText` | Tenant configuration | `standard`, `share` | Banner branding and notification text. |
+
+The SDK also returns the banner logo blob (`logo`); the catalog keeps it out of rendered output as unmodeled embedded data.
+
+## ZPA Cbi Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa cbi-profiles list
+zscalerctl zpa cbi-profiles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `isDefault`, `href`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Profile state and metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `cbiProfileId`, `cbiUrl` | Sensitive identifier | `standard` | Tenant-scoped isolation profile reference and URL. |
+
+The SDK also returns the CBI tenant ID, banner reference, region/certificate ID lists, and nested control structures (`cbiTenantId`, `bannerId`, `securityControls`, `regions`, `regionIds`, `userExperience`, `certificates`, `certificateIds`, `banner`, `debugMode`); the catalog keeps those out of rendered output as tenant-identifying or unmodeled.
+
+## ZPA Cbi Regions
+
+Commands:
+
+```sh
+zscalerctl zpa cbi-regions list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Region identifier. |
+| `name` | Tenant configuration | `standard`, `share` | Region name. |
+
+## ZPA Isolation Profiles
+
+Commands:
+
+```sh
+zscalerctl zpa isolation-profiles list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Profile state and metadata. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `isolationProfileId`, `isolationUrl` | Sensitive identifier | `standard` | Tenant-scoped isolation profile reference and URL. |
+
+The SDK also returns the isolation tenant ID (`isolationTenantId`), kept out of rendered output as tenant-identifying.
+
+## ZPA Branch Connectors
+
+Commands:
+
+```sh
+zscalerctl zpa branch-connectors list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Connector state and metadata. |
+| `name`, `branchConnectorGroupName`, `edgeConnectorGroupName` | Tenant configuration | `standard`, `share` | Connector and group names. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `ipAcl` | Sensitive identifier | `standard` | Connector IP ACL entries. |
+
+The SDK also returns group IDs and enrollment material (`branchConnectorGroupId`, `edgeConnectorGroupId`, `enrollmentCert`, `fingerprint`, `issuedCertId`); the catalog keeps those out of rendered output as tenant-identifying or secret.
+
+## ZPA Pra Approvals
+
+Commands:
+
+```sh
+zscalerctl zpa pra-approvals list
+zscalerctl zpa pra-approvals get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `creationTime`, `endTime`, `modifiedBy`, `modifiedTime`, `startTime`, `status` | Operational metadata | `standard`, `share`, `paranoid` | Approval window and state. |
+| `microtenantName` | Tenant configuration | `standard`, `share` | Microtenant name. |
+| `emailIds` | Sensitive identifier | `standard` | Approval recipient email addresses. |
+
+The SDK also returns the microtenant ID, nested applications, and working-hours structure (`microtenantId`, `applications`, `workingHours`); the catalog keeps those out of rendered output as tenant-identifying or unmodeled.
+
+## ZPA Pra Consoles
+
+Commands:
+
+```sh
+zscalerctl zpa pra-consoles list
+zscalerctl zpa pra-consoles get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | Console state and metadata. |
+| `name`, `iconText`, `microtenantName` | Tenant configuration | `standard`, `share` | Console name, icon text, and microtenant name. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+
+The SDK also returns the microtenant ID and nested application/portal references (`microtenantId`, `praApplication`, `praPortals`); the catalog keeps those out of rendered output as tenant-identifying or unmodeled.
+
+## ZPA Pra Portals
+
+Commands:
+
+```sh
+zscalerctl zpa pra-portals list
+zscalerctl zpa pra-portals get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `action`, `certManagedByZsRadio`, `getcName`, `hideInfoTooltip`, `isSRAPortal`, `managedByZs`, `objectType`, `restrictedEntity`, `userNotificationEnabled` | Operational metadata | `standard`, `share`, `paranoid` | Portal state and metadata. |
+| `name`, `certificateName`, `extLabel`, `microtenantName`, `scopeName`, `userNotification`, `userPortalName` | Tenant configuration | `standard`, `share` | Portal naming and notification text. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `cName`, `domain`, `extDomain`, `extDomainName`, `extDomainTranslation` | Sensitive identifier | `standard` | Portal hostnames and domains. |
+
+The SDK also returns the certificate ID, microtenant ID, user-portal GID, and nested reviewers (`certificateId`, `microtenantId`, `userPortalGid`, `approvalReviewers`); the catalog keeps those out of rendered output as tenant-identifying or unmodeled.
+
+## ZPA User Portals
+
+Commands:
+
+```sh
+zscalerctl zpa user-portals list
+zscalerctl zpa user-portals get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `getcName`, `managedByZs`, `userNotificationEnabled` | Operational metadata | `standard`, `share`, `paranoid` | Portal state and metadata. |
+| `name`, `certificateName`, `extLabel`, `microtenantName`, `userNotification` | Tenant configuration | `standard`, `share` | Portal naming and notification text. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `domain`, `extDomain`, `extDomainName`, `extDomainTranslation` | Sensitive identifier | `standard` | Portal hostnames and domains. |
+
+The SDK also returns the certificate ID, image blob, and microtenant ID (`certificateId`, `imageData`, `microtenantId`); the catalog keeps those out of rendered output as tenant-identifying, secret, or unmodeled embedded data.
+
+## ZPA User Portal Aups
+
+Commands:
+
+```sh
+zscalerctl zpa user-portal-aups list
+zscalerctl zpa user-portal-aups get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime` | Operational metadata | `standard`, `share`, `paranoid` | AUP state and metadata. |
+| `name`, `microtenantName` | Tenant configuration | `standard`, `share` | AUP name and microtenant name. |
+| `description`, `aup` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `email`, `phoneNum` | Sensitive identifier | `standard` | AUP contact email and phone number. |
+
+The SDK also returns the microtenant ID (`microtenantId`), kept out of rendered output as tenant-identifying.
+
+## ZPA User Portal Links
+
+Commands:
+
+```sh
+zscalerctl zpa user-portal-links list
+zscalerctl zpa user-portal-links get <id>
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `enabled`, `creationTime`, `modifiedBy`, `modifiedTime`, `protocol` | Operational metadata | `standard`, `share`, `paranoid` | Link state and metadata. |
+| `name`, `iconText`, `microtenantName`, `nameWithoutTrim` | Tenant configuration | `standard`, `share` | Link naming and microtenant name. |
+| `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `link`, `linkPath` | Sensitive identifier | `standard` | Link target URL and path. |
+
+The SDK also returns the application ID, microtenant ID, and nested portal references (`applicationId`, `microtenantId`, `userPortalId`, `userPortals`); the catalog keeps those out of rendered output as tenant-identifying or unmodeled.
+
 ## ZPA Server Groups
 
 Commands:
