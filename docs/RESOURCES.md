@@ -2158,40 +2158,6 @@ Fields:
 | --- | --- | --- | --- |
 | `linux`, `android`, `windows`, `ios`, `mac` | Operational metadata | `standard`, `share`, `paranoid` | Supported client platform reference values. |
 
-## ZPA App Connector Schedule
-
-Commands:
-
-```sh
-zscalerctl zpa app-connector-schedule list
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `deleteDisabled`, `enabled` | Operational metadata | `standard`, `share`, `paranoid` | Auto-delete schedule state. |
-| `frequency`, `frequencyInterval` | Tenant configuration | `standard`, `share` | Auto-delete schedule configuration. |
-
-The SDK also returns the ZPA customer ID (`customerId`), kept out of rendered output as tenant-identifying.
-
-## ZPA Service Edge Schedule
-
-Commands:
-
-```sh
-zscalerctl zpa service-edge-schedule list
-```
-
-Fields:
-
-| Field | Classification | Modes | Notes |
-| --- | --- | --- | --- |
-| `id`, `deleteDisabled`, `enabled` | Operational metadata | `standard`, `share`, `paranoid` | Auto-delete schedule state. |
-| `frequency`, `frequencyInterval` | Tenant configuration | `standard`, `share` | Auto-delete schedule configuration. |
-
-The SDK also returns the ZPA customer ID (`customerId`), kept out of rendered output as tenant-identifying.
-
 ## ZPA Microtenants
 
 Commands:

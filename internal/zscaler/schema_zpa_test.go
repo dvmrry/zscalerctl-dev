@@ -9,7 +9,6 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
-	zpaappconnschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorschedule"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
 	zpaappsegmentba "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
 	zpaappsegmentinspection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentinspection"
@@ -42,7 +41,6 @@ import (
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
-	zpaserviceedgeschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgeschedule"
 	zpataggroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_group"
 	zpatagkey "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key"
 	zpatagnamespace "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace"
@@ -138,34 +136,6 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 				"windows",
 				"ios",
 				"mac",
-			},
-		},
-		{
-			name:         "zpaappconnschedule.AssistantSchedule",
-			resource:     resources.ProductZPA,
-			resourceName: resourceZPAAppConnectorSchedule,
-			typ:          reflect.TypeOf(zpaappconnschedule.AssistantSchedule{}),
-			catalogFields: []string{
-				"id",
-				"customerId",
-				"deleteDisabled",
-				"enabled",
-				"frequency",
-				"frequencyInterval",
-			},
-		},
-		{
-			name:         "zpaserviceedgeschedule.AssistantSchedule",
-			resource:     resources.ProductZPA,
-			resourceName: resourceZPAServiceEdgeSchedule,
-			typ:          reflect.TypeOf(zpaserviceedgeschedule.AssistantSchedule{}),
-			catalogFields: []string{
-				"id",
-				"customerId",
-				"deleteDisabled",
-				"enabled",
-				"frequency",
-				"frequencyInterval",
 			},
 		},
 		{

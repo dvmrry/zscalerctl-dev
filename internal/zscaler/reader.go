@@ -255,8 +255,6 @@ const (
 	resourceZPAVersionProfiles         = "version-profiles"
 	resourceZPAClientTypes             = "client-types"
 	resourceZPAPlatforms               = "platforms"
-	resourceZPAAppConnectorSchedule    = "app-connector-schedule"
-	resourceZPAServiceEdgeSchedule     = "service-edge-schedule"
 	resourceZPAInspectionProfiles      = "inspection-profiles"
 	resourceZPAInspectionCustomCtl     = "inspection-custom-controls"
 	resourceZPAInspectionPredefinedCtl = "inspection-predefined-controls"

@@ -8,7 +8,6 @@ import (
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
-	zpaappconnschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorschedule"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
 	zpaappsegmentba "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
 	zpaappsegmentinspection "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentinspection"
@@ -40,7 +39,6 @@ import (
 	zpaservergroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup"
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
-	zpaserviceedgeschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgeschedule"
 	zpataggroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_group"
 	zpatagkey "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key"
 	zpatagnamespace "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace"
@@ -94,20 +92,6 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return zpaplatforms.GetAllPlatforms(ctx, service)
 			}),
 			jsonSourceRecord[zpaplatforms.Platforms],
-		),
-		{product: resources.ProductZPA, name: resourceZPAAppConnectorSchedule}: newSingletonHandler(
-			resourceZPAAppConnectorSchedule,
-			zpaSDKShow(client, func(ctx context.Context, service *zsdk.Service) (*zpaappconnschedule.AssistantSchedule, *http.Response, error) {
-				return zpaappconnschedule.GetSchedule(ctx, service)
-			}),
-			jsonSourceRecord[zpaappconnschedule.AssistantSchedule],
-		),
-		{product: resources.ProductZPA, name: resourceZPAServiceEdgeSchedule}: newSingletonHandler(
-			resourceZPAServiceEdgeSchedule,
-			zpaSDKShow(client, func(ctx context.Context, service *zsdk.Service) (*zpaserviceedgeschedule.AssistantSchedule, *http.Response, error) {
-				return zpaserviceedgeschedule.GetSchedule(ctx, service)
-			}),
-			jsonSourceRecord[zpaserviceedgeschedule.AssistantSchedule],
 		),
 		{product: resources.ProductZPA, name: resourceZPAInspectionProfiles}: newListGetHandler(
 			resourceZPAInspectionProfiles,

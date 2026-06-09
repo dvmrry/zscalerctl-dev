@@ -84,34 +84,6 @@ func catalogZPA() ResourceCatalog {
 		},
 		{
 			Product:    ProductZPA,
-			Name:       "app-connector-schedule",
-			Operations: ListOperations(),
-			Shape:      ShapeSingleton,
-			Fields: []FieldSpec{
-				operationalField("id", allModes()),
-				secretField("customerId"),
-				operationalField("deleteDisabled", allModes()),
-				operationalField("enabled", allModes()),
-				tenantConfigField("frequency", standardShareModes()),
-				tenantConfigField("frequencyInterval", standardShareModes()),
-			},
-		},
-		{
-			Product:    ProductZPA,
-			Name:       "service-edge-schedule",
-			Operations: ListOperations(),
-			Shape:      ShapeSingleton,
-			Fields: []FieldSpec{
-				operationalField("id", allModes()),
-				secretField("customerId"),
-				operationalField("deleteDisabled", allModes()),
-				operationalField("enabled", allModes()),
-				tenantConfigField("frequency", standardShareModes()),
-				tenantConfigField("frequencyInterval", standardShareModes()),
-			},
-		},
-		{
-			Product:    ProductZPA,
 			Name:       "inspection-profiles",
 			Operations: ReadOperations(),
 			Fields: []FieldSpec{
