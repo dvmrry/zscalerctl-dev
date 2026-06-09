@@ -62,6 +62,27 @@ version bump:
 Do not add a new resource in the same change as an SDK bump unless the SDK bump
 is required for that resource and the review explicitly covers both changes.
 
+## Presentation Dependencies
+
+The `pretty` output renderer uses `github.com/charmbracelet/lipgloss` (with its
+transitive `muesli/termenv`, `charmbracelet/colorprofile`, and `charmbracelet/x`
+modules). These are terminal-styling libraries, not part of the credentialed
+network path: they receive no credentials, perform no network or filesystem I/O,
+and only style strings that have already been allow-list projected and redacted.
+
+Two properties keep them low-risk and must hold on upgrade:
+
+- The renderer pins its color profile explicitly (`SetColorProfile`) and renders
+  through an `io.Discard`-backed renderer, so lipgloss/termenv never auto-detect
+  the terminal or probe it with escape sequences. Color is driven solely by the
+  existing `--color` / `NO_COLOR` / TTY logic.
+- `colorprofile` contains the one subprocess path in this dependency set (it
+  shells out to `tmux info` in `colorprofile.Tmux`/`Detect`). That path is
+  unreachable from our usage: the only consumer, `charmbracelet/x/cellbuf`, uses
+  `colorprofile` for type constants and color conversion, never detection. On
+  upgrade, re-confirm no reachable call to `colorprofile.Detect`, `.Env`, or
+  `.Tmux`, and that `termenv` still imports no `os/exec` or `net`.
+
 ## Renovate Policy
 
 Renovate keeps Go dependencies and GitHub Actions current, but it does not

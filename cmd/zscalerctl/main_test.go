@@ -182,7 +182,7 @@ func TestRunVersionReturnsSuccess(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{"version"}, &stdout, &stderr, nil)
+	code := run(context.Background(), []string{"--format", "table", "version"}, &stdout, &stderr, nil)
 	if code != 0 {
 		t.Fatalf("run(version) exit code = %d, want 0", code)
 	}

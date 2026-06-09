@@ -16,8 +16,12 @@ It never mutates tenant state and never emits secret material in normal output.
 .BI \-\-profile " name"
 Configuration profile to use.
 .TP
-.BI \-\-format " table|json"
-Output format. Defaults to table.
+.BI \-\-format " auto|table|json|pretty"
+Output format. Defaults to \fBauto\fR, which renders the human-readable
+\fBpretty\fR form when stdout is a terminal and \fBjson\fR otherwise (pipe,
+redirect, or \fB\-\-output\fR file), so interactive use is readable while
+pipelines stay machine-parseable. \fBtable\fR is the tab-separated form;
+\fBpretty\fR is a bordered/aligned overlay of the same sanitized data.
 .TP
 .BI \-\-output " path"
 Write command output to a file instead of stdout (not valid with dump).

@@ -158,6 +158,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	opts.format = a.resolveFormat(opts)
 	if opts.output != "" && !opts.help && len(rest) > 0 && rest[0] == "dump" {
 		return UsageError{Message: "usage: zscalerctl dump --out <dir>; --output cannot be used with dump"}
 	}
@@ -268,7 +269,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	fs := flag.NewFlagSet("zscalerctl", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	profile := fs.String("profile", "", "profile name")
-	format := fs.String("format", string(output.FormatTable), "output format: table, json")
+	format := fs.String("format", string(output.FormatAuto), "output format: auto, table, json, pretty")
 	outputPath := fs.String("output", "", "output path")
 	timeout := fs.Duration("timeout", 30*time.Second, "request timeout")
 	redactionFlag := fs.String("redaction", "", "redaction mode: standard, share, paranoid")
@@ -453,7 +454,7 @@ func (a *App) runVersion(opts globalOptions, args []string) error {
 	if opts.format == output.FormatJSON {
 		return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, info)
 	}
-	if opts.format != output.FormatTable {
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return fmt.Errorf("version does not support %s output yet", opts.format)
 	}
 	body := output.RenderKeyValues([]output.KV{
@@ -479,7 +480,7 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
-	if opts.format != output.FormatTable {
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return fmt.Errorf("doctor does not support %s output yet", opts.format)
 	}
 	body := output.RenderKeyValues(doctorStatusRows(status), a.style(opts))
@@ -494,7 +495,7 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
-	if opts.format != output.FormatTable {
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return fmt.Errorf("auth status does not support %s output yet", opts.format)
 	}
 	body := output.RenderKeyValues(authStatusRows(status), a.style(opts))
@@ -508,7 +509,7 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, cfg.Safe())
 	}
-	if opts.format != output.FormatTable {
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return fmt.Errorf("config show does not support %s output yet", opts.format)
 	}
 	safe := cfg.Safe()
@@ -543,7 +544,7 @@ func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, catalog)
 	}
-	if opts.format != output.FormatTable {
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return fmt.Errorf("schema list does not support %s output yet", opts.format)
 	}
 	if len(catalog) == 0 {
@@ -881,6 +882,11 @@ func (a *App) writeProjectedRecord(
 			return a.renderer(cfg, opts).WriteText(a.out, renderRecordKeyValues(fields, record, a.style(opts)))
 		}
 		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
+	case output.FormatPretty:
+		if operation == "show" {
+			return a.renderer(cfg, opts).WriteText(a.out, renderRecordPretty(fields, record, a.style(opts)))
+		}
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsPretty(fields, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource %s", opts.format, operation)
 	}
@@ -904,6 +910,8 @@ func (a *App) writeProjectedRecords(
 		return a.renderer(cfg, opts).WriteJSON(a.out, records)
 	case output.FormatTable:
 		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, records, a.style(opts)))
+	case output.FormatPretty:
+		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsPretty(fields, records, a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource list", opts.format)
 	}
@@ -928,7 +936,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "global flags:")
 	fmt.Fprintln(w, "  --profile <name>")
-	fmt.Fprintln(w, "  --format table|json")
+	fmt.Fprintln(w, "  --format auto|table|json|pretty")
 	fmt.Fprintln(w, "  --output <path>")
 	fmt.Fprintln(w, "  --timeout <duration>")
 	fmt.Fprintln(w, "  --redaction standard|share|paranoid")
@@ -1006,6 +1014,40 @@ func renderRecordKeyValues(
 	return output.RenderKeyValues(rows, style)
 }
 
+func renderRecordsPretty(
+	fields []string,
+	records resources.ProjectedRecords,
+	style output.Style,
+) output.SafeText {
+	rows := make([][]string, 0, len(records.Records()))
+	for _, record := range records.Records() {
+		values := record.Fields()
+		row := make([]string, len(fields))
+		for i, field := range fields {
+			row[i] = formatTableValue(values[field])
+		}
+		rows = append(rows, row)
+	}
+	return output.RenderRecordsPretty(fields, rows, style)
+}
+
+func renderRecordPretty(
+	fields []string,
+	record resources.ProjectedRecord,
+	style output.Style,
+) output.SafeText {
+	values := record.Fields()
+	rows := make([]output.KV, 0, len(fields))
+	for _, field := range fields {
+		rows = append(rows, output.KV{
+			Key:   field,
+			Kind:  field,
+			Value: formatTableValue(values[field]),
+		})
+	}
+	return output.RenderRecordPretty(rows, style)
+}
+
 func formatTableValue(value any) string {
 	switch v := value.(type) {
 	case nil:
@@ -1023,6 +1065,21 @@ func formatTableValue(value any) string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+// resolveFormat collapses the auto format to a concrete one at the point where
+// the destination is known: a real stdout TTY (and no --output file) gets the
+// pretty human renderer, everything else (pipe, redirect, --output file) gets
+// json so pipelines stay machine-parseable. Explicit --format choices pass
+// through untouched.
+func (a *App) resolveFormat(opts globalOptions) output.Format {
+	if opts.format != output.FormatAuto {
+		return opts.format
+	}
+	if a.stdoutTTY && opts.output == "" {
+		return output.FormatPretty
+	}
+	return output.FormatJSON
 }
 
 func (a *App) style(opts globalOptions) output.Style {

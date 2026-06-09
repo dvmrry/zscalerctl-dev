@@ -12,18 +12,27 @@ import (
 type Format string
 
 const (
-	FormatTable Format = "table"
-	FormatJSON  Format = "json"
+	// FormatAuto resolves at render time: a TTY destination gets pretty,
+	// everything else (pipe, file) gets json. It is the default so interactive
+	// use is readable while pipelines stay machine-parseable.
+	FormatAuto   Format = "auto"
+	FormatTable  Format = "table"
+	FormatJSON   Format = "json"
+	FormatPretty Format = "pretty"
 )
 
 func ParseFormat(value string) (Format, error) {
 	switch Format(strings.ToLower(strings.TrimSpace(value))) {
+	case "", FormatAuto:
+		return FormatAuto, nil
 	case FormatTable:
 		return FormatTable, nil
 	case FormatJSON:
 		return FormatJSON, nil
+	case FormatPretty:
+		return FormatPretty, nil
 	default:
-		return "", fmt.Errorf("unsupported output format %q; supported: table, json", value)
+		return "", fmt.Errorf("unsupported output format %q; supported: auto, table, json, pretty", value)
 	}
 }
 
