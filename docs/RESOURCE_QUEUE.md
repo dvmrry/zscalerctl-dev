@@ -135,6 +135,48 @@ catalog:
 | Policy-set controllers | `policysetcontroller`, `policysetcontrollerv2` | These are policy-rule control APIs with mutating neighbors. Treat as a future policy-rule track, not part of the current reference/config close-out. |
 | Lookup helpers, alternate views, or nonstandard command shapes | `applicationsegmentbytype`, `branch_connector_group`, `browser_protection`, `client_settings`, `location_controller`, `lssconfigcontroller`, `managed_browser`, `workload_tag_group` | These look like helper, alternate-view, singleton/settings, or nonstandard child-query surfaces. Do not catalog them until the command semantics and field classifications are explicit. |
 
+## ZIA Non-Coverage Record
+
+The ZIA catalog covers 102 runtime-validated, read-only configuration and
+reference resources. As with ZPA, this does not claim that every pinned SDK
+package belongs in `dump`. Several ZIA SDK packages back resources that are
+already cataloged (for example `secure_browsing` backs `browser-control-settings`
+and `supported-browser-versions`; `user_authentication_settings` backs
+`auth-exempted-urls`; `cloudapplications/cloudapplications` backs
+`cloud-application-policy` and `cloud-application-ssl-policy`), so package count
+is not resource count.
+
+The following ZIA SDK surfaces are intentionally not covered by the current
+catalog:
+
+| Bucket | SDK packages or resources | Why not covered |
+| --- | --- | --- |
+| Reporting, discovery, log, or export telemetry | `adminauditlogs`, `eventlogentryreport`, `iotreport`, `shadowitreport`, `policy_export`, `sandbox/sandbox_report` | Report, discovery, audit-log, and export surfaces are telemetry, not configuration inventory. Treat as a future report/telemetry command track rather than dump resources. |
+| Submission or execution-adjacent | `sandbox/sandbox_submission`, and the activate action behind `activation` (only `activation-status` is read) | File-submission and activation actions mutate or execute. The read-only dumper reads status but does not invoke them. |
+| Credential, certificate, or material | `trafficforwarding/vpncredentials`, plus the key-material, CSR, attestation, and download operations on `intermediatecacertificates` (its ordinary metadata is cataloged as `intermediate-ca-certificates`) | Secret, credential, and certificate material need a separate material-handling policy before any read path is considered. |
+| Identity or SCIM administration | `scim_api` | A SCIM provisioning/identity-admin boundary, not ZIA configuration inventory. If enabled later it needs privacy/admin classification and a focused command shape. |
+| Lookup, diagnostic, or alternate-view helpers | `apptotal`, `trafficforwarding/region`, `trafficforwarding/greinternalipranges`, `trafficforwarding/gretunnelinfo`, `trafficforwarding/virtualipaddress`, `location/locationlite` | Lookup, diagnostic, or lite/overlapping views with nonstandard command shapes. Do not force into config-dump semantics; `locationlite` overlaps `locations`/`sublocations`. |
+| Feature or entitlement holds | `traffic_capture`, `trafficforwarding/extranet` | Generated and reviewed, then deferred after 403 under both OneAPI and legacy ZIA auth. Keep them in the deferred table below and retry only when entitlement or scope changes. |
+
+## Zidentity Non-Coverage Record
+
+The Zidentity catalog covers three top-level read-only identity-inventory
+resources — `groups`, `users`, and `resource-servers`. Zidentity is
+identity-plane data and is treated as privacy- and authorization-sensitive, so
+coverage is deliberately limited to administrator-visible inventory objects with
+identifier stripping (for example, arbitrary `customAttrsInfo` on users is
+dropped).
+
+The following Zidentity surfaces are intentionally not covered by the current
+catalog:
+
+| Bucket | Surface | Why not covered |
+| --- | --- | --- |
+| Membership child queries | Group-to-user and user-to-group membership reads (`groups.GetUsers`, `users.GetGroupsByUser`) | Membership belongs to an explicit child-query command design, not top-level group/user inventory. Model later if a concrete need appears. |
+| Membership or account mutation | Add/remove/update/delete group membership, reset-password, and other mutating helpers that sit next to the read methods | The read-only CLI never wires mutating helpers, and handlers must bind only the specific read functions a resource uses. |
+| Entitlements | User/role entitlement surfaces described in the Zidentity API docs | Absent from the pinned SDK revision (no `user_entitlement` package). Scout from source before queueing if a future SDK release exposes them. |
+| Credential or administration surfaces | Zidentity admin-API surfaces beyond the three cataloged inventory objects | Out of scope for the current read-only inventory; they need identity/privacy review and an explicit command shape before any read path. |
+
 ## No-Live Work Mode
 
 When read-only tenant credentials are unavailable, do not create more
