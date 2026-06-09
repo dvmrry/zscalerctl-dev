@@ -122,6 +122,11 @@ func ListOperations() []Operation {
 	}
 }
 
+// SingletonOperations is the operation set for a list-shaped singleton: a
+// resource whose CLI verb is `list` but that yields exactly one projected
+// record. It intentionally returns the `list` operation (not `show`) because a
+// spec marked Shape: ShapeSingleton must support `list` (see ResourceSpec
+// validation). Resources whose verb is `show` use ShowOperation instead.
 func SingletonOperations() []Operation {
 	return ListOperations()
 }

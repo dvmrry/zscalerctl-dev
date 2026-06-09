@@ -132,7 +132,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		),
 		{product: resources.ProductZIA, name: resourceAuthSettings}: newSingletonHandler(
 			resourceAuthSettings,
-			ziaSDKSingleton(client, func(ctx context.Context, service *zsdk.Service) (*authsettings.AuthenticationSettings, error) {
+			ziaSDKShow(client, func(ctx context.Context, service *zsdk.Service) (*authsettings.AuthenticationSettings, error) {
 				return authsettings.Get(ctx, service)
 			}),
 			authSettingsSourceRecord,

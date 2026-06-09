@@ -48,3 +48,59 @@ func addZidentityHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		addHandler(m, k, v)
 	}
 }
+
+func zidentityGroupSourceRecord(group zidgroups.Groups) resources.SourceRecord {
+	fields := map[string]any{
+		"id":                        group.ID,
+		"name":                      group.Name,
+		"description":               group.Description,
+		"source":                    group.Source,
+		"isDynamicGroup":            group.IsDynamicGroup,
+		"dynamicGroup":              group.DynamicGroup,
+		"adminEntitlementEnabled":   group.AdminEntitlementEnabled,
+		"serviceEntitlementEnabled": group.ServiceEntitlementEnabled,
+	}
+	if group.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(group.IDP)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func zidentityUserSourceRecord(user zidusers.Users) resources.SourceRecord {
+	fields := map[string]any{
+		"id":             user.ID,
+		"source":         user.Source,
+		"loginName":      user.LoginName,
+		"displayName":    user.DisplayName,
+		"firstName":      user.FirstName,
+		"lastName":       user.LastName,
+		"primaryEmail":   user.PrimaryEmail,
+		"secondaryEmail": user.SecondaryEmail,
+		"status":         user.Status,
+	}
+	if user.Department != nil {
+		fields["department"] = zidIDNameDisplayNameSource(user.Department)
+	}
+	if user.IDP != nil {
+		fields["idp"] = zidIDNameDisplayNameSource(user.IDP)
+	}
+	if len(user.CustomAttrsInfo) > 0 {
+		fields["customAttrsInfo"] = copyStringAnyMap(user.CustomAttrsInfo)
+	}
+	return resources.NewSourceRecord(fields)
+}
+
+func zidentityResourceServerSourceRecord(server zidresourceservers.ResourceServers) resources.SourceRecord {
+	fields := map[string]any{
+		"id":          server.ID,
+		"name":        server.Name,
+		"displayName": server.DisplayName,
+		"description": server.Description,
+		"primaryAud":  server.PrimaryAud,
+		"defaultApi":  server.DefaultApi,
+	}
+	if len(server.ServiceScopes) > 0 {
+		fields["serviceScopes"] = zidentityServiceScopesSource(server.ServiceScopes)
+	}
+	return resources.NewSourceRecord(fields)
+}
