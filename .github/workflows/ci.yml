@@ -87,7 +87,6 @@ jobs:
       - run: bash scripts/test-verify-ci-no-live-creds.sh
       - run: bash scripts/verify-actions-pinned.sh
       - run: bash scripts/test-verify-actions-pinned.sh
-      - run: bash scripts/test-live-smoke.sh
       - run: bash scripts/verify-docs.sh
 
   static-analysis:
