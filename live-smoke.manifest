@@ -3,33 +3,3 @@
 # scripts/live-smoke.sh auto-uses this file on feature branches when it differs
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
-
-# --- ZPA config batch: full 24-resource run ---
-
-# Already passed first smoke (the 12 keepers)
-zpa/microtenants
-zpa/version-profiles
-zpa/client-types
-zpa/platforms
-zpa/isolation-profiles
-zpa/branch-connectors
-zpa/user-portals
-zpa/user-portal-aups
-zpa/user-portal-links
-zpa/browser-access
-zpa/inspection-app-segments
-zpa/pra-app-segments
-
-# Previously failed on entitlement/scope (CBI / Inspection / PRA / Tags)
-zpa/cbi-banners
-zpa/cbi-profiles
-zpa/cbi-regions
-zpa/inspection-profiles
-zpa/inspection-custom-controls
-zpa/inspection-predefined-controls
-zpa/pra-approvals
-zpa/pra-consoles
-zpa/pra-portals
-zpa/tag-groups
-zpa/tag-keys
-zpa/tag-namespaces
