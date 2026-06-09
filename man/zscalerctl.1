@@ -116,13 +116,15 @@ Success.
 Internal error.
 .TP
 .B 2
-Usage error.
+Usage error: an invalid CLI flag, an invalid resource id, an invalid
+\fBZSCALERCTL_*\fR configuration value, or invalid proxy configuration.
 .TP
 .B 3
 Missing or invalid credentials.
 .TP
 .B 4
-Resource not found / unsupported.
+Resource not found or unsupported, including a product or resource the tenant
+is not entitled to.
 .TP
 .B 5
 Live API access failure.

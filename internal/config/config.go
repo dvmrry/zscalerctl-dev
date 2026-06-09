@@ -40,6 +40,11 @@ const (
 	AuthModeZIALegacy AuthMode = "zia-legacy"
 )
 
+// ErrInvalidConfig classifies a malformed configuration value (e.g. an
+// unparseable ZSCALERCTL_* setting). It lets the command boundary map operator
+// misconfiguration to the usage exit code instead of the internal-error code.
+var ErrInvalidConfig = errors.New("invalid configuration")
+
 type Config struct {
 	Profile      string
 	AuthMode     AuthMode
@@ -132,18 +137,18 @@ func LoadEnv(environ []string) (Config, error) {
 	if value := env[EnvRedaction]; value != "" {
 		parsed, err := redact.ParseMode(value)
 		if err != nil {
-			return Config{}, fmt.Errorf("parse %s: %w", EnvRedaction, err)
+			return Config{}, fmt.Errorf("%w: parse %s: %w", ErrInvalidConfig, EnvRedaction, err)
 		}
 		mode = parsed
 	}
 
 	noCache, err := parseBoolEnv(env[EnvNoCache])
 	if err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", EnvNoCache, err)
+		return Config{}, fmt.Errorf("%w: parse %s: %w", ErrInvalidConfig, EnvNoCache, err)
 	}
 	proxyFromEnv, err := parseBoolEnv(env[EnvProxyFromEnv])
 	if err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", EnvProxyFromEnv, err)
+		return Config{}, fmt.Errorf("%w: parse %s: %w", ErrInvalidConfig, EnvProxyFromEnv, err)
 	}
 	authMode, err := parseAuthMode(env[EnvAuthMode])
 	if err != nil {
@@ -288,7 +293,7 @@ func parseAuthMode(value string) (AuthMode, error) {
 	case AuthModeOneAPI, AuthModeZIALegacy:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("parse %s: unsupported auth mode %q", EnvAuthMode, value)
+		return "", fmt.Errorf("%w: parse %s: unsupported auth mode %q", ErrInvalidConfig, EnvAuthMode, value)
 	}
 }
 

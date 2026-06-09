@@ -9,10 +9,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
@@ -32,7 +36,11 @@ func TestExitCodeForError(t *testing.T) {
 		{"not_found", cli.ErrNotFound, exitNotFound},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
+		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
 		{"live_access_failed", zscaler.ErrLiveAccessFailed, exitLiveAccessFailure},
+		{"invalid_proxy_config", zscaler.ErrInvalidProxyConfig, exitUsageError},
+		{"invalid_config", config.ErrInvalidConfig, exitUsageError},
+		{"wrapped_invalid_config", fmt.Errorf("load env: %w", config.ErrInvalidConfig), exitUsageError},
 		{"unknown", errors.New("boom"), exitInternalError},
 	}
 	for _, tc := range cases {
@@ -206,8 +214,11 @@ func TestRunRecoversPanicWithoutTracebackOrRawSecret(t *testing.T) {
 		t.Errorf("run(help with panicking stdout) captured stdout = %q, want empty", stdout.String())
 	}
 	got := stderr.String()
-	if !strings.Contains(got, "zscalerctl: internal error:") {
-		t.Errorf("run panic stderr = %q, want internal error prefix", got)
+	// stdout is a non-terminal sink, so the default (auto) format resolves to
+	// JSON and the panic is reported as the structured envelope, not text.
+	env := decodeErrorEnvelope(t, stderr.Bytes())
+	if env.Error.Kind != "internal" || !strings.Contains(env.Error.Message, "internal error:") {
+		t.Errorf("run panic envelope = %#v, want internal error", env)
 	}
 	if strings.Contains(got, raw) || strings.Contains(got, "raw-panic-canary") {
 		t.Errorf("run panic stderr = %q, want no raw panic value", got)
@@ -282,4 +293,109 @@ func decodeErrorEnvelope(t *testing.T, body []byte) errorEnvelope {
 		t.Fatalf("json.Unmarshal(error envelope %q) error = %v, want nil", body, err)
 	}
 	return got
+}
+
+// TestErrorEnvelopeSchemaMatchesStruct guards docs/schema/error.schema.json
+// against drift: the published stderr error-envelope schema must list exactly
+// the JSON fields the errorEnvelope/errorBody structs emit, mirroring the dump
+// artifact drift guard so the contract cannot diverge silently.
+func TestErrorEnvelopeSchemaMatchesStruct(t *testing.T) {
+	t.Parallel()
+
+	body, err := os.ReadFile(filepath.Join("..", "..", "docs", "schema", "error.schema.json"))
+	if err != nil {
+		t.Fatalf("read error.schema.json: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("parse error.schema.json: %v", err)
+	}
+
+	topProps := schemaProps(t, doc, "properties")
+	if want := jsonTagNames(reflect.TypeOf(errorEnvelope{})); !reflect.DeepEqual(topProps, want) {
+		t.Errorf("error.schema.json top properties = %v, want struct fields %v", topProps, want)
+	}
+	errProps := schemaProps(t, doc, "properties", "error", "properties")
+	if want := jsonTagNames(reflect.TypeOf(errorBody{})); !reflect.DeepEqual(errProps, want) {
+		t.Errorf("error.schema.json error properties = %v, want struct fields %v", errProps, want)
+	}
+}
+
+func schemaProps(t *testing.T, doc map[string]any, path ...string) []string {
+	t.Helper()
+	var cur any = doc
+	for _, seg := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			t.Fatalf("error.schema.json: %q is not an object while walking %v", seg, path)
+		}
+		cur, ok = m[seg]
+		if !ok {
+			t.Fatalf("error.schema.json: missing %q while walking %v", seg, path)
+		}
+	}
+	props, ok := cur.(map[string]any)
+	if !ok {
+		t.Fatalf("error.schema.json: node at %v is not an object", path)
+	}
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func jsonTagNames(typ reflect.Type) []string {
+	var names []string
+	for i := 0; i < typ.NumField(); i++ {
+		tag := typ.Field(i).Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		if idx := strings.IndexByte(tag, ','); idx >= 0 {
+			tag = tag[:idx]
+		}
+		if tag != "" {
+			names = append(names, tag)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func TestRunMapsInvalidConfigToUsageExit(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"--format", "json", "doctor"}, &stdout, &stderr,
+		[]string{"ZSCALERCTL_REDACTION=not-a-mode"})
+	if code != exitUsageError {
+		t.Fatalf("run(bad ZSCALERCTL_REDACTION) exit code = %d, want %d", code, exitUsageError)
+	}
+	var env errorEnvelope
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("stderr = %q, want JSON error envelope; err = %v", stderr.String(), err)
+	}
+	if env.Error.Kind != "invalid_config" {
+		t.Errorf("error kind = %q, want invalid_config", env.Error.Kind)
+	}
+}
+
+func TestErrorFormatFollowsDataPathForAuto(t *testing.T) {
+	t.Parallel()
+
+	// Default (auto) format with a non-terminal stdout (bytes.Buffer) → the data
+	// path is JSON, so errors must be JSON too, not plain text.
+	if got := errorFormat([]string{"doctor"}, &bytes.Buffer{}); got != output.FormatJSON {
+		t.Errorf("errorFormat(auto, non-TTY stdout) = %q, want json", got)
+	}
+	// Explicit table → text errors regardless of sink.
+	if got := errorFormat([]string{"--format", "table", "doctor"}, &bytes.Buffer{}); got != output.FormatTable {
+		t.Errorf("errorFormat(table) = %q, want table", got)
+	}
+	// Explicit json → JSON errors.
+	if got := errorFormat([]string{"--format", "json", "doctor"}, &bytes.Buffer{}); got != output.FormatJSON {
+		t.Errorf("errorFormat(json) = %q, want json", got)
+	}
 }
