@@ -18,6 +18,9 @@ import (
 	zpacbizpaprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/cbizpaprofile"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpaversionprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/customerversionprofile"
+	zpainspectioncustom "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_custom_controls"
+	zpainspectionpredef "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_predefined_controls"
+	zpainspectionprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_profile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpamicrotenants "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants"
 	zpaplatforms "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/platforms"
@@ -27,6 +30,9 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpaserviceedgeschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgeschedule"
+	zpataggroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_group"
+	zpatagkey "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key"
+	zpatagnamespace "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -88,6 +94,78 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return zpaserviceedgeschedule.GetSchedule(ctx, service)
 			}),
 			jsonSourceRecord[zpaserviceedgeschedule.AssistantSchedule],
+		),
+		{product: resources.ProductZPA, name: resourceZPAInspectionProfiles}: newListGetHandler(
+			resourceZPAInspectionProfiles,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpainspectionprofile.InspectionProfile, *http.Response, error) {
+				return zpainspectionprofile.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpainspectionprofile.InspectionProfile, *http.Response, error) {
+				return zpainspectionprofile.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpainspectionprofile.InspectionProfile],
+		),
+		{product: resources.ProductZPA, name: resourceZPAInspectionCustomCtl}: newListGetHandler(
+			resourceZPAInspectionCustomCtl,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpainspectioncustom.InspectionCustomControl, *http.Response, error) {
+				return zpainspectioncustom.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpainspectioncustom.InspectionCustomControl, *http.Response, error) {
+				return zpainspectioncustom.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpainspectioncustom.InspectionCustomControl],
+		),
+		{product: resources.ProductZPA, name: resourceZPAInspectionPredefinedCtl}: newListGetHandler(
+			resourceZPAInspectionPredefinedCtl,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpainspectionpredef.PredefinedControls, *http.Response, error) {
+				items, err := zpainspectionpredef.GetAll(ctx, service, "")
+				return items, nil, err
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpainspectionpredef.PredefinedControls, *http.Response, error) {
+				return zpainspectionpredef.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpainspectionpredef.PredefinedControls],
+		),
+		{product: resources.ProductZPA, name: resourceZPATagGroups}: newListGetHandler(
+			resourceZPATagGroups,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpataggroup.TagGroup, *http.Response, error) {
+				return zpataggroup.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpataggroup.TagGroup, *http.Response, error) {
+				return zpataggroup.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpataggroup.TagGroup],
+		),
+		{product: resources.ProductZPA, name: resourceZPATagKeys}: newListOnlyHandler(
+			resourceZPATagKeys,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpatagkey.TagKey, *http.Response, error) {
+				// Tag keys are namespace-scoped; enumerate namespaces and gather each
+				// namespace's keys (per-namespace errors are skipped).
+				namespaces, resp, err := zpatagnamespace.GetAll(ctx, service)
+				if err != nil {
+					return nil, resp, err
+				}
+				var all []zpatagkey.TagKey
+				for i := range namespaces {
+					keys, _, err := zpatagkey.GetAll(ctx, service, namespaces[i].ID)
+					if err != nil {
+						continue
+					}
+					all = append(all, keys...)
+				}
+				return all, nil, nil
+			}),
+			jsonSourceRecord[zpatagkey.TagKey],
+		),
+		{product: resources.ProductZPA, name: resourceZPATagNamespaces}: newListGetHandler(
+			resourceZPATagNamespaces,
+			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpatagnamespace.Namespace, *http.Response, error) {
+				return zpatagnamespace.GetAll(ctx, service)
+			}),
+			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpatagnamespace.Namespace, *http.Response, error) {
+				return zpatagnamespace.Get(ctx, service, id)
+			}),
+			jsonSourceRecord[zpatagnamespace.Namespace],
 		),
 		{product: resources.ProductZPA, name: resourceZPASegmentGroups}: newListGetHandler(
 			resourceZPASegmentGroups,

@@ -20,6 +20,9 @@ import (
 	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
 	zpaconfigoverride "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override"
 	zpaversionprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/customerversionprofile"
+	zpainspectioncustom "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_custom_controls"
+	zpainspectionpredef "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_predefined_controls"
+	zpainspectionprofile "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_profile"
 	zpamachinegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup"
 	zpamicrotenants "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants"
 	zpaplatforms "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/platforms"
@@ -29,6 +32,9 @@ import (
 	zpaserviceedgecontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller"
 	zpaserviceedgegroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup"
 	zpaserviceedgeschedule "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgeschedule"
+	zpataggroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_group"
+	zpatagkey "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key"
+	zpatagnamespace "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace"
 	zpatrustednetwork "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork"
 	ztwcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/common"
 	ztwnetworkservicegroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/policyresources/networkservicegroups"
@@ -146,6 +152,77 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 				"enabled",
 				"frequency",
 				"frequencyInterval",
+			},
+		},
+		{
+			name:         "zpainspectionprofile.InspectionProfile",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAInspectionProfiles,
+			typ:          reflect.TypeOf(zpainspectionprofile.InspectionProfile{}),
+			catalogFields: []string{
+				"id", "name", "description", "apiProfile", "overrideAction",
+				"creationTime", "zsDefinedControlChoice", "globalControlActions",
+				"incarnationNumber", "modifiedBy", "modifiedTime", "paranoiaLevel",
+				"predefinedControlsVersion", "checkControlDeploymentStatus",
+				"commonGlobalOverrideActionsConfig", "controlsInfo", "customControls",
+				"predefinedApiControls", "predefinedControls", "websocketControls",
+				"threatlabzControls",
+			},
+		},
+		{
+			name:         "zpainspectioncustom.InspectionCustomControl",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAInspectionCustomCtl,
+			typ:          reflect.TypeOf(zpainspectioncustom.InspectionCustomControl{}),
+			catalogFields: []string{
+				"id", "name", "description", "action", "actionValue",
+				"associatedInspectionProfileNames", "controlNumber", "controlType",
+				"controlRuleJson", "creationTime", "defaultAction", "defaultActionValue",
+				"modifiedBy", "modifiedTime", "paranoiaLevel", "protocolType", "rules",
+				"severity", "type", "version",
+			},
+		},
+		{
+			name:         "zpainspectionpredef.PredefinedControls",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPAInspectionPredefinedCtl,
+			typ:          reflect.TypeOf(zpainspectionpredef.PredefinedControls{}),
+			catalogFields: []string{
+				"id", "name", "description", "action", "actionValue",
+				"associatedInspectionProfileNames", "attachment", "controlGroup",
+				"controlType", "controlNumber", "creationTime", "defaultAction",
+				"defaultActionValue", "modifiedBy", "modifiedTime", "paranoiaLevel",
+				"protocolType", "severity", "version",
+			},
+		},
+		{
+			name:         "zpataggroup.TagGroup",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPATagGroups,
+			typ:          reflect.TypeOf(zpataggroup.TagGroup{}),
+			catalogFields: []string{
+				"id", "name", "description", "microtenantId", "microtenantName", "tags",
+			},
+		},
+		{
+			name:         "zpatagkey.TagKey",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPATagKeys,
+			typ:          reflect.TypeOf(zpatagkey.TagKey{}),
+			catalogFields: []string{
+				"id", "customerId", "name", "description", "enabled", "namespaceId",
+				"origin", "type", "microtenantId", "microtenantName", "skipAudit",
+				"tagValues",
+			},
+		},
+		{
+			name:         "zpatagnamespace.Namespace",
+			resource:     resources.ProductZPA,
+			resourceName: resourceZPATagNamespaces,
+			typ:          reflect.TypeOf(zpatagnamespace.Namespace{}),
+			catalogFields: []string{
+				"id", "name", "description", "enabled", "origin", "type",
+				"microtenantId", "microtenantName",
 			},
 		},
 		{

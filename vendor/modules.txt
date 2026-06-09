@@ -178,6 +178,9 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/cloudbrowserisolation/
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/config_override
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/customerversionprofile
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_custom_controls
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_predefined_controls
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/inspectioncontrol/inspection_profile
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/machinegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/microtenants
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/platforms
@@ -187,6 +190,9 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/servergroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgecontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgegroup
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/serviceedgeschedule
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_group
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_key
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/tag_controller/tag_namespace
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/trustednetwork
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/adminuserrolemgmt/adminroles
