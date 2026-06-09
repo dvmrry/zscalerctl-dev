@@ -83,7 +83,8 @@ The adapter is responsible for:
 - Direct outbound HTTP by default. The adapter disables ambient
   `HTTP_PROXY`/`HTTPS_PROXY` discovery; proxy support must be added as an
   explicit `zscalerctl` setting if it becomes necessary.
-- Finite retry behavior.
+- Finite retry behavior, including rate-limit handling (see Rate Limits And
+  Pacing below).
 - Context cancellation.
 - Cache policy. SDK response caching is currently disabled for all live reads.
 - Product-specific clients.
@@ -101,6 +102,27 @@ The live reader creates an SDK service per single-resource CLI operation and
 closes it after the call. Dump commands create one SDK service per selected
 product that supports sessions and close it when collection finishes, avoiding
 repeated authentication while keeping token lifetime bounded to the command.
+
+## Rate Limits And Pacing
+
+`zscalerctl` keeps its request rate within tenant limits through two explicit,
+deliberately conservative mechanisms rather than a custom throttler:
+
+- **Per-request retry/backoff.** The adapter configures the SDK rate-limit
+  policy explicitly for both auth paths: `MaxRetries = 2`, `RetryWaitMin = 1s`,
+  `RetryWaitMax = 3s` (bounded exponential backoff, honoring `Retry-After` /
+  rate-limit responses), plus `MaxSessionNotValidRetries = 1` for OneAPI. A
+  request that exhausts these retries surfaces as a normalized live-access
+  error, not an infinite stall.
+- **Sequential collection.** `dump` reads one product/resource at a time in
+  catalog order — there is no client-side fan-out or concurrency. Serialization
+  is itself the pacing strategy: at most one in-flight request per command, so
+  bursts cannot exceed what the per-request backoff already absorbs.
+
+This is the project's rate-limit policy as of v1: correctness and staying under
+limits are favored over dump throughput. Parallel collection would require an
+explicit future setting paired with rate-aware throttling and per-tenant
+concurrency caps; it is intentionally not enabled by default.
 
 ## Data Flow
 
