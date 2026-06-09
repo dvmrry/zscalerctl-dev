@@ -23,6 +23,7 @@ const (
 	ProductZIA       Product = "zia"
 	ProductZPA       Product = "zpa"
 	ProductZTW       Product = "ztw"
+	ProductZCC       Product = "zcc"
 	ProductZidentity Product = "zidentity"
 )
 
@@ -885,6 +886,7 @@ func Catalog() ResourceCatalog {
 	c = append(c, catalogZIA()...)
 	c = append(c, catalogZPA()...)
 	c = append(c, catalogZTW()...)
+	c = append(c, catalogZCC()...)
 	c = append(c, catalogZidentity()...)
 	return c
 }

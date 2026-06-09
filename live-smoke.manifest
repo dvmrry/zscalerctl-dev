@@ -3,3 +3,6 @@
 # scripts/live-smoke.sh auto-uses this file on feature branches when it differs
 # from origin/main and no explicit --resources or LIVE_SMOKE_RESOURCES was set.
 # Keep this focused on the resources changed by the current branch.
+
+# ZCC OneAPI reachability probe: does /zcc/papi/ route on this tenant?
+zcc/fail-open-policy

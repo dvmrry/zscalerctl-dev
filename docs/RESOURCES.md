@@ -2925,6 +2925,25 @@ Fields:
 | `locations`, `proxyGateway`, `ecGroups` | Tenant configuration | `standard` | Rendered as constrained references only. |
 | `lastModifiedBy` | Secret | never | Admin identity is dropped. |
 
+## ZCC Fail Open Policy
+
+Commands:
+
+```sh
+zscalerctl zcc fail-open-policy list
+zscalerctl dump --products zcc --resources zcc/fail-open-policy --out ./scratch-live-smoke
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id`, `active`, `enableFailOpen`, `enableCaptivePortalDetection`, `captivePortalWebSecDisableMinutes`, `enableStrictEnforcementPrompt`, `strictEnforcementPromptDelayMinutes`, `enableWebSecOnProxyUnreachable`, `enableWebSecOnTunnelFailure`, `tunnelFailureRetryCount`, `createdBy`, `editedBy` | Operational metadata | `standard`, `share`, `paranoid` | Fail-open policy state and settings. |
+| `strictEnforcementPromptMessage` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `companyId` | Secret | never | Tenant-identifying company ID is dropped. |
+
+This is a ZCC OneAPI reachability probe (`/zcc/papi/public/v1/webFailOpenPolicy`). ZCC coverage expands only after a live-smoke pass confirms the `/zcc/papi/` route is reachable on the tenant.
+
 ## ZIDENTITY Groups
 
 Commands:

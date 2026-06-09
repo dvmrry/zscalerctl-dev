@@ -70,6 +70,8 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/common
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/failopen_policy
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zdx
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/activation

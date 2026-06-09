@@ -234,6 +234,7 @@ const (
 	resourceZTWZPAAppSegs     = "zpa-application-segments"
 	resourceTrafficDNSRules   = "traffic-dns-rules"
 	resourceTrafficLogRules   = "traffic-log-rules"
+	resourceZCCFailOpenPolicy = "fail-open-policy"
 	resourceEmailProfiles     = "email-profiles"
 
 	resourceAdvancedSettings           = "advanced-settings"
@@ -380,7 +381,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
 	switch product {
-	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZidentity:
+	case resources.ProductZIA, resources.ProductZPA, resources.ProductZTW, resources.ProductZCC, resources.ProductZidentity:
 	default:
 		return nil, fmt.Errorf("%w: %s/session", ErrUnsupportedResource, product)
 	}
@@ -527,6 +528,7 @@ func newResourceHandlers(client sdkClient) map[resourceKey]resourceHandler {
 	addZIAHandlers(m, client)
 	addZPAHandlers(m, client)
 	addZTWHandlers(m, client)
+	addZCCHandlers(m, client)
 	addZidentityHandlers(m, client)
 	return m
 }
