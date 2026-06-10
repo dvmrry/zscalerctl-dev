@@ -58,7 +58,6 @@ internal/resources/
 internal/redact/
 internal/output/
 internal/dump/
-internal/diff/
 ```
 
 Test-only security helpers should live in `_test` packages or testdata that is
@@ -242,8 +241,8 @@ zscalerctl version
 zscalerctl completion bash|zsh|fish
 ```
 
-`diff` (compare two dump directories) is planned, not yet implemented; the
-`internal/diff/` package is groundwork for it.
+`diff` (compare two dump directories) is planned, not yet implemented. There is
+no code for it yet.
 
 Completion output is static public project data. Generating completions must not
 read credential files, initialize the live reader, or contact Zscaler.
@@ -270,7 +269,7 @@ There is no `--redaction off`.
 Configuration precedence:
 
 ```text
-CLI non-secret flags > ZSCALERCTL_* environment > profile config > defaults
+CLI non-secret flags > ZSCALERCTL_* environment > defaults
 ```
 
 Credential sources:
@@ -281,8 +280,9 @@ Credential sources:
 
 Secrets should not be accepted as ordinary CLI arguments.
 
-Profile config files should be owner-only. The tool should refuse to load
-profile or secret files with unsafe permissions.
+Secret files (the `*_FILE` variables) must be owner-only; the tool refuses to
+load a secret file with unsafe permissions. Configuration is environment-only
+today — there is no profile config file source.
 
 The project must define how `ZSCALERCTL_*` variables interact with SDK-native
 variables such as product-specific or OneAPI variables before implementation.

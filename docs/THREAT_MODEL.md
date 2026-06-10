@@ -180,12 +180,14 @@ tokenization and key-management design exists.
 
 ## Mandatory CI Checks
 
-- `go test ./...`
-- `go test -race ./...`
-- `go vet ./...`
-- `make fmt-check`
-- `govulncheck ./...`
-- `go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...`
-- `gitleaks detect`
+`make check` is the authoritative gate; the list below is representative, not
+exhaustive (see [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md) for the full set).
+
+- `go test ./...` and `go test -race ./...`
+- `go vet ./...`, `make fmt-check`
+- `govulncheck ./...` and staticcheck
+- semgrep (credential escape-hatch and SDK-boundary rules)
+- secret scan (gitleaks over the working tree locally / the gitleaks action in CI)
 - `bash scripts/verify-sdk-boundary.sh`
 - `bash scripts/test-verify-sdk-boundary.sh`
+- the doc, no-live-creds, actions-pinned, and registry verifiers
