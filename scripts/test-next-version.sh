@@ -40,6 +40,14 @@ if ! grep -q "reserved for post-1.0" "$tmp_dir/err"; then
 	exit 1
 fi
 
+# The explicit escape hatch the release workflow's major dispatch uses to cut
+# v1.0.0 from a 0.x history.
+got="$(ZSCALERCTL_ALLOW_MAJOR_ZERO=true "$repo_root/scripts/next-version.sh" major)"
+if [[ "$got" != "v1.0.0" ]]; then
+	echo "next-version.sh major with ZSCALERCTL_ALLOW_MAJOR_ZERO=true = $got, want v1.0.0" >&2
+	exit 1
+fi
+
 git tag v1.2.3
 assert_next major v2.0.0
 

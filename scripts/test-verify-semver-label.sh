@@ -24,6 +24,18 @@ run_bad() {
 	fi
 }
 
+# verify-semver-label.sh reads the surrounding repo's tags for its major-label
+# guard, so run every case from a temp repo with a controlled tag history.
+# Without this isolation the pre-1.0 expectations below would invert once the
+# zscalerctl repo itself gains a v1.x tag.
+repo="$(mktemp -d "$tmp_dir/repo.XXXXXX")"
+cd "$repo"
+git init -q
+git config user.email "test@example.invalid"
+git config user.name "zscalerctl test"
+git commit --allow-empty -m initial >/dev/null
+git tag v0.1.0
+
 run_good "dependencies,semver:patch"
 run_good "semver:minor"
 run_good "semver:none"
@@ -32,13 +44,12 @@ run_bad "" "exactly one semver label"
 run_bad "semver:patch,semver:minor" "exactly one semver label"
 run_bad "semver:major" "reserved for post-1.0"
 
-repo="$(mktemp -d "$tmp_dir/repo.XXXXXX")"
+# The explicit escape hatch the release workflow's major dispatch uses to cut
+# v1.0.0 from a 0.x history.
 (
-	cd "$repo"
-	git init -q
-	git config user.email "test@example.invalid"
-	git config user.name "zscalerctl test"
-	git commit --allow-empty -m initial >/dev/null
-	git tag v1.0.0
-	ZSCALERCTL_PR_LABELS="semver:major" "$repo_root/scripts/verify-semver-label.sh"
+	export ZSCALERCTL_ALLOW_MAJOR_ZERO=true
+	run_good "semver:major"
 )
+
+git tag v1.0.0
+run_good "semver:major"
