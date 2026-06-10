@@ -925,6 +925,10 @@ func readAllZidentityPages[T any](
 	}
 }
 
+// zpaSDKList, zpaSDKShow, and zpaSDKStringGet are ZPA-specific adapters. The
+// ZPA SDK returns (T, *http.Response, error) while every other product's SDK
+// returns (T, error); these wrappers discard the unused *http.Response so the
+// rest of the reader machinery sees a uniform signature.
 func zpaSDKList[T any](
 	client sdkClient,
 	call func(context.Context, *zsdk.Service) ([]T, *http.Response, error),

@@ -1598,8 +1598,13 @@ func TestDumpAbortsWithoutWritingOnResourceErrorByDefault(t *testing.T) {
 	if out.Len() != 0 {
 		t.Errorf("App.Run(dump resource error default) stdout = %q, want empty", out.String())
 	}
-	if strings.Contains(err.Error(), leakedErrorText) || strings.Contains(err.Error(), "client_secret") {
-		t.Errorf("App.Run(dump resource error default) error = %q, want no raw error text", err.Error())
+	// The returned error now wraps the underlying cause for operator
+	// diagnostics; the display layer (main.writeError) passes it through
+	// standard-mode redaction before stderr or the JSON envelope. Assert that
+	// redacted form drops the secret value even when a reader error embeds one.
+	displayed := redact.New(redact.ModeStandard).String(err.Error())
+	if strings.Contains(displayed, "raw-error-value") {
+		t.Errorf("App.Run(dump resource error default) redacted error = %q, want secret value redacted", displayed)
 	}
 	if strings.Contains(errOut.String(), leakedErrorText) {
 		t.Errorf("App.Run(dump resource error default) stderr = %q, want no raw error text", errOut.String())

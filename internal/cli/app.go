@@ -490,6 +490,13 @@ func applyOptions(cfg *config.Config, opts globalOptions) {
 	}
 }
 
+// rejectUnsupportedFormat returns an error when command does not support the
+// given format. JSON is handled separately (fast-path) before this guard, so
+// only non-table/non-pretty formats reach here.
+func rejectUnsupportedFormat(command string, format output.Format) error {
+	return fmt.Errorf("%s does not support %s output yet", command, format)
+}
+
 func (a *App) runVersion(opts globalOptions, args []string) error {
 	if err := requireNoArgs("version", args); err != nil {
 		return err
@@ -499,7 +506,7 @@ func (a *App) runVersion(opts globalOptions, args []string) error {
 		return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, info)
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
-		return fmt.Errorf("version does not support %s output yet", opts.format)
+		return rejectUnsupportedFormat("version", opts.format)
 	}
 	body := output.RenderKeyValues([]output.KV{
 		{Key: "Version", Value: info.Version},
@@ -525,7 +532,7 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
-		return fmt.Errorf("doctor does not support %s output yet", opts.format)
+		return rejectUnsupportedFormat("doctor", opts.format)
 	}
 	body := output.RenderKeyValues(doctorStatusRows(status), a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
@@ -540,7 +547,7 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
-		return fmt.Errorf("auth status does not support %s output yet", opts.format)
+		return rejectUnsupportedFormat("auth status", opts.format)
 	}
 	body := output.RenderKeyValues(authStatusRows(status), a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
@@ -554,7 +561,7 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 		return a.renderer(cfg, opts).WriteJSON(a.out, cfg.Safe())
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
-		return fmt.Errorf("config show does not support %s output yet", opts.format)
+		return rejectUnsupportedFormat("config show", opts.format)
 	}
 	safe := cfg.Safe()
 	body := output.RenderKeyValues([]output.KV{
@@ -589,7 +596,7 @@ func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions
 		return a.renderer(cfg, opts).WriteJSON(a.out, catalog)
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
-		return fmt.Errorf("schema list does not support %s output yet", opts.format)
+		return rejectUnsupportedFormat("schema list", opts.format)
 	}
 	if len(catalog) == 0 {
 		return a.renderer(cfg, opts).WriteText(a.out, output.NewSafeText("no resources enabled yet\n"))
@@ -832,7 +839,7 @@ func (a *App) collectDump(
 					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed"))
 					continue
 				}
-				return result, fmt.Errorf("dump %s/%s show failed", spec.Product, spec.Name)
+				return result, fmt.Errorf("dump %s/%s show failed: %w", spec.Product, spec.Name, err)
 			}
 			projected, report, err := resources.ProjectRecordAndVerify(spec, cfg.Defaults.Redaction, record)
 			if err != nil {
@@ -846,7 +853,7 @@ func (a *App) collectDump(
 					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
 					continue
 				}
-				return result, fmt.Errorf("dump %s/%s %s failed", spec.Product, spec.Name, operation)
+				return result, fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
 			}
 			result.Entries = append(result.Entries, dump.ResourceDump{
 				Spec:    spec,
@@ -864,7 +871,7 @@ func (a *App) collectDump(
 				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed"))
 				continue
 			}
-			return result, fmt.Errorf("dump %s/%s list failed", spec.Product, spec.Name)
+			return result, fmt.Errorf("dump %s/%s list failed: %w", spec.Product, spec.Name, err)
 		}
 		projected, reports, err := resources.ProjectRecordsAndVerify(spec, cfg.Defaults.Redaction, records)
 		if err != nil {
@@ -878,7 +885,7 @@ func (a *App) collectDump(
 				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
 				continue
 			}
-			return result, fmt.Errorf("dump %s/%s %s failed", spec.Product, spec.Name, operation)
+			return result, fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
 		}
 		result.Entries = append(result.Entries, dump.ResourceDump{
 			Spec:    spec,
