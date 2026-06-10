@@ -133,7 +133,15 @@ type Options struct {
 
 func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 	envCopy := append([]string(nil), env...)
-	catalog := append(resources.ResourceCatalog(nil), opts.Catalog...)
+	// Resolve the catalog once at construction: use the caller-supplied override
+	// when provided (test injection), otherwise build from the full static catalog.
+	// All later calls to resourceCatalog() return a cheap copy of this slice.
+	var catalog resources.ResourceCatalog
+	if len(opts.Catalog) > 0 {
+		catalog = append(resources.ResourceCatalog(nil), opts.Catalog...)
+	} else {
+		catalog = resources.Catalog()
+	}
 	return &App{
 		out:       out,
 		err:       err,
@@ -145,10 +153,7 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 }
 
 func (a *App) resourceCatalog() resources.ResourceCatalog {
-	if len(a.catalog) > 0 {
-		return append(resources.ResourceCatalog(nil), a.catalog...)
-	}
-	return resources.Catalog()
+	return append(resources.ResourceCatalog(nil), a.catalog...)
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
