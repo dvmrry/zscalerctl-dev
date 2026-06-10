@@ -6120,6 +6120,41 @@ func TestReaderNormalizedSDKErrorPreservesSafeStatusCodeOnly(t *testing.T) {
 	}
 }
 
+func TestNormalizeLiveErrorMapsGet404ToNotFound(t *testing.T) {
+	t.Parallel()
+
+	notFound := &sdkerrorx.ErrorResponse{
+		Response: &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found"},
+		Message:  "client_secret=raw-sdk-body",
+	}
+
+	// get-by-ID 404 -> not found (exit 4), not a live-access failure (exit 5).
+	getErr := normalizeLiveError(context.Background(), "get", resources.ProductZIA, "locations", notFound)
+	if !errors.Is(getErr, ErrResourceNotFound) {
+		t.Errorf("get 404 = %v, want ErrResourceNotFound", getErr)
+	}
+	if errors.Is(getErr, ErrLiveAccessFailed) {
+		t.Errorf("get 404 = %v, want NOT ErrLiveAccessFailed", getErr)
+	}
+	if strings.Contains(getErr.Error(), "raw-sdk-body") {
+		t.Errorf("get 404 = %q, want no leaked SDK body", getErr.Error())
+	}
+
+	// list and show 404s remain live-access failures (endpoint/access problems).
+	for _, op := range []string{"list", "show"} {
+		err := normalizeLiveError(context.Background(), op, resources.ProductZIA, "locations", notFound)
+		if !errors.Is(err, ErrLiveAccessFailed) || errors.Is(err, ErrResourceNotFound) {
+			t.Errorf("%s 404 = %v, want ErrLiveAccessFailed", op, err)
+		}
+	}
+
+	// A get with a non-404 status stays a live-access failure.
+	forbidden := &sdkerrorx.ErrorResponse{Response: &http.Response{StatusCode: http.StatusForbidden}}
+	if err := normalizeLiveError(context.Background(), "get", resources.ProductZIA, "locations", forbidden); !errors.Is(err, ErrLiveAccessFailed) {
+		t.Errorf("get 403 = %v, want ErrLiveAccessFailed", err)
+	}
+}
+
 func validReaderConfig() ReaderConfig {
 	return ReaderConfig{
 		ClientID:         secret.New("zscalerctl-client-id"),
