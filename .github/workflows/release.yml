@@ -13,10 +13,17 @@ on:
         options:
           - patch
           - minor
+          - major
           - none
 
 permissions:
   contents: read
+
+# Serialize releases: concurrent merges to main must not race on tag creation.
+# Do not cancel an in-flight release — let it finish, then run the next.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -47,6 +54,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DISPATCH_BUMP: ${{ github.event.inputs.bump }}
+          # Permit the 0.x -> 1.0.0 major bump only on an explicit manual
+          # dispatch of "major". The push/label path never sets this, so a
+          # semver:major label alone can never cut 1.0 — it stays a deliberate
+          # human act. See docs/VERSIONING.md.
+          ZSCALERCTL_ALLOW_MAJOR_ZERO: ${{ github.event.inputs.bump == 'major' }}
         run: |
           set -euo pipefail
           if [[ -n "${DISPATCH_BUMP:-}" ]]; then
