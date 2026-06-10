@@ -23,8 +23,21 @@ require_pattern() {
 
 require_pattern 'attestations:[[:space:]]*write' "release workflow must grant attestations: write"
 require_pattern 'id-token:[[:space:]]*write' "release workflow must grant id-token: write for provenance"
-require_pattern 'CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@\$\{CYCLONEDX_GOMOD_VERSION\}' "release workflow must install the pinned CycloneDX SBOM tool"
-require_pattern 'CYCLONEDX_GOMOD_VERSION:[[:space:]]*v[0-9]+\.[0-9]+\.[0-9]+' "release workflow must pin the CycloneDX SBOM tool version"
+require_pattern 'cd tools && GOBIN=.+ go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod' "release workflow must install the CycloneDX SBOM tool from the pinned tools module"
+
+tools_mod="${ZSCALERCTL_RELEASE_TOOLS_MOD:-tools/go.mod}"
+if [[ ! -f "$tools_mod" ]]; then
+	echo "$tools_mod: tools module not found; it must pin the CycloneDX SBOM tool version" >&2
+	exit 1
+fi
+if ! grep -Eq 'github.com/CycloneDX/cyclonedx-gomod v[0-9]+\.[0-9]+\.[0-9]+' "$tools_mod"; then
+	echo "$tools_mod: tools module must pin the CycloneDX SBOM tool version" >&2
+	exit 1
+fi
+if [[ ! -f "$(dirname "$tools_mod")/go.sum" ]]; then
+	echo "$(dirname "$tools_mod")/go.sum: tools module must commit go.sum so the CycloneDX SBOM tool install is hash-verified" >&2
+	exit 1
+fi
 require_pattern "git tag --list 'v\\[0-9\\]\\*'" "release workflow must remove local semver tags before SBOM generation"
 require_pattern 'git tag -d "\$tag"' "release workflow must delete local semver tags before SBOM generation"
 require_pattern 'git tag "\$VERSION"' "release workflow must create a temporary local version tag before SBOM generation"

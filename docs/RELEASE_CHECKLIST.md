@@ -58,6 +58,32 @@ assets include the platform archives, per-target CycloneDX SBOMs,
 `SHA256SUMS`, and GitHub provenance attestations for the subjects listed in
 `SHA256SUMS`.
 
+## Recovery: Tag Pushed but Release Missing
+
+If the release workflow pushes the annotated tag successfully but `gh release
+create` fails, re-running the workflow will fail: the build step deletes and
+recreates the local tag then removes it on exit, so the publish step's
+`git rev-parse` no longer finds it and the subsequent `git push origin` is
+rejected because the tag already exists on the remote.
+
+Confirm the state:
+
+```sh
+gh release view vX.Y.Z          # should fail: release not found
+git ls-remote origin refs/tags/vX.Y.Z  # should show the tag SHA
+```
+
+Recovery: confirm no release was created and no attestation consumers exist,
+then delete the remote tag and re-run via `workflow_dispatch` with the same
+bump:
+
+```sh
+git push origin :refs/tags/vX.Y.Z
+```
+
+Then trigger the release workflow from the Actions UI or CLI
+(`gh workflow run release.yml -f bump=<patch|minor|major>`).
+
 ## Required Live Smoke
 
 Before public release, run a live smoke against a non-sensitive tenant or

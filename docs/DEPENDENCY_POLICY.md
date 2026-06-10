@@ -90,10 +90,13 @@ automerge updates. GitHub Actions must remain pinned to full commit SHAs with an
 inline version comment so Renovate can update the digest while preserving a
 human-readable tag.
 
-Release SBOM generation uses `cyclonedx-gomod` installed by `go install` at a
-pinned Go module version instead of a GitHub Action. The Go checksum database
-and Renovate custom manager are the integrity and freshness controls for that
-tool; GitHub Action SHA pinning does not apply to that dependency path.
+Release SBOM generation uses `cyclonedx-gomod` installed by `go install` from
+the committed `tools/go.mod` and `tools/go.sum` instead of a GitHub Action.
+The committed `tools/go.sum` is the integrity control for that tool: the `go`
+command verifies every module download against those hashes at install time,
+and Renovate's `gomod` manager auto-discovers `tools/go.mod` to keep the
+version current. GitHub Action SHA pinning does not apply to that dependency
+path.
 
 The Zscaler SDK package is handled separately from routine dependency updates.
 Renovate requires dependency dashboard approval for SDK bumps and annotates those

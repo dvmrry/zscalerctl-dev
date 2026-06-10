@@ -20,10 +20,8 @@ jobs:
   release:
     steps:
       - name: Install SBOM tool
-        env:
-          CYCLONEDX_GOMOD_VERSION: v1.10.0
         run: |
-          go install -mod=mod "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}"
+          cd tools && GOBIN="$GITHUB_WORKSPACE/.release-tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
       - name: Build release artifacts
         run: |
           local_semver_tags="$(git tag --list 'v[0-9]*')"
@@ -44,15 +42,33 @@ cp "$good" "$missing_attest"
 perl -0pi -e 's/\n      - name: Attest release artifacts.*?subject-checksums: dist\/SHA256SUMS\n//s' "$missing_attest"
 
 cp "$good" "$missing_sbom"
-perl -0pi -e 's/\n      - name: Install SBOM tool.*?CycloneDX_GOMOD_VERSION\}\}"\n//s; s/          cyclonedx-gomod app[^\n]+\n//' "$missing_sbom"
+perl -0pi -e 's/\n      - name: Install SBOM tool.*?cmd\/cyclonedx-gomod\n//s; s/          cyclonedx-gomod app[^\n]+\n//' "$missing_sbom"
+
+tools_dir="$tmp_dir/tools"
+mkdir -p "$tools_dir"
+cat >"$tools_dir/go.mod" <<'GOMOD'
+module example.test/tools
+
+go 1.26
+
+tool github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
+
+require github.com/CycloneDX/cyclonedx-gomod v1.10.0 // indirect
+GOMOD
+touch "$tools_dir/go.sum"
+
+unpinned_tools_dir="$tmp_dir/tools-unpinned"
+mkdir -p "$unpinned_tools_dir"
+printf 'module example.test/tools\n\ngo 1.26\n' >"$unpinned_tools_dir/go.mod"
+touch "$unpinned_tools_dir/go.sum"
 
 cp "$good" "$missing_version_tag"
 perl -0pi -e 's/          local_semver_tags=.*?\n          git tag "\$VERSION"\n          git tag -d "\$VERSION"\n//s' "$missing_version_tag"
 
-ZSCALERCTL_RELEASE_WORKFLOW="$good" \
+ZSCALERCTL_RELEASE_WORKFLOW="$good" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh"
 
-if ZSCALERCTL_RELEASE_WORKFLOW="$missing_attest" \
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_attest" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
 	echo "verify-release-artifacts accepted a release workflow without provenance attestation" >&2
 	cat "$tmp_dir/out" >&2
@@ -66,7 +82,7 @@ if ! grep -q "build provenance attestation" "$tmp_dir/err"; then
 	exit 1
 fi
 
-if ZSCALERCTL_RELEASE_WORKFLOW="$missing_sbom" \
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_sbom" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
 	echo "verify-release-artifacts accepted a release workflow without SBOM generation" >&2
 	cat "$tmp_dir/out" >&2
@@ -80,7 +96,7 @@ if ! grep -Eq "CycloneDX SBOM tool|CycloneDX JSON SBOMs" "$tmp_dir/err"; then
 	exit 1
 fi
 
-if ZSCALERCTL_RELEASE_WORKFLOW="$missing_version_tag" \
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_version_tag" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
 	echo "verify-release-artifacts accepted a release workflow without a temporary SBOM version tag" >&2
 	cat "$tmp_dir/out" >&2
@@ -90,6 +106,20 @@ fi
 
 if ! grep -Eq "local semver tags|temporary local version tag" "$tmp_dir/err"; then
 	echo "verify-release-artifacts failed without the expected version tag message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$good" ZSCALERCTL_RELEASE_TOOLS_MOD="$unpinned_tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a tools module without a pinned SBOM tool version" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "pin the CycloneDX SBOM tool version" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected tools pin message" >&2
 	cat "$tmp_dir/err" >&2
 	exit 1
 fi

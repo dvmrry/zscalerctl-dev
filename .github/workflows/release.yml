@@ -94,13 +94,11 @@ jobs:
 
       - name: Install SBOM tool
         if: steps.version.outputs.release == 'true'
-        env:
-          CYCLONEDX_GOMOD_VERSION: v1.10.0
         run: |
           set -euo pipefail
           mkdir -p .release-tools
-          GOBIN="$PWD/.release-tools" go install -mod=mod "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}"
-          echo "$PWD/.release-tools" >>"$GITHUB_PATH"
+          cd tools && GOBIN="$GITHUB_WORKSPACE/.release-tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
+          echo "$GITHUB_WORKSPACE/.release-tools" >>"$GITHUB_PATH"
 
       - name: Build release artifacts
         if: steps.version.outputs.release == 'true'
