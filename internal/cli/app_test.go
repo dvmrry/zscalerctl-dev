@@ -409,6 +409,37 @@ func TestGlobalOutputWritesSuccessfulCommandToOwnerOnlyFile(t *testing.T) {
 	}
 }
 
+func TestGlobalOutputOverwritesAtomicallyWithoutTempLeftovers(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "config.json")
+	// Write twice to the same path: the second run must overwrite cleanly (the
+	// atomic rename replaces the file), proving --output stays re-runnable.
+	for i := 0; i < 2; i++ {
+		var out, errOut bytes.Buffer
+		app := cli.New(&out, &errOut, []string{
+			config.EnvClientID + "=client-id-value",
+			config.EnvClientSecret + "=client-secret-value",
+		})
+		if err := app.Run(context.Background(), []string{"config", "show", "--format", "json", "--output", outPath}); err != nil {
+			t.Fatalf("run %d: App.Run(config show --output) error = %v, want nil", i, err)
+		}
+	}
+	assertFileMode(t, outPath, 0o600)
+	if body := readFile(t, outPath); !json.Valid([]byte(body)) {
+		t.Fatalf("output file body = %q, want valid JSON", body)
+	}
+	// The temp file must be renamed into place, never left behind on success.
+	leftovers, err := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+	if err != nil {
+		t.Fatalf("glob temp files error = %v", err)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("temp leftovers = %v, want none", leftovers)
+	}
+}
+
 func TestGlobalOutputTreatsDestinationAsNonTTYForColorAuto(t *testing.T) {
 	t.Parallel()
 

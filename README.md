@@ -69,10 +69,11 @@ export ZSCALERCTL_CLIENT_ID=<client-id>
 export ZSCALERCTL_CLIENT_SECRET_FILE=/path/to/owner-only/secret-file
 export ZSCALERCTL_VANITY_DOMAIN=<vanity-domain>
 export ZSCALERCTL_CLOUD=PRODUCTION
-export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id>   # ZPA resources only
+export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id>          # ZPA resources only
+export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id>   # optional, ZPA microtenants
 ```
 
-ZIA legacy credentials are supported for ZIA resources. Legacy, proxy, config-file, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
+ZIA legacy credentials are supported for ZIA resources. Legacy, proxy, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Configuration is environment-only (no config file). Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
 
 ## Automation contract
 

@@ -112,6 +112,7 @@ var (
 	ErrMissingCredentials  = errors.New("missing zscaler API credentials")
 	ErrUnsupportedResource = errors.New("unsupported zscaler resource")
 	ErrInvalidResourceID   = errors.New("invalid zscaler resource id")
+	ErrResourceNotFound    = errors.New("zscaler resource not found")
 	ErrLiveAccessFailed    = errors.New("zscaler API request failed")
 	ErrInvalidProxyConfig  = errors.New("invalid zscaler proxy config")
 )
@@ -1206,6 +1207,9 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.RateLimit.MaxRetries = 2
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMin = time.Second
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMax = 3 * time.Second
+	// OneAPI-only: the OAuth session can become invalid mid-run, so bound the
+	// re-auth retries. The legacy ZIA client's RateLimit struct has no such field
+	// (different auth/session model), which is why the legacy path omits it.
 	sdkCfg.Zscaler.Client.RateLimit.MaxSessionNotValidRetries = 1
 	// SDK response caching remains disabled for every read path. NoCache is
 	// retained in ReaderConfig so future cache support has to make a deliberate
@@ -4406,11 +4410,19 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("zscaler %s %s/%s cancelled: %w", operation, product, resource, err)
 	}
+	statusCode := sdkStatusCode(err)
+	// A get-by-ID that 404s means the ID does not exist — a distinct, scriptable
+	// condition (exit 4) rather than a generic live-access failure (exit 5). Scope
+	// this to get; a list/show/authenticate 404 is an endpoint/access problem, not
+	// a missing record.
+	if operation == "get" && statusCode == http.StatusNotFound {
+		return resourceNotFoundError{product: product, resource: resource}
+	}
 	return liveAccessError{
 		operation:  operation,
 		product:    product,
 		resource:   resource,
-		statusCode: sdkStatusCode(err),
+		statusCode: statusCode,
 	}
 }
 
@@ -4430,6 +4442,22 @@ func (e liveAccessError) Error() string {
 
 func (e liveAccessError) Unwrap() error {
 	return ErrLiveAccessFailed
+}
+
+// resourceNotFoundError marks a get-by-ID whose target does not exist (404). It
+// carries only the safe product/resource labels — never the SDK response body —
+// and unwraps to ErrResourceNotFound so the CLI exits 4, not 5.
+type resourceNotFoundError struct {
+	product  resources.Product
+	resource string
+}
+
+func (e resourceNotFoundError) Error() string {
+	return fmt.Sprintf("%s: %s/%s", ErrResourceNotFound, e.product, e.resource)
+}
+
+func (e resourceNotFoundError) Unwrap() error {
+	return ErrResourceNotFound
 }
 
 func sdkStatusCode(err error) int {

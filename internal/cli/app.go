@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1032,14 +1033,41 @@ func writeOutputFile(path string, body []byte) error {
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("write --output: %s is a symlink", path)
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	// Write to a temp file in the same directory, fsync it, then atomically
+	// rename it over the destination, so an interrupted write never leaves a
+	// truncated file at the final path. Overwriting an existing regular file is
+	// still allowed (rename replaces it) so re-running a pipeline to the same
+	// path works; rename targets the path itself, never through a symlink.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
 	if err != nil {
 		return fmt.Errorf("write --output: %w", err)
 	}
-	defer file.Close()
-	if _, err := file.Write(body); err != nil {
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write --output: %w", err)
 	}
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write --output: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write --output: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write --output: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("write --output: %w", err)
+	}
+	cleanup = false
 	return nil
 }
 

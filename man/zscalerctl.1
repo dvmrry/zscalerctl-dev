@@ -27,7 +27,10 @@ pipelines stay machine-parseable. \fBtable\fR is the tab-separated form;
 Write command output to a file instead of stdout (not valid with dump).
 .TP
 .BI \-\-timeout " duration"
-Per-request timeout (e.g. 30s). Must be positive.
+Per-request timeout (e.g. 30s). Must be positive. This bounds each HTTP request
+(including the token exchange), not the whole invocation; a large \fBdump\fR
+making many requests is not capped end-to-end. Impose a whole-run limit
+externally (for example with \fBtimeout(1)\fR) if you need one.
 .TP
 .BI \-\-redaction " standard|share|paranoid"
 Redaction mode applied to rendered fields.
@@ -115,6 +118,10 @@ no flag equivalent.
 .B ZSCALERCTL_PROXY_URL, ZSCALERCTL_PROXY_FROM_ENV
 Explicit proxy settings; ambient HTTP_PROXY/HTTPS_PROXY discovery is off by
 default.
+.TP
+.B NO_COLOR
+When set to any value, disables colored output (equivalent to \fB\-\-color
+never\fR). Honored in addition to the \fBZSCALERCTL_*\fR namespace.
 .SH EXIT STATUS
 .TP
 .B 0
