@@ -39,7 +39,7 @@ func ReadOwnerOnlySecretFile(path string) (secret.Secret, error) {
 	if err := ValidateOwnerOnlyFile(path); err != nil {
 		return secret.Secret{}, err
 	}
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- secret file at an owner-only path validated by ValidateOwnerOnlyFile above
 	if err != nil {
 		return secret.Secret{}, fmt.Errorf("read credential file: %w", err)
 	}

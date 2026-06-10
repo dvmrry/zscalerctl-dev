@@ -17,7 +17,7 @@ import (
 const (
 	dirPerm     os.FileMode = 0o700
 	filePerm    os.FileMode = 0o600
-	dumpWarning             = "sanitized dumps remain confidential operational data"
+	dumpWarning             = "sanitized dumps remain confidential operational data" // #nosec G101 -- static warning string, not a credential
 )
 
 var (

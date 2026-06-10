@@ -173,7 +173,7 @@ const (
 	resourceDLPEDMLite        = "dlp-edm-schemas-lite"
 	resourceDLPIDMLite        = "dlp-idm-profile-lite"
 	resourceDLPIDMProfiles    = "dlp-idm-profiles"
-	resourceDLPWebRules       = "dlp-web-rules"
+	resourceDLPWebRules       = "dlp-web-rules" // #nosec G101 -- resource path slug, not a credential
 	resourceDLPICAPServers    = "dlp-icap-servers"
 	resourceDLPIncidentRcvs   = "dlp-incident-receiver-servers"
 	resourceDLPNotifyTmpls    = "dlp-notification-templates"
