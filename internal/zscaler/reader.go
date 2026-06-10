@@ -1207,6 +1207,9 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.RateLimit.MaxRetries = 2
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMin = time.Second
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMax = 3 * time.Second
+	// OneAPI-only: the OAuth session can become invalid mid-run, so bound the
+	// re-auth retries. The legacy ZIA client's RateLimit struct has no such field
+	// (different auth/session model), which is why the legacy path omits it.
 	sdkCfg.Zscaler.Client.RateLimit.MaxSessionNotValidRetries = 1
 	// SDK response caching remains disabled for every read path. NoCache is
 	// retained in ReaderConfig so future cache support has to make a deliberate
