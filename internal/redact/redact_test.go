@@ -44,6 +44,51 @@ func TestRedactorRemovesCredentialPatterns(t *testing.T) {
 	}
 }
 
+func TestRedactorRemovesNonBearerAuthSchemes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ name, in, leak string }{
+		{"token", "Authorization: Token sk-supersecret-credential-value", "supersecret"},
+		{"apikey", "Authorization: ApiKey abc123secretkeyvalue", "abc123secretkeyvalue"},
+		{"ntlm", "Authorization: NTLM TlRMTVNTUAABBBBBccccc", "TlRMTVNTUAAB"},
+		{"digest", `Authorization: Digest username="x", response=deadbeefdeadbeef`, "deadbeefdeadbeef"},
+		{"aws", "Authorization: AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"},
+		{"bearer-still-works", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqrstuvwxyz"},
+	}
+	r := redact.New(redact.ModeStandard)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := r.String(tc.in)
+			if strings.Contains(got, tc.leak) {
+				t.Errorf("Redactor.String(%q) = %q, want no %q", tc.in, got, tc.leak)
+			}
+		})
+	}
+}
+
+func TestRedactorRemovesCredentialURLWithAtInPassword(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ name, in, leak string }{
+		{"at-in-password", "see https://admin:P@ssw0rd@db.internal.example/path", "ssw0rd"},
+		{"double-at-no-path", "url https://user:a@b@host.example", "a@b"},
+		{"plain", "https://user:plainpass@host.example/x", "plainpass"},
+	}
+	r := redact.New(redact.ModeStandard)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := r.String(tc.in)
+			if strings.Contains(got, tc.leak) {
+				t.Errorf("Redactor.String(%q) = %q, want no %q", tc.in, got, tc.leak)
+			}
+		})
+	}
+}
+
 func TestRedactorRemovesZscalerCredentialFields(t *testing.T) {
 	t.Parallel()
 

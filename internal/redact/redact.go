@@ -183,13 +183,22 @@ func buildBaseRules() []rule {
 			replacement: markerProvisioningKey,
 		},
 		{
+			// An Authorization header value is entirely credential material, so
+			// redact all of it (to end of line) regardless of scheme — Bearer,
+			// Basic, Token, ApiKey, NTLM, Digest (multi-param), AWS4-HMAC-SHA256,
+			// etc. Matching only one scheme/token left non-Bearer/Basic
+			// credentials, and Digest's later params, in the clear.
 			name:        "authorization_header",
-			re:          regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+`),
+			re:          regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)\S.*`),
 			replacement: `${1}` + markerSecret,
 		},
 		{
+			// The password runs to the LAST '@' before the host, so a password
+			// containing '@' (e.g. admin:P@ssw0rd@host) is fully redacted. The
+			// char class excludes '/' and whitespace, keeping the match inside a
+			// single URL's userinfo.
 			name:        "credential_url",
-			re:          regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^@\s/]+@`),
+			re:          regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s]+@`),
 			replacement: `${1}` + markerSecret + `@`,
 		},
 	}
