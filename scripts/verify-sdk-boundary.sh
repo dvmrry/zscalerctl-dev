@@ -23,7 +23,13 @@ if [[ ${#adapter_files[@]} -eq 0 ]]; then
   exit 1
 fi
 
-if matches="$(grep -nE '\b(NewConfiguration|zsdk\.NewConfiguration|zscaler\.NewConfiguration)\s*\(' "${adapter_files[@]}" || true)" && [[ -n "$matches" ]]; then
+grep_rc=0
+matches="$(grep -nE '\b(NewConfiguration|zsdk\.NewConfiguration|zscaler\.NewConfiguration)\s*\(' "${adapter_files[@]}")" || grep_rc=$?
+if (( grep_rc >= 2 )); then
+  echo "grep error (exit $grep_rc) scanning adapter files for NewConfiguration" >&2
+  exit 1
+fi
+if (( grep_rc == 0 )) && [[ -n "$matches" ]]; then
   echo "$matches" >&2
   echo "internal/zscaler must not call SDK NewConfiguration; it reads SDK env/config before setters" >&2
   exit 1

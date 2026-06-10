@@ -10,13 +10,18 @@ fail=0
 check_pattern() {
   local label="$1"
   local pattern="$2"
-  local out
+  local out grep_rc=0
   out="$(mktemp)"
 
-  if git grep -n -E -i -e "$pattern" -- "${paths[@]}" >"$out"; then
+  git grep -n -E -i -e "$pattern" -- "${paths[@]}" >"$out" || grep_rc=$?
+  if (( grep_rc == 0 )); then
     echo "docs/examples contain forbidden $label pattern:" >&2
     cat "$out" >&2
     fail=1
+  elif (( grep_rc != 1 )); then
+    rm -f "$out"
+    echo "git grep error (exit $grep_rc) checking $label pattern" >&2
+    exit 1
   fi
   rm -f "$out"
 }

@@ -27,16 +27,34 @@ EOF
   exit 127
 }
 
+semgrep_bad_out="$(mktemp)"
+trap 'rm -f "$semgrep_bad_out"' EXIT
+
 semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/internal"
 semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/reveal_ok.go"
-if semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/reveal_bad.go" >/tmp/zscalerctl-semgrep-bad.out 2>&1; then
-  cat /tmp/zscalerctl-semgrep-bad.out >&2
+
+semgrep_rc=0
+semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/reveal_bad.go" >"$semgrep_bad_out" 2>&1 || semgrep_rc=$?
+if (( semgrep_rc == 0 )); then
+  cat "$semgrep_bad_out" >&2
   echo "expected Semgrep Reveal() fixture to fail, but it passed" >&2
   exit 1
+elif (( semgrep_rc >= 2 )); then
+  cat "$semgrep_bad_out" >&2
+  echo "semgrep error (exit $semgrep_rc) running Reveal() fixture" >&2
+  exit 1
 fi
+
 semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/projection_ok.go"
-if semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/projection_bad.go" >/tmp/zscalerctl-semgrep-projection-bad.out 2>&1; then
-  cat /tmp/zscalerctl-semgrep-projection-bad.out >&2
+
+semgrep_rc=0
+semgrep_cmd scan --quiet --error --config "${RULES}" "${ROOT}/semgrep/tests/projection_bad.go" >"$semgrep_bad_out" 2>&1 || semgrep_rc=$?
+if (( semgrep_rc == 0 )); then
+  cat "$semgrep_bad_out" >&2
   echo "expected Semgrep raw projection fixture to fail, but it passed" >&2
+  exit 1
+elif (( semgrep_rc >= 2 )); then
+  cat "$semgrep_bad_out" >&2
+  echo "semgrep error (exit $semgrep_rc) running raw projection fixture" >&2
   exit 1
 fi
