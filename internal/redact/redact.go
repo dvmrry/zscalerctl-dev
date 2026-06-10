@@ -67,23 +67,30 @@ func (r Redactor) String(in string) string {
 
 func (r Redactor) ScanString(in string) (string, Report) {
 	out := string(in)
-	report := Report{Counts: make(map[string]int)}
+	var report Report
 	for _, rule := range baseRules {
-		if count := len(rule.re.FindAllStringIndex(out, -1)); count > 0 {
-			report.Counts[rule.name] += count
+		count := len(rule.re.FindAllStringIndex(out, -1))
+		if count == 0 {
+			continue
 		}
+		if report.Counts == nil {
+			report.Counts = make(map[string]int)
+		}
+		report.Counts[rule.name] += count
 		out = rule.re.ReplaceAllString(out, rule.replacement)
 	}
 	if r.mode == ModeShare || r.mode == ModeParanoid {
 		for _, rule := range shareRules {
-			if count := len(rule.re.FindAllStringIndex(out, -1)); count > 0 {
-				report.Counts[rule.name] += count
+			count := len(rule.re.FindAllStringIndex(out, -1))
+			if count == 0 {
+				continue
 			}
+			if report.Counts == nil {
+				report.Counts = make(map[string]int)
+			}
+			report.Counts[rule.name] += count
 			out = rule.re.ReplaceAllString(out, rule.replacement)
 		}
-	}
-	if len(report.Counts) == 0 {
-		report.Counts = nil
 	}
 	return out, report
 }

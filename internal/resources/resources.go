@@ -250,10 +250,15 @@ type ProjectionReport struct {
 }
 
 func ProjectRecords(spec ResourceSpec, mode redact.Mode, records []SourceRecord) (ProjectedRecords, []ProjectionReport, error) {
+	// Validate the spec once for the whole batch instead of once per record.
+	if err := spec.Validate(); err != nil {
+		return ProjectedRecords{}, nil, err
+	}
+	mode = redact.EffectiveMode(mode)
 	projected := make([]ProjectedRecord, 0, len(records))
 	reports := make([]ProjectionReport, 0, len(records))
 	for _, record := range records {
-		item, report, err := ProjectRecord(spec, mode, record)
+		item, report, err := projectRecordCore(spec, mode, record)
 		if err != nil {
 			return ProjectedRecords{}, nil, err
 		}
@@ -278,7 +283,12 @@ func ProjectRecord(spec ResourceSpec, mode redact.Mode, record SourceRecord) (Pr
 	if err := spec.Validate(); err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
 	}
-	mode = redact.EffectiveMode(mode)
+	return projectRecordCore(spec, redact.EffectiveMode(mode), record)
+}
+
+// projectRecordCore projects a single record without re-validating the spec.
+// Callers that process a batch must validate the spec once before calling this.
+func projectRecordCore(spec ResourceSpec, mode redact.Mode, record SourceRecord) (ProjectedRecord, ProjectionReport, error) {
 	allowed := spec.AllowedFields(mode)
 	projected := make(map[string]any, len(allowed))
 	report := ProjectionReport{}
@@ -492,6 +502,12 @@ func AssertRenderedSubset(spec ResourceSpec, mode redact.Mode, rendered map[stri
 	if err := spec.Validate(); err != nil {
 		return err
 	}
+	return assertRenderedSubsetCore(spec, mode, rendered)
+}
+
+// assertRenderedSubsetCore checks subset membership without re-validating the
+// spec. Callers that loop over many records must validate once before calling.
+func assertRenderedSubsetCore(spec ResourceSpec, mode redact.Mode, rendered map[string]any) error {
 	allowed := spec.AllowedFields(mode)
 	for key := range rendered {
 		field, ok := allowed[key]
@@ -506,8 +522,12 @@ func AssertRenderedSubset(spec ResourceSpec, mode redact.Mode, rendered map[stri
 }
 
 func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
+	// Validate once for the whole batch rather than once per record.
+	if err := spec.Validate(); err != nil {
+		return err
+	}
 	for _, record := range records.Records() {
-		if err := AssertRenderedSubset(spec, mode, record.Fields()); err != nil {
+		if err := assertRenderedSubsetCore(spec, mode, record.Fields()); err != nil {
 			return err
 		}
 	}
