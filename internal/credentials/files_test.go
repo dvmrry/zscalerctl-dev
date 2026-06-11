@@ -10,7 +10,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/credentials"
 )
 
-func TestValidateOwnerOnlyFileRejectsGroupReadableFile(t *testing.T) {
+func TestReadOwnerOnlySecretFileRejectsGroupReadableFile(t *testing.T) {
 	t.Parallel()
 	skipOwnerOnlySecretFileTestOnWindows(t)
 
@@ -19,23 +19,9 @@ func TestValidateOwnerOnlyFileRejectsGroupReadableFile(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
 	}
 
-	err := credentials.ValidateOwnerOnlyFile(path)
+	_, err := credentials.ReadOwnerOnlySecretFile(path)
 	if !errors.Is(err, credentials.ErrUnsafePermissions) {
-		t.Errorf("ValidateOwnerOnlyFile(%q) error = %v, want ErrUnsafePermissions", path, err)
-	}
-}
-
-func TestValidateOwnerOnlyFileAcceptsOwnerOnlyFile(t *testing.T) {
-	t.Parallel()
-	skipOwnerOnlySecretFileTestOnWindows(t)
-
-	path := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(path, []byte("fake-secret"), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
-	}
-
-	if err := credentials.ValidateOwnerOnlyFile(path); err != nil {
-		t.Errorf("ValidateOwnerOnlyFile(%q) error = %v, want nil", path, err)
+		t.Errorf("ReadOwnerOnlySecretFile(%q) error = %v, want ErrUnsafePermissions", path, err)
 	}
 }
 
