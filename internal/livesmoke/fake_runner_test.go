@@ -228,14 +228,14 @@ func (f *fakeRunner) writeDump(args []string) ([]byte, []byte, int) {
 
 	var manifest string
 	if f.mode == "missing-manifest-resource" {
-		manifest = `{"schema":"zscalerctl.dump.manifest.v1","redaction":"standard","warning":"sanitized dumps remain confidential operational data","status":"complete","resources":[{"product":"zia","name":"locations","status":"complete","path":"resources/zia/locations.json","records":1},{"product":"zia","name":"rule-labels","status":"complete","path":"resources/zia/rule-labels.json","records":1},{"product":"zia","name":"static-ips","status":"complete","path":"resources/zia/static-ips.json","records":1}]}`
+		manifest = `{"schema":"zscalerctl.dump.manifest.v2","collected_at":"2026-01-01T00:00:00Z","tool_version":"0.0.0-fake","redaction":"standard","warning":"sanitized dumps remain confidential operational data","status":"complete","resources":[{"product":"zia","name":"locations","status":"complete","path":"resources/zia/locations.json","records":1},{"product":"zia","name":"rule-labels","status":"complete","path":"resources/zia/rule-labels.json","records":1},{"product":"zia","name":"static-ips","status":"complete","path":"resources/zia/static-ips.json","records":1}]}`
 	} else {
 		var rows []string
 		for _, q := range selected {
 			product, name := resourceProduct(q), resourceName(q)
 			rows = append(rows, fmt.Sprintf(`{"product":"%s","name":"%s","status":"complete","path":"resources/%s/%s.json","records":1}`, product, name, product, name))
 		}
-		manifest = `{"schema":"zscalerctl.dump.manifest.v1","redaction":"standard","warning":"sanitized dumps remain confidential operational data","status":"complete","resources":[` + strings.Join(rows, ",") + `]}`
+		manifest = `{"schema":"zscalerctl.dump.manifest.v2","collected_at":"2026-01-01T00:00:00Z","tool_version":"0.0.0-fake","redaction":"standard","warning":"sanitized dumps remain confidential operational data","status":"complete","resources":[` + strings.Join(rows, ",") + `]}`
 	}
 	_ = os.WriteFile(filepath.Join(out, "manifest.json"), []byte(manifest), 0o600)
 

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -136,8 +137,8 @@ func TestWriteCompleteDumpShapePermissionsAndRedaction(t *testing.T) {
 
 	var manifest Manifest
 	readJSON(t, manifestPath, &manifest)
-	if manifest.Schema != "zscalerctl.dump.manifest.v1" {
-		t.Errorf("manifest schema = %q, want zscalerctl.dump.manifest.v1", manifest.Schema)
+	if manifest.Schema != "zscalerctl.dump.manifest.v2" {
+		t.Errorf("manifest schema = %q, want zscalerctl.dump.manifest.v2", manifest.Schema)
 	}
 	if manifest.Status != "complete" {
 		t.Errorf("manifest status = %q, want complete", manifest.Status)
@@ -174,6 +175,37 @@ func TestWriteCompleteDumpShapePermissionsAndRedaction(t *testing.T) {
 	assertStringSliceEqual(t, "included_fields", gotReport.IncludedFields, []string{"description", "id", "name"})
 	assertStringSliceEqual(t, "dropped_fields", gotReport.DroppedFields, []string{"secretValue"})
 	assertStringSliceEqual(t, "redacted_fields", gotReport.RedactedFields, []string{"description"})
+}
+
+func TestWriteManifestCollectionMetadata(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	entry := projectedDumpEntry(t, resources.ProductZIA, "locations", []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ", "description": ""}),
+	})
+	before := time.Now().UTC().Add(-time.Minute)
+	if err := Write(dir, redact.ModeStandard, Result{Entries: []ResourceDump{entry}}); err != nil {
+		t.Fatalf("Write(%q, complete result) error = %v, want nil", dir, err)
+	}
+	after := time.Now().UTC().Add(time.Minute)
+
+	var manifest Manifest
+	readJSON(t, filepath.Join(dir, "manifest.json"), &manifest)
+
+	collected, err := time.Parse(time.RFC3339, manifest.CollectedAt)
+	if err != nil {
+		t.Fatalf("time.Parse(RFC3339, %q) error = %v, want nil", manifest.CollectedAt, err)
+	}
+	if !strings.HasSuffix(manifest.CollectedAt, "Z") {
+		t.Errorf("manifest collected_at = %q, want UTC timestamp ending in Z", manifest.CollectedAt)
+	}
+	if collected.Before(before) || collected.After(after) {
+		t.Errorf("manifest collected_at = %v, want between %v and %v", collected, before, after)
+	}
+	if manifest.ToolVersion == "" {
+		t.Errorf("manifest tool_version = %q, want non-empty version string", manifest.ToolVersion)
+	}
 }
 
 func TestWritePartialDumpShapeAndErrorNDJSON(t *testing.T) {

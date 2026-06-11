@@ -5,7 +5,7 @@ These are the stable, versioned JSON Schemas for the machine-readable output
 
 | Artifact | Where | Schema | `schema` id |
 | --- | --- | --- | --- |
-| Manifest | `manifest.json` in the dump | [manifest.schema.json](manifest.schema.json) | `zscalerctl.dump.manifest.v1` |
+| Manifest | `manifest.json` in the dump | [manifest.schema.json](manifest.schema.json) | `zscalerctl.dump.manifest.v2` |
 | Redaction report | `redaction_report.json` in the dump | [redaction-report.schema.json](redaction-report.schema.json) | `zscalerctl.redaction_report.v1` |
 | Error record | each line of `errors.ndjson` in the dump | [dump-error.schema.json](dump-error.schema.json) | `zscalerctl.dump.error.v1` |
 | Error envelope | stderr, on a failing command with JSON output | [error.schema.json](error.schema.json) | `zscalerctl.error.v1` |

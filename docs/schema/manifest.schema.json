@@ -5,11 +5,20 @@
   "description": "Schema for the manifest.json written at the root of a `zscalerctl dump` directory.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "redaction", "warning", "status", "resources"],
+  "required": ["schema", "collected_at", "tool_version", "redaction", "warning", "status", "resources"],
   "properties": {
     "schema": {
-      "const": "zscalerctl.dump.manifest.v1",
+      "const": "zscalerctl.dump.manifest.v2",
       "description": "Versioned schema identifier for this artifact."
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp (RFC 3339) at which the dump was collected."
+    },
+    "tool_version": {
+      "type": "string",
+      "description": "zscalerctl version that produced the dump (the version reported by `zscalerctl version`)."
     },
     "redaction": {
       "type": "string",

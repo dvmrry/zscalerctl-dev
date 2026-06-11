@@ -87,7 +87,44 @@ func TestManifestStatusValuesMatchSchemaEnums(t *testing.T) {
 	}
 }
 
+// TestManifestSchemaIDMatchesPublishedConst pins the schema id Write emits to
+// the const published in docs/schema/manifest.schema.json, so a code-side
+// schema version bump cannot land without the published schema moving with
+// it, and vice versa.
+func TestManifestSchemaIDMatchesPublishedConst(t *testing.T) {
+	t.Parallel()
+
+	node := schemaNode(t, "manifest.schema.json", []string{"properties", "schema"})
+	published, ok := node["const"].(string)
+	if !ok {
+		t.Fatalf("manifest.schema.json: properties.schema.const = %v, want string", node["const"])
+	}
+	if manifestSchemaID != published {
+		t.Errorf("manifestSchemaID = %q, want published schema const %q", manifestSchemaID, published)
+	}
+}
+
 func schemaEnum(t *testing.T, file string, path []string) []string {
+	t.Helper()
+	node := schemaNode(t, file, path)
+	raw, ok := node["enum"].([]any)
+	if !ok {
+		t.Fatalf("%s: no enum at %v", file, path)
+	}
+	values := make([]string, 0, len(raw))
+	for _, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			t.Fatalf("%s: non-string enum value %v at %v", file, v, path)
+		}
+		values = append(values, s)
+	}
+	return values
+}
+
+// schemaNode walks a published schema file to the object at the given JSON
+// pointer segments and returns it.
+func schemaNode(t *testing.T, file string, path []string) map[string]any {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join("..", "..", "docs", "schema", file))
 	if err != nil {
@@ -112,19 +149,7 @@ func schemaEnum(t *testing.T, file string, path []string) []string {
 	if !ok {
 		t.Fatalf("%s: node at %v is not an object", file, path)
 	}
-	raw, ok := node["enum"].([]any)
-	if !ok {
-		t.Fatalf("%s: no enum at %v", file, path)
-	}
-	values := make([]string, 0, len(raw))
-	for _, v := range raw {
-		s, ok := v.(string)
-		if !ok {
-			t.Fatalf("%s: non-string enum value %v at %v", file, v, path)
-		}
-		values = append(values, s)
-	}
-	return values
+	return node
 }
 
 func contains(values []string, want string) bool {
@@ -160,29 +185,7 @@ func jsonFieldNames(typ reflect.Type) []string {
 
 func schemaPropertyKeys(t *testing.T, file string, path []string) []string {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join("..", "..", "docs", "schema", file))
-	if err != nil {
-		t.Fatalf("read %s: %v", file, err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(body, &doc); err != nil {
-		t.Fatalf("parse %s: %v", file, err)
-	}
-	var cur any = doc
-	for _, seg := range path {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			t.Fatalf("%s: %q is not an object while walking %v", file, seg, path)
-		}
-		cur, ok = m[seg]
-		if !ok {
-			t.Fatalf("%s: missing %q while walking %v", file, seg, path)
-		}
-	}
-	props, ok := cur.(map[string]any)
-	if !ok {
-		t.Fatalf("%s: properties at %v is not an object", file, path)
-	}
+	props := schemaNode(t, file, path)
 	keys := make([]string, 0, len(props))
 	for k := range props {
 		keys = append(keys, k)
