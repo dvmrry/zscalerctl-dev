@@ -484,6 +484,12 @@ func getResource(
 			errors.Is(err, ErrMissingCredentials) {
 			return resources.SourceRecord{}, err
 		}
+		// A scan-miss not-found (list-backed get) carries the sentinel rather
+		// than an HTTP status; attach the same value-free product/resource
+		// context the 404 path produces instead of normalizing to exit 5.
+		if errors.Is(err, ErrResourceNotFound) {
+			return resources.SourceRecord{}, resourceNotFoundError{product: product, resource: name}
+		}
 		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name, err)
 	}
 	return record, nil
@@ -818,7 +824,10 @@ func ziaSDKListGetByIntID[T any](
 				return &items[i], nil
 			}
 		}
-		return nil, nil
+		// The list call succeeded, so there is no HTTP 404 to classify
+		// downstream: a scan miss must carry the not-found sentinel itself or
+		// it surfaces as a live-access failure (exit 5 instead of 4).
+		return nil, ErrResourceNotFound
 	})
 }
 
@@ -1157,6 +1166,7 @@ func (s fixedService) service(ctx context.Context, _ resources.Product) (*zsdk.S
 }
 
 func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {
+	neutralizeForeignSDKEnv()
 	restore := suppressSDKLogEnv()
 	defer restore()
 	return sdkzia.NewClient(cfg)
@@ -1183,6 +1193,7 @@ func jsonSourceRecord[T any](item T) resources.SourceRecord {
 }
 
 func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configuration {
+	neutralizeForeignSDKEnv()
 	timeout := effectiveTimeout(cfg.Timeout)
 	httpClient := &http.Client{
 		Timeout:   timeout,
@@ -1373,6 +1384,21 @@ func effectiveTimeout(timeout time.Duration) time.Duration {
 		return defaultTimeout
 	}
 	return timeout
+}
+
+// neutralizeForeignSDKEnv permanently unsets the Zscaler SDK environment
+// variables the vendored SDK consults at REQUEST time, where the scoped
+// unset-and-restore of suppressSDKLogEnv cannot protect: ZPA_MICROTENANT_ID is
+// read on every ZPA request with higher priority than the explicit
+// configuration this tool sets (a stray value from another Zscaler tool would
+// silently redirect every ZPA read to the wrong microtenant), and
+// ZSCALER_SANDBOX_TOKEN is a call-time credential fallback. Clearing them for
+// the process lifetime upholds the contract that zscalerctl honors only
+// explicit ZSCALERCTL_* configuration.
+func neutralizeForeignSDKEnv() {
+	for _, key := range []string{"ZPA_MICROTENANT_ID", "ZSCALER_SANDBOX_TOKEN"} {
+		_ = os.Unsetenv(key)
+	}
 }
 
 func suppressSDKLogEnv() func() {
