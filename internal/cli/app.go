@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -545,6 +546,15 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
 	default:
 	}
+	// Doctor's job is catching problems before live calls: surface the same
+	// proxy-conflict error the reader would raise on the first API request,
+	// instead of reporting status OK on a configuration that cannot work.
+	if err := zscaler.ValidateProxyConfig(zscaler.ProxyConfig{
+		URL:             cfg.Proxy.URL,
+		FromEnvironment: cfg.Proxy.FromEnvironment,
+	}); err != nil {
+		return err
+	}
 	status := newDoctorStatus(cfg, opts)
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
@@ -823,6 +833,16 @@ func (a *App) collectDump(
 	if err := resources.AssertReadOnly(catalog...); err != nil {
 		return result, err
 	}
+	selectedCount := 0
+	for _, spec := range catalog {
+		if products[spec.Product] && dumpResourceSelected(selectedResources, spec) {
+			selectedCount++
+		}
+	}
+	// A full dump can run for minutes; at info, operators get the selection
+	// size up front and one progress event per resource below.
+	a.diagLogger().Info("dump starting", "resources", selectedCount)
+
 	readers := make(map[resources.Product]ResourceReader)
 	for _, spec := range catalog {
 		if !products[spec.Product] {
@@ -846,7 +866,7 @@ func (a *App) collectDump(
 			// Register cleanup once per product session, not once per resource.
 			defer cleanup()
 		}
-		a.diagLogger().Debug("dump reading resource", "product", spec.Product, "resource", spec.Name)
+		a.diagLogger().Info("dump reading resource", "product", spec.Product, "resource", spec.Name)
 		if spec.SupportsReadOperation("show") {
 			record, err := reader.Show(ctx, spec.Product, spec.Name)
 			if err != nil {
@@ -1065,7 +1085,11 @@ func writeOutputFile(path string, body []byte) error {
 	// path works; rename targets the path itself, never through a symlink.
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
 	if err != nil {
-		return fmt.Errorf("write --output: %w", err)
+		// The destination is a user-supplied argument, so an unwritable or
+		// missing directory is a usage error (documented exit 2). Report the
+		// directory the user gave, not the generated temp-file name, which is
+		// an implementation detail.
+		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", filepath.Dir(path), pathErrorReason(err))}
 	}
 	tmpPath := tmp.Name()
 	cleanup := true
@@ -1094,6 +1118,16 @@ func writeOutputFile(path string, body []byte) error {
 	}
 	cleanup = false
 	return nil
+}
+
+// pathErrorReason extracts the underlying OS reason from a path error so the
+// message can name the user's path instead of echoing an internal temp name.
+func pathErrorReason(err error) string {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return pathErr.Err.Error()
+	}
+	return err.Error()
 }
 
 func (a *App) renderer(cfg config.Config, _ globalOptions) output.Renderer {
@@ -1390,7 +1424,7 @@ func newAuthStatus(cfg config.Config) authStatus {
 func authStatusRows(status authStatus) []output.KV {
 	return []output.KV{
 		{Key: "Credentials", Value: status.Credentials},
-		{Key: "Token", Value: status.CredentialExchange},
+		{Key: "Credential Exchange", Value: status.CredentialExchange},
 		{Key: "Live API", Value: status.LiveAPI},
 	}
 }

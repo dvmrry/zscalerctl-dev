@@ -2199,3 +2199,104 @@ func catalogProductsForTest() map[string]bool {
 	}
 	return products
 }
+
+func TestOutputFileBadDirectoryIsUsageErrorWithoutTempName(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, []string{
+		config.EnvClientID + "=client-id-value",
+		config.EnvClientSecret + "=client-secret-value",
+	})
+
+	missingDir := filepath.Join(t.TempDir(), "does-not-exist", "out.json")
+	err := app.Run(context.Background(), []string{"config", "show", "--format", "json", "--output", missingDir})
+	if err == nil {
+		t.Fatal("App.Run(--output bad dir) error = nil, want error")
+	}
+	// A bad --output value is a usage problem (documented exit 2), not internal.
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(--output bad dir) error = %v, want ErrUsage", err)
+	}
+	// The generated temp-file name is an implementation detail and must not leak.
+	if strings.Contains(err.Error(), ".tmp-") {
+		t.Errorf("App.Run(--output bad dir) error = %q, want no temp-file name", err.Error())
+	}
+	if !strings.Contains(err.Error(), filepath.Dir(missingDir)) {
+		t.Errorf("App.Run(--output bad dir) error = %q, want the user-supplied directory", err.Error())
+	}
+}
+
+func TestAuthStatusTableLabelMatchesJSONKey(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, []string{
+		config.EnvClientID + "=client-id-value",
+		config.EnvClientSecret + "=client-secret-value",
+	})
+
+	if err := app.Run(context.Background(), []string{"--format", "table", "auth", "status"}); err != nil {
+		t.Fatalf("App.Run(table auth status) error = %v, want nil", err)
+	}
+	got := out.String()
+	// The table label must be recognizable from the JSON key credential_exchange;
+	// the old bare "Token" label matched nothing in the JSON output.
+	if !strings.Contains(got, "Credential Exchange") {
+		t.Errorf("auth status table = %q, want Credential Exchange label", got)
+	}
+	if strings.Contains(got, "Token") {
+		t.Errorf("auth status table = %q, want no bare Token label", got)
+	}
+}
+
+func TestDoctorRejectsConflictingProxyConfig(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, []string{
+		config.EnvProxyURL + "=http://proxy.example.invalid:8080",
+		config.EnvProxyFromEnv + "=true",
+	})
+
+	// Doctor's job is catching problems before live calls: the same proxy
+	// conflict the reader rejects at request time must fail doctor (exit 2).
+	err := app.Run(context.Background(), []string{"doctor"})
+	if err == nil {
+		t.Fatal("App.Run(doctor, conflicting proxy) error = nil, want error")
+	}
+	if !errors.Is(err, zscaler.ErrInvalidProxyConfig) {
+		t.Errorf("App.Run(doctor, conflicting proxy) error = %v, want ErrInvalidProxyConfig", err)
+	}
+}
+
+func TestDumpLogsPerResourceProgressAtInfo(t *testing.T) {
+	t.Parallel()
+
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	err := app.Run(context.Background(), []string{
+		"--log-level", "info",
+		"dump", "--out", dir, "--products", "zia", "--resources", "locations",
+	})
+	if err != nil {
+		t.Fatalf("App.Run(dump --log-level info) error = %v, want nil", err)
+	}
+	logged := errOut.String()
+	// A multi-minute dump must not be silent at info: operators get a starting
+	// line with the selection size and a per-resource progress event.
+	if !strings.Contains(logged, "dump starting") {
+		t.Errorf("dump info logs = %q, want dump starting event", logged)
+	}
+	if !strings.Contains(logged, "dump reading resource") || !strings.Contains(logged, "locations") {
+		t.Errorf("dump info logs = %q, want per-resource progress for locations", logged)
+	}
+}

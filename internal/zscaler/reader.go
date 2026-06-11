@@ -1307,7 +1307,7 @@ func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
 }
 
 func validateReaderConfig(cfg ReaderConfig) error {
-	if err := validateProxyConfig(cfg.Proxy); err != nil {
+	if err := ValidateProxyConfig(cfg.Proxy); err != nil {
 		return err
 	}
 	switch effectiveAuthMode(cfg.AuthMode) {
@@ -1350,7 +1350,11 @@ func validateProductConfig(cfg ReaderConfig, product resources.Product) error {
 	return nil
 }
 
-func validateProxyConfig(proxy ProxyConfig) error {
+// ValidateProxyConfig rejects contradictory or malformed proxy settings. It is
+// exported so pre-flight commands (doctor) can fail with exactly the error the
+// live request path would produce, instead of passing silently until the first
+// API call.
+func ValidateProxyConfig(proxy ProxyConfig) error {
 	if strings.TrimSpace(proxy.URL) != "" && proxy.FromEnvironment {
 		return fmt.Errorf("%w: set only one of ZSCALERCTL_PROXY_URL or ZSCALERCTL_PROXY_FROM_ENV", ErrInvalidProxyConfig)
 	}
