@@ -202,6 +202,50 @@ func TestResourceUsageListsOperationsAndFields(t *testing.T) {
 	}
 }
 
+func TestUsageErrorsKeepStderrCleanForJSONConsumers(t *testing.T) {
+	t.Parallel()
+
+	// With --format json (or auto off a TTY), main renders the UsageError as a
+	// JSON envelope on stderr — so the app must NOT also write the plain-text
+	// usage block there, or the stream stops being parseable.
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"json no command", []string{"--format", "json"}},
+		{"json unknown command", []string{"--format", "json", "frobnicate"}},
+		{"auto off-tty no command", nil},
+		{"auto off-tty unknown command", []string{"frobnicate"}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errOut bytes.Buffer
+			app := cli.New(&out, &errOut, nil)
+			if err := app.Run(context.Background(), tc.args); err == nil {
+				t.Fatalf("App.Run(%v) error = nil, want usage error", tc.args)
+			}
+			if errOut.Len() != 0 {
+				t.Errorf("App.Run(%v) stderr = %q, want empty (envelope is main's job)", tc.args, errOut.String())
+			}
+		})
+	}
+}
+
+func TestUsageErrorsStillShowUsageBlockOnTTY(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, []string{"TERM=xterm-256color"}, cli.Options{StdoutTTY: true})
+	if err := app.Run(context.Background(), nil); err == nil {
+		t.Fatal("App.Run(no args) error = nil, want usage error")
+	}
+	if !strings.Contains(errOut.String(), "usage: zscalerctl") {
+		t.Errorf("App.Run(no args, TTY) stderr = %q, want usage block", errOut.String())
+	}
+}
+
 func TestUnknownCommandHintsAtSwallowedProduct(t *testing.T) {
 	t.Parallel()
 
