@@ -37,6 +37,9 @@ func TestLargeTenantDumpBaseline(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping large-tenant ceiling baseline in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("skipping under -race: the baseline measures memory and throughput, which race instrumentation distorts (and slows ~20x)")
+	}
 
 	spec := largeTenantSpec()
 	records := synthesizeLargeTenantRecords(largeTenantRecordCount)
@@ -88,8 +91,10 @@ func TestLargeTenantDumpBaseline(t *testing.T) {
 
 	var manifest Manifest
 	readJSON(t, filepath.Join(dir, "manifest.json"), &manifest)
-	if manifest.Schema != "zscalerctl.dump.manifest.v1" {
-		t.Errorf("manifest schema = %q, want zscalerctl.dump.manifest.v1", manifest.Schema)
+	// Assert against the package's own constant so a future schema-version
+	// bump cannot silently break this test (the v1->v2 bump did exactly that).
+	if manifest.Schema != manifestSchemaID {
+		t.Errorf("manifest schema = %q, want %q", manifest.Schema, manifestSchemaID)
 	}
 	if manifest.Status != "complete" {
 		t.Errorf("manifest status = %q, want complete", manifest.Status)
