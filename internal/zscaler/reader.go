@@ -484,6 +484,12 @@ func getResource(
 			errors.Is(err, ErrMissingCredentials) {
 			return resources.SourceRecord{}, err
 		}
+		// A scan-miss not-found (list-backed get) carries the sentinel rather
+		// than an HTTP status; attach the same value-free product/resource
+		// context the 404 path produces instead of normalizing to exit 5.
+		if errors.Is(err, ErrResourceNotFound) {
+			return resources.SourceRecord{}, resourceNotFoundError{product: product, resource: name}
+		}
 		return resources.SourceRecord{}, normalizeLiveError(ctx, "get", product, name, err)
 	}
 	return record, nil
@@ -818,7 +824,10 @@ func ziaSDKListGetByIntID[T any](
 				return &items[i], nil
 			}
 		}
-		return nil, nil
+		// The list call succeeded, so there is no HTTP 404 to classify
+		// downstream: a scan miss must carry the not-found sentinel itself or
+		// it surfaces as a live-access failure (exit 5 instead of 4).
+		return nil, ErrResourceNotFound
 	})
 }
 

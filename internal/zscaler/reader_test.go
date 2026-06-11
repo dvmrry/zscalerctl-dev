@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	activation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/activation"
 	ziaadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/admins"
@@ -6117,6 +6118,69 @@ func TestReaderNormalizedSDKErrorPreservesSafeStatusCodeOnly(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), leaked) {
 		t.Errorf("SDKReader.List(status error) error = %q, want no leaked SDK error content", err.Error())
+	}
+}
+
+// fakeServiceProvider satisfies zscalerServiceProvider with an inert SDK
+// service; the list/get closures under test never dereference it.
+type fakeServiceProvider struct{}
+
+func (fakeServiceProvider) service(context.Context, resources.Product) (*zsdk.Service, func(), error) {
+	return &zsdk.Service{}, func() {}, nil
+}
+
+func TestZIASDKListGetByIntIDScanMissIsResourceNotFound(t *testing.T) {
+	t.Parallel()
+
+	type item struct{ ID int }
+	get := ziaSDKListGetByIntID(
+		sdkClient{services: fakeServiceProvider{}},
+		func(context.Context, *zsdk.Service) ([]item, error) {
+			return []item{{ID: 7}}, nil
+		},
+		func(i item) int { return i.ID },
+	)
+
+	// Present ID resolves.
+	found, err := get(context.Background(), "7")
+	if err != nil || found == nil || found.ID != 7 {
+		t.Fatalf("get(7) = %v, %v, want item 7", found, err)
+	}
+	// Absent ID is a not-found condition (exit 4), not a live-access failure:
+	// the list call succeeded, so there is no HTTP 404 to classify — the scan
+	// miss itself must carry the sentinel.
+	_, err = get(context.Background(), "8")
+	if !errors.Is(err, ErrResourceNotFound) {
+		t.Errorf("get(8) error = %v, want ErrResourceNotFound", err)
+	}
+}
+
+func TestReaderGetScanMissMapsToResourceNotFound(t *testing.T) {
+	t.Parallel()
+
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceAppServices}: newListGetHandler(
+				resourceAppServices,
+				func(context.Context) ([]applicationservices.ApplicationServicesLite, error) { return nil, nil },
+				func(context.Context, string) (*applicationservices.ApplicationServicesLite, error) {
+					return nil, ErrResourceNotFound
+				},
+				applicationServiceSourceRecord,
+			),
+		},
+	}
+
+	_, err := reader.Get(context.Background(), resources.ProductZIA, resourceAppServices, "999")
+	if !errors.Is(err, ErrResourceNotFound) {
+		t.Fatalf("SDKReader.Get(missing id) error = %v, want ErrResourceNotFound", err)
+	}
+	if errors.Is(err, ErrLiveAccessFailed) {
+		t.Errorf("SDKReader.Get(missing id) error = %v, want NOT ErrLiveAccessFailed", err)
+	}
+	if !strings.Contains(err.Error(), string(resources.ProductZIA)+"/"+resourceAppServices) {
+		t.Errorf("SDKReader.Get(missing id) error = %q, want product/resource context", err.Error())
 	}
 }
 
