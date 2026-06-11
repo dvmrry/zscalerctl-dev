@@ -159,7 +159,7 @@ func LoadEnv(environ []string) (Config, error) {
 	if env[EnvClientSecretFile] != "" {
 		fileSecret, err := credentials.ReadOwnerOnlySecretFile(env[EnvClientSecretFile])
 		if err != nil {
-			return Config{}, fmt.Errorf("load %s: %w", EnvClientSecretFile, err)
+			return Config{}, fmt.Errorf("%w: load %s: %w", ErrInvalidConfig, EnvClientSecretFile, err)
 		}
 		if !clientSecret.IsSet() {
 			clientSecret = fileSecret
@@ -169,7 +169,7 @@ func LoadEnv(environ []string) (Config, error) {
 	if env[EnvZIAPasswordFile] != "" {
 		fileSecret, err := credentials.ReadOwnerOnlySecretFile(env[EnvZIAPasswordFile])
 		if err != nil {
-			return Config{}, fmt.Errorf("load %s: %w", EnvZIAPasswordFile, err)
+			return Config{}, fmt.Errorf("%w: load %s: %w", ErrInvalidConfig, EnvZIAPasswordFile, err)
 		}
 		if !ziaPassword.IsSet() {
 			ziaPassword = fileSecret
@@ -179,7 +179,7 @@ func LoadEnv(environ []string) (Config, error) {
 	if env[EnvZIAAPIKeyFile] != "" {
 		fileSecret, err := credentials.ReadOwnerOnlySecretFile(env[EnvZIAAPIKeyFile])
 		if err != nil {
-			return Config{}, fmt.Errorf("load %s: %w", EnvZIAAPIKeyFile, err)
+			return Config{}, fmt.Errorf("%w: load %s: %w", ErrInvalidConfig, EnvZIAAPIKeyFile, err)
 		}
 		if !ziaAPIKey.IsSet() {
 			ziaAPIKey = fileSecret

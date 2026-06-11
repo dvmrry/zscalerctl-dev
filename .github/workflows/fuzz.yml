@@ -46,8 +46,11 @@ jobs:
           restore-keys: |
             fuzz-corpus-${{ matrix.name }}-
 
+      # No continue-on-error: a fuzz crash in the redaction/projection targets
+      # is a security regression and must turn the run red (scheduled-workflow
+      # failures notify the owner). The collect and upload steps below run via
+      # if: always(), so the crashing input is still captured on failure.
       - name: Run fuzz target
-        continue-on-error: true
         env:
           FUZZ_TIME: ${{ github.event.inputs.fuzztime }}
           GOCACHE: ${{ github.workspace }}/go-cache
@@ -56,6 +59,11 @@ jobs:
           fuzz_time="${FUZZ_TIME:-10m}"
           mkdir -p fuzz-artifacts go-cache/fuzz
           go test -mod=vendor "${{ matrix.package }}" -run '^$' -fuzz "^${{ matrix.target }}$" -fuzztime "$fuzz_time" 2>&1 | tee "fuzz-artifacts/${{ matrix.name }}.log"
+
+      - name: Report crash
+        if: failure()
+        run: |
+          echo "::error::fuzz target ${{ matrix.target }} found a failing input; download the fuzz-${{ matrix.name }} artifact and commit the minimized input under the package's testdata/fuzz so it becomes a permanent regression seed"
 
       - name: Collect fuzz corpus
         if: always()
@@ -72,4 +80,7 @@ jobs:
           name: fuzz-${{ matrix.name }}
           path: fuzz-artifacts
           if-no-files-found: ignore
-          retention-days: 7
+          # 90 days (the maximum): a crashing input must survive long enough
+          # to be noticed and committed as a regression seed, not expire in a
+          # week like routine corpus snapshots.
+          retention-days: 90
