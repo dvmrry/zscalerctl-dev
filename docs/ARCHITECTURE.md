@@ -337,8 +337,9 @@ Dump writers should:
 Large tenants: dump output is fully buffered in memory. List collection
 accumulates every record, output marshals the entire payload, and the final
 redaction pass byte-scans a second full copy of the serialized bytes, so
-expect peak memory of roughly twice the serialized dump size (plus in-memory
-record overhead). `TestLargeTenantDumpBaseline` in `internal/dump` pins this
+expect peak memory of several times the serialized dump size (the pinned
+baseline observes roughly 7-8x once record and projection overhead is
+included). `TestLargeTenantDumpBaseline` in `internal/dump` pins this
 baseline with a synthetic multi-thousand-record tenant and fails if peak heap
 growth ever exceeds 20x the serialized output size.
 
