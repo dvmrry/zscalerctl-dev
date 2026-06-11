@@ -142,6 +142,31 @@ func TestRunJSONUsageErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestRunNoCommandJSONStderrIsPureEnvelope(t *testing.T) {
+	t.Parallel()
+
+	// The whole stderr stream must be a single parseable JSON document — no
+	// plain-text usage block prepended (the double-output bug from the
+	// pre-1.0 sweep).
+	for _, args := range [][]string{
+		{"--format", "json"},
+		{"--format", "json", "frobnicate"},
+	} {
+		args := args
+		var stdout, stderr bytes.Buffer
+		code := run(context.Background(), args, &stdout, &stderr, nil)
+		if code != exitUsageError {
+			t.Fatalf("run(%v) exit code = %d, want %d", args, code, exitUsageError)
+		}
+		var env errorEnvelope
+		if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+			t.Errorf("run(%v) stderr = %q, want pure JSON envelope; unmarshal err = %v", args, stderr.String(), err)
+		} else if env.Error.Kind != "usage" {
+			t.Errorf("run(%v) envelope kind = %q, want usage", args, env.Error.Kind)
+		}
+	}
+}
+
 func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	t.Parallel()
 

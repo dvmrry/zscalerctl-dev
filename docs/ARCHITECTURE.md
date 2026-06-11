@@ -45,7 +45,7 @@ workflow proves it is needed.
 
 ## Initial Package Shape
 
-Planned layout:
+Package layout:
 
 ```text
 cmd/zscalerctl/
@@ -58,6 +58,8 @@ internal/resources/
 internal/redact/
 internal/output/
 internal/dump/
+internal/version/
+internal/livesmoke/
 ```
 
 Test-only security helpers should live in `_test` packages or testdata that is
@@ -284,8 +286,13 @@ Secret files (the `*_FILE` variables) must be owner-only; the tool refuses to
 load a secret file with unsafe permissions. Configuration is environment-only
 today — there is no profile config file source.
 
-The project must define how `ZSCALERCTL_*` variables interact with SDK-native
-variables such as product-specific or OneAPI variables before implementation.
+Resolved: `ZSCALERCTL_*` variables never interact with SDK-native variables.
+The adapter constructs SDK configuration explicitly from `ZSCALERCTL_*` values
+and avoids the SDK constructors that discover the SDK's own environment
+variables or config files; SDK-native variables the SDK consults at request
+time are neutralized at client construction.
+`scripts/verify-sdk-boundary.sh` regression-checks this boundary against the
+vendored SDK.
 
 ## Output And Dumps
 

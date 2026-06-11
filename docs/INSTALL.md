@@ -49,6 +49,11 @@ zscalerctl version
 The CLI reads only `ZSCALERCTL_*` environment variables. It does not read the
 Zscaler SDK's own environment variables or SDK config file.
 
+A copy-and-edit template covering the variables below ships at
+[`examples/zscalerctl.env.example`](../examples/zscalerctl.env.example). Copy
+it to a local untracked file, keep that file owner-readable only (`chmod
+600`), and source it into your shell.
+
 OneAPI is the default auth mode. Prefer an owner-only secret file for the
 client secret:
 
@@ -67,6 +72,15 @@ provide protected environment variables, but file-based secret delivery is safer
 for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
 reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
 OneAPI credential set without an extra product customer ID.
+
+Product API access is granted per product on the OneAPI OAuth client, not by
+extra environment variables. ZCC and ZTW resources use the same
+`ZSCALERCTL_CLIENT_ID`/`ZSCALERCTL_CLIENT_SECRET` credentials, but a Zscaler
+administrator must grant the matching API resource to the OAuth client in the
+Zidentity admin portal: Client Connector access for `zcc` resources, and Cloud
+& Branch Connector access (labeled `CLOUD_CONNECTOR` in the portal's API
+resource list) for `ztw` resources. Without the grant, commands for that
+product fail at the API; no local configuration change can fix it.
 
 ZIA legacy auth is available for read-only ZIA resources when OneAPI
 credentials are not available. Use only `ZSCALERCTL_ZIA_*` variables; raw SDK

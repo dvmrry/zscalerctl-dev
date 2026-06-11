@@ -191,7 +191,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return nil
 	}
 	if len(rest) == 0 {
-		a.writeUsage(a.err)
+		a.writeUsageForHumans(opts)
 		return UsageError{Message: "missing command"}
 	}
 	switch {
@@ -204,7 +204,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.runCompletion(rest[1:])
 	case isRunnableCommand(rest[0]):
 	default:
-		a.writeUsage(a.err)
+		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
 
@@ -229,9 +229,22 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		if knownProductCommand(rest[0]) {
 			return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
 		}
-		a.writeUsage(a.err)
+		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
+}
+
+// writeUsageForHumans writes the usage block to stderr only when the
+// command-boundary error will be rendered as plain text. With an explicit
+// --format json — or the auto default off a terminal — main emits a JSON
+// envelope on the same stderr, and a prepended text block would make the
+// stream unparseable for the automation consumers the envelope exists for.
+// Mirrors main's errorFormat decision.
+func (a *App) writeUsageForHumans(opts globalOptions) {
+	if opts.format == output.FormatJSON || (opts.format == output.FormatAuto && !a.stdoutTTY) {
+		return
+	}
+	a.writeUsage(a.err)
 }
 
 // unknownCommandMessage reports an unknown command, and when the token is in

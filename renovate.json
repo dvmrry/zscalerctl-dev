@@ -16,8 +16,7 @@
   "automerge": false,
   "rangeStrategy": "bump",
   "postUpdateOptions": [
-    "gomodTidy",
-    "gomodVendor"
+    "gomodTidy"
   ],
   "packageRules": [
     {
@@ -57,6 +56,18 @@
       "labels": [
         "dependencies",
         "go"
+      ]
+    },
+    {
+      "description": "tools/ is intentionally unvendored (the release workflow installs cyclonedx-gomod via go install, verified by tools/go.sum). gomodSkipVendor stops Renovate from auto-detecting the root vendor directory as a parent and creating a spurious tools/vendor. Note: packageRules concat-merge postUpdateOptions, so the global list must not contain gomodVendor (root vendoring still happens via vendor/modules.txt auto-detection).",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchFileNames": [
+        "tools/go.mod"
+      ],
+      "postUpdateOptions": [
+        "gomodSkipVendor"
       ]
     }
   ]

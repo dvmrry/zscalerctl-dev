@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	sdkcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/common"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	activation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/activation"
 	ziaadminusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/adminuserrolemgmt/admins"
@@ -6117,6 +6120,101 @@ func TestReaderNormalizedSDKErrorPreservesSafeStatusCodeOnly(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), leaked) {
 		t.Errorf("SDKReader.List(status error) error = %q, want no leaked SDK error content", err.Error())
+	}
+}
+
+// fakeServiceProvider satisfies zscalerServiceProvider with an inert SDK
+// service; the list/get closures under test never dereference it.
+type fakeServiceProvider struct{}
+
+func (fakeServiceProvider) service(context.Context, resources.Product) (*zsdk.Service, func(), error) {
+	return &zsdk.Service{}, func() {}, nil
+}
+
+func TestZIASDKListGetByIntIDScanMissIsResourceNotFound(t *testing.T) {
+	t.Parallel()
+
+	type item struct{ ID int }
+	get := ziaSDKListGetByIntID(
+		sdkClient{services: fakeServiceProvider{}},
+		func(context.Context, *zsdk.Service) ([]item, error) {
+			return []item{{ID: 7}}, nil
+		},
+		func(i item) int { return i.ID },
+	)
+
+	// Present ID resolves.
+	found, err := get(context.Background(), "7")
+	if err != nil || found == nil || found.ID != 7 {
+		t.Fatalf("get(7) = %v, %v, want item 7", found, err)
+	}
+	// Absent ID is a not-found condition (exit 4), not a live-access failure:
+	// the list call succeeded, so there is no HTTP 404 to classify — the scan
+	// miss itself must carry the sentinel.
+	_, err = get(context.Background(), "8")
+	if !errors.Is(err, ErrResourceNotFound) {
+		t.Errorf("get(8) error = %v, want ErrResourceNotFound", err)
+	}
+}
+
+func TestReaderGetScanMissMapsToResourceNotFound(t *testing.T) {
+	t.Parallel()
+
+	reader := &SDKReader{
+		cfg: validReaderConfig(),
+		handlers: map[resourceKey]resourceHandler{
+			{product: resources.ProductZIA, name: resourceAppServices}: newListGetHandler(
+				resourceAppServices,
+				func(context.Context) ([]applicationservices.ApplicationServicesLite, error) { return nil, nil },
+				func(context.Context, string) (*applicationservices.ApplicationServicesLite, error) {
+					return nil, ErrResourceNotFound
+				},
+				applicationServiceSourceRecord,
+			),
+		},
+	}
+
+	_, err := reader.Get(context.Background(), resources.ProductZIA, resourceAppServices, "999")
+	if !errors.Is(err, ErrResourceNotFound) {
+		t.Fatalf("SDKReader.Get(missing id) error = %v, want ErrResourceNotFound", err)
+	}
+	if errors.Is(err, ErrLiveAccessFailed) {
+		t.Errorf("SDKReader.Get(missing id) error = %v, want NOT ErrLiveAccessFailed", err)
+	}
+	if !strings.Contains(err.Error(), string(resources.ProductZIA)+"/"+resourceAppServices) {
+		t.Errorf("SDKReader.Get(missing id) error = %q, want product/resource context", err.Error())
+	}
+}
+
+func TestForeignSDKEnvCannotOverrideExplicitMicrotenant(t *testing.T) {
+	// No t.Parallel(): t.Setenv mutates process env.
+
+	// First, demonstrate the hazard this guards against: the vendored SDK
+	// consults ZPA_MICROTENANT_ID on every request with HIGHER priority than
+	// the explicit configuration this tool sets.
+	t.Setenv("ZPA_MICROTENANT_ID", "foreign-microtenant")
+	t.Setenv("ZSCALER_SANDBOX_TOKEN", "foreign-sandbox-token")
+	q := sdkcommon.InjectMicrotentantID(nil, url.Values{}, "explicit-microtenant")
+	if got := q.Get("microtenantId"); got != "foreign-microtenant" {
+		t.Fatalf("SDK priority changed: InjectMicrotentantID = %q, want foreign env to win pre-neutralization (update this guard if the SDK fixed it)", got)
+	}
+
+	// Building the SDK configuration must neutralize the foreign request-time
+	// vars for the process lifetime — a scoped unset-and-restore cannot help
+	// because the SDK reads them per request, long after construction.
+	cfg := newSDKConfiguration(context.Background(), validReaderConfig())
+	for _, key := range []string{"ZPA_MICROTENANT_ID", "ZSCALER_SANDBOX_TOKEN"} {
+		if value := os.Getenv(key); value != "" {
+			t.Errorf("os.Getenv(%s) = %q after newSDKConfiguration, want empty", key, value)
+		}
+	}
+	// The explicit ZSCALERCTL_* microtenant still flows through the config tier.
+	if cfg.Zscaler.Client.MicrotenantID != "zscalerctl-zpa-microtenant-id" {
+		t.Errorf("config MicrotenantID = %q, want explicit zscalerctl value", cfg.Zscaler.Client.MicrotenantID)
+	}
+	q = sdkcommon.InjectMicrotentantID(nil, url.Values{}, cfg.Zscaler.Client.MicrotenantID)
+	if got := q.Get("microtenantId"); got != "zscalerctl-zpa-microtenant-id" {
+		t.Errorf("post-neutralization InjectMicrotentantID = %q, want the explicit config value", got)
 	}
 }
 

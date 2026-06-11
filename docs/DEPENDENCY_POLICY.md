@@ -22,7 +22,7 @@ bash scripts/verify-ci-no-live-creds.sh
 bash scripts/test-verify-ci-no-live-creds.sh
 bash scripts/verify-actions-pinned.sh
 bash scripts/test-verify-actions-pinned.sh
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+make vuln
 go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
 gitleaks dir .
 gitleaks git .
@@ -30,6 +30,8 @@ bash scripts/verify-sdk-boundary.sh
 bash scripts/test-verify-sdk-boundary.sh
 ```
 
+`make vuln` runs govulncheck at the version pinned by `GOVULNCHECK_VERSION` in
+the Makefile, so local runs and CI scan with the same tool version.
 `govulncheck` must report no reachable vulnerabilities. Non-reachable findings
 in required modules require a written review note before release.
 
@@ -101,6 +103,25 @@ path.
 The Zscaler SDK package is handled separately from routine dependency updates.
 Renovate requires dependency dashboard approval for SDK bumps and annotates those
 PRs with the SDK upgrade runbook requirement.
+
+### Dependency Update Ownership
+
+- Root `go.mod`: Renovate-managed and vendored (tidy plus vendor refresh).
+- `tools/` module: Renovate-managed for routine bumps but intentionally not
+  vendored; a `renovate.json` package rule skips vendoring so no `tools/vendor`
+  directory is created. GitHub Dependabot security alerts may also open PRs
+  against it.
+- Semver labels: dependency PRs that touch only `tools/` get `semver:none`;
+  root-module bumps get `semver:patch`.
+
+## Updating Semgrep
+
+Semgrep is pinned in three places that must stay in sync:
+
+1. Edit the version in `.github/requirements/semgrep.in`.
+2. Regenerate `.github/requirements/semgrep.txt` with the `uv pip compile`
+   command in the comment at the top of that file.
+3. Update `SEMGREP_VERSION` in the Makefile to the same version.
 
 ## Advisory Scanners
 

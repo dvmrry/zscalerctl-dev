@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,32 @@ func TestLoadEnvLoadsOwnerOnlyZIALegacySecretFiles(t *testing.T) {
 	}
 	if cfg.ZIALegacy.APIKey.Reveal() != "legacy-api-key" {
 		t.Errorf("LoadEnv(ZIA legacy files).ZIALegacy.APIKey = %q, want legacy-api-key", cfg.ZIALegacy.APIKey.Reveal())
+	}
+}
+
+func TestLoadEnvSecretFileErrorsAreInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	// A bad *_FILE value is a configuration error and must map to the
+	// documented usage exit code (2), not internal (1) — so every failure
+	// (missing file, unsafe permissions) has to wrap ErrInvalidConfig.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	for _, envVar := range []string{
+		config.EnvClientSecretFile,
+		config.EnvZIAPasswordFile,
+		config.EnvZIAAPIKeyFile,
+	} {
+		envVar := envVar
+		t.Run(envVar, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.LoadEnv([]string{envVar + "=" + missing})
+			if err == nil {
+				t.Fatalf("LoadEnv(%s=missing) error = nil, want error", envVar)
+			}
+			if !errors.Is(err, config.ErrInvalidConfig) {
+				t.Errorf("LoadEnv(%s=missing) error = %v, want ErrInvalidConfig", envVar, err)
+			}
+		})
 	}
 }
 
