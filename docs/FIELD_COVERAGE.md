@@ -46,12 +46,12 @@ is either rendered by classification or permanently excluded on the record.
 
 - Resources: 165
 - Total exported SDK fields: 2979
-- Classified: 2913
-- Ignored (fail-closed dropped): 66
+- Classified: 2961
+- Ignored (fail-closed dropped): 18
   - Deliberate (permanently excluded): 18
-  - Deferred (awaiting modeling): 48
-- Coverage: 97.8%
-- Decided coverage (classified + deliberate): 98.4%
+  - Deferred (awaiting modeling): 0
+- Coverage: 99.4%
+- Decided coverage (classified + deliberate): 100.0%
 
 ## Per-Product Totals
 
@@ -59,7 +59,7 @@ Ranked worst coverage first.
 
 | Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| zia | 102 | 1681 | 1615 | 18 | 48 | 96.1% | 97.1% |
+| zia | 102 | 1681 | 1663 | 18 | 0 | 98.9% | 100.0% |
 | zcc | 11 | 325 | 325 | 0 | 0 | 100.0% | 100.0% |
 | zidentity | 3 | 43 | 43 | 0 | 0 | 100.0% | 100.0% |
 | zpa | 28 | 638 | 638 | 0 | 0 | 100.0% | 100.0% |
@@ -74,18 +74,11 @@ names, buckets, and reasons behind each row.
 
 | Product | Resource | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| zia | locations | 60 | 35 | 6 | 19 | 58.3% | 68.3% |
-| zia | sublocations | 60 | 37 | 6 | 17 | 61.7% | 71.7% |
-| zia | rule-labels | 7 | 5 | 0 | 2 | 71.4% | 71.4% |
-| zia | workload-groups | 7 | 5 | 1 | 1 | 71.4% | 85.7% |
 | zia | users | 22 | 18 | 4 | 0 | 81.8% | 100.0% |
-| zia | static-ips | 11 | 9 | 0 | 2 | 81.8% | 81.8% |
-| zia | gre-tunnels | 30 | 28 | 0 | 2 | 93.3% | 93.3% |
-| zia | url-filtering-rules | 42 | 40 | 0 | 2 | 95.2% | 95.2% |
+| zia | workload-groups | 7 | 6 | 1 | 0 | 85.7% | 100.0% |
+| zia | locations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
+| zia | sublocations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
 | zia | url-categories | 27 | 26 | 1 | 0 | 96.3% | 100.0% |
-| zia | location-groups | 28 | 27 | 0 | 1 | 96.4% | 96.4% |
-| zia | ssl-inspection-rules | 32 | 31 | 0 | 1 | 96.9% | 96.9% |
-| zia | firewall-filtering-rules | 39 | 38 | 0 | 1 | 97.4% | 97.4% |
 | zia | nss-feeds | 126 | 126 | 0 | 0 | 100.0% | 100.0% |
 | zcc | company-info | 111 | 111 | 0 | 0 | 100.0% | 100.0% |
 | zia | org-information | 69 | 69 | 0 | 0 | 100.0% | 100.0% |
@@ -102,19 +95,24 @@ names, buckets, and reasons behind each row.
 | zpa | browser-access | 45 | 45 | 0 | 0 | 100.0% | 100.0% |
 | zpa | service-edges | 44 | 44 | 0 | 0 | 100.0% | 100.0% |
 | zia | firewall-dns-rules | 43 | 43 | 0 | 0 | 100.0% | 100.0% |
+| zia | url-filtering-rules | 42 | 42 | 0 | 0 | 100.0% | 100.0% |
 | ztw | forwarding-rules | 42 | 42 | 0 | 0 | 100.0% | 100.0% |
 | zpa | app-connector-groups | 41 | 41 | 0 | 0 | 100.0% | 100.0% |
 | zpa | service-edge-groups | 41 | 41 | 0 | 0 | 100.0% | 100.0% |
 | zia | cloud-app-control | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
+| zia | firewall-filtering-rules | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
 | zia | ips-policies | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
 | zcc | admin-roles | 38 | 38 | 0 | 0 | 100.0% | 100.0% |
 | zia | forwarding-rules | 38 | 38 | 0 | 0 | 100.0% | 100.0% |
 | zia | risk-profiles | 37 | 37 | 0 | 0 | 100.0% | 100.0% |
 | zia | nat-control-rules | 36 | 36 | 0 | 0 | 100.0% | 100.0% |
 | zia | file-type-rules | 35 | 35 | 0 | 0 | 100.0% | 100.0% |
+| zia | ssl-inspection-rules | 32 | 32 | 0 | 0 | 100.0% | 100.0% |
 | zia | end-user-notification-settings | 30 | 30 | 0 | 0 | 100.0% | 100.0% |
+| zia | gre-tunnels | 30 | 30 | 0 | 0 | 100.0% | 100.0% |
 | zia | dlp-dictionaries | 29 | 29 | 0 | 0 | 100.0% | 100.0% |
 | zia | sandbox-rules | 29 | 29 | 0 | 0 | 100.0% | 100.0% |
+| zia | location-groups | 28 | 28 | 0 | 0 | 100.0% | 100.0% |
 | zcc | forwarding-profiles | 26 | 26 | 0 | 0 | 100.0% | 100.0% |
 | zcc | devices | 25 | 25 | 0 | 0 | 100.0% | 100.0% |
 | zia | admin-users | 21 | 21 | 0 | 0 | 100.0% | 100.0% |
@@ -164,6 +162,7 @@ names, buckets, and reasons behind each row.
 | zcc | custom-ip-apps | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
 | zia | network-services | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
 | zia | proxies | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
+| zia | static-ips | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
 | ztw | network-services | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
 | ztw | public-cloud-info | 11 | 11 | 0 | 0 | 100.0% | 100.0% |
 | zcc | process-based-apps | 10 | 10 | 0 | 0 | 100.0% | 100.0% |
@@ -187,6 +186,7 @@ names, buckets, and reasons behind each row.
 | ztw | ip-groups | 8 | 8 | 0 | 0 | 100.0% | 100.0% |
 | zia | dlp-notification-templates | 7 | 7 | 0 | 0 | 100.0% | 100.0% |
 | zia | domain-profiles | 7 | 7 | 0 | 0 | 100.0% | 100.0% |
+| zia | rule-labels | 7 | 7 | 0 | 0 | 100.0% | 100.0% |
 | ztw | location-templates | 7 | 7 | 0 | 0 | 100.0% | 100.0% |
 | ztw | workload-groups | 7 | 7 | 0 | 0 | 100.0% | 100.0% |
 | zia | cloud-app-instances | 6 | 6 | 0 | 0 | 100.0% | 100.0% |
