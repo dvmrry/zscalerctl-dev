@@ -66,11 +66,51 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
 				{
+					Name:           "dynamicLocationGroupCriteria",
+					Classification: ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+					Fields: []FieldSpec{
+						{
+							Name:           "name",
+							Classification: ClassTenantConfig,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+							Fields: []FieldSpec{
+								// Admin-authored substring matched against location
+								// names; location names are tenant-identifying, so the
+								// match string stays standard-only.
+								tenantConfigField("matchString", standardOnlyMode()),
+								operationalField("matchType", allModes()),
+							},
+						},
+						tenantConfigField("countries", standardShareModes()),
+						{
+							Name:           "city",
+							Classification: ClassTenantConfig,
+							AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+							Fields: []FieldSpec{
+								// City match strings carry geo-locality identity
+								// (static-ips city precedent): sensitive identifier.
+								sensitiveIdentifierField("matchString"),
+								operationalField("matchType", allModes()),
+							},
+						},
+						idNameExtensionsField("managedBy", standardOnlyMode()),
+						tenantConfigField("enforceAuthentication", standardShareModes()),
+						tenantConfigField("enforceAup", standardShareModes()),
+						tenantConfigField("enforceFirewallControl", standardShareModes()),
+						tenantConfigField("enableXffForwarding", standardShareModes()),
+						tenantConfigField("enableCaution", standardShareModes()),
+						tenantConfigField("enableBandwidthControl", standardShareModes()),
+						tenantConfigField("profiles", standardShareModes()),
+					},
+				},
+				{
 					Name:                   "comments",
 					Classification:         ClassFreeText,
 					AllowedModes:           []redact.Mode{redact.ModeStandard},
 					StandardFreeTextReason: standardFreeTextReason("ZIA location group comments"),
 				},
+				idNameExtensionsField("locations", standardOnlyMode()),
 				{
 					Name:           "lastModTime",
 					Classification: ClassOperational,
