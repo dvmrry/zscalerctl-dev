@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,7 +59,9 @@ type ResourceNotFoundError struct {
 }
 
 func (e ResourceNotFoundError) Error() string {
-	return fmt.Sprintf("unsupported resource %s/%s", e.Product, e.Resource)
+	// Point the caller (human or agent) at the two enumeration paths instead
+	// of leaving them to guess names.
+	return fmt.Sprintf("unsupported resource %s/%s; run \"zscalerctl %s --help\" or \"zscalerctl --format json schema list\" to enumerate resources", e.Product, e.Resource, e.Product)
 }
 
 func (e ResourceNotFoundError) Unwrap() error {
@@ -1338,10 +1341,22 @@ func productNames(products []resources.Product) []string {
 }
 
 func productCommandUsage(product resources.Product) string {
+	// Enumerate the product's resources so a cold caller (human or agent) can
+	// discover real names from --help or a usage error instead of guessing;
+	// `schema list` remains the machine-readable source of truth.
+	names := make([]string, 0, 64)
+	for _, spec := range resources.Catalog() {
+		if spec.Product == product {
+			names = append(names, spec.Name)
+		}
+	}
+	sort.Strings(names)
 	return fmt.Sprintf(
-		"usage: zscalerctl %s <resource> %s",
+		"usage: zscalerctl %s <resource> %s\n\nresources (%d; see also: zscalerctl --format json schema list):\n  %s",
 		product,
 		strings.Join(productReadOperationNames(product), "|"),
+		len(names),
+		strings.Join(names, ", "),
 	)
 }
 

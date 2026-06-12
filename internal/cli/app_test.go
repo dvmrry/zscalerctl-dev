@@ -2300,3 +2300,31 @@ func TestDumpLogsPerResourceProgressAtInfo(t *testing.T) {
 		t.Errorf("dump info logs = %q, want per-resource progress for locations", logged)
 	}
 }
+
+func TestProductHelpListsItsResources(t *testing.T) {
+	t.Parallel()
+
+	// A cold agent's natural probe is `zscalerctl zia --help`; the response
+	// must enumerate the real resource names, not a <resource> placeholder
+	// (observed failure mode: a weak agent could not discover object names).
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+	if err := app.Run(context.Background(), []string{"zia", "--help"}); err != nil {
+		t.Fatalf("App.Run(zia --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	for _, want := range []string{"locations", "url-filtering-rules", "schema list"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("zia --help = %q, want it to mention %q", got, want)
+		}
+	}
+
+	// The bare-product usage error must carry the same discoverability.
+	err := app.Run(context.Background(), []string{"zpa", "bogus-resource", "list"})
+	if err == nil {
+		t.Fatal("App.Run(zpa bogus) error = nil, want usage error")
+	}
+	if !strings.Contains(err.Error(), "schema list") || !strings.Contains(err.Error(), "zpa --help") {
+		t.Errorf("zpa unknown-resource error = %q, want enumeration hints", err.Error())
+	}
+}

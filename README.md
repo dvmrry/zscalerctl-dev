@@ -107,6 +107,7 @@ Full model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · [docs/DATA_CLASSIFIC
 ## Documentation
 
 **Usage**
+- [AGENTS.md](AGENTS.md) — cold-start guide for AI agents driving the CLI
 - [docs/INSTALL.md](docs/INSTALL.md) — install, verify, configure
 - [docs/RESOURCES.md](docs/RESOURCES.md) — enabled resource reference
 - [docs/RESOURCE_QUEUE.md](docs/RESOURCE_QUEUE.md) — deferred / queued / excluded state
