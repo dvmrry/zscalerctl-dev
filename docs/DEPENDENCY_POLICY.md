@@ -137,6 +137,22 @@ Security tab (`continue-on-error`, so a finding surfaces without blocking the
 build). Promote a finding class to a blocking gate only after it is triaged and
 the rule is known to be stable for this repository.
 
+## Finding Remediation Policy
+
+These thresholds are enforced by CI, not aspirational:
+
+- **Dependency vulnerabilities (SCA):** zero tolerance in called code paths —
+  any `govulncheck` finding blocks merge and release (`make vuln` runs in PR CI
+  and in `make release-check`). Advisories in uncalled build tooling are
+  remediated by version bump at the next opportunity.
+- **Dependency integrity and licensing:** dependencies are hash-verified
+  (`go.sum`), vendored for review, and must carry an Apache-2.0-compatible
+  license; incompatible licenses are rejected at review.
+- **Static analysis (SAST):** blocking tools (`go vet`, staticcheck, semgrep,
+  secret scan) must report zero findings to merge. Advisory tools (gosec,
+  CodeQL) feed the Security tab; their findings are triaged, and suppressions
+  must be declared in code with a justification (`#nosec <rule> -- reason`).
+
 ## Blocking Gates And Fuzzing
 
 Secret scanning is a merge blocker, not advisory: `make secret-scan` (part of
