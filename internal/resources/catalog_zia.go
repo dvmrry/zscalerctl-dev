@@ -73,6 +73,51 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:        []redact.Mode{redact.ModeStandard, redact.ModeShare},
 					SensitiveNameReason: "boolean auth posture toggle; field name references cookie-based authentication surrogacy, not cookie material",
 				},
+				// Posture booleans: geo-override, IPv6 enablement, and the
+				// extranet default-selector toggles reveal configuration stance,
+				// not tenant identity (locations posture-flag precedent).
+				tenantConfigField("geoOverride", standardShareModes()),
+				tenantConfigField("ipv6Enabled", standardShareModes()),
+				tenantConfigField("defaultExtranetTsPool", standardShareModes()),
+				tenantConfigField("defaultExtranetDns", standardShareModes()),
+				// SDK type is bool despite the prefix-shaped name: it flags
+				// whether DNS64 prefix translation is in effect and carries no
+				// prefix/IP value, so it is a posture flag, not a topology
+				// identifier.
+				tenantConfigField("ipv6Dns64Prefix", standardShareModes()),
+				// Extranet reference objects (common.IDCustom = id + name). The
+				// id is operational bookkeeping; the name is the extranet
+				// configuration object's tenant-config name. IDCustom carries no
+				// topology value of its own, so the nested fields mirror the
+				// id/name reference idiom.
+				extranetRefField("extranet"),
+				extranetRefField("extranetIpPool"),
+				extranetRefField("extranetDns"),
+				// Sublocation scope: the enable flag and scope type are
+				// posture/enum config; the value and account-id lists segregate
+				// workload traffic and may carry account or network identifiers,
+				// so they are sensitive identifiers (standard-only), fail-closed.
+				tenantConfigField("subLocScopeEnabled", standardShareModes()),
+				tenantConfigField("subLocScope", standardShareModes()),
+				sensitiveIdentifierField("subLocScopeValues"),
+				sensitiveIdentifierField("subLocAccIds"),
+				// Booleans marking the Zscaler-created default catch-all
+				// sublocation ("Other"/"Other6"); structural state, not tenant
+				// identity. Mirrors the sublocations classification.
+				operationalField("otherSubLocation", standardShareModes()),
+				operationalField("other6SubLocation", standardShareModes()),
+				// Structural boolean marking an Edge/Cloud Connector location;
+				// location-type posture, no tenant identity (otherSubLocation
+				// idiom).
+				operationalField("ecLocation", standardShareModes()),
+				// id/name/extensions reference lists to location groups and
+				// Virtual ZEN nodes: tenant-config membership, standard-only,
+				// with nested modeling (id operational, name tenant-config,
+				// extensions secret).
+				idNameExtensionsField("dynamiclocationGroups", standardOnlyMode()),
+				idNameExtensionsField("staticLocationGroups", standardOnlyMode()),
+				idNameExtensionsField("virtualZenClusters", standardOnlyMode()),
+				idNameExtensionsField("virtualZens", standardOnlyMode()),
 			},
 		},
 		{
@@ -157,6 +202,9 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModUser"),
 			},
 		},
 		{
@@ -190,6 +238,10 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("createdBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -261,6 +313,10 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 				},
 				idNameField("city", standardOnlyMode()),
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("managedBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -321,6 +377,10 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 					Fields:         greDestVipFields(),
 				},
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("managedBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -429,6 +489,43 @@ func catalogZIA() ResourceCatalog {
 				// identity.
 				operationalField("otherSubLocation", standardShareModes()),
 				operationalField("other6SubLocation", standardShareModes()),
+				// Wave-4 promotions. Classifications are kept identical to the
+				// locations resource for every shared field name (these flags
+				// and references are inherited/shared between a parent location
+				// and its sub-locations).
+				tenantConfigField("geoOverride", standardShareModes()),
+				tenantConfigField("ipv6Enabled", standardShareModes()),
+				tenantConfigField("defaultExtranetTsPool", standardShareModes()),
+				tenantConfigField("defaultExtranetDns", standardShareModes()),
+				// SDK type is bool despite the prefix-shaped name: it flags
+				// whether DNS64 prefix translation is in effect and carries no
+				// prefix/IP value, so it is a posture flag, not a topology
+				// identifier.
+				tenantConfigField("ipv6Dns64Prefix", standardShareModes()),
+				// Extranet reference objects (common.IDCustom = id + name);
+				// nested id operational, name tenant-config.
+				extranetRefField("extranet"),
+				extranetRefField("extranetIpPool"),
+				extranetRefField("extranetDns"),
+				// Sublocation scope enable flag and scope type are posture/enum
+				// config; the value and account-id lists may carry account or
+				// network identifiers, so they are sensitive identifiers
+				// (standard-only), fail-closed.
+				tenantConfigField("subLocScopeEnabled", standardShareModes()),
+				tenantConfigField("subLocScope", standardShareModes()),
+				sensitiveIdentifierField("subLocScopeValues"),
+				sensitiveIdentifierField("subLocAccIds"),
+				// Structural boolean marking an Edge/Cloud Connector location;
+				// location-type posture, no tenant identity.
+				operationalField("ecLocation", standardShareModes()),
+				// id/name/extensions reference lists to location groups and
+				// Virtual ZEN nodes: tenant-config membership, standard-only,
+				// with nested modeling (id operational, name tenant-config,
+				// extensions secret).
+				idNameExtensionsField("dynamiclocationGroups", standardOnlyMode()),
+				idNameExtensionsField("staticLocationGroups", standardOnlyMode()),
+				idNameExtensionsField("virtualZenClusters", standardOnlyMode()),
+				idNameExtensionsField("virtualZens", standardOnlyMode()),
 				{
 					Name:           "vpnCredentials",
 					Classification: ClassSecret,
@@ -473,6 +570,10 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin RBA access-privilege enum (e.g. READ_WRITE): a flat
+				// non-identifying enum, not an admin identity; mirrors the
+				// firewall-filtering-rules accessControl precedent.
+				operationalField("accessControl", standardShareModes()),
 				{
 					Name:           "order",
 					Classification: ClassOperational,
@@ -710,6 +811,12 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("urlCategories2", standardShareModes()),
 				tenantConfigField("userRiskScoreLevels", standardShareModes()),
 				tenantConfigField("userAgentTypes", standardShareModes()),
+				// Flat device-posture enum slice; mirrors the identical
+				// ssl-inspection-rules deviceTrustLevels classification.
+				tenantConfigField("deviceTrustLevels", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 				operationalField("sourceCountries", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("enforceTimeValidity", allModes()),
@@ -774,6 +881,9 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("destAddresses"),
 				sensitiveIdentifierField("destIpCategories"),
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 				idNameExtensionsField("labels", standardShareModes()),
 				idNameExtensionsField("timeWindows", standardShareModes()),
 				idNameExtensionsField("locations", standardOnlyMode()),
@@ -1333,6 +1443,9 @@ func catalogZIA() ResourceCatalog {
 				freeTextField("description", "ZIA workload group description"),
 				sensitiveIdentifierField("expression"),
 				operationalField("lastModifiedTime", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 			},
 		},
 		{

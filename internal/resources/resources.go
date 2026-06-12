@@ -846,6 +846,23 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 	}
 }
 
+// extranetRefField models a common.IDCustom reference to an extranet
+// configuration object (id + name only). The reference is tenant configuration
+// (which extranet resource is assigned), standard+share at the parent: the id
+// is operational bookkeeping and the name is the extranet object's
+// tenant-config name. IDCustom carries no topology value of its own.
+func extranetRefField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   standardShareModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			tenantConfigField("name", standardShareModes()),
+		},
+	}
+}
+
 func idNameDisplayNameField(name string, allowed []redact.Mode) FieldSpec {
 	return FieldSpec{
 		Name:           name,

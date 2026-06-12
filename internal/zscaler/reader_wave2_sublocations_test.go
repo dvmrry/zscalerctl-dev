@@ -77,19 +77,21 @@ func wave2SublocationFixture() locationmanagement.Locations {
 		CookiesAndProxy:                     true,
 		OtherSubLocation:                    true,
 		Other6SubLocation:                   true,
+		// Wave-4 promoted fields carry distinctive, non-canary values; their
+		// classification and mode behavior is asserted in
+		// reader_wave4_locations_family_test.go. They are listed in the
+		// standard-mode want map below so this exact-match test stays accurate.
+		GeoOverride:        true,
+		ECLocation:         true,
+		IPv6Enabled:        true,
+		SubLocScopeEnabled: true,
+		SubLocScope:        "WORKLOAD",
 		// Intentionally excluded fields below carry canaries that must never
 		// surface in any projection.
 		ChildCount:               7777,
 		MatchInChild:             true,
-		GeoOverride:              true,
-		ECLocation:               true,
-		IPv6Enabled:              true,
 		DisplayTimeUnit:          "MINUTE-" + wave2SublocationExcludedCanary,
 		SurrogateRefreshTimeUnit: "HOUR-" + wave2SublocationExcludedCanary,
-		SubLocScopeEnabled:       true,
-		SubLocScope:              "SCOPE-" + wave2SublocationExcludedCanary,
-		SubLocScopeValues:        []string{"scope-value-" + wave2SublocationExcludedCanary},
-		SubLocAccIDs:             []string{"acc-id-" + wave2SublocationExcludedCanary},
 		ExcludeFromDynamicGroups: true,
 		ExcludeFromManualGroups:  true,
 	}
@@ -138,6 +140,16 @@ func TestSublocationSourceRecordProjectsWave2FieldsInStandardMode(t *testing.T) 
 		"cookiesAndProxy":                     true,
 		"otherSubLocation":                    true,
 		"other6SubLocation":                   true,
+		// Wave-4 promoted boolean/scope fields (always mapped; references and
+		// scope-value lists are unset in this fixture so they stay absent).
+		"geoOverride":           true,
+		"ipv6Enabled":           true,
+		"ipv6Dns64Prefix":       false,
+		"defaultExtranetTsPool": false,
+		"defaultExtranetDns":    false,
+		"subLocScopeEnabled":    true,
+		"subLocScope":           "WORKLOAD",
+		"ecLocation":            true,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("projected sublocations standard mode = %#v, want %#v", got, want)
@@ -219,19 +231,14 @@ func TestSublocationSourceRecordDropsSecretAndExcludedFields(t *testing.T) {
 		)
 
 		// Intentionally excluded fields stay out, and their canaries do not
-		// leak through any other key.
+		// leak through any other key. (Wave-4 promoted fields such as
+		// geoOverride/subLocScope/ecLocation/ipv6Enabled are now classified and
+		// are covered by reader_wave4_locations_family_test.go.)
 		assertFieldsAbsent(t, "sublocations", got,
 			"displayTimeUnit",
 			"surrogateRefreshTimeUnit",
-			"subLocScopeEnabled",
-			"subLocScope",
-			"subLocScopeValues",
-			"subLocAccIds",
 			"childCount",
 			"matchInChild",
-			"geoOverride",
-			"ecLocation",
-			"ipv6Enabled",
 			"excludeFromDynamicGroups",
 			"excludeFromManualGroups",
 		)

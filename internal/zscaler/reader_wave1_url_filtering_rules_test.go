@@ -18,9 +18,8 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 	t.Parallel()
 
 	const (
-		adminCanary    = "wave1-url-admin-canary"
-		cbiURLCanary   = "https://isolate.invalid/wave1-cbi-url-canary"
-		excludedCanary = "WAVE1-TRUST-LEVEL-CANARY"
+		adminCanary  = "wave1-url-admin-canary"
+		cbiURLCanary = "https://isolate.invalid/wave1-cbi-url-canary"
 	)
 
 	rule := urlfilteringpolicies.URLFilteringRule{
@@ -42,8 +41,10 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 			URL:        cbiURLCanary,
 			ProfileSeq: 3,
 		},
-		LastModifiedBy:    &ziacommon.IDNameExtensions{ID: 9001, Name: adminCanary},
-		DeviceTrustLevels: []string{excludedCanary},
+		LastModifiedBy: &ziacommon.IDNameExtensions{ID: 9001, Name: adminCanary},
+		// Promoted in wave 4 (tenant config, standard+share); mode gating is
+		// asserted in reader_wave4_secret_pins_test.go.
+		DeviceTrustLevels: []string{"HIGH_TRUST"},
 	}
 	records := []resources.SourceRecord{urlFilteringRuleSourceRecord(rule)}
 
@@ -91,15 +92,12 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 		t.Errorf("projected url-filtering-rules cbiProfile = %#v, want no url (secret sub-field)", cbi)
 	}
 
-	// Never-promoted admin identity and the excluded deviceTrustLevels field
-	// must stay out of standard output, and none of their canaries may leak.
+	// Secret-classified admin identity must stay out of standard output, and
+	// none of its canaries may leak.
 	if _, ok := standard["lastModifiedBy"]; ok {
 		t.Errorf("projected url-filtering-rules = %#v, want no lastModifiedBy", standard)
 	}
-	if _, ok := standard["deviceTrustLevels"]; ok {
-		t.Errorf("projected url-filtering-rules = %#v, want no deviceTrustLevels (unclassified)", standard)
-	}
-	assertNoCanaries(t, "url-filtering-rules", standard, adminCanary, cbiURLCanary, excludedCanary)
+	assertNoCanaries(t, "url-filtering-rules", standard, adminCanary, cbiURLCanary)
 
 	// Mode gating: every promoted field is standard-only — including
 	// browserEunTemplateId, a tenant-specific EUN template reference
@@ -125,6 +123,6 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 		if _, ok := got["lastModifiedBy"]; ok {
 			t.Errorf("projected url-filtering-rules (%v) = %#v, want no lastModifiedBy", mode, got)
 		}
-		assertNoCanaries(t, "url-filtering-rules", got, adminCanary, cbiURLCanary, excludedCanary)
+		assertNoCanaries(t, "url-filtering-rules", got, adminCanary, cbiURLCanary)
 	}
 }

@@ -3,10 +3,12 @@ package zscaler
 // Wave-1 field-coverage tests for zia/ssl-inspection-rules. The mapper
 // (sslInspectionRuleSourceRecord) already emitted every reference list; this
 // wave promotes them in the catalog. Each test builds the SDK struct with a
-// distinctive value in every promoted field plus canaries in the excluded and
-// secret fields (accessControl, lastModifiedBy, zpaAppSegments externalId),
-// projects through the catalog, and asserts the promoted fields render under
-// the right keys per mode while the canaries never survive.
+// distinctive value in every promoted field plus canaries in the secret
+// fields (lastModifiedBy, zpaAppSegments externalId), projects through the
+// catalog, and asserts the promoted fields render under the right keys per
+// mode while the canaries never survive. accessControl was promoted to
+// operational (standard+share) in wave 4; its mode gating is asserted in
+// reader_wave4_secret_pins_test.go.
 //
 // Helpers (projectOneRecord, projectOneRecordInMode, assertNoCanaries,
 // mustProjectedList, mustFirstProjectedItem, assertFieldsAbsent) are reused
@@ -23,7 +25,6 @@ import (
 )
 
 const (
-	sslWave1AccessControlCanary  = "ssl-wave1-access-control-canary"
 	sslWave1LastModifiedByCanary = "ssl-wave1-last-modified-by-canary"
 	sslWave1ExternalIDCanary     = "ssl-wave1-zpa-external-id-canary"
 )
@@ -35,8 +36,8 @@ func sslInspectionRuleWave1Fixture() sslinspection.SSLInspectionRules {
 		Description: "Decrypts finance category traffic",
 		Action:      sslinspection.Action{Type: "DECRYPT"},
 		State:       "ENABLED",
-		// Excluded from promotion: must never reach the projection.
-		AccessControl:          sslWave1AccessControlCanary,
+		// Promoted in wave 4 as a flat RBA enum (standard+share).
+		AccessControl:          "READ_ONLY",
 		Order:                  3,
 		Rank:                   7,
 		RoadWarriorForKerberos: true,
@@ -96,11 +97,10 @@ func TestSSLInspectionRuleWave1FieldsProjectInStandardMode(t *testing.T) {
 	got := projectOneRecord(t, resources.ProductZIA, resourceSSLRules, []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)})
 
 	assertNoCanaries(t, "ssl-inspection-rules", got,
-		sslWave1AccessControlCanary,
 		sslWave1LastModifiedByCanary,
 		sslWave1ExternalIDCanary,
 	)
-	assertFieldsAbsent(t, "ssl-inspection-rules", got, "accessControl", "lastModifiedBy")
+	assertFieldsAbsent(t, "ssl-inspection-rules", got, "lastModifiedBy")
 
 	for field, wantName := range sslWave1ReferenceListNames {
 		item := mustFirstProjectedItem(t, got, field)
@@ -144,11 +144,10 @@ func TestSSLInspectionRuleWave1FieldsAcrossModes(t *testing.T) {
 
 	share := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeShare, records)
 	assertNoCanaries(t, "ssl-inspection-rules share", share,
-		sslWave1AccessControlCanary,
 		sslWave1LastModifiedByCanary,
 		sslWave1ExternalIDCanary,
 	)
-	assertFieldsAbsent(t, "ssl-inspection-rules share", share, "accessControl", "lastModifiedBy")
+	assertFieldsAbsent(t, "ssl-inspection-rules share", share, "lastModifiedBy")
 	assertFieldsAbsent(t, "ssl-inspection-rules share", share, standardOnlyFields...)
 	for _, field := range standardShareFields {
 		if _, ok := share[field]; !ok {
@@ -165,7 +164,6 @@ func TestSSLInspectionRuleWave1FieldsAcrossModes(t *testing.T) {
 
 	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeParanoid, records)
 	assertNoCanaries(t, "ssl-inspection-rules paranoid", paranoid,
-		sslWave1AccessControlCanary,
 		sslWave1LastModifiedByCanary,
 		sslWave1ExternalIDCanary,
 	)

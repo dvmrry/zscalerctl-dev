@@ -1462,6 +1462,16 @@ func locationSourceRecord(location locationmanagement.Locations) resources.Sourc
 		"iotDiscoveryEnabled":                 location.IOTDiscoveryEnabled,
 		"iotEnforcePolicySet":                 location.IOTEnforcePolicySet,
 		"cookiesAndProxy":                     location.CookiesAndProxy,
+		"geoOverride":                         location.GeoOverride,
+		"ipv6Enabled":                         location.IPv6Enabled,
+		"ipv6Dns64Prefix":                     location.IPv6Dns64Prefix,
+		"defaultExtranetTsPool":               location.DefaultExtranetTsPool,
+		"defaultExtranetDns":                  location.DefaultExtranetDns,
+		"subLocScopeEnabled":                  location.SubLocScopeEnabled,
+		"subLocScope":                         location.SubLocScope,
+		"otherSubLocation":                    location.OtherSubLocation,
+		"other6SubLocation":                   location.Other6SubLocation,
+		"ecLocation":                          location.ECLocation,
 	}
 	if len(location.IPAddresses) > 0 {
 		fields["ipAddresses"] = append([]string(nil), location.IPAddresses...)
@@ -1469,8 +1479,29 @@ func locationSourceRecord(location locationmanagement.Locations) resources.Sourc
 	if len(location.Ports) > 0 {
 		fields["ports"] = append([]int(nil), location.Ports...)
 	}
+	if len(location.SubLocScopeValues) > 0 {
+		fields["subLocScopeValues"] = append([]string(nil), location.SubLocScopeValues...)
+	}
+	if len(location.SubLocAccIDs) > 0 {
+		fields["subLocAccIds"] = append([]string(nil), location.SubLocAccIDs...)
+	}
 	if len(location.VPNCredentials) > 0 {
 		fields["vpnCredentials"] = vpnCredentialsSource(location.VPNCredentials)
+	}
+	addIDCustomPtr(fields, "extranet", location.Extranet)
+	addIDCustomPtr(fields, "extranetIpPool", location.ExtranetIpPool)
+	addIDCustomPtr(fields, "extranetDns", location.ExtranetDns)
+	if len(location.DynamiclocationGroups) > 0 {
+		fields["dynamiclocationGroups"] = idNameExtensionsSliceSource(location.DynamiclocationGroups)
+	}
+	if len(location.StaticLocationGroups) > 0 {
+		fields["staticLocationGroups"] = idNameExtensionsSliceSource(location.StaticLocationGroups)
+	}
+	if len(location.VirtualZenClusters) > 0 {
+		fields["virtualZenClusters"] = idNameExtensionsSliceSource(location.VirtualZenClusters)
+	}
+	if len(location.VirtualZens) > 0 {
+		fields["virtualZens"] = idNameExtensionsSliceSource(location.VirtualZens)
 	}
 	return resources.NewSourceRecord(fields)
 }
@@ -1623,6 +1654,12 @@ func sublocationSourceRecord(location locationmanagement.Locations) resources.So
 		"subLocScope":                         location.SubLocScope,
 		"excludeFromManualGroups":             location.ExcludeFromManualGroups,
 		"excludeFromDynamicGroups":            location.ExcludeFromDynamicGroups,
+		"geoOverride":                         location.GeoOverride,
+		"ipv6Enabled":                         location.IPv6Enabled,
+		"ipv6Dns64Prefix":                     location.IPv6Dns64Prefix,
+		"defaultExtranetTsPool":               location.DefaultExtranetTsPool,
+		"defaultExtranetDns":                  location.DefaultExtranetDns,
+		"ecLocation":                          location.ECLocation,
 	}
 	if len(location.IPAddresses) > 0 {
 		fields["ipAddresses"] = append([]string(nil), location.IPAddresses...)
@@ -1638,6 +1675,21 @@ func sublocationSourceRecord(location locationmanagement.Locations) resources.So
 	}
 	if len(location.VPNCredentials) > 0 {
 		fields["vpnCredentials"] = vpnCredentialsSource(location.VPNCredentials)
+	}
+	addIDCustomPtr(fields, "extranet", location.Extranet)
+	addIDCustomPtr(fields, "extranetIpPool", location.ExtranetIpPool)
+	addIDCustomPtr(fields, "extranetDns", location.ExtranetDns)
+	if len(location.DynamiclocationGroups) > 0 {
+		fields["dynamiclocationGroups"] = idNameExtensionsSliceSource(location.DynamiclocationGroups)
+	}
+	if len(location.StaticLocationGroups) > 0 {
+		fields["staticLocationGroups"] = idNameExtensionsSliceSource(location.StaticLocationGroups)
+	}
+	if len(location.VirtualZenClusters) > 0 {
+		fields["virtualZenClusters"] = idNameExtensionsSliceSource(location.VirtualZenClusters)
+	}
+	if len(location.VirtualZens) > 0 {
+		fields["virtualZens"] = idNameExtensionsSliceSource(location.VirtualZens)
 	}
 	return resources.NewSourceRecord(fields)
 }

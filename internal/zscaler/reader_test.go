@@ -1161,12 +1161,16 @@ func TestReaderListSublocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
 			t.Errorf("projected sublocations %s = %v, want no bare token", field, got[field])
 		}
 	}
-	for _, field := range []string{"vpnCredentials", "subLocScopeValues", "subLocAccIds", "subLocScopeEnabled"} {
+	// The vpnCredentials secret is never rendered. subLocScopeEnabled/
+	// subLocScopeValues/subLocAccIds are wave-4 promotions and now render in
+	// standard mode; their classification and mode behavior is asserted in
+	// reader_wave4_locations_family_test.go.
+	for _, field := range []string{"vpnCredentials"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected sublocations = %#v, want no %s", got, field)
 		}
 	}
-	for _, forbidden := range []string{canary, scopeCanary} {
+	for _, forbidden := range []string{canary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected sublocations = %#v, want no %q", got, forbidden)
 		}
