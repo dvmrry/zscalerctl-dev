@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check secret-scan vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry scaffold-resource sdk-surface-inventory live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check secret-scan vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(find . -path ./vendor -prune -o -name '*.go' -print0 | xargs -0 gofmt -l)"; \
@@ -93,6 +93,13 @@ scaffold-resource:
 
 sdk-surface-inventory:
 	@go run ./scripts/sdk-surface-inventory.go $(if $(SDK_DIR),--sdk-dir "$(SDK_DIR)") $(if $(FORMAT),--format "$(FORMAT)")
+
+# Regenerate docs/FIELD_COVERAGE.md and docs/field-coverage.json from
+# reviewedSDKShapes() and the resource catalog. The same test asserts the
+# committed artifacts are current under plain `go test`, so this target is only
+# needed after an SDK bump or a classification change moves the numbers.
+field-coverage:
+	FIELD_COVERAGE_WRITE=1 go test -mod=vendor ./internal/zscaler -run TestFieldCoverageReportIsCurrent
 
 live-smoke:
 	go run ./scripts/live-smoke.go $(LIVE_SMOKE_FLAGS) $(if $(LIVE_SMOKE_BIN),--bin "$(LIVE_SMOKE_BIN)") $(if $(LIVE_SMOKE_RESOURCES),--resources "$(LIVE_SMOKE_RESOURCES)") $(if $(LIVE_SMOKE_MANIFEST),--manifest "$(LIVE_SMOKE_MANIFEST)") $(if $(LIVE_SMOKE_OUT),--out "$(LIVE_SMOKE_OUT)")

@@ -17,6 +17,8 @@ GitHub security policy.
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [THREAT_MODEL.md](THREAT_MODEL.md)
 - [DATA_CLASSIFICATION.md](DATA_CLASSIFICATION.md)
+- [FIELD_COVERAGE.md](FIELD_COVERAGE.md) — generated per-resource classified vs
+  ignored-with-reason field counts (`make field-coverage`).
 - [ZSCALER_SENSITIVE_DATA.md](ZSCALER_SENSITIVE_DATA.md)
 
 ## Maintenance
