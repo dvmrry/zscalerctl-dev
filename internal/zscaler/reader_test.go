@@ -1546,11 +1546,17 @@ func TestReaderListFirewallFilteringRulesProjectsSDKShapeThroughAllowList(t *tes
 		t.Fatalf("SDKReader.List(zia, firewall-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "firewall-filtering-rules", records)
-	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken, adminCanary, userCanary, zpaCanary)
-	for _, field := range []string{"lastModifiedBy", "users", "zpaAppSegments"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected firewall-filtering-rules = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken, adminCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected firewall-filtering-rules = %#v, want no lastModifiedBy", got)
+	}
+	// users and zpaAppSegments are catalog-classified (standard-only) as of
+	// the wave-1 field promotion, so their reference names render here.
+	if !strings.Contains(fmt.Sprint(got["users"]), userCanary) {
+		t.Errorf("projected firewall-filtering-rules users = %v, want name %q", got["users"], userCanary)
+	}
+	if !strings.Contains(fmt.Sprint(got["zpaAppSegments"]), zpaCanary) {
+		t.Errorf("projected firewall-filtering-rules zpaAppSegments = %v, want name %q", got["zpaAppSegments"], zpaCanary)
 	}
 	if got["action"] != "ALLOW" {
 		t.Errorf("projected firewall-filtering-rules action = %v, want ALLOW", got["action"])
