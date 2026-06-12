@@ -131,6 +131,22 @@ func assertFieldCoverageSanity(t *testing.T, report fieldCoverageReport) {
 	if report.Totals.DeferredFields != sumDeferred {
 		t.Errorf("repo deferred fields = %d, want %d (sum of resources)", report.Totals.DeferredFields, sumDeferred)
 	}
+
+	// Ratchet: deferred reached zero in the field-coverage workstream and must
+	// stay there. Every new SDK field must be classified in the catalog or
+	// recorded as ignored with a "deliberate: " reason before merge — parking a
+	// field as "deferred: " is no longer a quiet option. If a future wave
+	// intentionally parks work, this assertion is the visible thing it edits.
+	if report.Totals.DeferredFields != 0 {
+		t.Errorf("repo deferred fields = %d, want 0: every SDK field must be classified or recorded as \"deliberate: \" before merge; if a wave intentionally parks work as \"deferred: \", it must edit this assertion to say so", report.Totals.DeferredFields)
+	}
+
+	// With zero deferred fields, decided coverage (classified + deliberate over
+	// total) is exactly 100.0 repo-wide. Derived from the report struct, not the
+	// rendered markdown, so a renderer bug cannot fake it.
+	if report.Totals.DecidedCoveragePercent != 100.0 {
+		t.Errorf("repo decided coverage = %.1f%%, want 100.0%%: some SDK field is neither classified nor deliberately excluded", report.Totals.DecidedCoveragePercent)
+	}
 }
 
 // fieldCoverageReport is the full machine-readable report. JSON field order is
