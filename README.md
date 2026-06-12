@@ -33,11 +33,18 @@ See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/
 
 Release archives for macOS, Linux, and Windows include checksums, CycloneDX SBOMs, and GitHub provenance attestations. See [docs/INSTALL.md](docs/INSTALL.md) for verification, credentials, proxy, completions, and platform notes.
 
-From a checkout:
+With a Go toolchain (no checkout needed):
+
+```sh
+go install github.com/dvmrry/zscalerctl/cmd/zscalerctl@latest
+zscalerctl version
+```
+
+From a checkout (rerun after every `git pull` — the binary on PATH does not
+update itself):
 
 ```sh
 go install ./cmd/zscalerctl
-zscalerctl version
 ```
 
 ## Quick start
