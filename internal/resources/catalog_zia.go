@@ -157,6 +157,9 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModUser"),
 			},
 		},
 		{
@@ -190,6 +193,10 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("createdBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -261,6 +268,10 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 				},
 				idNameField("city", standardOnlyMode()),
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("managedBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -321,6 +332,10 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 					Fields:         greDestVipFields(),
 				},
+				// Admin identity references: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("managedBy"),
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
@@ -473,6 +488,10 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
+				// Admin RBA access-privilege enum (e.g. READ_WRITE): a flat
+				// non-identifying enum, not an admin identity; mirrors the
+				// firewall-filtering-rules accessControl precedent.
+				operationalField("accessControl", standardShareModes()),
 				{
 					Name:           "order",
 					Classification: ClassOperational,
@@ -710,6 +729,12 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("urlCategories2", standardShareModes()),
 				tenantConfigField("userRiskScoreLevels", standardShareModes()),
 				tenantConfigField("userAgentTypes", standardShareModes()),
+				// Flat device-posture enum slice; mirrors the identical
+				// ssl-inspection-rules deviceTrustLevels classification.
+				tenantConfigField("deviceTrustLevels", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 				operationalField("sourceCountries", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("enforceTimeValidity", allModes()),
@@ -774,6 +799,9 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("destAddresses"),
 				sensitiveIdentifierField("destIpCategories"),
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 				idNameExtensionsField("labels", standardShareModes()),
 				idNameExtensionsField("timeWindows", standardShareModes()),
 				idNameExtensionsField("locations", standardOnlyMode()),
@@ -1333,6 +1361,9 @@ func catalogZIA() ResourceCatalog {
 				freeTextField("description", "ZIA workload group description"),
 				sensitiveIdentifierField("expression"),
 				operationalField("lastModifiedTime", standardShareModes()),
+				// Admin identity reference: classified secret and never
+				// rendered, matching the rule-family lastModifiedBy precedent.
+				secretField("lastModifiedBy"),
 			},
 		},
 		{
