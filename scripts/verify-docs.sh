@@ -32,6 +32,24 @@ check_pattern "aws access key" 'AKIA[0-9A-Z]{16}'
 check_pattern "bearer token" 'bearer[[:space:]]+[A-Za-z0-9._~+/=-]{12,}'
 check_pattern "assigned api key or client secret" '(client_secret|api[_-]?key)[[:space:]]*[:=][[:space:]]*[^[:space:]<]'
 
+# Posture artifacts must stay well-formed: the OpenVEX document is consumed
+# by tooling and cited by policy, so a syntax error is a doc failure.
+if ! python3 - <<'PYEOF'
+import json, sys
+doc = json.load(open(".openvex.json"))
+ok = doc.get("@context", "").startswith("https://openvex.dev/") and isinstance(doc.get("statements"), list)
+allowed = {"not_affected", "affected", "fixed", "under_investigation"}
+for st in doc["statements"]:
+    ok = ok and st.get("status") in allowed and st.get("vulnerability", {}).get("name")
+    if st.get("status") == "not_affected":
+        ok = ok and bool(st.get("justification"))
+sys.exit(0 if ok else 1)
+PYEOF
+then
+  echo "verify-docs: .openvex.json is missing, malformed, or has invalid statements" >&2
+  fail=1
+fi
+
 if (( fail != 0 )); then
   exit 1
 fi

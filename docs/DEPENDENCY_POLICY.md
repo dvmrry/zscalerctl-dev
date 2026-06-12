@@ -148,6 +148,11 @@ These thresholds are enforced by CI, not aspirational:
 - **Dependency integrity and licensing:** dependencies are hash-verified
   (`go.sum`), vendored for review, and must carry an Apache-2.0-compatible
   license; incompatible licenses are rejected at review.
+- **Non-exploitable advisories (VEX):** when an advisory affects a declared
+  dependency but not the shipped binary (for example, build-only tooling in
+  `tools/`), a `not_affected` statement is recorded in the repository's
+  [.openvex.json](../.openvex.json) (OpenVEX format) alongside the remediating
+  bump. Statements are reviewed like code.
 - **Static analysis (SAST):** blocking tools (`go vet`, staticcheck, semgrep,
   secret scan) must report zero findings to merge. Advisory tools (gosec,
   CodeQL) feed the Security tab; their findings are triaged, and suppressions

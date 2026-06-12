@@ -1,0 +1,369 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/dvmrry/zscalerctl/blob/main/.openvex.json",
+  "author": "zscalerctl maintainer (dvmrry)",
+  "timestamp": "2026-06-12T08:30:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "GO-2026-5005"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5006"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5013"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5014"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5015"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5016"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5017"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5018"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5019"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5020"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5021"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5023"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5024"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/sys@v0.43.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5025"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5026"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5027"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5028"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5029"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5030"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/net@v0.54.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-5033"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/github.com/dvmrry/zscalerctl",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/golang.org/x/crypto@v0.50.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "The affected module versions existed only in the tools/ build-tooling module (SBOM generation), which is never part of the shipped zscalerctl binary's module graph. The tooling module was additionally upgraded past all fixed versions (PRs #143, #145)."
+    }
+  ]
+}
