@@ -1373,10 +1373,15 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"expression",
 				"lastModifiedTime",
 			},
-			ignoredFields: ignoredBecause(
-				"structured expression details and admin references are mapped then dropped by projection",
-				"expressionJson",
-				"lastModifiedBy",
+			ignoredFields: mergeIgnoredFields(
+				ignoredBecause(
+					"excluded forever: JSON twin of the already-classified expression string; modeling the tree would duplicate (or widen) the standard-only expression exposure",
+					"expressionJson",
+				),
+				ignoredBecause(
+					"admin identity reference is mapped then dropped by projection",
+					"lastModifiedBy",
+				),
 			),
 		},
 		{
