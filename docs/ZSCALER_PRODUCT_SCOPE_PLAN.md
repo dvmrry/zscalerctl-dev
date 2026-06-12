@@ -106,9 +106,9 @@ ZCC non-coverage record and deferred backlog in
 [Resource Queue](RESOURCE_QUEUE.md). The per-package scout table below is the
 original pre-catalog scouting note, superseded by the enabled catalog.
 
-| Candidate | SDK package | Scout category | Queue posture |
+| Candidate | SDK package | Scout category | Scout-time posture (historical) |
 | --- | --- | --- | --- |
-| `zcc/trusted-networks` | `zscaler/zcc/services/trusted_network_v2` | `list-get-with-mutating-neighbors` | Deferred: endpoint probe returned 404 for list. Network identifiers likely standard-only if retried later. |
+| `zcc/trusted-networks` | `zscaler/zcc/services/trusted_network_v2` | `list-get-with-mutating-neighbors` | Superseded — now in the enabled catalog. Scout-time note: a v2 endpoint probe returned 404 for list. |
 | `zcc/notification-templates` | `zscaler/zcc/services/notification_template` | `list-get-with-mutating-neighbors` | Deferred: endpoint probe returned 404 for list. Revisit only after ZCC endpoint/auth behavior is proven. |
 | `zcc/zia-postures` | `zscaler/zcc/services/zia_posture` | `list-get-with-mutating-neighbors` | Deferred: endpoint probe returned 404 for list. Revisit only after ZCC endpoint/auth behavior is proven. |
 | `zcc/custom-ip-apps` | `zscaler/zcc/services/custom_ip_apps` | `read-only-nonstandard` | Useful, but list semantics are package-specific (`GetCustomIPApps`, `GetByAppID`, `GetByName`). Design as list-only/name-get if needed. |
@@ -135,7 +135,7 @@ not be treated as plain configuration inventory.
 See [ZDX Scope Plan](ZDX_SCOPE_PLAN.md) for the out-of-scope rationale and the
 configuration-API exception.
 
-| Candidate | SDK package | Scout category | Queue posture |
+| Candidate | SDK package | Scout category | Scout-time posture (historical) |
 | --- | --- | --- | --- |
 | `zdx/applications` | `zscaler/zdx/services/reports/applications` | `ordinary-list-get` | Post-`v1.0.0` report/export only. Not configuration inventory. |
 | `zdx/users` | `zscaler/zdx/services/reports/users` | `ordinary-list-get` | Post-`v1.0.0` report/export only. User telemetry is privacy-sensitive. |
@@ -154,7 +154,7 @@ dumps would weaken the deterministic-config story.
 ZTW has workload, cloud account, gateway, DNS, EC group, and policy resources.
 It is likely closer to Cloud Connector/Workload than to ZIA inventory.
 
-| Candidate | SDK package | Scout category | Queue posture |
+| Candidate | SDK package | Scout category | Scout-time posture (historical) |
 | --- | --- | --- | --- |
 | `ztw/workload-groups` | `zscaler/ztw/services/workload_groups` | `ordinary-list-get` | Included in the first ZTW reference batch. Tag-expression graph is mapped but dropped in v1. |
 | `ztw/public-cloud-accounts` | `zscaler/ztw/services/provisioning/public_cloud_account` | `ordinary-list-get` | Included in the first ZTW reference batch. Cloud account identifiers render standard-only. |
@@ -197,7 +197,7 @@ dedicated `ZWAHTTPClient` field. It is explicitly out of pre-`v1.0.0`
 implementation scope unless Zscaler exposes deterministic ZWA configuration
 APIs.
 
-| Candidate | SDK package | Scout category | Queue posture |
+| Candidate | SDK package | Scout category | Scout-time posture (historical) |
 | --- | --- | --- | --- |
 | `zwa/customer-audit` | `zscaler/zwa/services/customeraudit` | `read-only-nonstandard` | Out of pre-`v1.0.0` scope. Audit logs are not configuration inventory. |
 | `zwa/dlp-incidents` | `zscaler/zwa/services/dlp_incidents` | `mixed-read-write-sdk-package` | Out of pre-`v1.0.0` scope. Incident, evidence, ticket, and history data are sensitive and sit next to mutating helpers. |
@@ -214,7 +214,7 @@ workforce identity inventory next to membership mutation helpers. The CLI can
 safely bind read functions for users and groups, but it must not expand group
 membership or wire mutating helpers in broad list output.
 
-| Candidate | SDK package | Scout category | Queue posture |
+| Candidate | SDK package | Scout category | Scout-time posture (historical) |
 | --- | --- | --- | --- |
 | `zidentity/resource-servers` | `zscaler/zid/services/resource_servers` | `ordinary-list-get` | In scope. OAuth-style identifiers render conservatively, and service/org internals are dropped. |
 | `zidentity/groups` | `zscaler/zid/services/groups` | `list-get-with-mutating-neighbors` | In scope for group object inventory. Do not expand membership or wire add/remove/update/delete helpers. |
