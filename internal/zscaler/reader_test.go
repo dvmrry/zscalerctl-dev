@@ -590,7 +590,7 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 							ManagedBy: []locationgroups.ManagedBy{
 								{
 									ID:   1003,
-									Name: adminCanary,
+									Name: "location-group-sdwan-partner",
 								},
 							},
 							EnforceAuthentication: true,
@@ -640,12 +640,21 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 			t.Errorf("projected location-groups %s = %v, want typed redaction marker", field, got[field])
 		}
 	}
-	for _, field := range []string{"dynamicLocationGroupCriteria", "locations", "lastModUser"} {
+	// dynamicLocationGroupCriteria and locations are catalog-classified as of
+	// wave 1 and render in standard mode (see
+	// reader_wave1_location_groups_test.go); only the admin reference stays
+	// dropped.
+	for _, field := range []string{"lastModUser"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected location-groups = %#v, want no %s", got, field)
 		}
 	}
-	for _, forbidden := range []string{adminCanary, locationCanary, criteriaCanary} {
+	for _, present := range []string{locationCanary, criteriaCanary} {
+		if !strings.Contains(fmt.Sprint(got), present) {
+			t.Errorf("projected location-groups = %#v, want %q rendered via promoted fields", got, present)
+		}
+	}
+	for _, forbidden := range []string{adminCanary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected location-groups = %#v, want no %q", got, forbidden)
 		}
