@@ -575,7 +575,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "zpaappconnectorcontroller.AssistantVersion",
 			typ:  reflect.TypeOf(zpaappconnectorcontroller.AssistantVersion{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped assistantVersion parent",
+				"deliberate: covered by dropped assistantVersion parent",
 				"appConnectorGroupId",
 				"applicationStartTime",
 				"brokerId",
@@ -612,7 +612,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "zpacommon.ZPNSubModuleUpgrade",
 			typ:  reflect.TypeOf(zpacommon.ZPNSubModuleUpgrade{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped zpnSubModuleUpgradeList parent",
+				"deliberate: covered by dropped zpnSubModuleUpgradeList parent",
 				"creationTime",
 				"currentVersion",
 				"entityGid",
@@ -966,7 +966,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "zpacloudconnectorgroup.CloudConnectors",
 			typ:  reflect.TypeOf(zpacloudconnectorgroup.CloudConnectors{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped cloudConnectors parent",
+				"deliberate: covered by dropped cloudConnectors parent",
 				"creationTime",
 				"description",
 				"enabled",
@@ -989,7 +989,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "workloadgroups.WorkloadTagExpression",
 			typ:  reflect.TypeOf(workloadgroups.WorkloadTagExpression{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"expressionContainers",
 			),
 		},
@@ -997,7 +997,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "workloadgroups.ExpressionContainer",
 			typ:  reflect.TypeOf(workloadgroups.ExpressionContainer{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"tagType",
 				"operator",
 				"tagContainer",
@@ -1007,7 +1007,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "workloadgroups.TagContainer",
 			typ:  reflect.TypeOf(workloadgroups.TagContainer{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"tags",
 				"operator",
 			),
@@ -1016,7 +1016,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "workloadgroups.Tags",
 			typ:  reflect.TypeOf(workloadgroups.Tags{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"key",
 				"value",
 			),
@@ -1025,7 +1025,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwworkloadgroups.WorkloadTagExpression",
 			typ:  reflect.TypeOf(ztwworkloadgroups.WorkloadTagExpression{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"expressionContainers",
 			),
 		},
@@ -1033,7 +1033,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwworkloadgroups.ExpressionContainer",
 			typ:  reflect.TypeOf(ztwworkloadgroups.ExpressionContainer{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"tagType",
 				"operator",
 				"tagContainer",
@@ -1043,7 +1043,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwworkloadgroups.TagContainer",
 			typ:  reflect.TypeOf(ztwworkloadgroups.TagContainer{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"tags",
 				"operator",
 			),
@@ -1052,7 +1052,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwworkloadgroups.Tags",
 			typ:  reflect.TypeOf(ztwworkloadgroups.Tags{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped expressionJson parent",
+				"deliberate: covered by dropped expressionJson parent",
 				"key",
 				"value",
 			),
@@ -1061,7 +1061,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.CommonIDNameExternalID",
 			typ:  reflect.TypeOf(ztwcommon.CommonIDNameExternalID{}),
 			ignoredFields: ignoredBecause(
-				"used as id/name reference; additional metadata is dropped by nested catalog fields",
+				"deliberate: used as id/name reference; additional metadata is dropped by nested catalog fields",
 				"id",
 				"name",
 				"isNameL10nTag",
@@ -1075,7 +1075,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.CommonIDName",
 			typ:  reflect.TypeOf(ztwcommon.CommonIDName{}),
 			ignoredFields: ignoredBecause(
-				"covered by modeled ztw id/name references",
+				"deliberate: covered by modeled ztw id/name references",
 				"id",
 				"name",
 			),
@@ -1084,7 +1084,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.RegionStatus",
 			typ:  reflect.TypeOf(ztwcommon.RegionStatus{}),
 			ignoredFields: ignoredBecause(
-				"covered by ztw/public-cloud-info regionStatus nested field",
+				"deliberate: covered by ztw/public-cloud-info regionStatus nested field",
 				"id",
 				"name",
 				"cloudType",
@@ -1095,7 +1095,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.SupportedRegions",
 			typ:  reflect.TypeOf(ztwcommon.SupportedRegions{}),
 			ignoredFields: ignoredBecause(
-				"covered by ztw/public-cloud-info supportedRegions nested field",
+				"deliberate: covered by ztw/public-cloud-info supportedRegions nested field",
 				"id",
 				"name",
 				"cloudType",
@@ -1105,7 +1105,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.ZPAApplicationSegments",
 			typ:  reflect.TypeOf(ztwcommon.ZPAApplicationSegments{}),
 			ignoredFields: ignoredBecause(
-				"covered by ztw/forwarding-rules zpaApplicationSegments nested field",
+				"deliberate: covered by ztw/forwarding-rules zpaApplicationSegments nested field",
 				"id",
 				"name",
 				"description",
@@ -1117,7 +1117,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.ZPAApplicationSegmentGroups",
 			typ:  reflect.TypeOf(ztwcommon.ZPAApplicationSegmentGroups{}),
 			ignoredFields: ignoredBecause(
-				"covered by ztw/forwarding-rules zpaApplicationSegmentGroups nested field",
+				"deliberate: covered by ztw/forwarding-rules zpaApplicationSegmentGroups nested field",
 				"id",
 				"name",
 				"zpaId",
@@ -1129,7 +1129,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwnetworkservices.NetworkPorts",
 			typ:  reflect.TypeOf(ztwnetworkservices.NetworkPorts{}),
 			ignoredFields: ignoredBecause(
-				"covered by modeled network port range parent",
+				"deliberate: covered by modeled network port range parent",
 				"start",
 				"end",
 			),
@@ -1138,7 +1138,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwnetworkservicegroups.Services",
 			typ:  reflect.TypeOf(ztwnetworkservicegroups.Services{}),
 			ignoredFields: ignoredBecause(
-				"network service groups render child services as id/name references only; ztw/network-services owns service details",
+				"deliberate: network service groups render child services as id/name references only; ztw/network-services owns service details",
 				"id",
 				"name",
 				"tag",
@@ -1155,7 +1155,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ztwcommon.IDNameExtensions",
 			typ:  reflect.TypeOf(ztwcommon.IDNameExtensions{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped lastModifiedBy parent",
+				"deliberate: covered by dropped lastModifiedBy parent",
 				"id",
 				"name",
 				"extensions",
@@ -1165,7 +1165,7 @@ func reviewedSDKShapesZPA() []sdkShapeReview {
 			name: "ziacommon.IDNameExternalID",
 			typ:  reflect.TypeOf(ziacommon.IDNameExternalID{}),
 			ignoredFields: ignoredBecause(
-				"currently used inside explicitly modeled nested references; this entry catches SDK additions",
+				"deliberate: currently used inside explicitly modeled nested references; this entry catches SDK additions",
 				"id",
 				"name",
 				"externalId",

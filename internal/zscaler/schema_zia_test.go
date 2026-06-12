@@ -140,23 +140,26 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			},
 			ignoredFields: mergeIgnoredFields(
 				ignoredBecause(
-					"sublocation scope semantics need separate modeling before exposure",
+					"deferred: sublocation scope semantics need separate modeling before exposure",
 					"subLocScopeEnabled",
 					"subLocScope",
 					"subLocScopeValues",
 					"subLocAccIds",
 				),
 				ignoredBecause(
-					"UI display-unit hints carry no configuration signal",
+					"deliberate: UI display-unit hints carry no configuration signal",
 					"displayTimeUnit",
 					"surrogateRefreshTimeUnit",
 				),
 				ignoredBecause(
-					"hierarchy and membership references are intentionally omitted until separately modeled",
+					"deliberate: hierarchy bookkeeping counters and group-exclusion flags carry no exposable configuration of their own",
 					"childCount",
 					"matchInChild",
 					"excludeFromDynamicGroups",
 					"excludeFromManualGroups",
+				),
+				ignoredBecause(
+					"deferred: hierarchy and membership references are intentionally omitted until separately modeled",
 					"otherSubLocation",
 					"other6SubLocation",
 					"ecLocation",
@@ -166,7 +169,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 					"virtualZens",
 				),
 				ignoredBecause(
-					"extranet and IPv6 operational references are intentionally omitted until separately classified",
+					"deferred: extranet and IPv6 operational references are intentionally omitted until separately classified",
 					"geoOverride",
 					"ipv6Enabled",
 					"defaultExtranetTsPool",
@@ -182,7 +185,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "locationmanagement.VPNCredentials",
 			typ:  reflect.TypeOf(locationmanagement.VPNCredentials{}),
 			ignoredFields: ignoredBecause(
-				"covered by secret vpnCredentials parent; nested credential payload is never emitted",
+				"deliberate: covered by secret vpnCredentials parent; nested credential payload is never emitted",
 				"id",
 				"type",
 				"fqdn",
@@ -210,7 +213,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"predefined",
 			},
 			ignoredFields: ignoredBecause(
-				"admin reference is mapped then dropped by projection",
+				"deferred: admin reference is mapped then dropped by projection",
 				"lastModUser",
 			),
 		},
@@ -268,7 +271,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "locationgroups.LastModUser",
 			typ:  reflect.TypeOf(locationgroups.LastModUser{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped lastModUser parent",
+				"deliberate: covered by dropped lastModUser parent; exposure is decided at the parent field",
 				"id",
 				"name",
 				"extensions",
@@ -287,7 +290,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"referencedRuleCount",
 			},
 			ignoredFields: ignoredBecause(
-				"admin references are mapped then dropped by projection",
+				"deferred: admin references are mapped then dropped by projection",
 				"createdBy",
 				"lastModifiedBy",
 			),
@@ -319,7 +322,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.IDNameExtensions",
 			typ:  reflect.TypeOf(ziacommon.IDNameExtensions{}),
 			ignoredFields: ignoredBecause(
-				"used inside modeled and dropped reference parents; parent catalog fields decide whether id/name can render",
+				"deliberate: used inside modeled and dropped reference parents; parent catalog fields decide whether id/name can render",
 				"id",
 				"name",
 				"extensions",
@@ -329,7 +332,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.IDCustom",
 			typ:  reflect.TypeOf(ziacommon.IDCustom{}),
 			ignoredFields: ignoredBecause(
-				"used inside dropped or explicitly modeled custom ID references; parent catalog fields decide whether id/name can render",
+				"deliberate: used inside dropped or explicitly modeled custom ID references; parent catalog fields decide whether id/name can render",
 				"id",
 				"name",
 			),
@@ -338,7 +341,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.CommonNSS",
 			typ:  reflect.TypeOf(ziacommon.CommonNSS{}),
 			ignoredFields: ignoredBecause(
-				"used inside dropped or explicitly modeled NSS feed references; parent catalog fields decide whether nested fields can render",
+				"deliberate: used inside dropped or explicitly modeled NSS feed references; parent catalog fields decide whether nested fields can render",
 				"id",
 				"pid",
 				"name",
@@ -364,7 +367,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"comment",
 			},
 			ignoredFields: ignoredBecause(
-				"nested admin references are mapped then dropped by projection",
+				"deferred: nested admin references are mapped then dropped by projection",
 				"managedBy",
 				"lastModifiedBy",
 			),
@@ -373,7 +376,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "staticips.City",
 			typ:  reflect.TypeOf(staticips.City{}),
 			ignoredFields: ignoredBecause(
-				"used inside the modeled city reference parent; parent catalog fields decide whether id/name can render",
+				"deliberate: used inside the modeled city reference parent; parent catalog fields decide whether id/name can render",
 				"id",
 				"name",
 			),
@@ -382,7 +385,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "staticips.ManagedBy",
 			typ:  reflect.TypeOf(staticips.ManagedBy{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped managedBy parent",
+				"deliberate: covered by dropped managedBy parent; exposure is decided at the parent field",
 				"id",
 				"name",
 				"extensions",
@@ -392,7 +395,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "staticips.LastModifiedBy",
 			typ:  reflect.TypeOf(staticips.LastModifiedBy{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped lastModifiedBy parent",
+				"deliberate: covered by dropped lastModifiedBy parent; exposure is decided at the parent field",
 				"id",
 				"name",
 				"extensions",
@@ -416,7 +419,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"secondaryDestVip",
 			},
 			ignoredFields: ignoredBecause(
-				"nested admin identity references are mapped then dropped by projection",
+				"deferred: nested admin identity references are mapped then dropped by projection",
 				"managedBy",
 				"lastModifiedBy",
 			),
@@ -425,7 +428,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "gretunnels.ManagedBy",
 			typ:  reflect.TypeOf(gretunnels.ManagedBy{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped managedBy parent",
+				"deliberate: covered by dropped managedBy parent; exposure is decided at the parent field",
 				"id",
 				"name",
 				"extensions",
@@ -435,7 +438,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "gretunnels.LastModifiedBy",
 			typ:  reflect.TypeOf(gretunnels.LastModifiedBy{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped lastModifiedBy parent",
+				"deliberate: covered by dropped lastModifiedBy parent; exposure is decided at the parent field",
 				"id",
 				"name",
 				"extensions",
@@ -521,20 +524,23 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			},
 			ignoredFields: mergeIgnoredFields(
 				ignoredBecause(
-					"UI display-unit hints carry no configuration signal",
+					"deliberate: UI display-unit hints carry no configuration signal",
 					"displayTimeUnit",
 					"surrogateRefreshTimeUnit",
 				),
 				ignoredBecause(
-					"hierarchy, scope, and group references are mapped then dropped until separately modeled",
+					"deliberate: hierarchy bookkeeping counters and group-exclusion flags carry no exposable configuration of their own",
 					"childCount",
 					"matchInChild",
+					"excludeFromDynamicGroups",
+					"excludeFromManualGroups",
+				),
+				ignoredBecause(
+					"deferred: scope and group references are mapped then dropped until separately modeled",
 					"subLocScopeEnabled",
 					"subLocScope",
 					"subLocScopeValues",
 					"subLocAccIds",
-					"excludeFromDynamicGroups",
-					"excludeFromManualGroups",
 					"ecLocation",
 					"dynamiclocationGroups",
 					"staticLocationGroups",
@@ -542,7 +548,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 					"virtualZens",
 				),
 				ignoredBecause(
-					"geo, extranet, and IPv6 references are mapped then dropped until separately classified",
+					"deferred: geo, extranet, and IPv6 references are mapped then dropped until separately classified",
 					"geoOverride",
 					"ipv6Enabled",
 					"defaultExtranetTsPool",
@@ -593,7 +599,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"workloadGroups",
 			},
 			ignoredFields: ignoredBecause(
-				"admin RBA access metadata is mapped then dropped until separately modeled",
+				"deferred: admin RBA access metadata is mapped then dropped until separately modeled",
 				"accessControl",
 			),
 		},
@@ -601,7 +607,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "sslinspection.Action",
 			typ:  reflect.TypeOf(sslinspection.Action{}),
 			ignoredFields: ignoredBecause(
-				"nested action fields are mapped so the parent action object can render its reviewed type while unmodeled sub-actions and certificate references drop",
+				"deliberate: nested action fields are mapped so the parent action object can render its reviewed type while unmodeled sub-actions and certificate references drop",
 				"type",
 				"showEUN",
 				"showEUNATP",
@@ -615,7 +621,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "sslinspection.SSLInterceptionCert",
 			typ:  reflect.TypeOf(sslinspection.SSLInterceptionCert{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped action.sslInterceptionCert parent",
+				"deliberate: covered by dropped action.sslInterceptionCert parent",
 				"id",
 				"name",
 				"defaultCertificate",
@@ -625,7 +631,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "sslinspection.DecryptSubActions",
 			typ:  reflect.TypeOf(sslinspection.DecryptSubActions{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped action.decryptSubActions parent",
+				"deliberate: covered by dropped action.decryptSubActions parent",
 				"serverCertificates",
 				"ocspCheck",
 				"blockSslTrafficWithNoSniEnabled",
@@ -639,7 +645,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "sslinspection.DoNotDecryptSubActions",
 			typ:  reflect.TypeOf(sslinspection.DoNotDecryptSubActions{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped action.doNotDecryptSubActions parent",
+				"deliberate: covered by dropped action.doNotDecryptSubActions parent",
 				"bypassOtherPolicies",
 				"serverCertificates",
 				"ocspCheck",
@@ -678,7 +684,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"scopes",
 			},
 			ignoredFields: ignoredBecause(
-				"opaque SDK helper field is mapped then dropped until separately classified",
+				"deliberate: opaque numeric SDK helper that duplicates the category identifier; carries no configuration signal of its own",
 				"val",
 			),
 		},
@@ -686,7 +692,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "urlcategories.URLKeywordCounts",
 			typ:  reflect.TypeOf(urlcategories.URLKeywordCounts{}),
 			ignoredFields: ignoredBecause(
-				"nested count fields are explicitly modeled in the url-categories catalog; this entry catches SDK additions",
+				"deliberate: nested count fields are explicitly modeled in the url-categories catalog; this entry catches SDK additions",
 				"totalUrlCount",
 				"retainParentUrlCount",
 				"totalKeywordCount",
@@ -752,7 +758,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"workloadGroups",
 			},
 			ignoredFields: ignoredBecause(
-				"admin modifier identity and device trust levels are mapped then dropped until separately modeled",
+				"deferred: admin modifier identity and device trust levels are mapped then dropped until separately modeled",
 				"deviceTrustLevels",
 				"lastModifiedBy",
 			),
@@ -803,7 +809,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"workloadGroups",
 			},
 			ignoredFields: ignoredBecause(
-				"admin references are mapped then dropped by projection",
+				"deferred: admin references are mapped then dropped by projection",
 				"lastModifiedBy",
 			),
 		},
@@ -857,7 +863,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.CBIProfile",
 			typ:  reflect.TypeOf(ziacommon.CBIProfile{}),
 			ignoredFields: ignoredBecause(
-				"modeled explicitly under the url-filtering-rules cbiProfile catalog field; parent catalog sub-fields decide whether id/name/profileSeq can render and keep url secret",
+				"deliberate: modeled explicitly under the url-filtering-rules cbiProfile catalog field; parent catalog sub-fields decide whether id/name/profileSeq can render and keep url secret",
 				"id",
 				"name",
 				"url",
@@ -868,7 +874,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "forwardingrules.ZPAApplicationSegments",
 			typ:  reflect.TypeOf(forwardingrules.ZPAApplicationSegments{}),
 			ignoredFields: ignoredBecause(
-				"covered by zia/forwarding-rules zpaApplicationSegments nested field",
+				"deliberate: covered by zia/forwarding-rules zpaApplicationSegments nested field",
 				"id",
 				"name",
 				"description",
@@ -880,7 +886,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "forwardingrules.ZPAApplicationSegmentGroups",
 			typ:  reflect.TypeOf(forwardingrules.ZPAApplicationSegmentGroups{}),
 			ignoredFields: ignoredBecause(
-				"covered by zia/forwarding-rules zpaApplicationSegmentGroups nested field",
+				"deliberate: covered by zia/forwarding-rules zpaApplicationSegmentGroups nested field",
 				"id",
 				"name",
 				"zpaId",
@@ -892,7 +898,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.IDName",
 			typ:  reflect.TypeOf(ziacommon.IDName{}),
 			ignoredFields: ignoredBecause(
-				"currently used only inside dropped or explicitly modeled nested references",
+				"deliberate: currently used only inside dropped or explicitly modeled nested references",
 				"id",
 				"name",
 				"parent",
@@ -902,7 +908,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ziacommon.ZPAAppSegments",
 			typ:  reflect.TypeOf(ziacommon.ZPAAppSegments{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped zpaAppSegments parent",
+				"deliberate: covered by dropped zpaAppSegments parent",
 				"id",
 				"name",
 				"externalId",
@@ -960,7 +966,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "networkservices.NetworkPorts",
 			typ:  reflect.TypeOf(networkservices.NetworkPorts{}),
 			ignoredFields: ignoredBecause(
-				"nested port ranges are explicitly modeled in network service catalog fields; this entry catches SDK additions",
+				"deliberate: nested port ranges are explicitly modeled in network service catalog fields; this entry catches SDK additions",
 				"start",
 				"end",
 			),
@@ -981,7 +987,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "networkservicegroups.Services",
 			typ:  reflect.TypeOf(networkservicegroups.Services{}),
 			ignoredFields: ignoredBecause(
-				"ZIA network service groups render child services as id/name references only; query network-services for service details",
+				"deliberate: ZIA network service groups render child services as id/name references only; query network-services for service details",
 				"id",
 				"name",
 				"tag",
@@ -1292,7 +1298,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"comments",
 			},
 			ignoredFields: ignoredBecause(
-				"user group references under zia/users render id/name/comments only; query zia/groups for group metadata",
+				"deliberate: user group references under zia/users render id/name/comments only; query zia/groups for group metadata",
 				"idp_id",
 				"isSystemDefined",
 			),
@@ -1308,7 +1314,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"comments",
 			},
 			ignoredFields: ignoredBecause(
-				"user department reference under zia/users renders id/name/comments only; query zia/departments for department metadata",
+				"deliberate: user department reference under zia/users renders id/name/comments only; query zia/departments for department metadata",
 				"idp_id",
 				"deleted",
 			),
@@ -1361,11 +1367,11 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			},
 			ignoredFields: mergeIgnoredFields(
 				ignoredBecause(
-					"excluded forever: JSON twin of the already-classified expression string; modeling the tree would duplicate (or widen) the standard-only expression exposure",
+					"deliberate: JSON twin of the already-classified expression string; modeling the tree would duplicate (or widen) the standard-only expression exposure",
 					"expressionJson",
 				),
 				ignoredBecause(
-					"admin identity reference is mapped then dropped by projection",
+					"deferred: admin identity reference is mapped then dropped by projection",
 					"lastModifiedBy",
 				),
 			),
@@ -1457,7 +1463,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "cloudappinstances.InstanceIdentifiers",
 			typ:  reflect.TypeOf(cloudappinstances.InstanceIdentifiers{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped instanceIdentifiers parent",
+				"deliberate: covered by dropped instanceIdentifiers parent",
 				"instanceId",
 				"instanceIdentifier",
 				"instanceIdentifierName",
@@ -1782,7 +1788,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "cloudappcontrol.CBIProfile",
 			typ:  reflect.TypeOf(cloudappcontrol.CBIProfile{}),
 			ignoredFields: ignoredBecause(
-				"modeled explicitly under the cloud-app-control cbiProfile catalog field; parent catalog sub-fields decide whether id/name/profileSeq/defaultProfile/sandboxMode can render and keep url secret",
+				"deliberate: modeled explicitly under the cloud-app-control cbiProfile catalog field; parent catalog sub-fields decide whether id/name/profileSeq/defaultProfile/sandboxMode can render and keep url secret",
 				"id",
 				"name",
 				"url",
@@ -1795,7 +1801,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "cloudappcontrol.CloudAppInstances",
 			typ:  reflect.TypeOf(cloudappcontrol.CloudAppInstances{}),
 			ignoredFields: ignoredBecause(
-				"modeled explicitly under the cloud-app-control cloudAppInstances catalog field; parent catalog sub-fields decide whether id/name/type can render",
+				"deliberate: modeled explicitly under the cloud-app-control cloudAppInstances catalog field; parent catalog sub-fields decide whether id/name/type can render",
 				"id",
 				"name",
 				"type",
@@ -2387,7 +2393,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "ips_signature_rules.IPSSignatureCategory",
 			typ:  reflect.TypeOf(ipssignaturerules.IPSSignatureCategory{}),
 			ignoredFields: ignoredBecause(
-				"threat category sub-fields are explicitly modeled in the ips-signature-rules category catalog field; this entry catches SDK additions",
+				"deliberate: threat category sub-fields are explicitly modeled in the ips-signature-rules category catalog field; this entry catches SDK additions",
 				"id",
 				"name",
 				"isNameL10nTag",
@@ -2667,7 +2673,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "zpagateways.ZPAServerGroup",
 			typ:  reflect.TypeOf(zpagateways.ZPAServerGroup{}),
 			ignoredFields: ignoredBecause(
-				"nested ZPA server-group references are explicitly modeled in the zpa-gateways catalog; this entry catches SDK additions",
+				"deliberate: nested ZPA server-group references are explicitly modeled in the zpa-gateways catalog; this entry catches SDK additions",
 				"id",
 				"name",
 				"externalId",
@@ -2678,7 +2684,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "zpagateways.ZPAAppSegments",
 			typ:  reflect.TypeOf(zpagateways.ZPAAppSegments{}),
 			ignoredFields: ignoredBecause(
-				"nested ZPA application-segment references are explicitly modeled in the zpa-gateways catalog; this entry catches SDK additions",
+				"deliberate: nested ZPA application-segment references are explicitly modeled in the zpa-gateways catalog; this entry catches SDK additions",
 				"id",
 				"name",
 				"externalId",

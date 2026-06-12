@@ -94,20 +94,27 @@ func assertFieldCoverageSanity(t *testing.T, report fieldCoverageReport) {
 	}
 
 	// Every resource row must be internally consistent: classified + ignored ==
-	// total exported SDK fields.
+	// total exported SDK fields, and every ignored field must land in exactly
+	// one decided-state bucket.
 	for _, r := range report.Resources {
 		if r.ClassifiedFields+r.IgnoredFields != r.TotalFields {
 			t.Errorf("%s/%s classified(%d)+ignored(%d) != total(%d)",
 				r.Product, r.Resource, r.ClassifiedFields, r.IgnoredFields, r.TotalFields)
 		}
+		if r.DeliberateFields+r.DeferredFields != r.IgnoredFields {
+			t.Errorf("%s/%s deliberate(%d)+deferred(%d) != ignored(%d)",
+				r.Product, r.Resource, r.DeliberateFields, r.DeferredFields, r.IgnoredFields)
+		}
 	}
 
 	// Totals must be the sum of the resource rows.
-	var sumTotal, sumClassified, sumIgnored int
+	var sumTotal, sumClassified, sumIgnored, sumDeliberate, sumDeferred int
 	for _, r := range report.Resources {
 		sumTotal += r.TotalFields
 		sumClassified += r.ClassifiedFields
 		sumIgnored += r.IgnoredFields
+		sumDeliberate += r.DeliberateFields
+		sumDeferred += r.DeferredFields
 	}
 	if report.Totals.TotalFields != sumTotal {
 		t.Errorf("repo total fields = %d, want %d (sum of resources)", report.Totals.TotalFields, sumTotal)
@@ -117,6 +124,12 @@ func assertFieldCoverageSanity(t *testing.T, report fieldCoverageReport) {
 	}
 	if report.Totals.IgnoredFields != sumIgnored {
 		t.Errorf("repo ignored fields = %d, want %d (sum of resources)", report.Totals.IgnoredFields, sumIgnored)
+	}
+	if report.Totals.DeliberateFields != sumDeliberate {
+		t.Errorf("repo deliberate fields = %d, want %d (sum of resources)", report.Totals.DeliberateFields, sumDeliberate)
+	}
+	if report.Totals.DeferredFields != sumDeferred {
+		t.Errorf("repo deferred fields = %d, want %d (sum of resources)", report.Totals.DeferredFields, sumDeferred)
 	}
 }
 
@@ -131,32 +144,41 @@ type fieldCoverageReport struct {
 }
 
 type fieldCoverageTotals struct {
-	Resources        int     `json:"resources"`
-	TotalFields      int     `json:"total_fields"`
-	ClassifiedFields int     `json:"classified_fields"`
-	IgnoredFields    int     `json:"ignored_fields"`
-	CoveragePercent  float64 `json:"coverage_percent"`
+	Resources              int     `json:"resources"`
+	TotalFields            int     `json:"total_fields"`
+	ClassifiedFields       int     `json:"classified_fields"`
+	IgnoredFields          int     `json:"ignored_fields"`
+	DeliberateFields       int     `json:"deliberate_fields"`
+	DeferredFields         int     `json:"deferred_fields"`
+	CoveragePercent        float64 `json:"coverage_percent"`
+	DecidedCoveragePercent float64 `json:"decided_coverage_percent"`
 }
 
 type fieldCoverageProduct struct {
-	Product          string  `json:"product"`
-	Resources        int     `json:"resources"`
-	TotalFields      int     `json:"total_fields"`
-	ClassifiedFields int     `json:"classified_fields"`
-	IgnoredFields    int     `json:"ignored_fields"`
-	CoveragePercent  float64 `json:"coverage_percent"`
+	Product                string  `json:"product"`
+	Resources              int     `json:"resources"`
+	TotalFields            int     `json:"total_fields"`
+	ClassifiedFields       int     `json:"classified_fields"`
+	IgnoredFields          int     `json:"ignored_fields"`
+	DeliberateFields       int     `json:"deliberate_fields"`
+	DeferredFields         int     `json:"deferred_fields"`
+	CoveragePercent        float64 `json:"coverage_percent"`
+	DecidedCoveragePercent float64 `json:"decided_coverage_percent"`
 }
 
 type fieldCoverageResource struct {
-	Product          string                `json:"product"`
-	Resource         string                `json:"resource"`
-	SDKTypes         []string              `json:"sdk_types"`
-	TotalFields      int                   `json:"total_fields"`
-	ClassifiedFields int                   `json:"classified_fields"`
-	IgnoredFields    int                   `json:"ignored_fields"`
-	CoveragePercent  float64               `json:"coverage_percent"`
-	ClassBreakdown   []fieldCoverageClass  `json:"class_breakdown"`
-	IgnoredByReason  []fieldCoverageReason `json:"ignored_by_reason"`
+	Product                string                `json:"product"`
+	Resource               string                `json:"resource"`
+	SDKTypes               []string              `json:"sdk_types"`
+	TotalFields            int                   `json:"total_fields"`
+	ClassifiedFields       int                   `json:"classified_fields"`
+	IgnoredFields          int                   `json:"ignored_fields"`
+	DeliberateFields       int                   `json:"deliberate_fields"`
+	DeferredFields         int                   `json:"deferred_fields"`
+	CoveragePercent        float64               `json:"coverage_percent"`
+	DecidedCoveragePercent float64               `json:"decided_coverage_percent"`
+	ClassBreakdown         []fieldCoverageClass  `json:"class_breakdown"`
+	IgnoredByReason        []fieldCoverageReason `json:"ignored_by_reason"`
 }
 
 type fieldCoverageClass struct {
@@ -166,10 +188,26 @@ type fieldCoverageClass struct {
 
 type fieldCoverageReason struct {
 	Reason string   `json:"reason"`
+	Bucket string   `json:"bucket"`
 	Fields []string `json:"fields"`
 }
 
-const fieldCoverageSchema = "zscalerctl/field-coverage/v1"
+const fieldCoverageSchema = "zscalerctl/field-coverage/v2"
+
+// fieldCoverageBucket maps an ignore reason to its decided-state bucket from
+// the mandatory reason prefix that assertReviewed enforces. The empty-string
+// fallback never reaches the rendered report: buildFieldCoverageReport fails
+// the test on it so a convention violation cannot serialize silently.
+func fieldCoverageBucket(reason string) string {
+	switch {
+	case strings.HasPrefix(reason, ignoreReasonDeliberatePrefix):
+		return "deliberate"
+	case strings.HasPrefix(reason, ignoreReasonDeferredPrefix):
+		return "deferred"
+	default:
+		return ""
+	}
+}
 
 // buildFieldCoverageReport walks every reviewed SDK shape that is attributed to
 // a catalog read-resource and aggregates per (product, resource): the SDK types
@@ -189,6 +227,8 @@ func buildFieldCoverageReport(t *testing.T) fieldCoverageReport {
 		classCounts     map[string]int
 		classified      int
 		ignored         int
+		deliberate      int
+		deferred        int
 		ignoredByReason map[string]map[string]struct{}
 	}
 
@@ -233,6 +273,15 @@ func buildFieldCoverageReport(t *testing.T) fieldCoverageReport {
 			}
 			if reason, ok := shape.ignoredFields[field]; ok {
 				acc.ignored++
+				switch fieldCoverageBucket(reason) {
+				case "deliberate":
+					acc.deliberate++
+				case "deferred":
+					acc.deferred++
+				default:
+					t.Errorf("%s/%s SDK type %s ignored field %q reason %q has no deliberate:/deferred: prefix; the report cannot bucket it",
+						shape.resource, shape.resourceName, shape.name, field, reason)
+				}
 				if acc.ignoredByReason[reason] == nil {
 					acc.ignoredByReason[reason] = map[string]struct{}{}
 				}
@@ -263,6 +312,7 @@ func buildFieldCoverageReport(t *testing.T) fieldCoverageReport {
 		for reason, fields := range acc.ignoredByReason {
 			ignoredByReason = append(ignoredByReason, fieldCoverageReason{
 				Reason: reason,
+				Bucket: fieldCoverageBucket(reason),
 				Fields: mapKeysSorted(fields),
 			})
 		}
@@ -271,15 +321,18 @@ func buildFieldCoverageReport(t *testing.T) fieldCoverageReport {
 		})
 
 		resourcesOut = append(resourcesOut, fieldCoverageResource{
-			Product:          string(acc.product),
-			Resource:         acc.resource,
-			SDKTypes:         sdkTypes,
-			TotalFields:      acc.total,
-			ClassifiedFields: acc.classified,
-			IgnoredFields:    acc.ignored,
-			CoveragePercent:  coveragePercent(acc.classified, acc.total),
-			ClassBreakdown:   classBreakdown,
-			IgnoredByReason:  ignoredByReason,
+			Product:                string(acc.product),
+			Resource:               acc.resource,
+			SDKTypes:               sdkTypes,
+			TotalFields:            acc.total,
+			ClassifiedFields:       acc.classified,
+			IgnoredFields:          acc.ignored,
+			DeliberateFields:       acc.deliberate,
+			DeferredFields:         acc.deferred,
+			CoveragePercent:        coveragePercent(acc.classified, acc.total),
+			DecidedCoveragePercent: coveragePercent(acc.classified+acc.deliberate, acc.total),
+			ClassBreakdown:         classBreakdown,
+			IgnoredByReason:        ignoredByReason,
 		})
 	}
 
@@ -344,6 +397,8 @@ func aggregateProducts(rs []fieldCoverageResource) []fieldCoverageProduct {
 		total      int
 		classified int
 		ignored    int
+		deliberate int
+		deferred   int
 	}
 	byProduct := map[string]*agg{}
 	for _, r := range rs {
@@ -356,16 +411,21 @@ func aggregateProducts(rs []fieldCoverageResource) []fieldCoverageProduct {
 		a.total += r.TotalFields
 		a.classified += r.ClassifiedFields
 		a.ignored += r.IgnoredFields
+		a.deliberate += r.DeliberateFields
+		a.deferred += r.DeferredFields
 	}
 	out := make([]fieldCoverageProduct, 0, len(byProduct))
 	for product, a := range byProduct {
 		out = append(out, fieldCoverageProduct{
-			Product:          product,
-			Resources:        a.resources,
-			TotalFields:      a.total,
-			ClassifiedFields: a.classified,
-			IgnoredFields:    a.ignored,
-			CoveragePercent:  coveragePercent(a.classified, a.total),
+			Product:                product,
+			Resources:              a.resources,
+			TotalFields:            a.total,
+			ClassifiedFields:       a.classified,
+			IgnoredFields:          a.ignored,
+			DeliberateFields:       a.deliberate,
+			DeferredFields:         a.deferred,
+			CoveragePercent:        coveragePercent(a.classified, a.total),
+			DecidedCoveragePercent: coveragePercent(a.classified+a.deliberate, a.total),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -378,18 +438,23 @@ func aggregateProducts(rs []fieldCoverageResource) []fieldCoverageProduct {
 }
 
 func aggregateTotals(rs []fieldCoverageResource) fieldCoverageTotals {
-	var total, classified, ignored int
+	var total, classified, ignored, deliberate, deferred int
 	for _, r := range rs {
 		total += r.TotalFields
 		classified += r.ClassifiedFields
 		ignored += r.IgnoredFields
+		deliberate += r.DeliberateFields
+		deferred += r.DeferredFields
 	}
 	return fieldCoverageTotals{
-		Resources:        len(rs),
-		TotalFields:      total,
-		ClassifiedFields: classified,
-		IgnoredFields:    ignored,
-		CoveragePercent:  coveragePercent(classified, total),
+		Resources:              len(rs),
+		TotalFields:            total,
+		ClassifiedFields:       classified,
+		IgnoredFields:          ignored,
+		DeliberateFields:       deliberate,
+		DeferredFields:         deferred,
+		CoveragePercent:        coveragePercent(classified, total),
+		DecidedCoveragePercent: coveragePercent(classified+deliberate, total),
 	}
 }
 
@@ -440,9 +505,9 @@ func renderFieldCoverageMarkdown(report fieldCoverageReport) []byte {
 	b.WriteString("  classification (operational, tenant configuration, sensitive identifier,\n")
 	b.WriteString("  free text, or secret) that drives allow-list projection and per-mode\n")
 	b.WriteString("  redaction. Only classified fields are eligible to be emitted.\n")
-	b.WriteString("- **Ignored, with a reason** — the field is deliberately not classified yet\n")
-	b.WriteString("  and carries a non-empty reason string. Ignored fields are **fail-closed\n")
-	b.WriteString("  dropped**: they are never emitted in any mode.\n\n")
+	b.WriteString("- **Ignored, with a reason** — the field is not in the catalog and carries a\n")
+	b.WriteString("  non-empty reason string. Ignored fields are **fail-closed dropped**: they\n")
+	b.WriteString("  are never emitted in any mode.\n\n")
 	b.WriteString("Coverage percent is classified / total exported SDK fields. A low number is\n")
 	b.WriteString("not a leak — every unclassified field is dropped — it is a measure of how\n")
 	b.WriteString("much of the available SDK surface has been deliberately reviewed and exposed.\n")
@@ -452,32 +517,51 @@ func renderFieldCoverageMarkdown(report fieldCoverageReport) []byte {
 	b.WriteString("[field-coverage.json](field-coverage.json) lists every ignored field name and\n")
 	b.WriteString("its reason, which feeds field-expansion planning.\n\n")
 
+	b.WriteString("## Ignored Fields Are Decided, Not Vague\n\n")
+	b.WriteString("Every ignore reason must begin with one of two prefixes, so each ignored\n")
+	b.WriteString("field is in a decided state:\n\n")
+	b.WriteString("- **Deliberate** (`deliberate: `) — permanently excluded, with a stated why:\n")
+	b.WriteString("  bookkeeping, UI display hints, computed counters, opaque SDK helpers, or\n")
+	b.WriteString("  cross-references whose details are documented on another resource.\n")
+	b.WriteString("- **Deferred** (`deferred: `) — genuinely not yet classified; the field still\n")
+	b.WriteString("  needs future modeling before it can be exposed.\n\n")
+	b.WriteString("**Decided coverage** is (classified + deliberate) / total: the share of the\n")
+	b.WriteString("SDK surface with a final answer. The end-state goal is **zero deferred\n")
+	b.WriteString("fields**, at which point decided coverage reaches 100% and every SDK field\n")
+	b.WriteString("is either rendered by classification or permanently excluded on the record.\n\n")
+
 	b.WriteString("## Repo-Wide Totals\n\n")
 	fmt.Fprintf(&b, "- Resources: %d\n", report.Totals.Resources)
 	fmt.Fprintf(&b, "- Total exported SDK fields: %d\n", report.Totals.TotalFields)
 	fmt.Fprintf(&b, "- Classified: %d\n", report.Totals.ClassifiedFields)
 	fmt.Fprintf(&b, "- Ignored (fail-closed dropped): %d\n", report.Totals.IgnoredFields)
-	fmt.Fprintf(&b, "- Coverage: %s%%\n\n", formatPercent(report.Totals.CoveragePercent))
+	fmt.Fprintf(&b, "  - Deliberate (permanently excluded): %d\n", report.Totals.DeliberateFields)
+	fmt.Fprintf(&b, "  - Deferred (awaiting modeling): %d\n", report.Totals.DeferredFields)
+	fmt.Fprintf(&b, "- Coverage: %s%%\n", formatPercent(report.Totals.CoveragePercent))
+	fmt.Fprintf(&b, "- Decided coverage (classified + deliberate): %s%%\n\n", formatPercent(report.Totals.DecidedCoveragePercent))
 
 	b.WriteString("## Per-Product Totals\n\n")
 	b.WriteString("Ranked worst coverage first.\n\n")
-	b.WriteString("| Product | Resources | Total | Classified | Ignored | Coverage |\n")
-	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: |\n")
+	b.WriteString("| Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |\n")
+	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
 	for _, p := range report.Products {
-		fmt.Fprintf(&b, "| %s | %d | %d | %d | %d | %s%% |\n",
-			p.Product, p.Resources, p.TotalFields, p.ClassifiedFields, p.IgnoredFields, formatPercent(p.CoveragePercent))
+		fmt.Fprintf(&b, "| %s | %d | %d | %d | %d | %d | %s%% | %s%% |\n",
+			p.Product, p.Resources, p.TotalFields, p.ClassifiedFields, p.DeliberateFields, p.DeferredFields,
+			formatPercent(p.CoveragePercent), formatPercent(p.DecidedCoveragePercent))
 	}
 	b.WriteString("\n")
 
 	b.WriteString("## Per-Resource Coverage\n\n")
-	b.WriteString("Ranked worst coverage first within the whole catalog. `Ignored` fields are\n")
-	b.WriteString("dropped before any output; see [field-coverage.json](field-coverage.json) for\n")
-	b.WriteString("the field names and reasons behind each row.\n\n")
-	b.WriteString("| Product | Resource | Total | Classified | Ignored | Coverage |\n")
-	b.WriteString("| --- | --- | ---: | ---: | ---: | ---: |\n")
+	b.WriteString("Ranked worst coverage first within the whole catalog. `Deliberate` and\n")
+	b.WriteString("`Deferred` split the ignored fields by decided state; both are dropped before\n")
+	b.WriteString("any output. See [field-coverage.json](field-coverage.json) for the field\n")
+	b.WriteString("names, buckets, and reasons behind each row.\n\n")
+	b.WriteString("| Product | Resource | Total | Classified | Deliberate | Deferred | Coverage | Decided |\n")
+	b.WriteString("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n")
 	for _, r := range report.Resources {
-		fmt.Fprintf(&b, "| %s | %s | %d | %d | %d | %s%% |\n",
-			r.Product, r.Resource, r.TotalFields, r.ClassifiedFields, r.IgnoredFields, formatPercent(r.CoveragePercent))
+		fmt.Fprintf(&b, "| %s | %s | %d | %d | %d | %d | %s%% | %s%% |\n",
+			r.Product, r.Resource, r.TotalFields, r.ClassifiedFields, r.DeliberateFields, r.DeferredFields,
+			formatPercent(r.CoveragePercent), formatPercent(r.DecidedCoveragePercent))
 	}
 	b.WriteString("\n")
 

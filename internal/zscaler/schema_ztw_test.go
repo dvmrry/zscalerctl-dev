@@ -245,7 +245,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwadminusers.Role",
 			typ:  reflect.TypeOf(ztwadminusers.Role{}),
 			ignoredFields: ignoredBecause(
-				"covered by the ztw/admin-users role nested field",
+				"deliberate: covered by the ztw/admin-users role nested field",
 				"id",
 				"name",
 				"isNameL10nTag",
@@ -256,7 +256,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwadminusers.ExecMobileAppTokens",
 			typ:  reflect.TypeOf(ztwadminusers.ExecMobileAppTokens{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped execMobileAppTokens parent",
+				"deliberate: covered by dropped execMobileAppTokens parent",
 				"cloud",
 				"orgId",
 				"name",
@@ -359,7 +359,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwlocation.VPNCredentials",
 			typ:  reflect.TypeOf(ztwlocation.VPNCredentials{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped ztw/locations vpnCredentials parent",
+				"deliberate: covered by dropped ztw/locations vpnCredentials parent",
 				"id",
 				"type",
 				"fqdn",
@@ -373,7 +373,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwlocation.ManagedBy",
 			typ:  reflect.TypeOf(ztwlocation.ManagedBy{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped ztw/locations vpnCredentials parent",
+				"deliberate: covered by dropped ztw/locations vpnCredentials parent",
 				"id",
 				"name",
 				"extensions",
@@ -383,7 +383,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwlocation.VPCInfo",
 			typ:  reflect.TypeOf(ztwlocation.VPCInfo{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped ztw/locations vpcInfo parent",
+				"deliberate: covered by dropped ztw/locations vpcInfo parent",
 				"cloudProvider",
 				"cloudMeta",
 			),
@@ -392,7 +392,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwlocation.CloudMeta",
 			typ:  reflect.TypeOf(ztwlocation.CloudMeta{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped ztw/locations vpcInfo parent",
+				"deliberate: covered by dropped ztw/locations vpcInfo parent",
 				"id",
 				"name",
 			),
@@ -416,7 +416,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwlocationtemplate.LocationTemplateDetails",
 			typ:  reflect.TypeOf(ztwlocationtemplate.LocationTemplateDetails{}),
 			ignoredFields: ignoredBecause(
-				"covered by ztw/location-templates template nested field",
+				"deliberate: covered by ztw/location-templates template nested field",
 				"templatePrefix",
 				"xffForwardEnabled",
 				"authRequired",
@@ -475,7 +475,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwpubliccloudinfo.AccountDetails",
 			typ:  reflect.TypeOf(ztwpubliccloudinfo.AccountDetails{}),
 			ignoredFields: ignoredBecause(
-				"covered by dropped ztw/public-cloud-info accountDetails parent",
+				"deliberate: covered by dropped ztw/public-cloud-info accountDetails parent",
 				"name",
 				"awsAccountId",
 				"awsRoleName",
@@ -492,7 +492,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwpubliccloudinfo.PublicCloudInfoLite",
 			typ:  reflect.TypeOf(ztwpubliccloudinfo.PublicCloudInfoLite{}),
 			ignoredFields: ignoredBecause(
-				"lite shape is not used by the ztw/public-cloud-info resource",
+				"deliberate: lite shape is not used by the ztw/public-cloud-info resource",
 				"id",
 				"name",
 				"accountId",
@@ -566,7 +566,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwforwardingrules.ZPAApplicationSegments",
 			typ:  reflect.TypeOf(ztwforwardingrules.ZPAApplicationSegments{}),
 			ignoredFields: ignoredBecause(
-				"SDK-local duplicate; resource uses ztwcommon.ZPAApplicationSegments references",
+				"deliberate: SDK-local duplicate; resource uses ztwcommon.ZPAApplicationSegments references",
 				"id",
 				"name",
 				"description",
@@ -578,7 +578,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwforwardingrules.ZPAApplicationSegmentGroups",
 			typ:  reflect.TypeOf(ztwforwardingrules.ZPAApplicationSegmentGroups{}),
 			ignoredFields: ignoredBecause(
-				"SDK-local duplicate; resource uses ztwcommon.ZPAApplicationSegmentGroups references",
+				"deliberate: SDK-local duplicate; resource uses ztwcommon.ZPAApplicationSegmentGroups references",
 				"id",
 				"name",
 				"zpaId",
@@ -590,7 +590,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwforwardingrules.ForwardingRulesQuery",
 			typ:  reflect.TypeOf(ztwforwardingrules.ForwardingRulesQuery{}),
 			ignoredFields: ignoredBecause(
-				"query helper type, not a response shape",
+				"deliberate: query helper type, not a response shape",
 				"RuleName",
 				"RuleOrder",
 				"RuleDescription",
@@ -604,7 +604,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwforwardingrules.ForwardingRulesCountQuery",
 			typ:  reflect.TypeOf(ztwforwardingrules.ForwardingRulesCountQuery{}),
 			ignoredFields: ignoredBecause(
-				"count query helper type, not a response shape",
+				"deliberate: count query helper type, not a response shape",
 				"PredefinedRuleCount",
 				"RuleName",
 				"RuleOrder",
@@ -617,7 +617,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwforwardingrules.ForwardingRulesCountResponse",
 			typ:  reflect.TypeOf(ztwforwardingrules.ForwardingRulesCountResponse{}),
 			ignoredFields: ignoredBecause(
-				"count response is not rendered by the ztw/forwarding-rules resource",
+				"deliberate: count response is not rendered by the ztw/forwarding-rules resource",
 				"count",
 			),
 		},
@@ -654,7 +654,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwtrafficdnsrules.DNSRulesCountQuery",
 			typ:  reflect.TypeOf(ztwtrafficdnsrules.DNSRulesCountQuery{}),
 			ignoredFields: ignoredBecause(
-				"count query helper type, not a response shape",
+				"deliberate: count query helper type, not a response shape",
 				"PredefinedRuleCount",
 				"RuleName",
 				"RuleOrder",
@@ -666,7 +666,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwtrafficdnsrules.DNSRulesCountResponse",
 			typ:  reflect.TypeOf(ztwtrafficdnsrules.DNSRulesCountResponse{}),
 			ignoredFields: ignoredBecause(
-				"count response is not rendered by the ztw/traffic-dns-rules resource",
+				"deliberate: count response is not rendered by the ztw/traffic-dns-rules resource",
 				"count",
 			),
 		},
@@ -696,7 +696,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwtrafficlogrules.TrafficLogRulesCountQuery",
 			typ:  reflect.TypeOf(ztwtrafficlogrules.TrafficLogRulesCountQuery{}),
 			ignoredFields: ignoredBecause(
-				"unused count query helper type, not a response shape",
+				"deliberate: unused count query helper type, not a response shape",
 				"PredefinedRuleCount",
 				"RuleName",
 				"RuleOrder",
@@ -708,7 +708,7 @@ func reviewedSDKShapesZTW() []sdkShapeReview {
 			name: "ztwtrafficlogrules.TrafficLogRulesCountResponse",
 			typ:  reflect.TypeOf(ztwtrafficlogrules.TrafficLogRulesCountResponse{}),
 			ignoredFields: ignoredBecause(
-				"unused count response helper type, not rendered by the ztw/traffic-log-rules resource",
+				"deliberate: unused count response helper type, not rendered by the ztw/traffic-log-rules resource",
 				"count",
 			),
 		},

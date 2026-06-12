@@ -57,6 +57,22 @@ type sdkShapeReview struct {
 	ignoredFields map[string]string
 }
 
+// Every ignore reason must declare which decided state the field is in:
+//
+//   - "deliberate: " marks a permanent exclusion (bookkeeping, UI hints,
+//     computed counters, opaque SDK helpers, cross-references documented
+//     elsewhere) and requires a stated why.
+//   - "deferred: " marks a field that is genuinely not yet classified and
+//     still needs future modeling. The end-state goal is zero deferred
+//     fields.
+//
+// A reason without one of these prefixes is a vague ignore, which defeats
+// the registry's purpose of making every drop a recorded decision.
+const (
+	ignoreReasonDeliberatePrefix = "deliberate: "
+	ignoreReasonDeferredPrefix   = "deferred: "
+)
+
 func (s sdkShapeReview) assertReviewed(t *testing.T) {
 	t.Helper()
 
@@ -79,6 +95,9 @@ func (s sdkShapeReview) assertReviewed(t *testing.T) {
 	for field, reason := range s.ignoredFields {
 		if strings.TrimSpace(reason) == "" {
 			t.Errorf("%s ignored field %q has empty reason", s.name, field)
+		} else if !strings.HasPrefix(reason, ignoreReasonDeliberatePrefix) && !strings.HasPrefix(reason, ignoreReasonDeferredPrefix) {
+			t.Errorf("%s ignored field %q reason %q must begin with %q (permanently excluded, with a stated why) or %q (not yet classified, needs future modeling); pick one so the ignore is a decision, not a deferral by accident",
+				s.name, field, reason, ignoreReasonDeliberatePrefix, ignoreReasonDeferredPrefix)
 		}
 		if _, ok := classified[field]; ok {
 			t.Errorf("%s field %q is both catalog-classified and ignored", s.name, field)

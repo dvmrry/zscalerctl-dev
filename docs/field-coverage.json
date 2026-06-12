@@ -1,11 +1,14 @@
 {
-  "schema": "zscalerctl/field-coverage/v1",
+  "schema": "zscalerctl/field-coverage/v2",
   "totals": {
     "resources": 165,
     "total_fields": 2979,
     "classified_fields": 2913,
     "ignored_fields": 66,
-    "coverage_percent": 97.8
+    "deliberate_fields": 18,
+    "deferred_fields": 48,
+    "coverage_percent": 97.8,
+    "decided_coverage_percent": 98.4
   },
   "products": [
     {
@@ -14,7 +17,10 @@
       "total_fields": 1681,
       "classified_fields": 1615,
       "ignored_fields": 66,
-      "coverage_percent": 96.1
+      "deliberate_fields": 18,
+      "deferred_fields": 48,
+      "coverage_percent": 96.1,
+      "decided_coverage_percent": 97.1
     },
     {
       "product": "zcc",
@@ -22,7 +28,10 @@
       "total_fields": 325,
       "classified_fields": 325,
       "ignored_fields": 0,
-      "coverage_percent": 100
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100
     },
     {
       "product": "zidentity",
@@ -30,7 +39,10 @@
       "total_fields": 43,
       "classified_fields": 43,
       "ignored_fields": 0,
-      "coverage_percent": 100
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100
     },
     {
       "product": "zpa",
@@ -38,7 +50,10 @@
       "total_fields": 638,
       "classified_fields": 638,
       "ignored_fields": 0,
-      "coverage_percent": 100
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100
     },
     {
       "product": "ztw",
@@ -46,7 +61,10 @@
       "total_fields": 292,
       "classified_fields": 292,
       "ignored_fields": 0,
-      "coverage_percent": 100
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100
     }
   ],
   "resources": [
@@ -59,7 +77,10 @@
       "total_fields": 60,
       "classified_fields": 35,
       "ignored_fields": 25,
+      "deliberate_fields": 6,
+      "deferred_fields": 19,
       "coverage_percent": 58.3,
+      "decided_coverage_percent": 68.3,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -84,14 +105,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "UI display-unit hints carry no configuration signal",
-          "fields": [
-            "displayTimeUnit",
-            "surrogateRefreshTimeUnit"
-          ]
-        },
-        {
-          "reason": "extranet and IPv6 operational references are intentionally omitted until separately classified",
+          "reason": "deferred: extranet and IPv6 operational references are intentionally omitted until separately classified",
+          "bucket": "deferred",
           "fields": [
             "defaultExtranetDns",
             "defaultExtranetTsPool",
@@ -104,14 +119,11 @@
           ]
         },
         {
-          "reason": "hierarchy and membership references are intentionally omitted until separately modeled",
+          "reason": "deferred: hierarchy and membership references are intentionally omitted until separately modeled",
+          "bucket": "deferred",
           "fields": [
-            "childCount",
             "dynamiclocationGroups",
             "ecLocation",
-            "excludeFromDynamicGroups",
-            "excludeFromManualGroups",
-            "matchInChild",
             "other6SubLocation",
             "otherSubLocation",
             "staticLocationGroups",
@@ -120,12 +132,31 @@
           ]
         },
         {
-          "reason": "sublocation scope semantics need separate modeling before exposure",
+          "reason": "deferred: sublocation scope semantics need separate modeling before exposure",
+          "bucket": "deferred",
           "fields": [
             "subLocAccIds",
             "subLocScope",
             "subLocScopeEnabled",
             "subLocScopeValues"
+          ]
+        },
+        {
+          "reason": "deliberate: UI display-unit hints carry no configuration signal",
+          "bucket": "deliberate",
+          "fields": [
+            "displayTimeUnit",
+            "surrogateRefreshTimeUnit"
+          ]
+        },
+        {
+          "reason": "deliberate: hierarchy bookkeeping counters and group-exclusion flags carry no exposable configuration of their own",
+          "bucket": "deliberate",
+          "fields": [
+            "childCount",
+            "excludeFromDynamicGroups",
+            "excludeFromManualGroups",
+            "matchInChild"
           ]
         }
       ]
@@ -139,7 +170,10 @@
       "total_fields": 60,
       "classified_fields": 37,
       "ignored_fields": 23,
+      "deliberate_fields": 6,
+      "deferred_fields": 17,
       "coverage_percent": 61.7,
+      "decided_coverage_percent": 71.7,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -164,14 +198,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "UI display-unit hints carry no configuration signal",
-          "fields": [
-            "displayTimeUnit",
-            "surrogateRefreshTimeUnit"
-          ]
-        },
-        {
-          "reason": "geo, extranet, and IPv6 references are mapped then dropped until separately classified",
+          "reason": "deferred: geo, extranet, and IPv6 references are mapped then dropped until separately classified",
+          "bucket": "deferred",
           "fields": [
             "defaultExtranetDns",
             "defaultExtranetTsPool",
@@ -184,14 +212,11 @@
           ]
         },
         {
-          "reason": "hierarchy, scope, and group references are mapped then dropped until separately modeled",
+          "reason": "deferred: scope and group references are mapped then dropped until separately modeled",
+          "bucket": "deferred",
           "fields": [
-            "childCount",
             "dynamiclocationGroups",
             "ecLocation",
-            "excludeFromDynamicGroups",
-            "excludeFromManualGroups",
-            "matchInChild",
             "staticLocationGroups",
             "subLocAccIds",
             "subLocScope",
@@ -199,6 +224,24 @@
             "subLocScopeValues",
             "virtualZenClusters",
             "virtualZens"
+          ]
+        },
+        {
+          "reason": "deliberate: UI display-unit hints carry no configuration signal",
+          "bucket": "deliberate",
+          "fields": [
+            "displayTimeUnit",
+            "surrogateRefreshTimeUnit"
+          ]
+        },
+        {
+          "reason": "deliberate: hierarchy bookkeeping counters and group-exclusion flags carry no exposable configuration of their own",
+          "bucket": "deliberate",
+          "fields": [
+            "childCount",
+            "excludeFromDynamicGroups",
+            "excludeFromManualGroups",
+            "matchInChild"
           ]
         }
       ]
@@ -212,7 +255,10 @@
       "total_fields": 7,
       "classified_fields": 5,
       "ignored_fields": 2,
+      "deliberate_fields": 0,
+      "deferred_fields": 2,
       "coverage_percent": 71.4,
+      "decided_coverage_percent": 71.4,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -229,7 +275,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin references are mapped then dropped by projection",
+          "reason": "deferred: admin references are mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "createdBy",
             "lastModifiedBy"
@@ -246,7 +293,10 @@
       "total_fields": 7,
       "classified_fields": 5,
       "ignored_fields": 2,
+      "deliberate_fields": 1,
+      "deferred_fields": 1,
       "coverage_percent": 71.4,
+      "decided_coverage_percent": 85.7,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -267,13 +317,15 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin identity reference is mapped then dropped by projection",
+          "reason": "deferred: admin identity reference is mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "lastModifiedBy"
           ]
         },
         {
-          "reason": "excluded forever: JSON twin of the already-classified expression string; modeling the tree would duplicate (or widen) the standard-only expression exposure",
+          "reason": "deliberate: JSON twin of the already-classified expression string; modeling the tree would duplicate (or widen) the standard-only expression exposure",
+          "bucket": "deliberate",
           "fields": [
             "expressionJson"
           ]
@@ -291,7 +343,10 @@
       "total_fields": 22,
       "classified_fields": 18,
       "ignored_fields": 4,
+      "deliberate_fields": 4,
+      "deferred_fields": 0,
       "coverage_percent": 81.8,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -316,14 +371,16 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "user department reference under zia/users renders id/name/comments only; query zia/departments for department metadata",
+          "reason": "deliberate: user department reference under zia/users renders id/name/comments only; query zia/departments for department metadata",
+          "bucket": "deliberate",
           "fields": [
             "deleted",
             "idp_id"
           ]
         },
         {
-          "reason": "user group references under zia/users render id/name/comments only; query zia/groups for group metadata",
+          "reason": "deliberate: user group references under zia/users render id/name/comments only; query zia/groups for group metadata",
+          "bucket": "deliberate",
           "fields": [
             "idp_id",
             "isSystemDefined"
@@ -340,7 +397,10 @@
       "total_fields": 11,
       "classified_fields": 9,
       "ignored_fields": 2,
+      "deliberate_fields": 0,
+      "deferred_fields": 2,
       "coverage_percent": 81.8,
+      "decided_coverage_percent": 81.8,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -361,7 +421,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "nested admin references are mapped then dropped by projection",
+          "reason": "deferred: nested admin references are mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "lastModifiedBy",
             "managedBy"
@@ -380,7 +441,10 @@
       "total_fields": 30,
       "classified_fields": 28,
       "ignored_fields": 2,
+      "deliberate_fields": 0,
+      "deferred_fields": 2,
       "coverage_percent": 93.3,
+      "decided_coverage_percent": 93.3,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -401,7 +465,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "nested admin identity references are mapped then dropped by projection",
+          "reason": "deferred: nested admin identity references are mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "lastModifiedBy",
             "managedBy"
@@ -418,7 +483,10 @@
       "total_fields": 42,
       "classified_fields": 40,
       "ignored_fields": 2,
+      "deliberate_fields": 0,
+      "deferred_fields": 2,
       "coverage_percent": 95.2,
+      "decided_coverage_percent": 95.2,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -439,7 +507,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin modifier identity and device trust levels are mapped then dropped until separately modeled",
+          "reason": "deferred: admin modifier identity and device trust levels are mapped then dropped until separately modeled",
+          "bucket": "deferred",
           "fields": [
             "deviceTrustLevels",
             "lastModifiedBy"
@@ -457,7 +526,10 @@
       "total_fields": 27,
       "classified_fields": 26,
       "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
       "coverage_percent": 96.3,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -478,7 +550,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "opaque SDK helper field is mapped then dropped until separately classified",
+          "reason": "deliberate: opaque numeric SDK helper that duplicates the category identifier; carries no configuration signal of its own",
+          "bucket": "deliberate",
           "fields": [
             "val"
           ]
@@ -498,7 +571,10 @@
       "total_fields": 28,
       "classified_fields": 27,
       "ignored_fields": 1,
+      "deliberate_fields": 0,
+      "deferred_fields": 1,
       "coverage_percent": 96.4,
+      "decided_coverage_percent": 96.4,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -523,7 +599,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin reference is mapped then dropped by projection",
+          "reason": "deferred: admin reference is mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "lastModUser"
           ]
@@ -539,7 +616,10 @@
       "total_fields": 32,
       "classified_fields": 31,
       "ignored_fields": 1,
+      "deliberate_fields": 0,
+      "deferred_fields": 1,
       "coverage_percent": 96.9,
+      "decided_coverage_percent": 96.9,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -560,7 +640,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin RBA access metadata is mapped then dropped until separately modeled",
+          "reason": "deferred: admin RBA access metadata is mapped then dropped until separately modeled",
+          "bucket": "deferred",
           "fields": [
             "accessControl"
           ]
@@ -576,7 +657,10 @@
       "total_fields": 39,
       "classified_fields": 38,
       "ignored_fields": 1,
+      "deliberate_fields": 0,
+      "deferred_fields": 1,
       "coverage_percent": 97.4,
+      "decided_coverage_percent": 97.4,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -597,7 +681,8 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin references are mapped then dropped by projection",
+          "reason": "deferred: admin references are mapped then dropped by projection",
+          "bucket": "deferred",
           "fields": [
             "lastModifiedBy"
           ]
@@ -613,7 +698,10 @@
       "total_fields": 126,
       "classified_fields": 126,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -643,7 +731,10 @@
       "total_fields": 111,
       "classified_fields": 111,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -673,7 +764,10 @@
       "total_fields": 69,
       "classified_fields": 69,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -703,7 +797,10 @@
       "total_fields": 54,
       "classified_fields": 54,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -737,7 +834,10 @@
       "total_fields": 53,
       "classified_fields": 53,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -771,7 +871,10 @@
       "total_fields": 52,
       "classified_fields": 52,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -805,7 +908,10 @@
       "total_fields": 51,
       "classified_fields": 51,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -831,7 +937,10 @@
       "total_fields": 49,
       "classified_fields": 49,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -865,7 +974,10 @@
       "total_fields": 48,
       "classified_fields": 48,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -887,7 +999,10 @@
       "total_fields": 48,
       "classified_fields": 48,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -921,7 +1036,10 @@
       "total_fields": 48,
       "classified_fields": 48,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -955,7 +1073,10 @@
       "total_fields": 46,
       "classified_fields": 46,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -989,7 +1110,10 @@
       "total_fields": 45,
       "classified_fields": 45,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1023,7 +1147,10 @@
       "total_fields": 45,
       "classified_fields": 45,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1057,7 +1184,10 @@
       "total_fields": 44,
       "classified_fields": 44,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1091,7 +1221,10 @@
       "total_fields": 43,
       "classified_fields": 43,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1125,7 +1258,10 @@
       "total_fields": 42,
       "classified_fields": 42,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1159,7 +1295,10 @@
       "total_fields": 41,
       "classified_fields": 41,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1193,7 +1332,10 @@
       "total_fields": 41,
       "classified_fields": 41,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1227,7 +1369,10 @@
       "total_fields": 39,
       "classified_fields": 39,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1253,7 +1398,10 @@
       "total_fields": 39,
       "classified_fields": 39,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1287,7 +1435,10 @@
       "total_fields": 38,
       "classified_fields": 38,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1313,7 +1464,10 @@
       "total_fields": 38,
       "classified_fields": 38,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1347,7 +1501,10 @@
       "total_fields": 37,
       "classified_fields": 37,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1377,7 +1534,10 @@
       "total_fields": 36,
       "classified_fields": 36,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1411,7 +1571,10 @@
       "total_fields": 35,
       "classified_fields": 35,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1445,7 +1608,10 @@
       "total_fields": 30,
       "classified_fields": 30,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1475,7 +1641,10 @@
       "total_fields": 29,
       "classified_fields": 29,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1505,7 +1674,10 @@
       "total_fields": 29,
       "classified_fields": 29,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1535,7 +1707,10 @@
       "total_fields": 26,
       "classified_fields": 26,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1565,7 +1740,10 @@
       "total_fields": 25,
       "classified_fields": 25,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1591,7 +1769,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1625,7 +1806,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1655,7 +1839,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1689,7 +1876,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1723,7 +1913,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1757,7 +1950,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1791,7 +1987,10 @@
       "total_fields": 21,
       "classified_fields": 21,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1825,7 +2024,10 @@
       "total_fields": 20,
       "classified_fields": 20,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1859,7 +2061,10 @@
       "total_fields": 19,
       "classified_fields": 19,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1885,7 +2090,10 @@
       "total_fields": 19,
       "classified_fields": 19,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1915,7 +2123,10 @@
       "total_fields": 19,
       "classified_fields": 19,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -1949,7 +2160,10 @@
       "total_fields": 18,
       "classified_fields": 18,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -1979,7 +2193,10 @@
       "total_fields": 17,
       "classified_fields": 17,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2009,7 +2226,10 @@
       "total_fields": 17,
       "classified_fields": 17,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2039,7 +2259,10 @@
       "total_fields": 17,
       "classified_fields": 17,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2073,7 +2296,10 @@
       "total_fields": 17,
       "classified_fields": 17,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2107,7 +2333,10 @@
       "total_fields": 17,
       "classified_fields": 17,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2133,7 +2362,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2151,7 +2383,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2177,7 +2412,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2207,7 +2445,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2236,7 +2477,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2266,7 +2510,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2296,7 +2543,10 @@
       "total_fields": 16,
       "classified_fields": 16,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2326,7 +2576,10 @@
       "total_fields": 15,
       "classified_fields": 15,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2361,7 +2614,10 @@
       "total_fields": 15,
       "classified_fields": 15,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2391,7 +2647,10 @@
       "total_fields": 15,
       "classified_fields": 15,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2425,7 +2684,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2451,7 +2713,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2477,7 +2742,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2499,7 +2767,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2529,7 +2800,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2559,7 +2833,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2593,7 +2870,10 @@
       "total_fields": 14,
       "classified_fields": 14,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2623,7 +2903,10 @@
       "total_fields": 13,
       "classified_fields": 13,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2649,7 +2932,10 @@
       "total_fields": 13,
       "classified_fields": 13,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2675,7 +2961,10 @@
       "total_fields": 13,
       "classified_fields": 13,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2709,7 +2998,10 @@
       "total_fields": 13,
       "classified_fields": 13,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2743,7 +3035,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2770,7 +3065,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2796,7 +3094,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2830,7 +3131,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2848,7 +3152,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2878,7 +3185,10 @@
       "total_fields": 12,
       "classified_fields": 12,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2912,7 +3222,10 @@
       "total_fields": 11,
       "classified_fields": 11,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -2938,7 +3251,10 @@
       "total_fields": 11,
       "classified_fields": 11,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2964,7 +3280,10 @@
       "total_fields": 11,
       "classified_fields": 11,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -2998,7 +3317,10 @@
       "total_fields": 11,
       "classified_fields": 11,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3024,7 +3346,10 @@
       "total_fields": 11,
       "classified_fields": 11,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3050,7 +3375,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3080,7 +3408,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3110,7 +3441,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3144,7 +3478,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3174,7 +3511,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3208,7 +3548,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3238,7 +3581,10 @@
       "total_fields": 10,
       "classified_fields": 10,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3268,7 +3614,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3298,7 +3647,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3328,7 +3680,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3358,7 +3713,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3384,7 +3742,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3418,7 +3779,10 @@
       "total_fields": 9,
       "classified_fields": 9,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3448,7 +3812,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3474,7 +3841,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3504,7 +3874,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3534,7 +3907,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3552,7 +3928,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3582,7 +3961,10 @@
       "total_fields": 8,
       "classified_fields": 8,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3612,7 +3994,10 @@
       "total_fields": 7,
       "classified_fields": 7,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3642,7 +4027,10 @@
       "total_fields": 7,
       "classified_fields": 7,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3672,7 +4060,10 @@
       "total_fields": 7,
       "classified_fields": 7,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3702,7 +4093,10 @@
       "total_fields": 7,
       "classified_fields": 7,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3732,7 +4126,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3758,7 +4155,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3784,7 +4184,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3814,7 +4217,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3844,7 +4250,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3874,7 +4283,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3904,7 +4316,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -3930,7 +4345,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3956,7 +4374,10 @@
       "total_fields": 6,
       "classified_fields": 6,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -3986,7 +4407,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4012,7 +4436,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4038,7 +4465,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4064,7 +4494,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4090,7 +4523,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4116,7 +4552,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4146,7 +4585,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4168,7 +4610,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4190,7 +4635,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4208,7 +4656,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4234,7 +4685,10 @@
       "total_fields": 5,
       "classified_fields": 5,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4264,7 +4718,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4290,7 +4747,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "tenant_configuration",
@@ -4308,7 +4768,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "tenant_configuration",
@@ -4326,7 +4789,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4352,7 +4818,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4382,7 +4851,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "sensitive_identifier",
@@ -4404,7 +4876,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4430,7 +4905,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4456,7 +4934,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4482,7 +4963,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4504,7 +4988,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4526,7 +5013,10 @@
       "total_fields": 4,
       "classified_fields": 4,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4548,7 +5038,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4570,7 +5063,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4592,7 +5088,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4610,7 +5109,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -4636,7 +5138,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4658,7 +5163,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4684,7 +5192,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "tenant_configuration",
@@ -4702,7 +5213,10 @@
       "total_fields": 3,
       "classified_fields": 3,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4724,7 +5238,10 @@
       "total_fields": 2,
       "classified_fields": 2,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4742,7 +5259,10 @@
       "total_fields": 2,
       "classified_fields": 2,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4760,7 +5280,10 @@
       "total_fields": 2,
       "classified_fields": 2,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "secret",
@@ -4782,7 +5305,10 @@
       "total_fields": 2,
       "classified_fields": 2,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "secret",
@@ -4804,7 +5330,10 @@
       "total_fields": 2,
       "classified_fields": 2,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "secret",
@@ -4826,7 +5355,10 @@
       "total_fields": 1,
       "classified_fields": 1,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
@@ -4844,7 +5376,10 @@
       "total_fields": 1,
       "classified_fields": 1,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "sensitive_identifier",
@@ -4862,7 +5397,10 @@
       "total_fields": 1,
       "classified_fields": 1,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "sensitive_identifier",
@@ -4880,7 +5418,10 @@
       "total_fields": 1,
       "classified_fields": 1,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "sensitive_identifier",
@@ -4898,7 +5439,10 @@
       "total_fields": 1,
       "classified_fields": 1,
       "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
       "coverage_percent": 100,
+      "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "sensitive_identifier",
