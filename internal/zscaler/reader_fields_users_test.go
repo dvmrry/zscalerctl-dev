@@ -49,7 +49,7 @@ func wave2UserFixture() (ziausers.Users, string) {
 	return user, freeTextCanary
 }
 
-func TestWave2UsersStandardProjectsNestedReferenceComments(t *testing.T) {
+func TestUsersStandardProjectsNestedReferenceComments(t *testing.T) {
 	t.Parallel()
 
 	user, freeTextCanary := wave2UserFixture()
@@ -105,7 +105,7 @@ func TestWave2UsersStandardProjectsNestedReferenceComments(t *testing.T) {
 	assertNoCanaries(t, "users standard", got, freeTextCanary)
 }
 
-func TestWave2UsersNestedCommentsModeBoundaries(t *testing.T) {
+func TestUsersNestedCommentsModeBoundaries(t *testing.T) {
 	t.Parallel()
 
 	user, freeTextCanary := wave2UserFixture()

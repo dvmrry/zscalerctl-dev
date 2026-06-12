@@ -17,7 +17,7 @@ import (
 	ziacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/common"
 )
 
-func TestCloudAppControlWave2PromotedFieldsAcrossModes(t *testing.T) {
+func TestCloudAppControlPromotedFieldsAcrossModes(t *testing.T) {
 	t.Parallel()
 
 	const (

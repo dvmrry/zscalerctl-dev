@@ -45,7 +45,7 @@ func wave1StaticIPRecords() []resources.SourceRecord {
 	return []resources.SourceRecord{staticIPSourceRecord(wave1StaticIPFixture())}
 }
 
-func TestStaticIPWave1CityProjectedInStandardMode(t *testing.T) {
+func TestStaticIPCityProjectedInStandardMode(t *testing.T) {
 	got := projectOneRecord(t, resources.ProductZIA, resourceStaticIPs, wave1StaticIPRecords())
 
 	city, ok := got["city"].(map[string]any)
@@ -60,7 +60,7 @@ func TestStaticIPWave1CityProjectedInStandardMode(t *testing.T) {
 	}
 }
 
-func TestStaticIPWave1ModeMatrix(t *testing.T) {
+func TestStaticIPModeMatrix(t *testing.T) {
 	type fieldExpectation struct {
 		field    string
 		standard bool
@@ -101,7 +101,7 @@ func TestStaticIPWave1ModeMatrix(t *testing.T) {
 	}
 }
 
-func TestStaticIPWave1ExcludedFieldsNeverLeak(t *testing.T) {
+func TestStaticIPExcludedFieldsNeverLeak(t *testing.T) {
 	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceStaticIPs, mode, wave1StaticIPRecords())
 
@@ -119,4 +119,34 @@ func TestStaticIPWave1ExcludedFieldsNeverLeak(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestStaticIPAdminIdentitySecretPins pins managedBy and lastModifiedBy as
+// secretField: the admin identities must drop in every mode (see
+// assertWave4SecretPin in reader_fields_admin_identity_test.go).
+func TestStaticIPAdminIdentitySecretPins(t *testing.T) {
+	t.Parallel()
+
+	const (
+		managedByCanary      = "wave4-static-ip-managed-by-canary"
+		lastModifiedByCanary = "wave4-static-ip-last-modified-by-canary"
+	)
+	staticIP := staticips.StaticIP{
+		ID:         4403,
+		IpAddress:  "203.0.113.44",
+		RoutableIP: true,
+		ManagedBy: &staticips.ManagedBy{
+			ID:   9104,
+			Name: managedByCanary,
+		},
+		LastModifiedBy: &staticips.LastModifiedBy{
+			ID:   9105,
+			Name: lastModifiedByCanary,
+		},
+	}
+	records := []resources.SourceRecord{staticIPSourceRecord(staticIP)}
+
+	assertWave4SecretPin(t, resourceStaticIPs, records,
+		[]string{"managedBy", "lastModifiedBy"}, "id",
+		managedByCanary, lastModifiedByCanary)
 }

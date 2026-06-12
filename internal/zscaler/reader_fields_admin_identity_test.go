@@ -1,17 +1,23 @@
 package zscaler
 
-// Wave-3 tail-sweep field-coverage tests. Each resource here had exactly one
-// remaining ignored field, and every one of them is an admin-identity shape:
-// lastModifiedBy admin references on six ZIA resources and the admin-by-name
-// adminStatusMap on ztw/activation-status. All seven are promoted as
-// secretField per the wave-1 precedent (lastModifiedBy/lastModUser/managedBy =
-// admin identity = secret), so the catalog now classifies them explicitly and
-// they must never render in ANY mode. Because the promoted class is secret,
-// the "presence" assertion is inverted: each test seeds a distinctive canary
-// in the promoted field, projects through the catalog, and asserts the canary
-// never survives and the field key is absent in standard mode plus one
-// additional mode (share). A per-resource control field is asserted present so
-// the projection is provably non-vacuous.
+// Cross-resource field-coverage tests for promoted admin-identity fields.
+// Each resource in the table below had exactly one remaining ignored field,
+// and every one of them is an admin-identity shape: lastModifiedBy admin
+// references on six ZIA resources and the admin-by-name adminStatusMap on
+// ztw/activation-status. All seven are promoted as secretField
+// (lastModifiedBy/lastModUser/managedBy = admin identity = secret), so the
+// catalog classifies them explicitly and they must never render in ANY mode.
+// Because the promoted class is secret, the "presence" assertion is inverted:
+// each test seeds a distinctive canary in the promoted field, projects
+// through the catalog, and asserts the canary never survives and the field
+// key is absent in standard mode plus one additional mode (share). A
+// per-resource control field is asserted present so the projection is
+// provably non-vacuous.
+//
+// This file also hosts assertWave4SecretPin, the shared helper behind the
+// per-resource admin-identity secret-pin tests in the reader_fields_* files
+// (rule-labels, static-ips, gre-tunnels, url/firewall filtering rules,
+// location-groups, workload-groups).
 //
 // Helpers (projectOneRecord, projectOneRecordInMode, assertNoCanaries,
 // assertFieldsAbsent) are reused from reader_test.go and
@@ -229,10 +235,10 @@ func wave3TailCases() []wave3TailCase {
 	}
 }
 
-// TestWave3TailSecretFieldsNeverRender asserts, for every wave-3 promoted
+// TestAdminIdentitySecretFieldsNeverRender asserts, for every promoted
 // admin-identity field, that the secret classification drops the field and its
 // canary content in standard mode while the rest of the record still renders.
-func TestWave3TailSecretFieldsNeverRender(t *testing.T) {
+func TestAdminIdentitySecretFieldsNeverRender(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range wave3TailCases() {
@@ -252,11 +258,11 @@ func TestWave3TailSecretFieldsNeverRender(t *testing.T) {
 	}
 }
 
-// TestWave3TailSecretFieldsAbsentInShareMode is the mode-visibility check: the
-// promoted secret fields must also be absent (and their canaries unrecoverable)
-// in share mode, where each control field remains visible because every control
-// here is classified for standard+share or all modes.
-func TestWave3TailSecretFieldsAbsentInShareMode(t *testing.T) {
+// TestAdminIdentitySecretFieldsAbsentInShareMode is the mode-visibility check:
+// the promoted secret fields must also be absent (and their canaries
+// unrecoverable) in share mode, where each control field remains visible
+// because every control here is classified for standard+share or all modes.
+func TestAdminIdentitySecretFieldsAbsentInShareMode(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range wave3TailCases() {
@@ -273,5 +279,30 @@ func TestWave3TailSecretFieldsAbsentInShareMode(t *testing.T) {
 					tc.resource, tc.controlField, got[tc.controlField], tc.controlWant)
 			}
 		})
+	}
+}
+
+var wave4AllModes = []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+
+// assertWave4SecretPin projects the records in every mode and asserts that
+// each secret-pinned field is absent, that none of the canaries leak, and
+// that the control field is present (so an empty projection cannot pass).
+func assertWave4SecretPin(
+	t *testing.T,
+	resourceName string,
+	records []resources.SourceRecord,
+	secretFields []string,
+	controlField string,
+	canaries ...string,
+) {
+	t.Helper()
+
+	for _, mode := range wave4AllModes {
+		got := projectOneRecordInMode(t, resources.ProductZIA, resourceName, mode, records)
+		if _, ok := got[controlField]; !ok {
+			t.Errorf("projected %s (%v) = %#v, want control field %s present", resourceName, mode, got, controlField)
+		}
+		assertFieldsAbsent(t, resourceName+" ("+string(mode)+")", got, secretFields...)
+		assertNoCanaries(t, resourceName+" ("+string(mode)+")", got, canaries...)
 	}
 }

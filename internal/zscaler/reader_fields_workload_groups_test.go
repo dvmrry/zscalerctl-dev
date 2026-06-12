@@ -55,7 +55,7 @@ func wave1WorkloadGroupFixture() (workloadgroups.WorkloadGroup, []string) {
 	return group, []string{adminCanary, tagTypeCanary, tagKeyCanary, tagValueCanary}
 }
 
-func TestWave1WorkloadGroupsStandardProjectsClassifiedFieldsOnly(t *testing.T) {
+func TestWorkloadGroupsStandardProjectsClassifiedFieldsOnly(t *testing.T) {
 	t.Parallel()
 
 	group, canaries := wave1WorkloadGroupFixture()
@@ -87,7 +87,7 @@ func TestWave1WorkloadGroupsStandardProjectsClassifiedFieldsOnly(t *testing.T) {
 	assertNoCanaries(t, "workload-groups standard", got, canaries...)
 }
 
-func TestWave1WorkloadGroupsModeBoundaries(t *testing.T) {
+func TestWorkloadGroupsModeBoundaries(t *testing.T) {
 	t.Parallel()
 
 	group, canaries := wave1WorkloadGroupFixture()
@@ -132,4 +132,25 @@ func TestWave1WorkloadGroupsModeBoundaries(t *testing.T) {
 			assertNoCanaries(t, "workload-groups "+string(tc.mode), got, canaries...)
 		})
 	}
+}
+
+// TestWorkloadGroupLastModifiedBySecretPin pins lastModifiedBy as secretField:
+// the admin identity must drop in every mode (see assertWave4SecretPin in
+// reader_fields_admin_identity_test.go).
+func TestWorkloadGroupLastModifiedBySecretPin(t *testing.T) {
+	t.Parallel()
+
+	const canary = "wave4-workload-group-last-modified-by-canary"
+	group := workloadgroups.WorkloadGroup{
+		ID:   4407,
+		Name: "wave4 workload group",
+		LastModifiedBy: &ziacommon.IDNameExtensions{
+			ID:   9110,
+			Name: canary,
+		},
+	}
+	records := []resources.SourceRecord{workloadGroupSourceRecord(group)}
+
+	assertWave4SecretPin(t, resourceWorkloadGroups, records,
+		[]string{"lastModifiedBy"}, "id", canary)
 }

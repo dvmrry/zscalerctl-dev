@@ -8,7 +8,7 @@ package zscaler
 // catalog, and asserts the promoted fields render under the right keys per
 // mode while the canaries never survive. accessControl was promoted to
 // operational (standard+share) in wave 4; its mode gating is asserted in
-// reader_wave4_secret_pins_test.go.
+// TestSSLInspectionRuleAccessControlModes below.
 //
 // Helpers (projectOneRecord, projectOneRecordInMode, assertNoCanaries,
 // mustProjectedList, mustFirstProjectedItem, assertFieldsAbsent) are reused
@@ -90,7 +90,7 @@ var sslWave1ReferenceListNames = map[string]string{
 	"workloadGroups": "Prod workloads",
 }
 
-func TestSSLInspectionRuleWave1FieldsProjectInStandardMode(t *testing.T) {
+func TestSSLInspectionRulePromotedFieldsProjectInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	rule := sslInspectionRuleWave1Fixture()
@@ -129,7 +129,7 @@ func TestSSLInspectionRuleWave1FieldsProjectInStandardMode(t *testing.T) {
 	}
 }
 
-func TestSSLInspectionRuleWave1FieldsAcrossModes(t *testing.T) {
+func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 	t.Parallel()
 
 	rule := sslInspectionRuleWave1Fixture()
@@ -173,4 +173,32 @@ func TestSSLInspectionRuleWave1FieldsAcrossModes(t *testing.T) {
 	if paranoid["roadWarriorForKerberos"] != true {
 		t.Errorf("projected ssl-inspection-rules paranoid roadWarriorForKerberos = %v, want true", paranoid["roadWarriorForKerberos"])
 	}
+}
+
+// TestSSLInspectionRuleAccessControlModes asserts accessControl — a flat
+// admin-RBA privilege enum — is operationalField(standard+share) per the
+// firewall-filtering-rules precedent.
+func TestSSLInspectionRuleAccessControlModes(t *testing.T) {
+	t.Parallel()
+
+	rule := sslinspection.SSLInspectionRules{
+		ID:            4409,
+		Name:          "wave4 ssl rule access control",
+		State:         "ENABLED",
+		AccessControl: "READ_WRITE",
+	}
+	records := []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)}
+
+	standard := projectOneRecord(t, resources.ProductZIA, resourceSSLRules, records)
+	if standard["accessControl"] != "READ_WRITE" {
+		t.Errorf("projected ssl-inspection-rules accessControl = %v, want READ_WRITE", standard["accessControl"])
+	}
+
+	// operationalField(standard+share): present in share, dropped in paranoid.
+	share := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeShare, records)
+	if share["accessControl"] != "READ_WRITE" {
+		t.Errorf("projected ssl-inspection-rules share accessControl = %v, want READ_WRITE", share["accessControl"])
+	}
+	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeParanoid, records)
+	assertFieldsAbsent(t, "ssl-inspection-rules (paranoid)", paranoid, "accessControl")
 }

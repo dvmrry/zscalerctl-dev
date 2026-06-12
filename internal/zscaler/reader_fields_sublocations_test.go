@@ -78,8 +78,8 @@ func wave2SublocationFixture() locationmanagement.Locations {
 		OtherSubLocation:                    true,
 		Other6SubLocation:                   true,
 		// Wave-4 promoted fields carry distinctive, non-canary values; their
-		// classification and mode behavior is asserted in
-		// reader_wave4_locations_family_test.go. They are listed in the
+		// classification and mode behavior is asserted in the location-family
+		// tests in reader_fields_locations_test.go. They are listed in the
 		// standard-mode want map below so this exact-match test stays accurate.
 		GeoOverride:        true,
 		ECLocation:         true,
@@ -97,7 +97,7 @@ func wave2SublocationFixture() locationmanagement.Locations {
 	}
 }
 
-func TestSublocationSourceRecordProjectsWave2FieldsInStandardMode(t *testing.T) {
+func TestSublocationSourceRecordProjectsPromotedFieldsInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	sublocation := wave2SublocationFixture()
@@ -233,7 +233,7 @@ func TestSublocationSourceRecordDropsSecretAndExcludedFields(t *testing.T) {
 		// Intentionally excluded fields stay out, and their canaries do not
 		// leak through any other key. (Wave-4 promoted fields such as
 		// geoOverride/subLocScope/ecLocation/ipv6Enabled are now classified and
-		// are covered by reader_wave4_locations_family_test.go.)
+		// are covered by the location-family tests in reader_fields_locations_test.go.)
 		assertFieldsAbsent(t, "sublocations", got,
 			"displayTimeUnit",
 			"surrogateRefreshTimeUnit",

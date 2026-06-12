@@ -74,7 +74,7 @@ func mustFirstWave1Item(t *testing.T, record map[string]any, field string) map[s
 	return object
 }
 
-func TestWave1FirewallFilteringRulePromotedFieldsProjectInStandardMode(t *testing.T) {
+func TestFirewallFilteringRulePromotedFieldsProjectInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -126,7 +126,7 @@ func TestWave1FirewallFilteringRulePromotedFieldsProjectInStandardMode(t *testin
 	assertNoCanaries(t, "firewall-filtering-rules standard", got, adminCanary, extensionsCanary, externalIDCanary)
 }
 
-func TestWave1FirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.T) {
+func TestFirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -175,4 +175,26 @@ func TestWave1FirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.
 		t.Errorf("paranoid projected firewall-filtering-rules missing state, want kept (all modes)")
 	}
 	assertNoCanaries(t, "firewall-filtering-rules paranoid", paranoid, adminCanary, extensionsCanary, externalIDCanary)
+}
+
+// TestFirewallFilteringRuleLastModifiedBySecretPin pins lastModifiedBy as
+// secretField: the admin identity must drop in every mode (see
+// assertWave4SecretPin in reader_fields_admin_identity_test.go).
+func TestFirewallFilteringRuleLastModifiedBySecretPin(t *testing.T) {
+	t.Parallel()
+
+	const canary = "wave4-firewall-rule-last-modified-by-canary"
+	rule := filteringrules.FirewallFilteringRules{
+		ID:    4406,
+		Name:  "wave4 firewall rule",
+		State: "ENABLED",
+		LastModifiedBy: &ziacommon.IDNameExtensions{
+			ID:   9109,
+			Name: canary,
+		},
+	}
+	records := []resources.SourceRecord{firewallFilteringRuleSourceRecord(rule)}
+
+	assertWave4SecretPin(t, resourceFirewallRules, records,
+		[]string{"lastModifiedBy"}, "id", canary)
 }

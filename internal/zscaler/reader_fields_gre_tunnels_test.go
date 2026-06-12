@@ -222,3 +222,32 @@ func TestGRETunnelSourceRecordExcludedAdminIdentitiesStayDropped(t *testing.T) {
 		}
 	}
 }
+
+// TestGRETunnelAdminIdentitySecretPins pins managedBy and lastModifiedBy as
+// secretField: the admin identities must drop in every mode (see
+// assertWave4SecretPin in reader_fields_admin_identity_test.go).
+func TestGRETunnelAdminIdentitySecretPins(t *testing.T) {
+	t.Parallel()
+
+	const (
+		managedByCanary      = "wave4-gre-tunnel-managed-by-canary"
+		lastModifiedByCanary = "wave4-gre-tunnel-last-modified-by-canary"
+	)
+	tunnel := gretunnels.GreTunnels{
+		ID:       4404,
+		SourceIP: "198.51.100.44",
+		ManagedBy: &gretunnels.ManagedBy{
+			ID:   9106,
+			Name: managedByCanary,
+		},
+		LastModifiedBy: &gretunnels.LastModifiedBy{
+			ID:   9107,
+			Name: lastModifiedByCanary,
+		},
+	}
+	records := []resources.SourceRecord{greTunnelSourceRecord(tunnel)}
+
+	assertWave4SecretPin(t, resourceGRETunnels, records,
+		[]string{"managedBy", "lastModifiedBy"}, "id",
+		managedByCanary, lastModifiedByCanary)
+}

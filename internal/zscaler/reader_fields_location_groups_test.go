@@ -302,3 +302,25 @@ func TestLocationGroupProjectionHonorsParanoidModeAllowances(t *testing.T) {
 	}
 	assertNoLocationGroupCanaries(t, got)
 }
+
+// TestLocationGroupLastModUserSecretPin pins lastModUser as secretField: the
+// admin identity must drop in every mode (see assertWave4SecretPin in
+// reader_fields_admin_identity_test.go).
+func TestLocationGroupLastModUserSecretPin(t *testing.T) {
+	t.Parallel()
+
+	const canary = "wave4-locgroup-lastmoduser-canary"
+	group := locationgroups.LocationGroup{
+		ID:        4401,
+		Name:      "wave4 location group",
+		GroupType: "STATIC",
+		LastModUser: &locationgroups.LastModUser{
+			ID:   9101,
+			Name: canary,
+		},
+	}
+	records := []resources.SourceRecord{locationGroupSourceRecord(group)}
+
+	assertWave4SecretPin(t, resourceLocationGroups, records,
+		[]string{"lastModUser"}, "id", canary)
+}

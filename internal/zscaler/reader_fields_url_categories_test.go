@@ -56,7 +56,7 @@ func wave2URLCategoryFixture() (urlcategories.URLCategory, map[string]string) {
 	return category, canaries
 }
 
-func TestWave2URLCategoriesStandardProjectsScopeReferences(t *testing.T) {
+func TestURLCategoriesStandardProjectsScopeReferences(t *testing.T) {
 	t.Parallel()
 
 	category, canaries := wave2URLCategoryFixture()
@@ -109,7 +109,7 @@ func TestWave2URLCategoriesStandardProjectsScopeReferences(t *testing.T) {
 	}
 }
 
-func TestWave2URLCategoriesScopeModeBoundaries(t *testing.T) {
+func TestURLCategoriesScopeModeBoundaries(t *testing.T) {
 	t.Parallel()
 
 	category, canaries := wave2URLCategoryFixture()

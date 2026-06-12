@@ -83,7 +83,7 @@ func wave1ProjectedEntry(t *testing.T, record map[string]any, field string) map[
 	return entry
 }
 
-func TestWave1ForwardingRulesPromotedFieldsRenderInStandardMode(t *testing.T) {
+func TestForwardingRulesPromotedFieldsRenderInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	got := projectOneRecordInMode(
@@ -150,7 +150,7 @@ func TestWave1ForwardingRulesPromotedFieldsRenderInStandardMode(t *testing.T) {
 	}
 }
 
-func TestWave1ForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
+func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 	t.Parallel()
 
 	records := wave1ForwardingRuleRecords()

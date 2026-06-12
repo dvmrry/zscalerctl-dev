@@ -34,7 +34,7 @@ func wave1IPSSignatureRule(ruleTextCanary string) ipssignaturerules.IPSSignature
 	}
 }
 
-func TestIPSSignatureRuleWave1CategoryProjectsInStandardMode(t *testing.T) {
+func TestIPSSignatureRuleCategoryProjectsInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	const ruleTextCanary = "wave1-ruletext-canary-never-emit"
@@ -63,7 +63,7 @@ func TestIPSSignatureRuleWave1CategoryProjectsInStandardMode(t *testing.T) {
 	assertNoCanaries(t, "ips-signature-rules", got, ruleTextCanary)
 }
 
-func TestIPSSignatureRuleWave1ModeTransitions(t *testing.T) {
+func TestIPSSignatureRuleModeTransitions(t *testing.T) {
 	t.Parallel()
 
 	const ruleTextCanary = "wave1-ruletext-canary-never-emit"
@@ -107,7 +107,7 @@ func TestIPSSignatureRuleWave1ModeTransitions(t *testing.T) {
 	assertNoCanaries(t, "ips-signature-rules", paranoid, ruleTextCanary)
 }
 
-func TestIPSSignatureRuleWave1NilCategoryStaysAbsent(t *testing.T) {
+func TestIPSSignatureRuleNilCategoryStaysAbsent(t *testing.T) {
 	t.Parallel()
 
 	rule := wave1IPSSignatureRule("wave1-ruletext-canary-never-emit")

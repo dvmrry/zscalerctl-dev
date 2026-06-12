@@ -642,7 +642,7 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 	}
 	// dynamicLocationGroupCriteria and locations are catalog-classified as of
 	// wave 1 and render in standard mode (see
-	// reader_wave1_location_groups_test.go); only the admin reference stays
+	// reader_fields_location_groups_test.go); only the admin reference stays
 	// dropped.
 	for _, field := range []string{"lastModUser"} {
 		if _, ok := got[field]; ok {
@@ -1076,7 +1076,7 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 	// primaryDestVip/secondaryDestVip are catalog-classified with explicit
 	// sub-field modeling; virtualIPCanary renders in standard mode only. Mode
-	// behaviour is covered in reader_wave1_gre_tunnels_test.go.
+	// behaviour is covered in reader_fields_gre_tunnels_test.go.
 	if vip, ok := valueAtPath(got, "primaryDestVip.virtualIp"); !ok || vip != virtualIPCanary {
 		t.Errorf("projected gre-tunnels primaryDestVip.virtualIp = %v, want %q", vip, virtualIPCanary)
 	}
@@ -1164,7 +1164,7 @@ func TestReaderListSublocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	// The vpnCredentials secret is never rendered. subLocScopeEnabled/
 	// subLocScopeValues/subLocAccIds are wave-4 promotions and now render in
 	// standard mode; their classification and mode behavior is asserted in
-	// reader_wave4_locations_family_test.go.
+	// reader_fields_consistency_test.go and reader_fields_locations_test.go.
 	for _, field := range []string{"vpnCredentials"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected sublocations = %#v, want no %s", got, field)

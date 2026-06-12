@@ -14,7 +14,7 @@ import (
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
 )
 
-func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
+func TestURLFilteringRulePromotedFieldsAcrossModes(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -43,7 +43,7 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 		},
 		LastModifiedBy: &ziacommon.IDNameExtensions{ID: 9001, Name: adminCanary},
 		// Promoted in wave 4 (tenant config, standard+share); mode gating is
-		// asserted in reader_wave4_secret_pins_test.go.
+		// asserted in TestURLFilteringRuleDeviceTrustLevelsModes below.
 		DeviceTrustLevels: []string{"HIGH_TRUST"},
 	}
 	records := []resources.SourceRecord{urlFilteringRuleSourceRecord(rule)}
@@ -125,4 +125,55 @@ func TestURLFilteringRuleWave1PromotedFieldsAcrossModes(t *testing.T) {
 		}
 		assertNoCanaries(t, "url-filtering-rules", got, adminCanary, cbiURLCanary)
 	}
+}
+
+// TestURLFilteringRuleLastModifiedBySecretPin pins lastModifiedBy as
+// secretField: the admin identity must drop in every mode (see
+// assertWave4SecretPin in reader_fields_admin_identity_test.go).
+func TestURLFilteringRuleLastModifiedBySecretPin(t *testing.T) {
+	t.Parallel()
+
+	const canary = "wave4-url-rule-last-modified-by-canary"
+	rule := urlfilteringpolicies.URLFilteringRule{
+		ID:    4405,
+		Name:  "wave4 url rule",
+		State: "ENABLED",
+		LastModifiedBy: &ziacommon.IDNameExtensions{
+			ID:   9108,
+			Name: canary,
+		},
+	}
+	records := []resources.SourceRecord{urlFilteringRuleSourceRecord(rule)}
+
+	assertWave4SecretPin(t, resourceURLRules, records,
+		[]string{"lastModifiedBy"}, "id", canary)
+}
+
+// TestURLFilteringRuleDeviceTrustLevelsModes asserts deviceTrustLevels is
+// tenantConfigField(standard+share): it mirrors the identical
+// ssl-inspection-rules field.
+func TestURLFilteringRuleDeviceTrustLevelsModes(t *testing.T) {
+	t.Parallel()
+
+	rule := urlfilteringpolicies.URLFilteringRule{
+		ID:                4408,
+		Name:              "wave4 url rule trust levels",
+		State:             "ENABLED",
+		DeviceTrustLevels: []string{"HIGH_TRUST", "MEDIUM_TRUST"},
+	}
+	records := []resources.SourceRecord{urlFilteringRuleSourceRecord(rule)}
+
+	standard := projectOneRecord(t, resources.ProductZIA, resourceURLRules, records)
+	levels, ok := standard["deviceTrustLevels"].([]string)
+	if !ok || len(levels) != 2 || levels[0] != "HIGH_TRUST" || levels[1] != "MEDIUM_TRUST" {
+		t.Errorf("projected url-filtering-rules deviceTrustLevels = %#v, want [HIGH_TRUST MEDIUM_TRUST]", standard["deviceTrustLevels"])
+	}
+
+	// tenantConfigField(standard+share): present in share, dropped in paranoid.
+	share := projectOneRecordInMode(t, resources.ProductZIA, resourceURLRules, redact.ModeShare, records)
+	if _, ok := share["deviceTrustLevels"]; !ok {
+		t.Errorf("projected url-filtering-rules share = %#v, want deviceTrustLevels present", share)
+	}
+	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceURLRules, redact.ModeParanoid, records)
+	assertFieldsAbsent(t, "url-filtering-rules (paranoid)", paranoid, "deviceTrustLevels")
 }

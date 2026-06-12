@@ -49,7 +49,7 @@ func wave2ResourceServerFixture() (zidresourceservers.ResourceServers, map[strin
 	return server, canaries
 }
 
-func TestWave2ResourceServersStandardProjectsServiceContext(t *testing.T) {
+func TestResourceServersStandardProjectsServiceContext(t *testing.T) {
 	t.Parallel()
 
 	server, canaries := wave2ResourceServerFixture()
@@ -84,7 +84,7 @@ func TestWave2ResourceServersStandardProjectsServiceContext(t *testing.T) {
 	}
 }
 
-func TestWave2ResourceServersServiceContextModeBoundaries(t *testing.T) {
+func TestResourceServersServiceContextModeBoundaries(t *testing.T) {
 	t.Parallel()
 
 	server, canaries := wave2ResourceServerFixture()
