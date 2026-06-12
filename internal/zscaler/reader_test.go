@@ -1060,12 +1060,18 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if !strings.Contains(comment, "<REDACTED:SECRET>") {
 		t.Errorf("projected gre-tunnels comment = %v, want typed redaction marker", got["comment"])
 	}
-	for _, field := range []string{"managedBy", "lastModifiedBy", "primaryDestVip", "secondaryDestVip"} {
+	for _, field := range []string{"managedBy", "lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected gre-tunnels = %#v, want no %s", got, field)
 		}
 	}
-	for _, forbidden := range []string{adminCanary, virtualIPCanary} {
+	// primaryDestVip/secondaryDestVip are catalog-classified with explicit
+	// sub-field modeling; virtualIPCanary renders in standard mode only. Mode
+	// behaviour is covered in reader_wave1_gre_tunnels_test.go.
+	if vip, ok := valueAtPath(got, "primaryDestVip.virtualIp"); !ok || vip != virtualIPCanary {
+		t.Errorf("projected gre-tunnels primaryDestVip.virtualIp = %v, want %q", vip, virtualIPCanary)
+	}
+	for _, forbidden := range []string{adminCanary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected gre-tunnels = %#v, want no %q", got, forbidden)
 		}

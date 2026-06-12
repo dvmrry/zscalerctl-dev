@@ -408,13 +408,13 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"comment",
 				"ipUnnumbered",
 				"subcloud",
-			},
-			ignoredFields: ignoredBecause(
-				"nested admin and destination VIP references are mapped then dropped by projection",
-				"managedBy",
-				"lastModifiedBy",
 				"primaryDestVip",
 				"secondaryDestVip",
+			},
+			ignoredFields: ignoredBecause(
+				"nested admin identity references are mapped then dropped by projection",
+				"managedBy",
+				"lastModifiedBy",
 			),
 		},
 		{
@@ -438,10 +438,11 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			),
 		},
 		{
-			name: "gretunnels.PrimaryDestVip",
-			typ:  reflect.TypeOf(gretunnels.PrimaryDestVip{}),
-			ignoredFields: ignoredBecause(
-				"covered by dropped primaryDestVip parent",
+			name:         "gretunnels.PrimaryDestVip",
+			resource:     resources.ProductZIA,
+			resourceName: resourceGRETunnels,
+			typ:          reflect.TypeOf(gretunnels.PrimaryDestVip{}),
+			catalogFields: []string{
 				"id",
 				"virtualIp",
 				"privateServiceEdge",
@@ -451,13 +452,14 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"city",
 				"countryCode",
 				"region",
-			),
+			},
 		},
 		{
-			name: "gretunnels.SecondaryDestVip",
-			typ:  reflect.TypeOf(gretunnels.SecondaryDestVip{}),
-			ignoredFields: ignoredBecause(
-				"covered by dropped secondaryDestVip parent",
+			name:         "gretunnels.SecondaryDestVip",
+			resource:     resources.ProductZIA,
+			resourceName: resourceGRETunnels,
+			typ:          reflect.TypeOf(gretunnels.SecondaryDestVip{}),
+			catalogFields: []string{
 				"id",
 				"virtualIp",
 				"privateServiceEdge",
@@ -467,7 +469,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"city",
 				"countryCode",
 				"region",
-			),
+			},
 		},
 		{
 			name:         "locationmanagement.Locations/sublocations",
