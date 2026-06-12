@@ -198,6 +198,12 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: "missing command"}
 	}
+	// --filter/--search narrow list results only. Reject every other invocation
+	// up front — get/show/dump and non-resource commands alike — so the usage
+	// error (documented exit 2) is raised before any credential or reader work.
+	if name := opts.narrowingFlag(); name != "" && !isListInvocation(rest) {
+		return UsageError{Message: fmt.Sprintf("%s applies to list operations only; use it with \"<product> <resource> list\"", name)}
+	}
 	switch {
 	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
 		a.writeUsage(a.out)
@@ -276,7 +282,63 @@ type globalOptions struct {
 	colorMode    output.ColorMode
 	logLevel     string
 	fields       []string
+	filters      []recordFilter
+	search       string
 	help         bool
+}
+
+// narrowingFlag names the first result-narrowing flag in use (--filter or
+// --search), or "" when neither is set. Used to scope both flags to list
+// operations with a usage error that names the offending flag.
+func (o globalOptions) narrowingFlag() string {
+	if len(o.filters) > 0 {
+		return "--filter"
+	}
+	if o.search != "" {
+		return "--search"
+	}
+	return ""
+}
+
+// recordFilter is one parsed --filter expression: key=value (exact match on
+// the rendered field value) or key~value (case-insensitive substring).
+type recordFilter struct {
+	key       string
+	value     string
+	substring bool
+}
+
+// repeatableFlag collects every occurrence of a flag instead of keeping only
+// the last one, so --filter can be repeated and the filters AND together.
+type repeatableFlag []string
+
+func (f *repeatableFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *repeatableFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
+// parseFilterExpr splits one --filter expression at its first operator
+// character: '=' selects exact matching, '~' case-insensitive substring
+// matching. Everything after the operator is the value verbatim, so values may
+// themselves contain '=' or '~'.
+func parseFilterExpr(raw string) (recordFilter, error) {
+	idx := strings.IndexAny(raw, "=~")
+	if idx < 0 {
+		return recordFilter{}, UsageError{Message: fmt.Sprintf("--filter %q: want key=value (exact) or key~value (substring)", raw)}
+	}
+	key := strings.TrimSpace(raw[:idx])
+	if key == "" {
+		return recordFilter{}, UsageError{Message: fmt.Sprintf("--filter %q: missing field name before %q", raw, string(raw[idx]))}
+	}
+	return recordFilter{
+		key:       key,
+		value:     raw[idx+1:],
+		substring: raw[idx] == '~',
+	}, nil
 }
 
 type doctorStatus struct {
@@ -315,6 +377,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noColor := fs.Bool("no-color", false, "disable color output")
 	logLevel := fs.String("log-level", "off", "diagnostic logging to stderr: off, error, warn, info, debug")
 	fieldsFlag := fs.String("fields", "", "comma-separated output fields to keep (narrows the sanitized output)")
+	var filterFlags repeatableFlag
+	fs.Var(&filterFlags, "filter", "narrow list results: key=value (exact) or key~value (substring); repeatable, all must match")
+	searchFlag := fs.String("search", "", "narrow list results to records whose rendered values contain term (case-insensitive)")
 	globalArgs, rest, help, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
@@ -348,6 +413,14 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	if _, err := newDiagLogger(io.Discard, *logLevel); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
 	}
+	filters := make([]recordFilter, 0, len(filterFlags))
+	for _, raw := range filterFlags {
+		filter, err := parseFilterExpr(raw)
+		if err != nil {
+			return globalOptions{}, nil, err
+		}
+		filters = append(filters, filter)
+	}
 	return globalOptions{
 		profile:      *profile,
 		format:       parsedFormat,
@@ -359,6 +432,8 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		colorMode:    colorMode,
 		logLevel:     *logLevel,
 		fields:       parseFieldsList(*fieldsFlag),
+		filters:      filters,
+		search:       *searchFlag,
 		help:         help,
 	}, rest, nil
 }
@@ -489,7 +564,7 @@ func flagName(arg string) (string, bool) {
 
 func isGlobalFlag(name string) bool {
 	switch name {
-	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level", "fields":
+	case "profile", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level", "fields", "filter", "search":
 		return true
 	default:
 		return false
@@ -999,12 +1074,79 @@ func (a *App) writeProjectedRecord(
 	}
 }
 
+// isListInvocation reports whether rest is a product resource list command —
+// the only invocation shape --filter/--search apply to.
+func isListInvocation(rest []string) bool {
+	return len(rest) >= 3 && knownProductCommand(rest[0]) && rest[2] == "list"
+}
+
+// narrowRecords applies --filter and --search to an already-projected record
+// set. SAFETY PROPERTY: narrowing runs strictly post-projection. The records
+// here have already been allow-list projected and per-field redacted for the
+// active redaction mode, so a dropped or secret-classified field is simply
+// absent: a filter naming it matches no record, and search only ever sees the
+// sanitized rendered values. Narrowing can reduce the record set but can never
+// resurrect a field or widen exposure in any redaction mode.
+func narrowRecords(records resources.ProjectedRecords, filters []recordFilter, search string) resources.ProjectedRecords {
+	if len(filters) == 0 && search == "" {
+		return records
+	}
+	kept := make([]resources.ProjectedRecord, 0)
+	for _, record := range records.Records() {
+		if recordMatches(record.Fields(), filters, search) {
+			kept = append(kept, record)
+		}
+	}
+	return resources.NewProjectedRecords(kept)
+}
+
+// recordMatches evaluates all narrowing conditions against one record's
+// projected fields: every --filter must match (AND), and when --search is set
+// at least one rendered field value must contain the term. Values are compared
+// in their rendered string form (the same formatting the table renderer uses),
+// so arrays and nested values participate via their rendered text.
+func recordMatches(fields map[string]any, filters []recordFilter, search string) bool {
+	for _, filter := range filters {
+		value, ok := fields[filter.key]
+		if !ok {
+			// A record lacking the key does not match. This is also the
+			// fail-closed path for secret/dropped field names, which never
+			// appear in projected records.
+			return false
+		}
+		rendered := formatTableValue(value)
+		if filter.substring {
+			if !strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.value)) {
+				return false
+			}
+			continue
+		}
+		if rendered != filter.value {
+			return false
+		}
+	}
+	if search == "" {
+		return true
+	}
+	term := strings.ToLower(search)
+	for _, value := range fields {
+		if strings.Contains(strings.ToLower(formatTableValue(value)), term) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) writeProjectedRecords(
 	cfg config.Config,
 	opts globalOptions,
 	spec resources.ResourceSpec,
 	records resources.ProjectedRecords,
 ) error {
+	// Narrow rows before --fields narrows columns, so a filter may reference
+	// any projected field even when it is not selected for display. An empty
+	// match is success: every format renders its empty form and exits 0.
+	records = narrowRecords(records, opts.filters, opts.search)
 	fields, err := effectiveFields(spec, cfg.Defaults.Redaction, opts.fields)
 	if err != nil {
 		return err
@@ -1070,6 +1212,8 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --no-cache")
 	fmt.Fprintln(w, "  --log-level off|error|warn|info|debug")
 	fmt.Fprintln(w, "  --fields <a,b,c>")
+	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; repeatable, all must match)")
+	fmt.Fprintln(w, "  --search <term>                  (list only; case-insensitive, any field)")
 }
 
 func writeOutputFile(path string, body []byte) error {

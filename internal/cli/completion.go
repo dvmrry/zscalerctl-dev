@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields"}
+	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields", "--filter", "--search"}
 	completionFormats   = []string{"auto", "table", "json", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
@@ -148,6 +148,8 @@ complete -c zscalerctl -l no-color -d 'Disable color output'
 complete -c zscalerctl -l no-cache -d 'Bypass API cache where supported'
 complete -c zscalerctl -l log-level -x -a 'off error warn info debug' -d 'Diagnostic log level'
 complete -c zscalerctl -l fields -r -d 'Comma-separated output fields to keep'
+complete -c zscalerctl -l filter -r -d 'Narrow list results: key=value exact, key~value substring (repeatable)'
+complete -c zscalerctl -l search -r -d 'Narrow list results: case-insensitive substring across rendered fields'
 complete -c zscalerctl -n '__fish_use_subcommand' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from completion' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from auth' -a 'status'

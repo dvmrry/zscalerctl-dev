@@ -103,6 +103,12 @@ Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`. Wit
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
+List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Both apply to `list` operations only (anywhere else is a usage error, exit `2`) and run strictly after projection and redaction, so they can narrow but never widen the sanitized output — a dropped or secret field name simply matches nothing. No matches is success: exit `0` with an empty array/table.
+
+```sh
+zscalerctl zia locations list --filter country=US --filter name~branch
+```
+
 ## Security posture
 
 - Defensive administration only — not an exploitation, credential-discovery, bypass, or traffic-interception tool.

@@ -31,4 +31,23 @@ can modify tenant state.
 - Absent fields are deliberately excluded by a fail-closed allow-list — do
   not try to recover them.
 
+## Narrowing results
+
+Output is deterministic JSON, so filter with `jq` — field names come from
+`schema list`:
+
+```sh
+# rules whose name matches a pattern (case-insensitive)
+zscalerctl zia url-filtering-rules list | jq '[.[] | select(.name | test("(?i)social"))]'
+# rules that reference a URL category
+zscalerctl zia url-filtering-rules list | jq '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
+# fuzzy-ish: match a term anywhere in any field
+zscalerctl zia locations list | jq --arg q "branch" '[.[] | select(tostring | test($q; "i"))]'
+```
+
+For policy questions ("would this URL be blocked for this user?"), do not
+guess evaluation semantics: fetch the relevant rules with this tool, then
+apply the zscaler-skill (policy precedence, wildcard and SSL-inspection
+semantics) if it is installed.
+
 Full guide: `AGENTS.md` in the zscalerctl repository.

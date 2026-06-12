@@ -45,6 +45,25 @@ to set them rather than inventing values or hunting through shell config.**
   `get` of a nonexistent id), `5` live API failure, `6` partial dump.
 - Narrow output with `--fields a,b,c` (can only narrow, never widen).
 
+## Narrowing results
+
+`list` operations narrow in-process (no `jq` needed); field names come from
+`schema list`:
+
+```sh
+zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive
+zscalerctl zia locations list --filter country=US --filter name~hq  # exact + AND
+zscalerctl zia locations list --search branch                       # any rendered field value
+```
+
+Both run after projection/redaction (narrow only, never widen; a secret or
+dropped field name matches nothing) and an empty match is exit `0` with `[]`.
+For richer queries, filter the JSON with `jq`:
+
+```sh
+zscalerctl zia url-filtering-rules list | jq '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
+```
+
 ## Boundaries
 
 Output is sanitized by a fail-closed allow-list; secrets never render in any
