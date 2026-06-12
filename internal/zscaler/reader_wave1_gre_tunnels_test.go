@@ -5,9 +5,10 @@ package zscaler
 // test builds the SDK struct with a distinctive canary in every promoted
 // sub-field, converts it with greTunnelSourceRecord, projects it through the
 // resources catalog, and asserts the per-mode posture: full VIP detail in
-// standard mode, infrastructure-only detail (no VIP address, no geo) in share
-// mode, nothing in paranoid mode, and never any admin-identity leakage from
-// the excluded managedBy/lastModifiedBy references.
+// standard mode, infrastructure-only detail (no VIP address, no geo/location:
+// latitude, longitude, city, region, and countryCode all drop) in share mode,
+// nothing in paranoid mode, and never any admin-identity leakage from the
+// excluded managedBy/lastModifiedBy references.
 //
 // This file owns its tests so reader_test.go and reader_sourcerecord_test.go
 // stay untouched by the wave; it reuses package helpers (projectOneRecord,
@@ -146,9 +147,10 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 	records := []resources.SourceRecord{greTunnelSourceRecord(tunnel)}
 
 	// Share mode: the VIP objects remain (tenant-config, standard+share) with
-	// their operational and tenant-config sub-fields, while the
-	// sensitive-identifier sub-fields (virtualIp, latitude, longitude, city)
-	// are dropped.
+	// their operational sub-fields and the datacenter label, while the
+	// sensitive-identifier sub-fields (virtualIp, latitude, longitude, city,
+	// region, countryCode) are dropped per the referee restriction matching
+	// the catalog's existing standard-only region precedent.
 	share := projectOneRecordInMode(t, resources.ProductZIA, resourceGRETunnels, redact.ModeShare, records)
 	shareWant := []struct {
 		field string
@@ -158,15 +160,11 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 			"id":                 901,
 			"privateServiceEdge": true,
 			"datacenter":         "FRA4",
-			"countryCode":        "DE",
-			"region":             "EMEA",
 		}},
 		{"secondaryDestVip", map[string]any{
 			"id":                 902,
 			"privateServiceEdge": false,
 			"datacenter":         "AMS2",
-			"countryCode":        "NL",
-			"region":             "EMEA",
 		}},
 	}
 	for _, tc := range shareWant {
@@ -181,7 +179,7 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 				t.Errorf("share-mode gre-tunnels %s.%s = %v, want %v", tc.field, key, got, want)
 			}
 		}
-		for _, dropped := range []string{"virtualIp", "latitude", "longitude", "city"} {
+		for _, dropped := range []string{"virtualIp", "latitude", "longitude", "city", "region", "countryCode"} {
 			if value, ok := object[dropped]; ok {
 				t.Errorf("share-mode gre-tunnels %s.%s = %v, want dropped", tc.field, dropped, value)
 			}
@@ -191,7 +189,7 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 		}
 	}
 	assertNoCanaries(t, "gre-tunnels", share,
-		greWave1PrimaryVIPCanary, greWave1SecondaryVIPCanary, "Frankfurt", "Amsterdam")
+		greWave1PrimaryVIPCanary, greWave1SecondaryVIPCanary, "Frankfurt", "Amsterdam", "EMEA")
 
 	// Paranoid mode: the parent VIP objects are standard+share only, so both
 	// disappear entirely.
@@ -202,7 +200,7 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 		}
 	}
 	assertNoCanaries(t, "gre-tunnels", paranoid,
-		greWave1PrimaryVIPCanary, greWave1SecondaryVIPCanary, "FRA4", "AMS2", "Frankfurt", "Amsterdam")
+		greWave1PrimaryVIPCanary, greWave1SecondaryVIPCanary, "FRA4", "AMS2", "Frankfurt", "Amsterdam", "EMEA")
 }
 
 func TestGRETunnelSourceRecordExcludedAdminIdentitiesStayDropped(t *testing.T) {

@@ -2688,11 +2688,12 @@ func catalogZIA() ResourceCatalog {
 }
 
 // greDestVipFields models the destination data-center VIP sub-object shared by
-// the gre-tunnels primaryDestVip and secondaryDestVip fields. The datacenter,
-// countryCode, and region values describe Zscaler-side infrastructure, but the
-// VIP address itself and the precise geo fields (latitude, longitude, city)
+// the gre-tunnels primaryDestVip and secondaryDestVip fields. The datacenter
+// value is a Zscaler-side infrastructure label, but the VIP address itself and
+// the geo/location fields (latitude, longitude, city, region, countryCode)
 // pinpoint where a tenant's traffic terminates, so they stay standard-only per
-// the sensitive-identifier precedent for IPs and geo coordinates.
+// the sensitive-identifier precedent for IPs and geo data (region matches the
+// existing standard-only sensitiveIdentifierField("region") in this catalog).
 func greDestVipFields() []FieldSpec {
 	return []FieldSpec{
 		operationalField("id", allModes()),
@@ -2702,7 +2703,7 @@ func greDestVipFields() []FieldSpec {
 		sensitiveIdentifierField("latitude"),
 		sensitiveIdentifierField("longitude"),
 		sensitiveIdentifierField("city"),
-		tenantConfigField("countryCode", standardShareModes()),
-		tenantConfigField("region", standardShareModes()),
+		sensitiveIdentifierField("countryCode"),
+		sensitiveIdentifierField("region"),
 	}
 }
