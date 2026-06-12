@@ -590,7 +590,7 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 							ManagedBy: []locationgroups.ManagedBy{
 								{
 									ID:   1003,
-									Name: adminCanary,
+									Name: "location-group-sdwan-partner",
 								},
 							},
 							EnforceAuthentication: true,
@@ -640,12 +640,21 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 			t.Errorf("projected location-groups %s = %v, want typed redaction marker", field, got[field])
 		}
 	}
-	for _, field := range []string{"dynamicLocationGroupCriteria", "locations", "lastModUser"} {
+	// dynamicLocationGroupCriteria and locations are catalog-classified as of
+	// wave 1 and render in standard mode (see
+	// reader_wave1_location_groups_test.go); only the admin reference stays
+	// dropped.
+	for _, field := range []string{"lastModUser"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected location-groups = %#v, want no %s", got, field)
 		}
 	}
-	for _, forbidden := range []string{adminCanary, locationCanary, criteriaCanary} {
+	for _, present := range []string{locationCanary, criteriaCanary} {
+		if !strings.Contains(fmt.Sprint(got), present) {
+			t.Errorf("projected location-groups = %#v, want %q rendered via promoted fields", got, present)
+		}
+	}
+	for _, forbidden := range []string{adminCanary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected location-groups = %#v, want no %q", got, forbidden)
 		}
@@ -982,7 +991,7 @@ func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if !strings.Contains(comment, "<REDACTED:SECRET>") {
 		t.Errorf("projected static-ips comment = %v, want typed redaction marker", got["comment"])
 	}
-	for _, field := range []string{"city", "managedBy", "lastModifiedBy"} {
+	for _, field := range []string{"managedBy", "lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected static-ips = %#v, want no %s", got, field)
 		}
@@ -1060,12 +1069,18 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if !strings.Contains(comment, "<REDACTED:SECRET>") {
 		t.Errorf("projected gre-tunnels comment = %v, want typed redaction marker", got["comment"])
 	}
-	for _, field := range []string{"managedBy", "lastModifiedBy", "primaryDestVip", "secondaryDestVip"} {
+	for _, field := range []string{"managedBy", "lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected gre-tunnels = %#v, want no %s", got, field)
 		}
 	}
-	for _, forbidden := range []string{adminCanary, virtualIPCanary} {
+	// primaryDestVip/secondaryDestVip are catalog-classified with explicit
+	// sub-field modeling; virtualIPCanary renders in standard mode only. Mode
+	// behaviour is covered in reader_wave1_gre_tunnels_test.go.
+	if vip, ok := valueAtPath(got, "primaryDestVip.virtualIp"); !ok || vip != virtualIPCanary {
+		t.Errorf("projected gre-tunnels primaryDestVip.virtualIp = %v, want %q", vip, virtualIPCanary)
+	}
+	for _, forbidden := range []string{adminCanary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected gre-tunnels = %#v, want no %q", got, forbidden)
 		}
@@ -1204,7 +1219,7 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 							Users: []ziacommon.IDNameExtensions{
 								{
 									ID:   1002,
-									Name: adminCanary,
+									Name: "ssl rule scoped user",
 								},
 							},
 							LastModifiedTime: 1712345678,
@@ -1248,7 +1263,7 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 	if action["type"] != "DECRYPT" {
 		t.Errorf("projected ssl-inspection-rules action.type = %v, want DECRYPT", action["type"])
 	}
-	for _, field := range []string{"sslInterceptionCert", "users", "lastModifiedBy"} {
+	for _, field := range []string{"sslInterceptionCert", "lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected ssl-inspection-rules = %#v, want no %s", got, field)
 		}
@@ -1469,11 +1484,13 @@ func TestReaderListURLFilteringRulesProjectsSDKShapeThroughAllowList(t *testing.
 		t.Fatalf("SDKReader.List(zia, url-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "url-filtering-rules", records)
-	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, adminCanary, userCanary, profileCanary)
-	for _, field := range []string{"cbiProfile", "lastModifiedBy", "users"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected url-filtering-rules = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, adminCanary, profileCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected url-filtering-rules = %#v, want no lastModifiedBy", got)
+	}
+	users := mustProjectedList(t, got, "users")
+	if len(users) != 1 || toString(users[0].(map[string]any)["name"]) != userCanary {
+		t.Errorf("projected url-filtering-rules users = %#v, want one entry named %q", users, userCanary)
 	}
 	if got["action"] != "ALLOW" {
 		t.Errorf("projected url-filtering-rules action = %v, want ALLOW", got["action"])
@@ -1546,11 +1563,17 @@ func TestReaderListFirewallFilteringRulesProjectsSDKShapeThroughAllowList(t *tes
 		t.Fatalf("SDKReader.List(zia, firewall-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "firewall-filtering-rules", records)
-	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken, adminCanary, userCanary, zpaCanary)
-	for _, field := range []string{"lastModifiedBy", "users", "zpaAppSegments"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected firewall-filtering-rules = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken, adminCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected firewall-filtering-rules = %#v, want no lastModifiedBy", got)
+	}
+	// users and zpaAppSegments are catalog-classified (standard-only) as of
+	// the wave-1 field promotion, so their reference names render here.
+	if !strings.Contains(fmt.Sprint(got["users"]), userCanary) {
+		t.Errorf("projected firewall-filtering-rules users = %v, want name %q", got["users"], userCanary)
+	}
+	if !strings.Contains(fmt.Sprint(got["zpaAppSegments"]), zpaCanary) {
+		t.Errorf("projected firewall-filtering-rules zpaAppSegments = %v, want name %q", got["zpaAppSegments"], zpaCanary)
 	}
 	if got["action"] != "ALLOW" {
 		t.Errorf("projected firewall-filtering-rules action = %v, want ALLOW", got["action"])
@@ -1622,8 +1645,8 @@ func TestReaderListForwardingRulesProjectsSDKShapeThroughAllowList(t *testing.T)
 		t.Fatalf("SDKReader.List(zia, forwarding-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "forwarding-rules", records)
-	assertNoCanaries(t, "forwarding-rules", got, canary, bareFreeTextToken, adminCanary, userCanary, zpaCanary)
-	for _, field := range []string{"lastModifiedBy", "users", "zpaApplicationSegments", "zpaApplicationSegmentGroups"} {
+	assertNoCanaries(t, "forwarding-rules", got, canary, bareFreeTextToken, adminCanary)
+	for _, field := range []string{"lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected forwarding-rules = %#v, want no %s", got, field)
 		}

@@ -1029,7 +1029,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 }
 
 func ipsSignatureRuleSourceRecord(rule ipssignaturerules.IPSSignatureRules) resources.SourceRecord {
-	return resources.NewSourceRecord(map[string]any{
+	fields := map[string]any{
 		"id":                         rule.ID,
 		"name":                       rule.Name,
 		"description":                rule.Description,
@@ -1042,7 +1042,17 @@ func ipsSignatureRuleSourceRecord(rule ipssignaturerules.IPSSignatureRules) reso
 		"dynamicValidationSucceeded": rule.DynamicValidationSucceeded,
 		"disabledFromZSCM":           rule.DisabledFromZSCM,
 		"dynamicValRejectCode":       rule.DynamicValRejectCode,
-	})
+	}
+	// ruleText is deliberately never mapped: the Suricata/Snort signature body
+	// is catalog-classified as a secret and must not reach the source record.
+	if rule.Category != nil {
+		fields["category"] = map[string]any{
+			"id":            rule.Category.ID,
+			"name":          rule.Category.Name,
+			"isNameL10nTag": rule.Category.IsNameL10nTag,
+		}
+	}
+	return resources.NewSourceRecord(fields)
 }
 
 // cloudAppControlRuleTypes is a fallback list of Cloud App Control rule-type

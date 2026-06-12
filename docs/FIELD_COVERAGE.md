@@ -29,10 +29,10 @@ its reason, which feeds field-expansion planning.
 ## Repo-Wide Totals
 
 - Resources: 165
-- Total exported SDK fields: 2940
-- Classified: 2754
-- Ignored (fail-closed dropped): 186
-- Coverage: 93.7%
+- Total exported SDK fields: 2976
+- Classified: 2868
+- Ignored (fail-closed dropped): 108
+- Coverage: 96.4%
 
 ## Per-Product Totals
 
@@ -40,7 +40,7 @@ Ranked worst coverage first.
 
 | Product | Resources | Total | Classified | Ignored | Coverage |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| zia | 102 | 1642 | 1459 | 183 | 88.9% |
+| zia | 102 | 1678 | 1573 | 105 | 93.7% |
 | zidentity | 3 | 43 | 41 | 2 | 95.3% |
 | ztw | 21 | 292 | 291 | 1 | 99.7% |
 | zcc | 11 | 325 | 325 | 0 | 100.0% |
@@ -54,29 +54,27 @@ the field names and reasons behind each row.
 
 | Product | Resource | Total | Classified | Ignored | Coverage |
 | --- | --- | ---: | ---: | ---: | ---: |
-| zia | locations | 60 | 5 | 55 | 8.3% |
 | zia | sublocations | 60 | 15 | 45 | 25.0% |
-| zia | ssl-inspection-rules | 32 | 13 | 19 | 40.6% |
-| zia | gre-tunnels | 12 | 8 | 4 | 66.7% |
-| zia | location-groups | 10 | 7 | 3 | 70.0% |
+| zia | locations | 60 | 35 | 25 | 58.3% |
 | zia | rule-labels | 7 | 5 | 2 | 71.4% |
 | zia | workload-groups | 7 | 5 | 2 | 71.4% |
 | zia | users | 22 | 16 | 6 | 72.7% |
-| zia | static-ips | 11 | 8 | 3 | 72.7% |
-| zia | url-filtering-rules | 42 | 31 | 11 | 73.8% |
 | ztw | activation-status | 4 | 3 | 1 | 75.0% |
-| zia | forwarding-rules | 38 | 30 | 8 | 78.9% |
 | zia | cloud-app-control | 39 | 31 | 8 | 79.5% |
-| zia | firewall-filtering-rules | 39 | 32 | 7 | 82.1% |
-| zia | ips-signature-rules | 14 | 12 | 2 | 85.7% |
+| zia | static-ips | 11 | 9 | 2 | 81.8% |
 | zidentity | resource-servers | 16 | 14 | 2 | 87.5% |
 | zia | dedicated-ip-gateways | 9 | 8 | 1 | 88.9% |
 | zia | proxy-gateways | 9 | 8 | 1 | 88.9% |
 | zia | proxies | 11 | 10 | 1 | 90.9% |
 | zia | url-categories | 24 | 22 | 2 | 91.7% |
 | zia | dns-gateways | 14 | 13 | 1 | 92.9% |
+| zia | gre-tunnels | 30 | 28 | 2 | 93.3% |
+| zia | url-filtering-rules | 42 | 40 | 2 | 95.2% |
 | zia | bandwidth-control-rules | 21 | 20 | 1 | 95.2% |
+| zia | location-groups | 28 | 27 | 1 | 96.4% |
+| zia | ssl-inspection-rules | 32 | 31 | 1 | 96.9% |
 | zia | nat-control-rules | 36 | 35 | 1 | 97.2% |
+| zia | firewall-filtering-rules | 39 | 38 | 1 | 97.4% |
 | zia | nss-feeds | 126 | 126 | 0 | 100.0% |
 | zcc | company-info | 111 | 111 | 0 | 100.0% |
 | zia | org-information | 69 | 69 | 0 | 100.0% |
@@ -98,6 +96,7 @@ the field names and reasons behind each row.
 | zpa | service-edge-groups | 41 | 41 | 0 | 100.0% |
 | zia | ips-policies | 39 | 39 | 0 | 100.0% |
 | zcc | admin-roles | 38 | 38 | 0 | 100.0% |
+| zia | forwarding-rules | 38 | 38 | 0 | 100.0% |
 | zia | risk-profiles | 37 | 37 | 0 | 100.0% |
 | zia | file-type-rules | 35 | 35 | 0 | 100.0% |
 | zia | end-user-notification-settings | 30 | 30 | 0 | 100.0% |
@@ -133,6 +132,7 @@ the field names and reasons behind each row.
 | zcc | fail-open-policy | 14 | 14 | 0 | 100.0% |
 | zcc | web-app-services | 14 | 14 | 0 | 100.0% |
 | zia | auth-settings | 14 | 14 | 0 | 100.0% |
+| zia | ips-signature-rules | 14 | 14 | 0 | 100.0% |
 | zpa | microtenants | 14 | 14 | 0 | 100.0% |
 | ztw | traffic-log-rules | 14 | 14 | 0 | 100.0% |
 | zcc | predefined-ip-apps | 13 | 13 | 0 | 100.0% |

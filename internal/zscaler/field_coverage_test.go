@@ -70,9 +70,11 @@ func writeFieldCoverageFile(t *testing.T, path string, data []byte) {
 func assertFieldCoverageSanity(t *testing.T, report fieldCoverageReport) {
 	t.Helper()
 
-	// locations is the canonical narrow-identity-surface resource: it classifies
-	// a small set and intentionally ignores the rest of a wide SDK struct. This
-	// must track the registry in schema_zia_test.go.
+	// locations is the canonical wide SDK struct and the wave-1 expansion
+	// flagship: 35 of its 60 fields are classified. These assertions are
+	// FLOORS, not exact pins — coverage may only grow, so future promotions
+	// pass while an accidental classification regression (a field silently
+	// dropped from the catalog) fails loudly.
 	var locations *fieldCoverageResource
 	for i := range report.Resources {
 		r := &report.Resources[i]
@@ -84,11 +86,11 @@ func assertFieldCoverageSanity(t *testing.T, report fieldCoverageReport) {
 	if locations == nil {
 		t.Fatalf("field coverage report missing zia/locations")
 	}
-	if locations.ClassifiedFields != 5 {
-		t.Errorf("zia/locations classified = %d, want 5", locations.ClassifiedFields)
+	if locations.ClassifiedFields < 35 {
+		t.Errorf("zia/locations classified = %d, want >= 35 (coverage must not regress)", locations.ClassifiedFields)
 	}
-	if locations.IgnoredFields < 35 {
-		t.Errorf("zia/locations ignored = %d, want >= 35", locations.IgnoredFields)
+	if locations.TotalFields != 60 {
+		t.Errorf("zia/locations total SDK fields = %d, want 60 (changes only on an SDK bump, which warrants re-review)", locations.TotalFields)
 	}
 
 	// Every resource row must be internally consistent: classified + ignored ==
