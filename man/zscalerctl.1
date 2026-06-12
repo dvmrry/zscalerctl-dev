@@ -55,6 +55,22 @@ and never include record values, credentials, or secrets.
 Comma-separated list of output fields to keep, applied across all formats. It
 can only narrow the already-sanitized output; it cannot reveal a dropped or
 secret field. An unknown field name is a usage error.
+.TP
+.BI \-\-filter " key=value | key~value"
+Narrow list results to records whose rendered field value matches:
+\fBkey=value\fR is an exact match, \fBkey~value\fR a case-insensitive
+substring match. Repeatable; all filters must match (AND). Valid for
+\fBlist\fR operations only; anywhere else it is a usage error. Filtering runs
+strictly after projection and redaction, so it can only narrow the sanitized
+record set: a filter naming a dropped or secret field matches nothing, and a
+record lacking the key does not match. No matches is success (exit 0) with an
+empty result.
+.TP
+.BI \-\-search " term"
+Narrow list results to records where any rendered field value contains
+\fIterm\fR (case-insensitive), including array and nested values via their
+rendered string forms. Valid for \fBlist\fR operations only; same
+post-projection guarantees as \fB\-\-filter\fR, and may be combined with it.
 .SH COMMANDS
 .TP
 .B <product> <resource> list
