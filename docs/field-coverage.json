@@ -2,35 +2,19 @@
   "schema": "zscalerctl/field-coverage/v1",
   "totals": {
     "resources": 165,
-    "total_fields": 2976,
-    "classified_fields": 2868,
-    "ignored_fields": 108,
-    "coverage_percent": 96.4
+    "total_fields": 2979,
+    "classified_fields": 2913,
+    "ignored_fields": 66,
+    "coverage_percent": 97.8
   },
   "products": [
     {
       "product": "zia",
       "resources": 102,
-      "total_fields": 1678,
-      "classified_fields": 1573,
-      "ignored_fields": 105,
-      "coverage_percent": 93.7
-    },
-    {
-      "product": "zidentity",
-      "resources": 3,
-      "total_fields": 43,
-      "classified_fields": 41,
-      "ignored_fields": 2,
-      "coverage_percent": 95.3
-    },
-    {
-      "product": "ztw",
-      "resources": 21,
-      "total_fields": 292,
-      "classified_fields": 291,
-      "ignored_fields": 1,
-      "coverage_percent": 99.7
+      "total_fields": 1681,
+      "classified_fields": 1615,
+      "ignored_fields": 66,
+      "coverage_percent": 96.1
     },
     {
       "product": "zcc",
@@ -41,110 +25,31 @@
       "coverage_percent": 100
     },
     {
+      "product": "zidentity",
+      "resources": 3,
+      "total_fields": 43,
+      "classified_fields": 43,
+      "ignored_fields": 0,
+      "coverage_percent": 100
+    },
+    {
       "product": "zpa",
       "resources": 28,
       "total_fields": 638,
       "classified_fields": 638,
       "ignored_fields": 0,
       "coverage_percent": 100
+    },
+    {
+      "product": "ztw",
+      "resources": 21,
+      "total_fields": 292,
+      "classified_fields": 292,
+      "ignored_fields": 0,
+      "coverage_percent": 100
     }
   ],
   "resources": [
-    {
-      "product": "zia",
-      "resource": "sublocations",
-      "sdk_types": [
-        "locationmanagement.Locations/sublocations"
-      ],
-      "total_fields": 60,
-      "classified_fields": 15,
-      "ignored_fields": 45,
-      "coverage_percent": 25,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 4
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 6
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "additional bandwidth, auth, and policy controls are mapped then dropped until separately reviewed for sublocation output",
-          "fields": [
-            "aupBlockInternetUntilAccepted",
-            "aupEnabled",
-            "aupForceSslInspection",
-            "aupTimeoutInDays",
-            "basicAuthEnabled",
-            "cautionEnabled",
-            "cookiesAndProxy",
-            "digestAuthEnabled",
-            "displayTimeUnit",
-            "dnBandwidth",
-            "idleTimeInMinutes",
-            "iotDiscoveryEnabled",
-            "iotEnforcePolicySet",
-            "kerberosAuth",
-            "language",
-            "surrogateIP",
-            "surrogateIPEnforcedForKnownBrowsers",
-            "surrogateRefreshTimeInMinutes",
-            "surrogateRefreshTimeUnit",
-            "upBandwidth",
-            "xffForwardEnabled",
-            "zappSSLScanEnabled"
-          ]
-        },
-        {
-          "reason": "geo, extranet, and IPv6 references are mapped then dropped until separately classified",
-          "fields": [
-            "defaultExtranetDns",
-            "defaultExtranetTsPool",
-            "extranet",
-            "extranetDns",
-            "extranetIpPool",
-            "geoOverride",
-            "ipv6Dns64Prefix",
-            "ipv6Enabled"
-          ]
-        },
-        {
-          "reason": "hierarchy, scope, and group references are mapped then dropped until separately modeled",
-          "fields": [
-            "childCount",
-            "dynamiclocationGroups",
-            "ecLocation",
-            "excludeFromDynamicGroups",
-            "excludeFromManualGroups",
-            "matchInChild",
-            "other6SubLocation",
-            "otherSubLocation",
-            "staticLocationGroups",
-            "subLocAccIds",
-            "subLocScope",
-            "subLocScopeEnabled",
-            "subLocScopeValues",
-            "virtualZenClusters",
-            "virtualZens"
-          ]
-        }
-      ]
-    },
     {
       "product": "zia",
       "resource": "locations",
@@ -221,6 +126,79 @@
             "subLocScope",
             "subLocScopeEnabled",
             "subLocScopeValues"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
+      "resource": "sublocations",
+      "sdk_types": [
+        "locationmanagement.Locations/sublocations"
+      ],
+      "total_fields": 60,
+      "classified_fields": 37,
+      "ignored_fields": 23,
+      "coverage_percent": 61.7,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 9
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 4
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 22
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "UI display-unit hints carry no configuration signal",
+          "fields": [
+            "displayTimeUnit",
+            "surrogateRefreshTimeUnit"
+          ]
+        },
+        {
+          "reason": "geo, extranet, and IPv6 references are mapped then dropped until separately classified",
+          "fields": [
+            "defaultExtranetDns",
+            "defaultExtranetTsPool",
+            "extranet",
+            "extranetDns",
+            "extranetIpPool",
+            "geoOverride",
+            "ipv6Dns64Prefix",
+            "ipv6Enabled"
+          ]
+        },
+        {
+          "reason": "hierarchy, scope, and group references are mapped then dropped until separately modeled",
+          "fields": [
+            "childCount",
+            "dynamiclocationGroups",
+            "ecLocation",
+            "excludeFromDynamicGroups",
+            "excludeFromManualGroups",
+            "matchInChild",
+            "staticLocationGroups",
+            "subLocAccIds",
+            "subLocScope",
+            "subLocScopeEnabled",
+            "subLocScopeValues",
+            "virtualZenClusters",
+            "virtualZens"
           ]
         }
       ]
@@ -311,13 +289,13 @@
         "ziausers.Users"
       ],
       "total_fields": 22,
-      "classified_fields": 16,
-      "ignored_fields": 6,
-      "coverage_percent": 72.7,
+      "classified_fields": 18,
+      "ignored_fields": 4,
+      "coverage_percent": 81.8,
       "class_breakdown": [
         {
           "class": "free_text",
-          "count": 1
+          "count": 3
         },
         {
           "class": "operational_metadata",
@@ -338,84 +316,17 @@
       ],
       "ignored_by_reason": [
         {
-          "reason": "user department reference under zia/users renders id/name only; query zia/departments for department metadata",
+          "reason": "user department reference under zia/users renders id/name/comments only; query zia/departments for department metadata",
           "fields": [
-            "comments",
             "deleted",
             "idp_id"
           ]
         },
         {
-          "reason": "user group references under zia/users render id/name only; query zia/groups for group metadata",
+          "reason": "user group references under zia/users render id/name/comments only; query zia/groups for group metadata",
           "fields": [
-            "comments",
             "idp_id",
             "isSystemDefined"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "ztw",
-      "resource": "activation-status",
-      "sdk_types": [
-        "ztwactivation.ECAdminActivation"
-      ],
-      "total_fields": 4,
-      "classified_fields": 3,
-      "ignored_fields": 1,
-      "coverage_percent": 75,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin-by-name activation status map is unmodeled tenant-identifying detail; the scalar org/admin status fields are projected instead",
-          "fields": [
-            "adminStatusMap"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "cloud-app-control",
-      "sdk_types": [
-        "cloudappcontrol.WebApplicationRules"
-      ],
-      "total_fields": 39,
-      "classified_fields": 31,
-      "ignored_fields": 8,
-      "coverage_percent": 79.5,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 17
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 13
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "user/group/device references and nested instance/profile structures are held until separately modeled",
-          "fields": [
-            "cbiProfile",
-            "cloudAppInstances",
-            "cloudAppRiskProfile",
-            "departments",
-            "deviceGroups",
-            "devices",
-            "groups",
-            "users"
           ]
         }
       ]
@@ -454,221 +365,6 @@
           "fields": [
             "lastModifiedBy",
             "managedBy"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zidentity",
-      "resource": "resource-servers",
-      "sdk_types": [
-        "zidresourceservers.ResourceServers",
-        "zidresourceservers.Scopes",
-        "zidresourceservers.Service",
-        "zidresourceservers.ServiceScopes"
-      ],
-      "total_fields": 16,
-      "classified_fields": 14,
-      "ignored_fields": 2,
-      "coverage_percent": 87.5,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 1
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 8
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "resource server service context can expose product or organization identifiers; classify deliberately before rendering",
-          "fields": [
-            "cloudName",
-            "orgName"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "dedicated-ip-gateways",
-      "sdk_types": [
-        "proxies.DedicatedIPGateways"
-      ],
-      "total_fields": 9,
-      "classified_fields": 8,
-      "ignored_fields": 1,
-      "coverage_percent": 88.9,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin references are mapped then dropped by projection",
-          "fields": [
-            "lastModifiedBy"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "proxy-gateways",
-      "sdk_types": [
-        "proxygateways.ProxyGateways"
-      ],
-      "total_fields": 9,
-      "classified_fields": 8,
-      "ignored_fields": 1,
-      "coverage_percent": 88.9,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin references are mapped then dropped by projection",
-          "fields": [
-            "lastModifiedBy"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "proxies",
-      "sdk_types": [
-        "proxies.Proxies"
-      ],
-      "total_fields": 11,
-      "classified_fields": 10,
-      "ignored_fields": 1,
-      "coverage_percent": 90.9,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 1
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 4
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin references are mapped then dropped by projection",
-          "fields": [
-            "lastModifiedBy"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "url-categories",
-      "sdk_types": [
-        "urlcategories.URLCategory"
-      ],
-      "total_fields": 24,
-      "classified_fields": 22,
-      "ignored_fields": 2,
-      "coverage_percent": 91.7,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 10
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 8
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "scope and opaque SDK helper fields are mapped then dropped until separately classified",
-          "fields": [
-            "scopes",
-            "val"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "dns-gateways",
-      "sdk_types": [
-        "dnsgateways.DNSGateways"
-      ],
-      "total_fields": 14,
-      "classified_fields": 13,
-      "ignored_fields": 1,
-      "coverage_percent": 92.9,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 2
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 6
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin references are mapped then dropped by projection",
-          "fields": [
-            "lastModifiedBy"
           ]
         }
       ]
@@ -753,14 +449,15 @@
     },
     {
       "product": "zia",
-      "resource": "bandwidth-control-rules",
+      "resource": "url-categories",
       "sdk_types": [
-        "bandwidthcontrolrules.BandwidthControlRules"
+        "urlcategories.Scopes",
+        "urlcategories.URLCategory"
       ],
-      "total_fields": 21,
-      "classified_fields": 20,
+      "total_fields": 27,
+      "classified_fields": 26,
       "ignored_fields": 1,
-      "coverage_percent": 95.2,
+      "coverage_percent": 96.3,
       "class_breakdown": [
         {
           "class": "free_text",
@@ -768,18 +465,22 @@
         },
         {
           "class": "operational_metadata",
-          "count": 7
+          "count": 11
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 8
         },
         {
           "class": "tenant_configuration",
-          "count": 12
+          "count": 6
         }
       ],
       "ignored_by_reason": [
         {
-          "reason": "admin references are mapped then dropped by projection",
+          "reason": "opaque SDK helper field is mapped then dropped until separately classified",
           "fields": [
-            "lastModifiedBy"
+            "val"
           ]
         }
       ]
@@ -862,43 +563,6 @@
           "reason": "admin RBA access metadata is mapped then dropped until separately modeled",
           "fields": [
             "accessControl"
-          ]
-        }
-      ]
-    },
-    {
-      "product": "zia",
-      "resource": "nat-control-rules",
-      "sdk_types": [
-        "natcontrol.NatControlPolicies"
-      ],
-      "total_fields": 36,
-      "classified_fields": 35,
-      "ignored_fields": 1,
-      "coverage_percent": 97.2,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 11
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 6
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 17
-        }
-      ],
-      "ignored_by_reason": [
-        {
-          "reason": "admin references are mapped then dropped by projection",
-          "fields": [
-            "lastModifiedBy"
           ]
         }
       ]
@@ -1556,6 +1220,32 @@
     },
     {
       "product": "zia",
+      "resource": "cloud-app-control",
+      "sdk_types": [
+        "cloudappcontrol.WebApplicationRules"
+      ],
+      "total_fields": 39,
+      "classified_fields": 39,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 17
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 21
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
       "resource": "ips-policies",
       "sdk_types": [
         "ipspolicies.FirewallIPSRules"
@@ -1674,6 +1364,40 @@
         {
           "class": "tenant_configuration",
           "count": 3
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "nat-control-rules",
+      "sdk_types": [
+        "natcontrol.NatControlPolicies"
+      ],
+      "total_fields": 36,
+      "classified_fields": 36,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 11
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 6
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 17
         }
       ],
       "ignored_by_reason": []
@@ -1888,6 +1612,36 @@
         {
           "class": "tenant_configuration",
           "count": 8
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "bandwidth-control-rules",
+      "sdk_types": [
+        "bandwidthcontrolrules.BandwidthControlRules"
+      ],
+      "total_fields": 21,
+      "classified_fields": 21,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 7
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 12
         }
       ],
       "ignored_by_reason": []
@@ -2471,6 +2225,39 @@
       "ignored_by_reason": []
     },
     {
+      "product": "zidentity",
+      "resource": "resource-servers",
+      "sdk_types": [
+        "zidresourceservers.ResourceServers",
+        "zidresourceservers.Scopes",
+        "zidresourceservers.Service",
+        "zidresourceservers.ServiceScopes"
+      ],
+      "total_fields": 16,
+      "classified_fields": 16,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 8
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
       "product": "zpa",
       "resource": "posture-profiles",
       "sdk_types": [
@@ -2699,6 +2486,36 @@
         {
           "class": "secret",
           "count": 3
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "dns-gateways",
+      "sdk_types": [
+        "dnsgateways.DNSGateways"
+      ],
+      "total_fields": 14,
+      "classified_fields": 14,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 5
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 2
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -3139,6 +2956,40 @@
       "ignored_by_reason": []
     },
     {
+      "product": "zia",
+      "resource": "proxies",
+      "sdk_types": [
+        "proxies.Proxies"
+      ],
+      "total_fields": 11,
+      "classified_fields": 11,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 1
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 4
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
       "product": "ztw",
       "resource": "network-services",
       "sdk_types": [
@@ -3434,6 +3285,66 @@
         {
           "class": "tenant_configuration",
           "count": 5
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "dedicated-ip-gateways",
+      "sdk_types": [
+        "proxies.DedicatedIPGateways"
+      ],
+      "total_fields": 9,
+      "classified_fields": 9,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 3
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "proxy-gateways",
+      "sdk_types": [
+        "proxygateways.ProxyGateways"
+      ],
+      "total_fields": 9,
+      "classified_fields": 9,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -4602,6 +4513,28 @@
         {
           "class": "tenant_configuration",
           "count": 3
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "ztw",
+      "resource": "activation-status",
+      "sdk_types": [
+        "ztwactivation.ECAdminActivation"
+      ],
+      "total_fields": 4,
+      "classified_fields": 4,
+      "ignored_fields": 0,
+      "coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 3
+        },
+        {
+          "class": "secret",
+          "count": 1
         }
       ],
       "ignored_by_reason": []

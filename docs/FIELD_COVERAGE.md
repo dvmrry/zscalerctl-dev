@@ -29,10 +29,10 @@ its reason, which feeds field-expansion planning.
 ## Repo-Wide Totals
 
 - Resources: 165
-- Total exported SDK fields: 2976
-- Classified: 2868
-- Ignored (fail-closed dropped): 108
-- Coverage: 96.4%
+- Total exported SDK fields: 2979
+- Classified: 2913
+- Ignored (fail-closed dropped): 66
+- Coverage: 97.8%
 
 ## Per-Product Totals
 
@@ -40,11 +40,11 @@ Ranked worst coverage first.
 
 | Product | Resources | Total | Classified | Ignored | Coverage |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| zia | 102 | 1678 | 1573 | 105 | 93.7% |
-| zidentity | 3 | 43 | 41 | 2 | 95.3% |
-| ztw | 21 | 292 | 291 | 1 | 99.7% |
+| zia | 102 | 1681 | 1615 | 66 | 96.1% |
 | zcc | 11 | 325 | 325 | 0 | 100.0% |
+| zidentity | 3 | 43 | 43 | 0 | 100.0% |
 | zpa | 28 | 638 | 638 | 0 | 100.0% |
+| ztw | 21 | 292 | 292 | 0 | 100.0% |
 
 ## Per-Resource Coverage
 
@@ -54,26 +54,17 @@ the field names and reasons behind each row.
 
 | Product | Resource | Total | Classified | Ignored | Coverage |
 | --- | --- | ---: | ---: | ---: | ---: |
-| zia | sublocations | 60 | 15 | 45 | 25.0% |
 | zia | locations | 60 | 35 | 25 | 58.3% |
+| zia | sublocations | 60 | 37 | 23 | 61.7% |
 | zia | rule-labels | 7 | 5 | 2 | 71.4% |
 | zia | workload-groups | 7 | 5 | 2 | 71.4% |
-| zia | users | 22 | 16 | 6 | 72.7% |
-| ztw | activation-status | 4 | 3 | 1 | 75.0% |
-| zia | cloud-app-control | 39 | 31 | 8 | 79.5% |
+| zia | users | 22 | 18 | 4 | 81.8% |
 | zia | static-ips | 11 | 9 | 2 | 81.8% |
-| zidentity | resource-servers | 16 | 14 | 2 | 87.5% |
-| zia | dedicated-ip-gateways | 9 | 8 | 1 | 88.9% |
-| zia | proxy-gateways | 9 | 8 | 1 | 88.9% |
-| zia | proxies | 11 | 10 | 1 | 90.9% |
-| zia | url-categories | 24 | 22 | 2 | 91.7% |
-| zia | dns-gateways | 14 | 13 | 1 | 92.9% |
 | zia | gre-tunnels | 30 | 28 | 2 | 93.3% |
 | zia | url-filtering-rules | 42 | 40 | 2 | 95.2% |
-| zia | bandwidth-control-rules | 21 | 20 | 1 | 95.2% |
+| zia | url-categories | 27 | 26 | 1 | 96.3% |
 | zia | location-groups | 28 | 27 | 1 | 96.4% |
 | zia | ssl-inspection-rules | 32 | 31 | 1 | 96.9% |
-| zia | nat-control-rules | 36 | 35 | 1 | 97.2% |
 | zia | firewall-filtering-rules | 39 | 38 | 1 | 97.4% |
 | zia | nss-feeds | 126 | 126 | 0 | 100.0% |
 | zcc | company-info | 111 | 111 | 0 | 100.0% |
@@ -94,10 +85,12 @@ the field names and reasons behind each row.
 | ztw | forwarding-rules | 42 | 42 | 0 | 100.0% |
 | zpa | app-connector-groups | 41 | 41 | 0 | 100.0% |
 | zpa | service-edge-groups | 41 | 41 | 0 | 100.0% |
+| zia | cloud-app-control | 39 | 39 | 0 | 100.0% |
 | zia | ips-policies | 39 | 39 | 0 | 100.0% |
 | zcc | admin-roles | 38 | 38 | 0 | 100.0% |
 | zia | forwarding-rules | 38 | 38 | 0 | 100.0% |
 | zia | risk-profiles | 37 | 37 | 0 | 100.0% |
+| zia | nat-control-rules | 36 | 36 | 0 | 100.0% |
 | zia | file-type-rules | 35 | 35 | 0 | 100.0% |
 | zia | end-user-notification-settings | 30 | 30 | 0 | 100.0% |
 | zia | dlp-dictionaries | 29 | 29 | 0 | 100.0% |
@@ -105,6 +98,7 @@ the field names and reasons behind each row.
 | zcc | forwarding-profiles | 26 | 26 | 0 | 100.0% |
 | zcc | devices | 25 | 25 | 0 | 100.0% |
 | zia | admin-users | 21 | 21 | 0 | 100.0% |
+| zia | bandwidth-control-rules | 21 | 21 | 0 | 100.0% |
 | zia | dlp-idm-profiles | 21 | 21 | 0 | 100.0% |
 | zpa | c2c-ip-ranges | 21 | 21 | 0 | 100.0% |
 | zpa | user-portals | 21 | 21 | 0 | 100.0% |
@@ -124,6 +118,7 @@ the field names and reasons behind each row.
 | zia | browser-control-settings | 16 | 16 | 0 | 100.0% |
 | zia | tenancy-restriction-profiles | 16 | 16 | 0 | 100.0% |
 | zia | vzen-nodes | 16 | 16 | 0 | 100.0% |
+| zidentity | resource-servers | 16 | 16 | 0 | 100.0% |
 | zpa | posture-profiles | 16 | 16 | 0 | 100.0% |
 | zpa | segment-groups | 16 | 16 | 0 | 100.0% |
 | zia | intermediate-ca-certificates | 15 | 15 | 0 | 100.0% |
@@ -132,6 +127,7 @@ the field names and reasons behind each row.
 | zcc | fail-open-policy | 14 | 14 | 0 | 100.0% |
 | zcc | web-app-services | 14 | 14 | 0 | 100.0% |
 | zia | auth-settings | 14 | 14 | 0 | 100.0% |
+| zia | dns-gateways | 14 | 14 | 0 | 100.0% |
 | zia | ips-signature-rules | 14 | 14 | 0 | 100.0% |
 | zpa | microtenants | 14 | 14 | 0 | 100.0% |
 | ztw | traffic-log-rules | 14 | 14 | 0 | 100.0% |
@@ -147,6 +143,7 @@ the field names and reasons behind each row.
 | zpa | user-portal-aups | 12 | 12 | 0 | 100.0% |
 | zcc | custom-ip-apps | 11 | 11 | 0 | 100.0% |
 | zia | network-services | 11 | 11 | 0 | 100.0% |
+| zia | proxies | 11 | 11 | 0 | 100.0% |
 | ztw | network-services | 11 | 11 | 0 | 100.0% |
 | ztw | public-cloud-info | 11 | 11 | 0 | 100.0% |
 | zcc | process-based-apps | 10 | 10 | 0 | 100.0% |
@@ -157,6 +154,8 @@ the field names and reasons behind each row.
 | zpa | machine-groups | 10 | 10 | 0 | 100.0% |
 | ztw | dns-gateways | 10 | 10 | 0 | 100.0% |
 | zia | alert-subscriptions | 9 | 9 | 0 | 100.0% |
+| zia | dedicated-ip-gateways | 9 | 9 | 0 | 100.0% |
+| zia | proxy-gateways | 9 | 9 | 0 | 100.0% |
 | zia | vzen-clusters | 9 | 9 | 0 | 100.0% |
 | zia | zpa-gateways | 9 | 9 | 0 | 100.0% |
 | zpa | trusted-networks | 9 | 9 | 0 | 100.0% |
@@ -201,6 +200,7 @@ the field names and reasons behind each row.
 | zia | network-service-groups | 4 | 4 | 0 | 100.0% |
 | zia | remote-assistance | 4 | 4 | 0 | 100.0% |
 | zia | sub-clouds | 4 | 4 | 0 | 100.0% |
+| ztw | activation-status | 4 | 4 | 0 | 100.0% |
 | zia | application-service-groups | 3 | 3 | 0 | 100.0% |
 | zia | application-services | 3 | 3 | 0 | 100.0% |
 | zia | atp-malware-protocols | 3 | 3 | 0 | 100.0% |
