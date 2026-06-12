@@ -149,7 +149,7 @@ func TestLocationSourceRecordHonorsAllowedModesAcrossShareAndParanoid(t *testing
 
 	// Standard+share fields stay visible in share mode and drop in paranoid.
 	standardShare := map[string]any{
-		"country":           "NETHERLANDS",
+		"tz":                "EUROPE_AMSTERDAM",
 		"sslScanEnabled":    true,
 		"idleTimeInMinutes": 75,
 		"parentId":          4400,
@@ -160,7 +160,7 @@ func TestLocationSourceRecordHonorsAllowedModesAcrossShareAndParanoid(t *testing
 		}
 	}
 	assertFieldsAbsent(t, "locations (paranoid)", paranoid,
-		"country",
+		"tz",
 		"sslScanEnabled",
 		"idleTimeInMinutes",
 		"parentId",
@@ -171,8 +171,18 @@ func TestLocationSourceRecordHonorsAllowedModesAcrossShareAndParanoid(t *testing
 		t.Errorf("paranoid-mode locations id = %v (present=%v), want 4501", got, ok)
 	}
 
-	// Standard-only fields must be dropped from share mode.
+	// Standard-only fields must be dropped from share mode. country and state
+	// are sensitive identifiers (geo footprint) per the referee verdicts, so
+	// they must never reach share-mode exports.
 	assertFieldsAbsent(t, "locations (share)", share,
+		"country",
+		"state",
+		"ports",
+		"ipAddresses",
+		"description",
+	)
+	assertFieldsAbsent(t, "locations (paranoid)", paranoid,
+		"country",
 		"state",
 		"ports",
 		"ipAddresses",
