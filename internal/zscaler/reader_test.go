@@ -1469,11 +1469,13 @@ func TestReaderListURLFilteringRulesProjectsSDKShapeThroughAllowList(t *testing.
 		t.Fatalf("SDKReader.List(zia, url-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "url-filtering-rules", records)
-	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, adminCanary, userCanary, profileCanary)
-	for _, field := range []string{"cbiProfile", "lastModifiedBy", "users"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected url-filtering-rules = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, adminCanary, profileCanary)
+	if _, ok := got["lastModifiedBy"]; ok {
+		t.Errorf("projected url-filtering-rules = %#v, want no lastModifiedBy", got)
+	}
+	users := mustProjectedList(t, got, "users")
+	if len(users) != 1 || toString(users[0].(map[string]any)["name"]) != userCanary {
+		t.Errorf("projected url-filtering-rules users = %#v, want one entry named %q", users, userCanary)
 	}
 	if got["action"] != "ALLOW" {
 		t.Errorf("projected url-filtering-rules action = %v, want ALLOW", got["action"])
