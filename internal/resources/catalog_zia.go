@@ -77,8 +77,9 @@ func catalogZIA() ResourceCatalog {
 							Fields: []FieldSpec{
 								// Admin-authored substring matched against location
 								// names; location names are tenant-identifying, so the
-								// match string stays standard-only.
-								tenantConfigField("matchString", standardOnlyMode()),
+								// match string is a sensitive identifier (standard-only),
+								// matching the sibling city matchString.
+								sensitiveIdentifierField("matchString"),
 								operationalField("matchType", allModes()),
 							},
 						},

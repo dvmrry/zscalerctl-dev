@@ -6,6 +6,12 @@ package zscaler
 // through the catalog and assert that promoted fields render under the right
 // keys in standard mode, that mode allowances are honored exactly in share and
 // paranoid, and that no excluded-field canary survives in any mode.
+//
+// The reader source mappers strip extensions before projection, so the
+// fixture's extensions canaries never reach the catalog. The direct-source
+// test below builds a SourceRecord with extensions maps included, bypassing
+// the mappers, so the catalog's secretField("extensions") drop is exercised
+// at the projection layer in the mode where the lists actually render.
 
 import (
 	"reflect"
@@ -164,6 +170,75 @@ func TestLocationGroupSourceRecordProjectsPromotedFieldsStandard(t *testing.T) {
 	assertFieldsAbsent(t, "location-groups locations", member, "extensions")
 
 	assertFieldsAbsent(t, "location-groups", got, "lastModUser")
+	assertNoLocationGroupCanaries(t, got)
+}
+
+// TestLocationGroupProjectionDropsExtensionsThroughCatalog feeds extensions
+// maps directly into a SourceRecord (bypassing the reader source mappers,
+// which already strip them) and asserts the catalog's secretField
+// ("extensions") drops them at the projection layer in standard mode -- the
+// only mode where managedBy and locations render at all. This is the
+// fail-closed backstop in case a mapper ever starts passing extensions
+// through.
+func TestLocationGroupProjectionDropsExtensionsThroughCatalog(t *testing.T) {
+	t.Parallel()
+
+	record := resources.NewSourceRecord(map[string]any{
+		"id":   4501,
+		"name": "wave1-location-group",
+		"dynamicLocationGroupCriteria": map[string]any{
+			"managedBy": []any{
+				map[string]any{
+					"id":   7601,
+					"name": "wave1-sdwan-partner",
+					"extensions": map[string]any{
+						"vendor": wave1LocationGroupManagedByExtCanary,
+					},
+				},
+			},
+		},
+		"locations": []any{
+			map[string]any{
+				"id":   8101,
+				"name": "wave1-member-location",
+				"extensions": map[string]any{
+					"loc": wave1LocationGroupMemberExtCanary,
+				},
+			},
+		},
+	})
+
+	got := projectOneRecord(t, resources.ProductZIA, resourceLocationGroups, []resources.SourceRecord{record})
+
+	criteria := mustProjectedMap(t, got, "dynamicLocationGroupCriteria")
+	managedBy := mustProjectedList(t, criteria, "managedBy")
+	if len(managedBy) != 1 {
+		t.Fatalf("projected criteria managedBy length = %d, want 1", len(managedBy))
+	}
+	partner, ok := managedBy[0].(map[string]any)
+	if !ok {
+		t.Fatalf("projected criteria managedBy[0] = %T, want map[string]any", managedBy[0])
+	}
+	// The sibling allowed sub-fields render, proving the list itself
+	// survived projection and only the extensions map was dropped.
+	if partner["name"] != "wave1-sdwan-partner" {
+		t.Errorf("projected criteria managedBy name = %v, want wave1-sdwan-partner", partner["name"])
+	}
+	assertFieldsAbsent(t, "location-groups criteria managedBy (direct source)", partner, "extensions")
+
+	members := mustProjectedList(t, got, "locations")
+	if len(members) != 1 {
+		t.Fatalf("projected locations length = %d, want 1", len(members))
+	}
+	member, ok := members[0].(map[string]any)
+	if !ok {
+		t.Fatalf("projected locations[0] = %T, want map[string]any", members[0])
+	}
+	if member["name"] != "wave1-member-location" {
+		t.Errorf("projected locations name = %v, want wave1-member-location", member["name"])
+	}
+	assertFieldsAbsent(t, "location-groups locations (direct source)", member, "extensions")
+
 	assertNoLocationGroupCanaries(t, got)
 }
 
