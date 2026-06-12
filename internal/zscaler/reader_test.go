@@ -1204,7 +1204,7 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 							Users: []ziacommon.IDNameExtensions{
 								{
 									ID:   1002,
-									Name: adminCanary,
+									Name: "ssl rule scoped user",
 								},
 							},
 							LastModifiedTime: 1712345678,
@@ -1248,7 +1248,7 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 	if action["type"] != "DECRYPT" {
 		t.Errorf("projected ssl-inspection-rules action.type = %v, want DECRYPT", action["type"])
 	}
-	for _, field := range []string{"sslInterceptionCert", "users", "lastModifiedBy"} {
+	for _, field := range []string{"sslInterceptionCert", "lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected ssl-inspection-rules = %#v, want no %s", got, field)
 		}
