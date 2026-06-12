@@ -3,6 +3,7 @@
 [![CI](https://github.com/dvmrry/zscalerctl/actions/workflows/ci.yml/badge.svg)](https://github.com/dvmrry/zscalerctl/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dvmrry/zscalerctl/actions/workflows/codeql.yml/badge.svg)](https://github.com/dvmrry/zscalerctl/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dvmrry/zscalerctl/badge)](https://scorecard.dev/viewer/?uri=github.com/dvmrry/zscalerctl)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13176/badge)](https://www.bestpractices.dev/projects/13176)
 [![Release](https://img.shields.io/github/v/release/dvmrry/zscalerctl)](https://github.com/dvmrry/zscalerctl/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8)](go.mod)
