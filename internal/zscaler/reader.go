@@ -1430,12 +1430,44 @@ func suppressSDKLogEnv() func() {
 
 func locationSourceRecord(location locationmanagement.Locations) resources.SourceRecord {
 	fields := map[string]any{
-		"id":          location.ID,
-		"name":        location.Name,
-		"description": location.Description,
+		"id":                                  location.ID,
+		"name":                                location.Name,
+		"parentId":                            location.ParentID,
+		"description":                         location.Description,
+		"country":                             location.Country,
+		"state":                               location.State,
+		"tz":                                  location.TZ,
+		"language":                            location.Language,
+		"profile":                             location.Profile,
+		"upBandwidth":                         location.UpBandwidth,
+		"dnBandwidth":                         location.DnBandwidth,
+		"authRequired":                        location.AuthRequired,
+		"basicAuthEnabled":                    location.BasicAuthEnabled,
+		"digestAuthEnabled":                   location.DigestAuthEnabled,
+		"kerberosAuth":                        location.KerberosAuth,
+		"sslScanEnabled":                      location.SSLScanEnabled,
+		"zappSSLScanEnabled":                  location.ZappSSLScanEnabled,
+		"xffForwardEnabled":                   location.XFFForwardEnabled,
+		"surrogateIP":                         location.SurrogateIP,
+		"surrogateIPEnforcedForKnownBrowsers": location.SurrogateIPEnforcedForKnownBrowsers,
+		"idleTimeInMinutes":                   location.IdleTimeInMinutes,
+		"surrogateRefreshTimeInMinutes":       location.SurrogateRefreshTimeInMinutes,
+		"ofwEnabled":                          location.OFWEnabled,
+		"ipsControl":                          location.IPSControl,
+		"aupEnabled":                          location.AUPEnabled,
+		"cautionEnabled":                      location.CautionEnabled,
+		"aupBlockInternetUntilAccepted":       location.AUPBlockInternetUntilAccepted,
+		"aupForceSslInspection":               location.AUPForceSSLInspection,
+		"aupTimeoutInDays":                    location.AUPTimeoutInDays,
+		"iotDiscoveryEnabled":                 location.IOTDiscoveryEnabled,
+		"iotEnforcePolicySet":                 location.IOTEnforcePolicySet,
+		"cookiesAndProxy":                     location.CookiesAndProxy,
 	}
 	if len(location.IPAddresses) > 0 {
 		fields["ipAddresses"] = append([]string(nil), location.IPAddresses...)
+	}
+	if len(location.Ports) > 0 {
+		fields["ports"] = append([]int(nil), location.Ports...)
 	}
 	if len(location.VPNCredentials) > 0 {
 		fields["vpnCredentials"] = vpnCredentialsSource(location.VPNCredentials)
