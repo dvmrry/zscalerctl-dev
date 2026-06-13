@@ -550,7 +550,7 @@ func TestCompletionScriptsDoNotReadCredentialFilesOrUseReader(t *testing.T) {
 	t.Parallel()
 
 	const clientID = "client-id-value"
-	for _, shell := range []string{"bash", "zsh", "fish"} {
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
 		shell := shell
 		t.Run(shell, func(t *testing.T) {
 			t.Parallel()
@@ -565,7 +565,13 @@ func TestCompletionScriptsDoNotReadCredentialFilesOrUseReader(t *testing.T) {
 			if err != nil {
 				t.Fatalf("App.Run(completion %s) error = %v, want nil", shell, err)
 			}
-			for _, want := range []string{"zscalerctl", "locations", "location-groups", "rule-labels", "static-ips", "gre-tunnels", "--resources", "--continue-on-error", "list get", "show"} {
+			wants := []string{"zscalerctl", "locations", "location-groups", "rule-labels", "static-ips", "gre-tunnels", "--resources", "--continue-on-error", "show"}
+			if shell == "powershell" {
+				wants = append(wants, "$operations = @('list', 'get', 'show')")
+			} else {
+				wants = append(wants, "list get")
+			}
+			for _, want := range wants {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("App.Run(completion %s) stdout = %q, want %q", shell, out.String(), want)
 				}
@@ -608,6 +614,12 @@ func TestCompletionScriptsReflectCatalogProducts(t *testing.T) {
 				return "__fish_seen_subcommand_from " + product + "'"
 			},
 		},
+		{
+			shell: "powershell",
+			snippet: func(product string) string {
+				return "'" + product + "' { Complete-ZscalerctlWords $" + product + "Resources"
+			},
+		},
 	}
 	for _, tt := range cases {
 		tt := tt
@@ -648,6 +660,7 @@ func TestCompletionScriptsUseAuthStatus(t *testing.T) {
 		{shell: "bash", want: `auth) COMPREPLY=( $(compgen -W "status"`, forbidden: `auth) COMPREPLY=( $(compgen -W "show"`},
 		{shell: "zsh", want: "auth) compadd -- status", forbidden: "auth) compadd -- show"},
 		{shell: "fish", want: "__fish_seen_subcommand_from auth' -a 'status'", forbidden: "__fish_seen_subcommand_from auth' -a 'show'"},
+		{shell: "powershell", want: "'auth' { Complete-ZscalerctlWords @('status')", forbidden: "'auth' { Complete-ZscalerctlWords @('show')"},
 	}
 	for _, tt := range cases {
 		tt := tt
@@ -692,18 +705,39 @@ func TestBashCompletionRegistersCommand(t *testing.T) {
 	}
 }
 
-func TestCompletionRejectsUnknownShell(t *testing.T) {
+func TestPowerShellCompletionRegistersCommand(t *testing.T) {
 	t.Parallel()
 
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, nil)
 
 	err := app.Run(context.Background(), []string{"completion", "powershell"})
+	if err != nil {
+		t.Fatalf("App.Run(completion powershell) error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), "Register-ArgumentCompleter -Native -CommandName zscalerctl") {
+		t.Errorf("App.Run(completion powershell) stdout = %q, want PowerShell registration", out.String())
+	}
+	if !strings.Contains(out.String(), "'ParameterName'") {
+		t.Errorf("App.Run(completion powershell) stdout = %q, want flag completions marked as parameter names", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(completion powershell) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestCompletionRejectsUnknownShell(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	err := app.Run(context.Background(), []string{"completion", "elvish"})
 	if !errors.Is(err, cli.ErrUsage) {
-		t.Fatalf("App.Run(completion powershell) error = %v, want ErrUsage", err)
+		t.Fatalf("App.Run(completion elvish) error = %v, want ErrUsage", err)
 	}
 	if out.Len() != 0 {
-		t.Errorf("App.Run(completion powershell) stdout = %q, want empty", out.String())
+		t.Errorf("App.Run(completion elvish) stdout = %q, want empty", out.String())
 	}
 }
 
@@ -739,7 +773,7 @@ func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
-	if !strings.Contains(out.String(), "completion bash|zsh|fish") {
+	if !strings.Contains(out.String(), "completion bash|zsh|fish|powershell") {
 		t.Errorf("App.Run(help) stdout = %q, want completion usage", out.String())
 	}
 	if errOut.Len() != 0 {

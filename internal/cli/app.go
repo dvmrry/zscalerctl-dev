@@ -1226,7 +1226,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error]")
-	fmt.Fprintln(w, "  completion bash|zsh|fish")
+	fmt.Fprintf(w, "  completion %s\n", completionShellNames())
 	fmt.Fprintln(w, "  version")
 	for _, product := range knownProducts() {
 		fmt.Fprintf(w, "  %s <resource> %s\n", product, strings.Join(productReadOperationNames(product), "|"))

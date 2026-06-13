@@ -15,12 +15,12 @@ var (
 	completionFormats   = []string{"auto", "table", "json", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
-	completionShells    = []string{"bash", "zsh", "fish"}
+	completionShells    = []string{"bash", "zsh", "fish", "powershell"}
 )
 
 func (a *App) runCompletion(args []string) error {
 	if len(args) != 1 {
-		return UsageError{Message: "usage: zscalerctl completion bash|zsh|fish"}
+		return UsageError{Message: completionUsage()}
 	}
 	body, err := completionScript(args[0])
 	if err != nil {
@@ -38,9 +38,19 @@ func completionScript(shell string) (string, error) {
 		return zshCompletion(), nil
 	case "fish":
 		return fishCompletion(), nil
+	case "powershell":
+		return powershellCompletion(), nil
 	default:
-		return "", UsageError{Message: "usage: zscalerctl completion bash|zsh|fish"}
+		return "", UsageError{Message: completionUsage()}
 	}
+}
+
+func completionUsage() string {
+	return "usage: zscalerctl completion " + completionShellNames()
+}
+
+func completionShellNames() string {
+	return strings.Join(completionShells, "|")
 }
 
 func bashCompletion() string {
@@ -174,6 +184,82 @@ complete -c zscalerctl -n '__fish_seen_subcommand_from %s' -a '%s'
 	)
 }
 
+func powershellCompletion() string {
+	return fmt.Sprintf(`# powershell completion for zscalerctl
+Register-ArgumentCompleter -Native -CommandName zscalerctl -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+
+  $flags = %s
+  $commands = %s
+  $formats = %s
+  $redactions = %s
+  $colors = %s
+  $products = %s
+  $dumpResources = %s
+  $shells = %s
+  $operations = %s
+  $dumpFlags = @('--out', '--products', '--resources', '--continue-on-error')
+  $allResources = %s
+%s
+
+  function Complete-ZscalerctlWords($candidates) {
+    $prefix = if ($null -eq $wordToComplete) { '' } else { $wordToComplete }
+    $candidates |
+      Where-Object { $_.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) } |
+      ForEach-Object {
+        $resultType = if ($_.StartsWith('--', [System.StringComparison]::Ordinal)) { 'ParameterName' } else { 'ParameterValue' }
+        [System.Management.Automation.CompletionResult]::new($_, $_, $resultType, $_)
+      }
+  }
+
+  $elements = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
+  $prev = ''
+  if ($elements.Count -ge 2) {
+    $last = $elements[$elements.Count - 1]
+    if ($last -eq $wordToComplete -and $elements.Count -ge 3) {
+      $prev = $elements[$elements.Count - 2]
+    } elseif ($last -ne $wordToComplete) {
+      $prev = $last
+    }
+  }
+
+  switch ($prev) {
+    '--format' { Complete-ZscalerctlWords $formats; return }
+    '--redaction' { Complete-ZscalerctlWords $redactions; return }
+    '--color' { Complete-ZscalerctlWords $colors; return }
+    '--products' { Complete-ZscalerctlWords $products; return }
+    '--resources' { Complete-ZscalerctlWords $dumpResources; return }
+    'completion' { Complete-ZscalerctlWords $shells; return }
+    'auth' { Complete-ZscalerctlWords @('status'); return }
+    'config' { Complete-ZscalerctlWords @('show'); return }
+    'schema' { Complete-ZscalerctlWords @('list'); return }
+    'dump' { Complete-ZscalerctlWords $dumpFlags; return }
+%s
+  }
+
+  if ($allResources -contains $prev) {
+    Complete-ZscalerctlWords $operations
+    return
+  }
+
+  Complete-ZscalerctlWords ($flags + $commands)
+}
+`,
+		powershellArray(completionFlags),
+		powershellArray(completionCommandNames()),
+		powershellArray(completionFormats),
+		powershellArray(completionRedaction),
+		powershellArray(completionColors),
+		powershellArray(completionProductValues()),
+		powershellArray(dumpResourceNames()),
+		powershellArray(completionShells),
+		powershellArray(operationNames()),
+		powershellArray(allResourceNames()),
+		powershellProductResourceVariables(),
+		powershellProductResourceCases(),
+	)
+}
+
 func completionCommandNames() []string {
 	commands := []string{"doctor", "auth", "config", "schema", "dump", "completion", "version", "help"}
 	commands = append(commands, productNames(knownProducts())...)
@@ -210,6 +296,22 @@ func fishProductResourceCompletions() string {
 	var lines []string
 	for _, product := range knownProducts() {
 		lines = append(lines, fmt.Sprintf("complete -c zscalerctl -n '__fish_seen_subcommand_from %s' -a '%s'", product, words(resourceNames(product))))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func powershellProductResourceVariables() string {
+	var lines []string
+	for _, product := range knownProducts() {
+		lines = append(lines, fmt.Sprintf("  $%sResources = %s", product, powershellArray(resourceNames(product))))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func powershellProductResourceCases() string {
+	var lines []string
+	for _, product := range knownProducts() {
+		lines = append(lines, fmt.Sprintf("    '%s' { Complete-ZscalerctlWords $%sResources; return }", product, product))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -285,4 +387,15 @@ func zshCasePatterns(values []string) string {
 
 func words(values []string) string {
 	return strings.Join(values, " ")
+}
+
+func powershellArray(values []string) string {
+	if len(values) == 0 {
+		return "@()"
+	}
+	quoted := make([]string, len(values))
+	for i, value := range values {
+		quoted[i] = "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	}
+	return "@(" + strings.Join(quoted, ", ") + ")"
 }

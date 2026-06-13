@@ -241,7 +241,7 @@ zscalerctl zia url-lookup <url> [url...]        # diagnostic lookup
 zscalerctl dump --products zia,zpa --out ./dump
 zscalerctl schema list
 zscalerctl version
-zscalerctl completion bash|zsh|fish
+zscalerctl completion bash|zsh|fish|powershell
 ```
 
 `diff` (compare two dump directories) is planned, not yet implemented. There is

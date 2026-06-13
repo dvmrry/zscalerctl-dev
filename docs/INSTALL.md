@@ -157,6 +157,22 @@ mkdir -p ~/.config/fish/completions
 zscalerctl completion fish > ~/.config/fish/completions/zscalerctl.fish
 ```
 
+### PowerShell
+
+For the current session:
+
+```powershell
+zscalerctl completion powershell | Invoke-Expression
+```
+
+To load completions in future sessions, append the generated script to your
+PowerShell profile:
+
+```powershell
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $PROFILE)
+zscalerctl completion powershell | Out-File -FilePath $PROFILE -Append -Encoding utf8
+```
+
 ## Man Page
 
 A man page ships in the repository at `man/zscalerctl.1`. Install it into a
