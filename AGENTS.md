@@ -16,9 +16,9 @@ zscalerctl zia --help                  # one product's resources, human-readable
 Then read with `list`, `get <id>`, or `show` (singletons):
 
 ```sh
-zscalerctl zia locations list
-zscalerctl zia locations get 12345
-zscalerctl zia advanced-settings show
+zscalerctl --format json zia locations list
+zscalerctl --format json zia locations get 12345
+zscalerctl --format json zia advanced-settings show
 zscalerctl dump --products zia --out ./dump   # sanitized whole-product export
 ```
 

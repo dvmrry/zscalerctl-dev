@@ -37,16 +37,25 @@ can modify tenant state.
 
 ## Narrowing results
 
-Output is deterministic JSON, so filter with `jq` — field names come from
-`schema list`:
+`list` narrows in-process — no `jq` needed. Field names come from
+`schema list`; both flags run after redaction (narrow only, never widen — a
+dropped or secret field matches nothing), and an empty match is exit 0 with
+`[]`:
 
 ```sh
-# rules whose name matches a pattern (case-insensitive)
-zscalerctl --format json zia url-filtering-rules list | jq '[.[] | select(.name | test("(?i)social"))]'
-# rules that reference a URL category
+# substring match on a field, case-insensitive
+zscalerctl --format json zia url-filtering-rules list --filter name~social
+# exact match, AND-ed; repeat --filter to add conditions
+zscalerctl --format json zia locations list --filter country=US --filter name~hq
+# --search matches a term in any rendered field
+zscalerctl --format json zia locations list --search branch
+```
+
+For richer predicates (array membership, cross-field logic) that the native
+flags can't express, pipe the JSON to `jq`:
+
+```sh
 zscalerctl --format json zia url-filtering-rules list | jq '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
-# fuzzy-ish: match a term anywhere in any field
-zscalerctl --format json zia locations list | jq --arg q "branch" '[.[] | select(tostring | test($q; "i"))]'
 ```
 
 For policy questions ("would this URL be blocked for this user?"), do not

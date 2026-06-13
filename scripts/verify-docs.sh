@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-paths=(README.md docs examples)
+paths=(README.md AGENTS.md docs examples skills)
 fail=0
 
 check_pattern() {

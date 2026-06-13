@@ -71,6 +71,8 @@ zscalerctl dump --products zia --out ./dump
 
 Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to write a single command's output to a restricted file; use `dump --out <dir>` for dump directories (the two are intentionally not combined).
 
+The examples above are written for interactive use. Scripts and agents should pass `--format json` explicitly rather than rely on auto-detection — a PTY-based harness can read as a terminal and receive the `pretty` view. The agent-oriented guide is in [AGENTS.md](AGENTS.md).
+
 ## Authentication
 
 OneAPI is the default. The CLI reads only explicit `ZSCALERCTL_*` values:
