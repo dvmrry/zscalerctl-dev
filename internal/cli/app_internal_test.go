@@ -127,3 +127,20 @@ func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
 		t.Errorf("formatTableValue([]any with tab) = %q, want %q", got, "x y,z")
 	}
 }
+
+func TestColumnize(t *testing.T) {
+	t.Parallel()
+
+	// width 12, longest name 2 → colWidth 4 → 3 columns, column-major (down each
+	// column), trailing pad trimmed per line.
+	if got, want := columnize([]string{"aa", "bb", "cc", "dd", "ee"}, 12), "  aa  cc  ee\n  bb  dd"; got != want {
+		t.Errorf("columnize(3-col) = %q, want %q", got, want)
+	}
+	// Too narrow for two columns → one per line.
+	if got, want := columnize([]string{"aaaa", "bbbb"}, 3), "  aaaa\n  bbbb"; got != want {
+		t.Errorf("columnize(1-col) = %q, want %q", got, want)
+	}
+	if got := columnize(nil, 80); got != "" {
+		t.Errorf("columnize(nil) = %q, want empty", got)
+	}
+}

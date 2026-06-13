@@ -738,9 +738,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	helpSpec, helpSpecOK := a.resourceCatalog().FindSpec(product, resource)
 	usage := func() string {
 		if helpSpecOK {
-			return resourceUsage(product, helpSpec)
+			return resourceUsage(product, helpSpec, 0)
 		}
-		return productCommandUsage(product)
+		return productCommandUsage(product, 0)
 	}
 	if len(args) < 2 {
 		return UsageError{Message: usage()}
@@ -766,7 +766,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return err
 	}
 	if !spec.SupportsReadOperation(op) {
-		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec))}
+		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec, 0))}
 	}
 	reader, err := a.resourceReader(cfg, opts)
 	if err != nil {
@@ -1204,11 +1204,11 @@ func (a *App) writeHelp(w io.Writer, rest []string) {
 				return
 			}
 			if spec, ok := a.resourceCatalog().FindSpec(product, rest[1]); ok {
-				fmt.Fprintln(w, resourceUsage(product, spec))
+				fmt.Fprintln(w, resourceUsage(product, spec, output.TerminalWidth(w)))
 				return
 			}
 		}
-		fmt.Fprintln(w, productCommandUsage(product))
+		fmt.Fprintln(w, productCommandUsage(product, output.TerminalWidth(w)))
 		return
 	}
 	a.writeUsage(w)
@@ -1528,7 +1528,52 @@ func productNames(products []resources.Product) []string {
 	return names
 }
 
-func productCommandUsage(product resources.Product) string {
+// columnize lays out names in a left-aligned, column-major grid (alphabetical
+// down each column, like `ls`) indented two spaces, packed to fit width
+// columns. width <= 0 falls back to 80, keeping error messages and
+// non-terminal output deterministic. Returns the block without a trailing
+// newline.
+func columnize(names []string, width int) string {
+	if len(names) == 0 {
+		return ""
+	}
+	if width <= 0 {
+		width = 80
+	}
+	const indent, gap = 2, 2
+	longest := 0
+	for _, n := range names {
+		if len(n) > longest {
+			longest = len(n)
+		}
+	}
+	colWidth := longest + gap
+	cols := (width - indent + gap) / colWidth
+	if cols < 1 {
+		cols = 1
+	}
+	rows := (len(names) + cols - 1) / cols
+	var b strings.Builder
+	for r := 0; r < rows; r++ {
+		var line strings.Builder
+		line.WriteString(strings.Repeat(" ", indent))
+		for c := 0; c < cols; c++ {
+			i := c*rows + r
+			if i >= len(names) {
+				break
+			}
+			line.WriteString(names[i])
+			line.WriteString(strings.Repeat(" ", colWidth-len(names[i])))
+		}
+		b.WriteString(strings.TrimRight(line.String(), " "))
+		if r < rows-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+func productCommandUsage(product resources.Product, width int) string {
 	// Enumerate the product's resources so a cold caller (human or agent) can
 	// discover real names from --help or a usage error instead of guessing;
 	// `schema list` remains the machine-readable source of truth.
@@ -1540,11 +1585,11 @@ func productCommandUsage(product resources.Product) string {
 	}
 	sort.Strings(names)
 	msg := fmt.Sprintf(
-		"usage: zscalerctl %s <resource> %s\n\nresources (%d; see also: zscalerctl --format json schema list):\n  %s",
+		"usage: zscalerctl %s <resource> %s\n\nresources (%d; see also: zscalerctl --format json schema list):\n%s",
 		product,
 		strings.Join(productReadOperationNames(product), "|"),
 		len(names),
-		strings.Join(names, ", "),
+		columnize(names, width),
 	)
 	if product == resources.ProductZIA {
 		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]"
@@ -1555,7 +1600,7 @@ func productCommandUsage(product resources.Product) string {
 // resourceUsage builds help for a known resource: its supported read operations
 // plus the renderable field names (standard mode), so the operator can discover
 // what to pass to --fields without consulting `schema list`.
-func resourceUsage(product resources.Product, spec resources.ResourceSpec) string {
+func resourceUsage(product resources.Product, spec resources.ResourceSpec, width int) string {
 	msg := fmt.Sprintf(
 		"usage: zscalerctl %s %s %s",
 		product,
@@ -1563,7 +1608,7 @@ func resourceUsage(product resources.Product, spec resources.ResourceSpec) strin
 		strings.Join(readOperationNames(spec), "|"),
 	)
 	if fields := spec.FieldOrder(redact.ModeStandard); len(fields) > 0 {
-		msg += "\nfields: " + strings.Join(fields, ", ")
+		msg += "\nfields:\n" + columnize(fields, width)
 	}
 	return msg
 }
