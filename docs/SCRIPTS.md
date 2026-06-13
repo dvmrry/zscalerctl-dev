@@ -16,11 +16,13 @@ registered path exists.
 | `scripts/pr-labels-for-commit.sh` | release | `.github/workflows/release.yml` | `scripts/test-pr-labels-for-commit.sh` |
 | `scripts/scaffold-resource.sh` | dev | `make scaffold-resource`; manual resource scaffolding | `scripts/test-scaffold-resource.sh` |
 | `scripts/sdk-surface-inventory.go` | dev | `make sdk-surface-inventory`; manual SDK scouting | `scripts/test-sdk-surface-inventory.sh` |
+| `scripts/sync-agents-skill.sh` | dev | `make verify-agents-skill`; manual `.agents` skill regeneration | `scripts/test-sync-agents-skill.sh` |
 | `scripts/test-catalog-draft.sh` | test | `make verify-catalog-draft` | Self-contained fixture test |
 | `scripts/test-next-version.sh` | test | `make verify-release-automation` | Self-contained release-helper test |
 | `scripts/test-pr-labels-for-commit.sh` | test | `make verify-release-automation` | Self-contained release-helper test |
 | `scripts/test-scaffold-resource.sh` | test | `make verify-resource-scaffold` | Self-contained scaffold test |
 | `scripts/test-sdk-surface-inventory.sh` | test | `make verify-sdk-surface-inventory` | Self-contained inventory test |
+| `scripts/test-sync-agents-skill.sh` | test | `make verify-agents-skill` | Self-contained generated-copy drift test |
 | `scripts/test-verify-actions-pinned.sh` | test | `make verify-actions-pinned`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-ci-no-live-creds.sh` | test | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-release-artifacts.sh` | test | `make verify-release-artifacts` | Self-contained verifier test |

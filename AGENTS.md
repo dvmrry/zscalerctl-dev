@@ -4,6 +4,14 @@
 It is safe to explore: there are no write commands, so no invocation can
 change tenant state. Worst case is a usage error with a helpful message.
 
+## Skill locations
+
+The canonical installable skill lives at `skills/zscalerctl/`. The
+`.agents/skills/zscalerctl/` tree is a generated copy for agents that discover
+repo-local `.agents` content; do not edit it directly. Run
+`scripts/sync-agents-skill.sh` after changing the canonical skill, and
+`scripts/sync-agents-skill.sh --check` to verify drift.
+
 ## Discover, don't guess
 
 Resource names are not guessable. Enumerate them first:
