@@ -260,8 +260,8 @@ Required contract:
 
 - Numeric selectors use the SDK's ID get path when one exists.
 - Non-numeric selectors match only catalog-declared lookup fields.
-- Matching is exact only; fuzzy search belongs in a separate future `search`
-  command, not `get`.
+- Matching is exact only; substring narrowing across fields is handled by
+  `list --search` (and `--filter` for field-scoped matches), not `get`.
 - Zero matches return not found.
 - One match returns that projected record.
 - Multiple matches fail closed with an ambiguous-selector error and tell the
