@@ -27,5 +27,6 @@ regexes = [
   '''^abc123secretkeymaterial$''',
   '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.signaturexyz$''',
   '''^eyJhbGciOiJIUzI1NiJ9\.eyJzY29wZSI6InJlc291cmNlcyJ9\.shapeTestJWTCanary$''',
+  '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJjYW5hcnkifQ\.c2VjcmV0LXNpZ25hdHVyZS1jYW5hcnk$''',
   '''(?s)-----BEGIN PRIVATE KEY-----.*key-material.*-----END PRIVATE KEY-----''',
 ]

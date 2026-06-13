@@ -31,4 +31,14 @@ func TestManPageDocumentsFlagsAndCommands(t *testing.T) {
 			t.Errorf("man/zscalerctl.1 does not document command %q", cmd)
 		}
 	}
+
+	// Diagnostic verbs are not catalog resources, so completionCommandNames
+	// never yields them — gate their documentation explicitly or a future
+	// deletion of the man entry would pass every test (the un-driftable-docs
+	// invariant must extend to every new surface).
+	for _, diagnostic := range []string{"url-lookup"} {
+		if !strings.Contains(content, diagnostic) {
+			t.Errorf("man/zscalerctl.1 does not document diagnostic command %q", diagnostic)
+		}
+	}
 }

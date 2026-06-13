@@ -720,6 +720,11 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if len(args) >= 1 {
 		resource = args[0]
 	}
+	// zia url-lookup is a diagnostic verb, not a catalog resource; dispatch it
+	// before resource lookup so it never collides with the list/get/show model.
+	if product == resources.ProductZIA && resource == urlLookupCommandName {
+		return a.runURLLookup(ctx, cfg, opts, args[1:])
+	}
 	// When the resource is recognized, prefer help that lists its actual
 	// operations and renderable fields over the generic per-product usage.
 	helpSpec, helpSpecOK := a.resourceCatalog().FindSpec(product, resource)
@@ -1173,6 +1178,10 @@ func (a *App) writeHelp(w io.Writer, rest []string) {
 	if len(rest) >= 1 && knownProductCommand(rest[0]) {
 		product := resources.Product(rest[0])
 		if len(rest) >= 2 {
+			if product == resources.ProductZIA && rest[1] == urlLookupCommandName {
+				fmt.Fprintln(w, urlLookupUsageMessage)
+				return
+			}
 			if spec, ok := a.resourceCatalog().FindSpec(product, rest[1]); ok {
 				fmt.Fprintln(w, resourceUsage(product, spec))
 				return
@@ -1193,6 +1202,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  doctor")
 	fmt.Fprintln(w, "  auth status")
 	fmt.Fprintln(w, "  config show")
+	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error]")
 	fmt.Fprintln(w, "  completion bash|zsh|fish")
@@ -1495,13 +1505,17 @@ func productCommandUsage(product resources.Product) string {
 		}
 	}
 	sort.Strings(names)
-	return fmt.Sprintf(
+	msg := fmt.Sprintf(
 		"usage: zscalerctl %s <resource> %s\n\nresources (%d; see also: zscalerctl --format json schema list):\n  %s",
 		product,
 		strings.Join(productReadOperationNames(product), "|"),
 		len(names),
 		strings.Join(names, ", "),
 	)
+	if product == resources.ProductZIA {
+		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]"
+	}
+	return msg
 }
 
 // resourceUsage builds help for a known resource: its supported read operations

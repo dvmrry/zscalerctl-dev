@@ -237,6 +237,7 @@ zscalerctl doctor
 zscalerctl auth status
 zscalerctl config show
 zscalerctl <product> <resource> list|get|show   # ops vary by resource
+zscalerctl zia url-lookup <url> [url...]        # diagnostic lookup
 zscalerctl dump --products zia,zpa --out ./dump
 zscalerctl schema list
 zscalerctl version
@@ -245,6 +246,24 @@ zscalerctl completion bash|zsh|fish
 
 `diff` (compare two dump directories) is planned, not yet implemented. There is
 no code for it yet.
+
+### Diagnostic lookups
+
+Some diagnostics answer a question about live data without reading a tenant
+resource. `zia url-lookup` is the first instance: it resolves the URL category
+classifications for the URLs the caller supplies. These are natural-verb
+diagnostics like `doctor` and `auth status`, not catalog resources — they have
+no list/get/show operations and no schema-registry entry, and their output is a
+hand-built output-safe struct rendered through the normal renderer so redaction
+still applies.
+
+Posture decision: diagnostic verbs may call query-only endpoints regardless of
+HTTP method. The urlLookup endpoint uses POST, but the request body is purely
+the query input (the URLs to classify) and the call creates, modifies, and
+deletes nothing. Diagnostic verbs must never call endpoints that mutate tenant
+state, whatever the method. This does not change the read-only guarantees in
+THREAT_MODEL.md, which already frames the posture as read/query semantics
+rather than HTTP verbs.
 
 Completion output is static public project data. Generating completions must not
 read credential files, initialize the live reader, or contact Zscaler.
