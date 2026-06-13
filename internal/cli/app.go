@@ -204,6 +204,14 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if name := opts.narrowingFlag(); name != "" && !isListInvocation(rest) {
 		return UsageError{Message: fmt.Sprintf("%s applies to list operations only; use it with \"<product> <resource> list\"", name)}
 	}
+	// --fields narrows projected resource records, so it applies only to a
+	// <product> <resource> list|get|show read. Reject it on any other recognized
+	// command, where it would otherwise be silently ignored; an unrecognized
+	// token (e.g. a product name a value-taking flag swallowed) falls through to
+	// the dispatch's more specific swallowed-product hint.
+	if len(opts.fields) > 0 && isKnownCommand(rest[0]) && !isResourceReadInvocation(rest) {
+		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
+	}
 	switch {
 	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
 		a.writeUsage(a.out)
@@ -1085,6 +1093,19 @@ func isListInvocation(rest []string) bool {
 	return len(rest) >= 3 && knownProductCommand(rest[0]) && rest[2] == "list"
 }
 
+// isResourceReadInvocation reports whether rest is a record-projecting resource
+// read (<product> <resource> list|get|show) — the only invocation shape --fields
+// applies to.
+func isResourceReadInvocation(rest []string) bool {
+	if len(rest) >= 3 && knownProductCommand(rest[0]) {
+		switch rest[2] {
+		case "list", "get", "show":
+			return true
+		}
+	}
+	return false
+}
+
 // narrowRecords applies --filter and --search to an already-projected record
 // set. SAFETY PROPERTY: narrowing runs strictly post-projection. The records
 // here have already been allow-list projected and per-field redacted for the
@@ -1484,6 +1505,19 @@ func isRunnableCommand(name string) bool {
 	default:
 		return knownProductCommand(name)
 	}
+}
+
+// isKnownCommand reports whether name is one of the top-level commands the
+// dispatch switch in runParsed recognizes. The --fields guard uses it so that
+// an unrecognized token — for example a product name a value-taking flag
+// swallowed — still reaches the dispatch's more specific swallowed-product hint
+// instead of the generic --fields usage error.
+func isKnownCommand(name string) bool {
+	switch name {
+	case "help", "-h", "--help", "version", "completion":
+		return true
+	}
+	return isRunnableCommand(name)
 }
 
 func productNames(products []resources.Product) []string {

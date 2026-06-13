@@ -269,6 +269,42 @@ func TestFilterSearchAreUsageErrorsOutsideList(t *testing.T) {
 	}
 }
 
+func TestFieldsIsUsageErrorOutsideResourceReads(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "fields on schema list", args: []string{"--fields", "name", "schema", "list"}},
+		{name: "fields on doctor", args: []string{"--fields", "name", "doctor"}},
+		{name: "fields on version", args: []string{"--fields", "name", "version"}},
+		{name: "fields on dump", args: []string{"--fields", "name", "dump", "--out", "ignored"}},
+		{name: "fields on resource without operation", args: []string{"--fields", "name", "zia", "locations"}},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var out, errOut bytes.Buffer
+			// failingResourceReader proves the guard fires before any reader call.
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+
+			err := app.Run(context.Background(), tt.args)
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Fatalf("App.Run(%v) error = %v, want ErrUsage", tt.args, err)
+			}
+			if !strings.Contains(err.Error(), "--fields") {
+				t.Errorf("App.Run(%v) error = %q, want message mentioning --fields", tt.args, err.Error())
+			}
+			if out.Len() != 0 {
+				t.Errorf("App.Run(%v) stdout = %q, want empty", tt.args, out.String())
+			}
+		})
+	}
+}
+
 func TestFilterInvalidExpressionIsUsageError(t *testing.T) {
 	t.Parallel()
 
