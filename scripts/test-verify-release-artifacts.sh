@@ -11,6 +11,9 @@ missing_sbom="$tmp_dir/release-missing-sbom.yml"
 missing_version_tag="$tmp_dir/release-missing-version-tag.yml"
 missing_checkout_hardening="$tmp_dir/release-missing-checkout-hardening.yml"
 missing_install_doc="$tmp_dir/release-missing-install-doc.yml"
+missing_agents_doc="$tmp_dir/release-missing-agents-doc.yml"
+missing_manpage="$tmp_dir/release-missing-manpage.yml"
+missing_skill="$tmp_dir/release-missing-skill.yml"
 
 cat >"$good" <<'YAML'
 name: release
@@ -37,8 +40,11 @@ jobs:
           git tag "$VERSION"
           git tag -d "$VERSION"
           cyclonedx-gomod app -json -licenses -main cmd/zscalerctl -output "dist/$name.sbom.cdx.json" .
-          mkdir -p "dist/$name/docs"
+          mkdir -p "dist/$name/docs" "dist/$name/man" "dist/$name/skills"
+          cp LICENSE README.md AGENTS.md "dist/$name/"
           cp docs/INSTALL.md "dist/$name/docs/"
+          cp man/zscalerctl.1 "dist/$name/man/"
+          cp -R skills/zscalerctl "dist/$name/skills/"
           (cd dist && shasum -a 256 *.tar.gz *.sbom.cdx.json > SHA256SUMS)
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -78,6 +84,15 @@ perl -0pi -e 's/\n          persist-credentials: false//' "$missing_checkout_har
 
 cp "$good" "$missing_install_doc"
 perl -0pi -e 's/\n          cp docs\/INSTALL\.md "dist\/\$name\/docs\/"//' "$missing_install_doc"
+
+cp "$good" "$missing_agents_doc"
+perl -0pi -e 's/ AGENTS\.md//' "$missing_agents_doc"
+
+cp "$good" "$missing_manpage"
+perl -0pi -e 's/\n          cp man\/zscalerctl\.1 "dist\/\$name\/man\/"//' "$missing_manpage"
+
+cp "$good" "$missing_skill"
+perl -0pi -e 's/\n          cp -R skills\/zscalerctl "dist\/\$name\/skills\/"//' "$missing_skill"
 
 ZSCALERCTL_RELEASE_WORKFLOW="$good" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh"
@@ -148,6 +163,48 @@ fi
 
 if ! grep -q "include docs/INSTALL.md" "$tmp_dir/err"; then
 	echo "verify-release-artifacts failed without the expected archive docs message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_agents_doc" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow without AGENTS.md" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "include AGENTS.md" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected AGENTS.md message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_manpage" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow without the manpage" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "include man/zscalerctl.1" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected manpage message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_skill" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow without the zscalerctl skill" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "include the zscalerctl skill" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected skill message" >&2
 	cat "$tmp_dir/err" >&2
 	exit 1
 fi

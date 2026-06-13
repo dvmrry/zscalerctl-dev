@@ -150,9 +150,11 @@ jobs:
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -mod=vendor -trimpath -ldflags "$ldflags" -o "dist/$name/zscalerctl$ext" ./cmd/zscalerctl
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" cyclonedx-gomod app -json -licenses -main cmd/zscalerctl -output "dist/$name.sbom.cdx.json" .
             cp "dist/$name.sbom.cdx.json" "dist/$name/sbom.cdx.json"
-            mkdir -p "dist/$name/docs"
-            cp LICENSE README.md "dist/$name/"
+            mkdir -p "dist/$name/docs" "dist/$name/man" "dist/$name/skills"
+            cp LICENSE README.md AGENTS.md "dist/$name/"
             cp docs/INSTALL.md "dist/$name/docs/"
+            cp man/zscalerctl.1 "dist/$name/man/"
+            cp -R skills/zscalerctl "dist/$name/skills/"
             tar -C dist -czf "dist/$name.tar.gz" "$name"
             rm -rf "dist/$name"
           done
