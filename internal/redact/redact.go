@@ -24,7 +24,7 @@ func ParseMode(value string) (Mode, error) {
 	case ModeParanoid:
 		return ModeParanoid, nil
 	default:
-		return "", fmt.Errorf("unsupported redaction mode %q", value)
+		return "", fmt.Errorf("unsupported redaction mode; supported: standard, share, paranoid")
 	}
 }
 

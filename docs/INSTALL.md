@@ -33,7 +33,9 @@ shasum -a 256 -c SHA256SUMS
 Verify the provenance attestation for the archive you plan to run:
 
 ```sh
-gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz --repo dvmrry/zscalerctl
+gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz \
+  --repo dvmrry/zscalerctl \
+  --signer-workflow github.com/dvmrry/zscalerctl/.github/workflows/release.yml
 ```
 
 ## Build From A Checkout

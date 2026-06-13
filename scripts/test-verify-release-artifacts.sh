@@ -9,6 +9,8 @@ good="$tmp_dir/release-good.yml"
 missing_attest="$tmp_dir/release-missing-attestation.yml"
 missing_sbom="$tmp_dir/release-missing-sbom.yml"
 missing_version_tag="$tmp_dir/release-missing-version-tag.yml"
+missing_checkout_hardening="$tmp_dir/release-missing-checkout-hardening.yml"
+missing_install_doc="$tmp_dir/release-missing-install-doc.yml"
 
 cat >"$good" <<'YAML'
 name: release
@@ -19,6 +21,10 @@ permissions:
 jobs:
   release:
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Install SBOM tool
         run: |
           cd tools && GOBIN="$GITHUB_WORKSPACE/.release-tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
@@ -31,6 +37,8 @@ jobs:
           git tag "$VERSION"
           git tag -d "$VERSION"
           cyclonedx-gomod app -json -licenses -main cmd/zscalerctl -output "dist/$name.sbom.cdx.json" .
+          mkdir -p "dist/$name/docs"
+          cp docs/INSTALL.md "dist/$name/docs/"
           (cd dist && shasum -a 256 *.tar.gz *.sbom.cdx.json > SHA256SUMS)
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -64,6 +72,12 @@ touch "$unpinned_tools_dir/go.sum"
 
 cp "$good" "$missing_version_tag"
 perl -0pi -e 's/          local_semver_tags=.*?\n          git tag "\$VERSION"\n          git tag -d "\$VERSION"\n//s' "$missing_version_tag"
+
+cp "$good" "$missing_checkout_hardening"
+perl -0pi -e 's/\n          persist-credentials: false//' "$missing_checkout_hardening"
+
+cp "$good" "$missing_install_doc"
+perl -0pi -e 's/\n          cp docs\/INSTALL\.md "dist\/\$name\/docs\/"//' "$missing_install_doc"
 
 ZSCALERCTL_RELEASE_WORKFLOW="$good" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh"
@@ -106,6 +120,34 @@ fi
 
 if ! grep -Eq "local semver tags|temporary local version tag" "$tmp_dir/err"; then
 	echo "verify-release-artifacts failed without the expected version tag message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_checkout_hardening" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow with persisted checkout credentials" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "persist write-capable credentials" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected checkout hardening message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_install_doc" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow without archive install docs" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "include docs/INSTALL.md" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected archive docs message" >&2
 	cat "$tmp_dir/err" >&2
 	exit 1
 fi

@@ -290,24 +290,33 @@ func TestRunRecoversPanicWithoutTracebackOrRawSecret(t *testing.T) {
 	}
 }
 
-func TestMuteProcessOutputSuppressesGlobalStdoutAndLogger(t *testing.T) {
+func TestMuteProcessOutputSuppressesGlobalStdoutStderrAndLogger(t *testing.T) {
 	processOutputMu.Lock()
 	defer processOutputMu.Unlock()
 
 	previousStdout := os.Stdout
+	previousStderr := os.Stderr
 	previousLogWriter := log.Writer()
-	reader, writer, err := os.Pipe()
+	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("os.Pipe() error = %v, want nil", err)
+		t.Fatalf("stdout os.Pipe() error = %v, want nil", err)
 	}
-	defer reader.Close()
-	os.Stdout = writer
+	defer stdoutReader.Close()
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stderr os.Pipe() error = %v, want nil", err)
+	}
+	defer stderrReader.Close()
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
 	var logBuffer bytes.Buffer
 	log.SetOutput(&logBuffer)
 	defer func() {
 		os.Stdout = previousStdout
+		os.Stderr = previousStderr
 		log.SetOutput(previousLogWriter)
-		_ = writer.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrWriter.Close()
 	}()
 
 	restore, err := muteProcessOutput()
@@ -315,14 +324,19 @@ func TestMuteProcessOutputSuppressesGlobalStdoutAndLogger(t *testing.T) {
 		t.Fatalf("muteProcessOutput() error = %v, want nil", err)
 	}
 	fmt.Fprint(os.Stdout, "stdout-canary")
+	fmt.Fprint(os.Stderr, "stderr-canary")
 	log.Print("log-canary")
 	restore()
 
 	fmt.Fprint(os.Stdout, "visible")
-	if err := writer.Close(); err != nil {
+	fmt.Fprint(os.Stderr, "err-visible")
+	if err := stdoutWriter.Close(); err != nil {
 		t.Fatalf("stdout pipe Close() error = %v, want nil", err)
 	}
-	body, err := io.ReadAll(reader)
+	if err := stderrWriter.Close(); err != nil {
+		t.Fatalf("stderr pipe Close() error = %v, want nil", err)
+	}
+	body, err := io.ReadAll(stdoutReader)
 	if err != nil {
 		t.Fatalf("io.ReadAll(stdout pipe) error = %v, want nil", err)
 	}
@@ -331,6 +345,16 @@ func TestMuteProcessOutputSuppressesGlobalStdoutAndLogger(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "visible") {
 		t.Errorf("captured stdout = %q, want post-restore output", body)
+	}
+	errBody, err := io.ReadAll(stderrReader)
+	if err != nil {
+		t.Fatalf("io.ReadAll(stderr pipe) error = %v, want nil", err)
+	}
+	if strings.Contains(string(errBody), "stderr-canary") {
+		t.Errorf("captured stderr = %q, want no muted canary", errBody)
+	}
+	if !strings.Contains(string(errBody), "err-visible") {
+		t.Errorf("captured stderr = %q, want post-restore output", errBody)
 	}
 	if strings.Contains(logBuffer.String(), "log-canary") {
 		t.Errorf("captured log = %q, want no muted canary", logBuffer.String())
@@ -427,8 +451,9 @@ func TestRunMapsInvalidConfigToUsageExit(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
+	const canary = "plainredactioncanary"
 	code := run(context.Background(), []string{"--format", "json", "doctor"}, &stdout, &stderr,
-		[]string{"ZSCALERCTL_REDACTION=not-a-mode"})
+		[]string{"ZSCALERCTL_REDACTION=" + canary})
 	if code != exitUsageError {
 		t.Fatalf("run(bad ZSCALERCTL_REDACTION) exit code = %d, want %d", code, exitUsageError)
 	}
@@ -438,6 +463,31 @@ func TestRunMapsInvalidConfigToUsageExit(t *testing.T) {
 	}
 	if env.Error.Kind != "invalid_config" {
 		t.Errorf("error kind = %q, want invalid_config", env.Error.Kind)
+	}
+	if strings.Contains(stderr.String(), canary) {
+		t.Errorf("stderr = %q, want no raw invalid config value", stderr.String())
+	}
+}
+
+func TestRunDoesNotEchoInvalidAuthModeValue(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	const canary = "plainauthmodecanary"
+	code := run(context.Background(), []string{"--format", "json", "doctor"}, &stdout, &stderr,
+		[]string{"ZSCALERCTL_AUTH_MODE=" + canary})
+	if code != exitUsageError {
+		t.Fatalf("run(bad ZSCALERCTL_AUTH_MODE) exit code = %d, want %d", code, exitUsageError)
+	}
+	var env errorEnvelope
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("stderr = %q, want JSON error envelope; err = %v", stderr.String(), err)
+	}
+	if env.Error.Kind != "invalid_config" {
+		t.Errorf("error kind = %q, want invalid_config", env.Error.Kind)
+	}
+	if strings.Contains(stderr.String(), canary) {
+		t.Errorf("stderr = %q, want no raw invalid config value", stderr.String())
 	}
 }
 

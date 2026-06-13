@@ -4189,8 +4189,8 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				TenantName:         "Tenant",
 				SaaSApplication:    "SaaS",
 			}),
-			standardPresent: []string{"enterpriseTenantId", "tenantName"},
-			shareAbsent:     []string{"lastTenantValidationTime", "enterpriseTenantId", "tenantName", "zscalerAppTenantId"},
+			standardPresent: []string{"tenantId", "enterpriseTenantId", "tenantName"},
+			shareAbsent:     []string{"tenantId", "lastTenantValidationTime", "enterpriseTenantId", "tenantName", "zscalerAppTenantId"},
 		},
 		{
 			name:     "casb dlp rule identifiers and admin identity are constrained",

@@ -36,8 +36,8 @@ By default, `zscalerctl dump` collects every catalog resource in the selected
 products. Use `--resources` to limit a dump to specific resource names:
 
 ```sh
-zscalerctl dump --products zia --resources locations,static-ips --out ./dump
-zscalerctl dump --resources zia/locations --out ./dump-locations
+zscalerctl dump --products zia --resources locations,static-ips --out ./scratch-live-dump
+zscalerctl dump --resources zia/locations --out ./scratch-live-dump-locations
 ```
 
 Unqualified names are matched within the selected products. Product-qualified

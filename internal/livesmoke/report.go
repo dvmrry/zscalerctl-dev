@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dvmrry/zscalerctl/internal/redact"
 )
 
 type resultRow struct {
@@ -100,7 +102,7 @@ func (r *reporter) writeFailureSummary(outDir string, stderrs []namedStderr) (st
 			continue
 		}
 		any = true
-		fmt.Fprintf(&b, "\n===== %s =====\n%s\n", s.name, compactStderr(s.body))
+		fmt.Fprintf(&b, "\n===== %s =====\n%s\n", s.name, compactAndRedactStderr(s.body))
 	}
 	if !any {
 		fmt.Fprintf(&b, "<none>\n")
@@ -150,4 +152,9 @@ func compactStderr(body []byte) string {
 		out = append(out, line)
 	}
 	return strings.Join(out, "\n")
+}
+
+func compactAndRedactStderr(body []byte) string {
+	out, _ := redact.New(redact.ModeStandard).ScanFreeText(compactStderr(body))
+	return out
 }

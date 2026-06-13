@@ -13,7 +13,7 @@ LIVE_SMOKE_MANIFEST ?=
 .PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check secret-scan vendor verify-vendor verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
-	@files="$$(find . -path ./vendor -prune -o -name '*.go' -print0 | xargs -0 gofmt -l)"; \
+	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
 	if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
 
 test:

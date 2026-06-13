@@ -19,7 +19,7 @@ Then read with `list`, `get <id>`, or `show` (singletons):
 zscalerctl --format json zia locations list
 zscalerctl --format json zia locations get 12345
 zscalerctl --format json zia advanced-settings show
-zscalerctl dump --products zia --out ./dump   # sanitized whole-product export
+zscalerctl dump --products zia --out ./scratch-live-dump   # sanitized whole-product export
 ```
 
 ## Credentials
@@ -70,3 +70,5 @@ Output is sanitized by a fail-closed allow-list; secrets never render in any
 mode. Do not try to recover dropped fields — absence is deliberate
 ([docs/FIELD_COVERAGE.md](docs/FIELD_COVERAGE.md)). Resources failing with
 exit `4`/`5` on a live tenant may be entitlement-gated, not broken.
+Dump directories contain sanitized but still confidential tenant inventory; use
+ignored scratch paths and do not paste dump payloads into tickets or chats.

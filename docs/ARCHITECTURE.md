@@ -238,7 +238,7 @@ zscalerctl auth status
 zscalerctl config show
 zscalerctl <product> <resource> list|get|show   # ops vary by resource
 zscalerctl zia url-lookup <url> [url...]        # diagnostic lookup
-zscalerctl dump --products zia,zpa --out ./dump
+zscalerctl dump --products zia,zpa --out ./scratch-live-dump
 zscalerctl schema list
 zscalerctl version
 zscalerctl completion bash|zsh|fish|powershell

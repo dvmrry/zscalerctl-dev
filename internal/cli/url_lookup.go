@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -50,13 +51,16 @@ func (a *App) runURLLookup(ctx context.Context, cfg config.Config, opts globalOp
 	if len(args) == 0 {
 		return UsageError{Message: urlLookupUsageMessage}
 	}
-	for _, url := range args {
-		if strings.HasPrefix(url, "-") {
-			return UsageError{Message: fmt.Sprintf("url-lookup takes no flags (%q); global flags go before the command\n%s", url, urlLookupUsageMessage)}
+	lookupURLs := make([]string, 0, len(args))
+	for _, rawURL := range args {
+		if strings.HasPrefix(rawURL, "-") {
+			return UsageError{Message: fmt.Sprintf("url-lookup takes no flags (%q); global flags go before the command\n%s", rawURL, urlLookupUsageMessage)}
 		}
-		if strings.TrimSpace(url) == "" {
+		sanitized := sanitizeLookupURL(rawURL)
+		if strings.TrimSpace(sanitized) == "" {
 			return UsageError{Message: urlLookupUsageMessage}
 		}
+		lookupURLs = append(lookupURLs, sanitized)
 	}
 	reader, err := a.resourceReader(cfg, opts)
 	if err != nil {
@@ -66,7 +70,7 @@ func (a *App) runURLLookup(ctx context.Context, cfg config.Config, opts globalOp
 	if !ok {
 		return fmt.Errorf("%w: %s/%s", zscaler.ErrUnsupportedResource, resources.ProductZIA, urlLookupCommandName)
 	}
-	classifications, err := lookupReader.URLLookup(ctx, args)
+	classifications, err := lookupReader.URLLookup(ctx, lookupURLs)
 	if err != nil {
 		return err
 	}
@@ -97,6 +101,18 @@ func newURLLookupResults(classifications []zscaler.URLClassification) urlLookupR
 		})
 	}
 	return results
+}
+
+func sanitizeLookupURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func nonNilStrings(values []string) []string {

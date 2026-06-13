@@ -293,7 +293,7 @@ func parseAuthMode(value string) (AuthMode, error) {
 	case AuthModeOneAPI, AuthModeZIALegacy:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("%w: parse %s: unsupported auth mode %q", ErrInvalidConfig, EnvAuthMode, value)
+		return "", fmt.Errorf("%w: parse %s: unsupported auth mode; supported: oneapi, zia-legacy", ErrInvalidConfig, EnvAuthMode)
 	}
 }
 

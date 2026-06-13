@@ -2446,7 +2446,7 @@ func catalogZIA() ResourceCatalog {
 			Name:       "casb-tenants",
 			Operations: ListOperations(),
 			Fields: []FieldSpec{
-				operationalField("tenantId", allModes()),
+				sensitiveIdentifierField("tenantId"),
 				operationalField("modifiedTime", standardShareModes()),
 				operationalField("lastTenantValidationTime", standardOnlyMode()),
 				operationalField("tenantDeleted", allModes()),
@@ -2549,7 +2549,7 @@ func catalogZIA() ResourceCatalog {
 						Classification: ClassTenantConfig,
 						AllowedModes:   standardOnlyMode(),
 						Fields: []FieldSpec{
-							operationalField("tenantId", allModes()),
+							sensitiveIdentifierField("tenantId"),
 							operationalField("modifiedTime", standardShareModes()),
 							operationalField("lastTenantValidationTime", standardOnlyMode()),
 							operationalField("tenantDeleted", allModes()),

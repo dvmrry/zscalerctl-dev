@@ -240,3 +240,12 @@ func TestListCommandFailureCapturesStderr(t *testing.T) {
 	wantContains(t, "stderr", errb, "mock API 404 not entitled")
 	wantContains(t, "stderr", errb, "failure-summary.txt")
 }
+
+func TestFailureSummaryRedactsCapturedNonJSONStderr(t *testing.T) {
+	t.Parallel()
+	_, _, errb := runMode(t, "leaky-stderr", Options{NoManifest: true, SkipCredentialCheck: true}, noEnv)
+	for _, forbidden := range []string{"raw-live-smoke-token", "raw-live-smoke-secret"} {
+		wantNotContains(t, "stderr", errb, forbidden)
+	}
+	wantContains(t, "stderr", errb, "<REDACTED:SECRET>")
+}

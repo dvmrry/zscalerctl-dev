@@ -438,10 +438,15 @@ func TestScanStringReportsFindings(t *testing.T) {
 	}
 }
 
-func TestParseModeRejectsOff(t *testing.T) {
+func TestParseModeRejectsUnsupportedValueWithoutEchoingIt(t *testing.T) {
 	t.Parallel()
 
-	if _, err := redact.ParseMode("off"); err == nil {
-		t.Errorf("ParseMode(%q) error = nil, want error", "off")
+	const canary = "plainredactioncanary"
+	_, err := redact.ParseMode(canary)
+	if err == nil {
+		t.Fatalf("ParseMode(%q) error = nil, want error", canary)
+	}
+	if strings.Contains(err.Error(), canary) {
+		t.Errorf("ParseMode(%q) error = %q, want no raw value echo", canary, err.Error())
 	}
 }

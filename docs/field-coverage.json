@@ -2863,11 +2863,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 6
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",

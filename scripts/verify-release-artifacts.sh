@@ -23,6 +23,7 @@ require_pattern() {
 
 require_pattern 'attestations:[[:space:]]*write' "release workflow must grant attestations: write"
 require_pattern 'id-token:[[:space:]]*write' "release workflow must grant id-token: write for provenance"
+require_pattern 'persist-credentials:[[:space:]]*false' "release checkout must not persist write-capable credentials before publish"
 require_pattern 'cd tools && GOBIN=.+ go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod' "release workflow must install the CycloneDX SBOM tool from the pinned tools module"
 
 tools_mod="${ZSCALERCTL_RELEASE_TOOLS_MOD:-tools/go.mod}"
@@ -43,6 +44,7 @@ require_pattern 'git tag -d "\$tag"' "release workflow must delete local semver 
 require_pattern 'git tag "\$VERSION"' "release workflow must create a temporary local version tag before SBOM generation"
 require_pattern 'git tag -d "\$VERSION"' "release workflow must remove the temporary local version tag before publishing"
 require_pattern 'cyclonedx-gomod app[[:space:]].*-json.*-output "dist/\$name\.sbom\.cdx\.json"' "release workflow must generate per-target CycloneDX JSON SBOMs"
+require_pattern 'cp docs/INSTALL\.md "dist/\$name/docs/"' "release archives must include docs/INSTALL.md for verification guidance"
 require_pattern 'shasum -a 256 \*\.tar\.gz \*\.sbom\.cdx\.json > SHA256SUMS' "release workflow must checksum release tarballs and SBOMs"
 require_pattern 'actions/attest-build-provenance@[0-9a-f]{40}' "release workflow must use SHA-pinned build provenance attestation"
 require_pattern 'subject-checksums:[[:space:]]*dist/SHA256SUMS' "release workflow must attest the SHA256SUMS subject list"

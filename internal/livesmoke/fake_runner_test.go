@@ -92,6 +92,8 @@ func (f *fakeRunner) fakeResourceBody(product, resource string) (string, string,
 		return `{"broken":`, "", 0
 	case "list-fails:zia:gre-tunnels":
 		return "", "mock API 404 not entitled\n", 7
+	case "leaky-stderr:zia:gre-tunnels":
+		return "", "Authorization: Bearer raw-live-smoke-token\nclient_secret=raw-live-smoke-secret\n", 7
 	case "json-list-fails:zia:gre-tunnels":
 		return "", `{"error":{"kind":"live_access_failed","message":"zscaler API request failed: list zia/gre-tunnels"}}` + "\n", 7
 	case "leaky-location-groups:zia:location-groups":

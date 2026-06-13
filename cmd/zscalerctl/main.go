@@ -103,7 +103,7 @@ func writeError(w io.Writer, format output.Format, err error) {
 		_ = output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(w, envelope)
 		return
 	}
-	message := redact.New(redact.ModeStandard).String(err.Error())
+	message, _ := redact.New(redact.ModeStandard).ScanRenderedString(err.Error())
 	fmt.Fprintf(w, "zscalerctl: %s\n", message)
 }
 
@@ -198,11 +198,14 @@ func muteProcessOutput() (func(), error) {
 		return nil, fmt.Errorf("open null output sink: %w", err)
 	}
 	previousStdout := os.Stdout
+	previousStderr := os.Stderr
 	log.SetOutput(io.Discard)
 	os.Stdout = devNull
+	os.Stderr = devNull
 
 	return func() {
 		os.Stdout = previousStdout
+		os.Stderr = previousStderr
 		log.SetOutput(previousLogWriter)
 		_ = devNull.Close()
 	}, nil

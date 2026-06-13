@@ -117,6 +117,34 @@ func TestURLLookupPassesMultipleURLsAndRendersEmptyArrays(t *testing.T) {
 	}
 }
 
+func TestURLLookupStripsQueryAndFragmentBeforeLookupAndOutput(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeURLLookupReader{
+		results: []zscaler.URLClassification{
+			{URL: "https://example.com/callback", Classifications: []string{"TECHNOLOGY"}},
+		},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "url-lookup", "https://example.com/callback?code=abc123#token"})
+	if err != nil {
+		t.Fatalf("App.Run(zia url-lookup query) error = %v, want nil", err)
+	}
+	if len(reader.calls) != 1 || len(reader.calls[0]) != 1 || reader.calls[0][0] != "https://example.com/callback" {
+		t.Errorf("URLLookup calls = %v, want sanitized URL only", reader.calls)
+	}
+	for _, forbidden := range []string{"abc123", "#token", "?code"} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Errorf("App.Run(zia url-lookup query) stdout = %q, want no %q", out.String(), forbidden)
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(zia url-lookup query) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestURLLookupRequiresAtLeastOneURL(t *testing.T) {
 	t.Parallel()
 
