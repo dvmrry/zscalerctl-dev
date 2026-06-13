@@ -12,6 +12,7 @@ import (
 
 var (
 	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields", "--filter", "--search"}
+	completionDumpFlags = []string{"--out", "--products", "--resources", "--continue-on-error"}
 	completionFormats   = []string{"auto", "table", "json", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
@@ -72,7 +73,7 @@ _zscalerctl()
     auth) COMPREPLY=( $(compgen -W "status" -- "$cur") ); return ;;
     config) COMPREPLY=( $(compgen -W "show" -- "$cur") ); return ;;
     schema) COMPREPLY=( $(compgen -W "list" -- "$cur") ); return ;;
-    dump) COMPREPLY=( $(compgen -W "--out --products --resources --continue-on-error" -- "$cur") ); return ;;
+    dump) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
 %s
     %s) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
   esac
@@ -87,6 +88,7 @@ complete -F _zscalerctl zscalerctl
 		words(completionProductValues()),
 		words(dumpResourceNames()),
 		words(completionShells),
+		words(completionDumpFlags),
 		bashProductResourceCases(),
 		bashCasePatterns(allResourceNames()),
 		words(operationNames()),
@@ -109,7 +111,7 @@ _zscalerctl() {
   dump_resources=(%s)
   shells=(%s)
   operations=(%s)
-  dump_flags=(--out --products --resources --continue-on-error)
+  dump_flags=(%s)
 
   case ${words[CURRENT-1]} in
     --format) compadd -- "${formats[@]}"; return ;;
@@ -140,6 +142,7 @@ _zscalerctl "$@"
 		words(dumpResourceNames()),
 		words(completionShells),
 		words(operationNames()),
+		words(completionDumpFlags),
 		zshProductResourceCases(),
 		zshCasePatterns(allResourceNames()),
 	)
@@ -165,7 +168,7 @@ complete -c zscalerctl -n '__fish_seen_subcommand_from completion' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from auth' -a 'status'
 complete -c zscalerctl -n '__fish_seen_subcommand_from config' -a 'show'
 complete -c zscalerctl -n '__fish_seen_subcommand_from schema' -a 'list'
-complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -a '--out --products --resources --continue-on-error'
+complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -l products -x -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -l resources -x -a '%s'
 %s
@@ -176,6 +179,7 @@ complete -c zscalerctl -n '__fish_seen_subcommand_from %s' -a '%s'
 		words(completionColors),
 		words(completionCommandNames()),
 		words(completionShells),
+		words(completionDumpFlags),
 		words(completionProductValues()),
 		words(dumpResourceNames()),
 		fishProductResourceCompletions(),
@@ -198,7 +202,7 @@ Register-ArgumentCompleter -Native -CommandName zscalerctl -ScriptBlock {
   $dumpResources = %s
   $shells = %s
   $operations = %s
-  $dumpFlags = @('--out', '--products', '--resources', '--continue-on-error')
+  $dumpFlags = %s
   $allResources = %s
 %s
 
@@ -254,6 +258,7 @@ Register-ArgumentCompleter -Native -CommandName zscalerctl -ScriptBlock {
 		powershellArray(dumpResourceNames()),
 		powershellArray(completionShells),
 		powershellArray(operationNames()),
+		powershellArray(completionDumpFlags),
 		powershellArray(allResourceNames()),
 		powershellProductResourceVariables(),
 		powershellProductResourceCases(),
