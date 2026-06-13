@@ -145,6 +145,34 @@ func TestURLLookupStripsQueryAndFragmentBeforeLookupAndOutput(t *testing.T) {
 	}
 }
 
+func TestURLLookupStripsUserinfoCredentials(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeURLLookupReader{
+		results: []zscaler.URLClassification{
+			{URL: "https://internal.example.com/app", Classifications: []string{"CORPORATE_MARKETING"}},
+		},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "url-lookup", "https://user:s3cr3t@internal.example.com/app?token=abc#frag"})
+	if err != nil {
+		t.Fatalf("App.Run(zia url-lookup userinfo) error = %v, want nil", err)
+	}
+	if len(reader.calls) != 1 || len(reader.calls[0]) != 1 || reader.calls[0][0] != "https://internal.example.com/app" {
+		t.Errorf("URLLookup calls = %v, want userinfo/query/fragment stripped", reader.calls)
+	}
+	for _, forbidden := range []string{"user:", "s3cr3t", "token=abc", "#frag"} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Errorf("App.Run(zia url-lookup userinfo) stdout = %q, want no %q", out.String(), forbidden)
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(zia url-lookup userinfo) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestURLLookupRequiresAtLeastOneURL(t *testing.T) {
 	t.Parallel()
 

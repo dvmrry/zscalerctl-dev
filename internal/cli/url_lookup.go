@@ -109,6 +109,11 @@ func sanitizeLookupURL(raw string) string {
 	if err != nil {
 		return value
 	}
+	// Drop everything that can carry secrets or PII before the URL reaches the
+	// API or the rendered output: userinfo credentials (user:pass@), the query
+	// string, and the fragment. Host and path are kept — they determine the
+	// category.
+	parsed.User = nil
 	parsed.RawQuery = ""
 	parsed.ForceQuery = false
 	parsed.Fragment = ""

@@ -197,6 +197,9 @@ func muteProcessOutput() (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("open null output sink: %w", err)
 	}
+	// Best-effort: swapping the os.Stdout/os.Stderr variables only mutes Go code
+	// that resolves them at write time. Writes straight to fd 1/2 (cgo, child
+	// processes) or via references captured before this call are unaffected.
 	previousStdout := os.Stdout
 	previousStderr := os.Stderr
 	log.SetOutput(io.Discard)
