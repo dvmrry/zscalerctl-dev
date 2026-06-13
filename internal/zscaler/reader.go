@@ -4593,6 +4593,22 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	}
 }
 
+// ErrorContext carries safe routing labels for an error — the product,
+// resource, and operation it concerns. These are labels only, never values, so
+// the CLI's JSON error envelope can render them. Empty fields are unknown.
+type ErrorContext struct {
+	Product   string
+	Resource  string
+	Operation string
+}
+
+// ErrorContexter is implemented by structured errors that can describe the
+// product/resource/operation they concern, letting callers route a failure
+// (list vs get vs show, which product/resource) without parsing the message.
+type ErrorContexter interface {
+	ErrorContext() ErrorContext
+}
+
 type liveAccessError struct {
 	operation  string
 	product    resources.Product
@@ -4611,6 +4627,10 @@ func (e liveAccessError) Unwrap() error {
 	return ErrLiveAccessFailed
 }
 
+func (e liveAccessError) ErrorContext() ErrorContext {
+	return ErrorContext{Product: string(e.product), Resource: e.resource, Operation: e.operation}
+}
+
 // resourceNotFoundError marks a get-by-ID whose target does not exist (404). It
 // carries only the safe product/resource labels — never the SDK response body —
 // and unwraps to ErrResourceNotFound so the CLI exits 4, not 5.
@@ -4625,6 +4645,12 @@ func (e resourceNotFoundError) Error() string {
 
 func (e resourceNotFoundError) Unwrap() error {
 	return ErrResourceNotFound
+}
+
+// resourceNotFoundError is only constructed for a get-by-ID 404, so its
+// operation is always "get".
+func (e resourceNotFoundError) ErrorContext() ErrorContext {
+	return ErrorContext{Product: string(e.product), Resource: e.resource, Operation: "get"}
 }
 
 func sdkStatusCode(err error) int {

@@ -458,3 +458,24 @@ func TestErrorFormatFollowsDataPathForAuto(t *testing.T) {
 		t.Errorf("errorFormat(json) = %q, want json", got)
 	}
 }
+
+// stubContextError implements zscaler.ErrorContexter and unwraps to a sentinel,
+// exercising errorDetails' envelope enrichment without the unexported zscaler
+// error types.
+type stubContextError struct{ ctx zscaler.ErrorContext }
+
+func (e stubContextError) Error() string                      { return "stub live failure" }
+func (e stubContextError) Unwrap() error                      { return zscaler.ErrLiveAccessFailed }
+func (e stubContextError) ErrorContext() zscaler.ErrorContext { return e.ctx }
+
+func TestErrorDetailsPopulatesOperationContext(t *testing.T) {
+	t.Parallel()
+
+	body := errorDetails(stubContextError{ctx: zscaler.ErrorContext{Product: "zia", Resource: "locations", Operation: "list"}})
+	if body.Kind != "live_access_failed" {
+		t.Errorf("errorDetails kind = %q, want live_access_failed", body.Kind)
+	}
+	if body.Product != "zia" || body.Resource != "locations" || body.Operation != "list" {
+		t.Errorf("errorDetails context = %q/%q/%q, want zia/locations/list", body.Product, body.Resource, body.Operation)
+	}
+}
