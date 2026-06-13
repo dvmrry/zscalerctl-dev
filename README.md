@@ -62,6 +62,9 @@ zscalerctl zia locations list
 zscalerctl zpa server-groups list
 zscalerctl ztw workload-groups list
 
+# Diagnostic lookup: which categories does this domain/URL resolve to?
+zscalerctl zia url-lookup example.com
+
 # Write a sanitized, fail-closed dump
 zscalerctl dump --products zia --out ./dump
 ```

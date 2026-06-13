@@ -83,6 +83,12 @@ Get a single resource by id, where the resource supports it.
 .B <product> <resource> show
 Show a singleton/status resource that yields one record.
 .TP
+.B zia url-lookup <url> [url...]
+Resolve the URL category classifications for one or more URLs or domains,
+including security-alert categories and the matched cloud application. A
+diagnostic query, not a catalog resource: the backing endpoint performs a pure
+lookup and never modifies tenant state. At least one URL is required.
+.TP
 .B dump \-\-out <dir> [\-\-products ...] [\-\-resources ...] [\-\-continue-on-error]
 Write a sanitized multi-resource dump (manifest.json, redaction_report.json,
 per-resource files, and errors.ndjson on failure) into a new directory.
