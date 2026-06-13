@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -723,6 +724,47 @@ func TestPowerShellCompletionRegistersCommand(t *testing.T) {
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(completion powershell) stderr = %q, want empty", errOut.String())
+	}
+}
+
+// TestPowerShellCompletionParsesUnderRealPwsh runs the generated PowerShell
+// completion through an actual PowerShell parser, so a syntax regression fails
+// the build — the string-level completion tests above cannot catch that. It
+// runs wherever `pwsh` is on PATH; in CI (GitHub ubuntu runners ship
+// PowerShell) a missing pwsh is a hard failure, so the smoke can never silently
+// stop running.
+func TestPowerShellCompletionParsesUnderRealPwsh(t *testing.T) {
+	t.Parallel()
+
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("pwsh not found, but the PowerShell completion parse smoke is required in CI")
+		}
+		t.Skip("pwsh not installed; skipping PowerShell completion parse smoke")
+	}
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+	if err := app.Run(context.Background(), []string{"completion", "powershell"}); err != nil {
+		t.Fatalf("App.Run(completion powershell) error = %v, want nil", err)
+	}
+
+	script := filepath.Join(t.TempDir(), "completion.ps1")
+	if err := os.WriteFile(script, out.Bytes(), 0o600); err != nil {
+		t.Fatalf("write completion script: %v", err)
+	}
+
+	// Parse-only (no execution): tokenize the file and fail on any ParseError.
+	parse := fmt.Sprintf(`$tokens = $null; $errs = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile('%s', [ref]$tokens, [ref]$errs)
+if ($errs -and $errs.Count -gt 0) { $errs | ForEach-Object { [Console]::Error.WriteLine($_.ToString()) }; exit 1 }`, script)
+
+	var pwshErr bytes.Buffer
+	cmd := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", parse)
+	cmd.Stderr = &pwshErr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("generated PowerShell completion failed to parse under pwsh: %v\n%s", err, pwshErr.String())
 	}
 }
 
