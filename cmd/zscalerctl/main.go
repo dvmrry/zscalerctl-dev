@@ -121,6 +121,19 @@ func errorDetails(err error) errorBody {
 	if errors.As(err, &mce) {
 		body.Missing = mce.Missing
 	}
+	var ctx zscaler.ErrorContexter
+	if errors.As(err, &ctx) {
+		c := ctx.ErrorContext()
+		if c.Product != "" {
+			body.Product = c.Product
+		}
+		if c.Resource != "" {
+			body.Resource = c.Resource
+		}
+		if c.Operation != "" {
+			body.Operation = c.Operation
+		}
+	}
 	return body
 }
 

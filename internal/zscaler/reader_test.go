@@ -6646,3 +6646,25 @@ func toString(value any) string {
 	text, _ := value.(string)
 	return text
 }
+
+func TestLiveAccessErrorContext(t *testing.T) {
+	t.Parallel()
+
+	e := liveAccessError{operation: "list", product: "zia", resource: "locations", statusCode: 403}
+	got := e.ErrorContext()
+	want := ErrorContext{Product: "zia", Resource: "locations", Operation: "list"}
+	if got != want {
+		t.Errorf("liveAccessError.ErrorContext() = %+v, want %+v", got, want)
+	}
+}
+
+func TestResourceNotFoundErrorContext(t *testing.T) {
+	t.Parallel()
+
+	e := resourceNotFoundError{product: "zpa", resource: "server-groups"}
+	got := e.ErrorContext()
+	want := ErrorContext{Product: "zpa", Resource: "server-groups", Operation: "get"}
+	if got != want {
+		t.Errorf("resourceNotFoundError.ErrorContext() = %+v, want %+v", got, want)
+	}
+}
