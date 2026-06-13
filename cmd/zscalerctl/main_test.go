@@ -187,6 +187,38 @@ func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	}
 }
 
+// TestRunJSONCredentialErrorEnvelopeMissingArray verifies that the JSON error
+// envelope for a missing-credentials failure includes a non-empty "missing"
+// array of variable NAMES and that no secret values appear anywhere in the
+// rendered JSON.
+func TestRunJSONCredentialErrorEnvelopeMissingArray(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"--format", "json", "zia", "locations", "list"}, &stdout, &stderr, nil)
+	if code != exitCredentialError {
+		t.Fatalf("run(json missing credentials) exit code = %d, want %d", code, exitCredentialError)
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if len(got.Error.Missing) == 0 {
+		t.Fatalf("run(json missing credentials) missing array is empty, want at least one entry")
+	}
+	// All elements must be variable names (uppercase, underscore) — never values.
+	for _, name := range got.Error.Missing {
+		if !strings.HasPrefix(name, "ZSCALERCTL_") {
+			t.Errorf("missing entry %q does not look like an env-var name", name)
+		}
+	}
+	// The raw JSON must not contain any credential values (values are empty in
+	// this test because no env vars are set, but guard the field names).
+	raw := stderr.String()
+	for _, forbidden := range []string{"zscalerctl-client-secret", "zscalerctl-client-id"} {
+		if strings.Contains(raw, forbidden) {
+			t.Errorf("stderr JSON contains forbidden value %q", forbidden)
+		}
+	}
+}
+
 func TestRunJSONNotFoundErrorEnvelope(t *testing.T) {
 	t.Parallel()
 

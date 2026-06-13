@@ -20,6 +20,15 @@
           "type": "string",
           "description": "Human-readable, redaction-filtered error message."
         },
+        "missing": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Variable NAMES (never values) of credential environment variables that are unset. Present only for missing_credentials errors."
+        },
+        "operation": {
+          "type": "string",
+          "description": "Operation context, when applicable."
+        },
         "product": {
           "type": "string",
           "description": "Product context, when applicable."
@@ -27,10 +36,6 @@
         "resource": {
           "type": "string",
           "description": "Resource context, when applicable."
-        },
-        "operation": {
-          "type": "string",
-          "description": "Operation context, when applicable."
         }
       }
     }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -264,6 +265,52 @@ func TestNewReaderRequiresZIALegacyCredentials(t *testing.T) {
 	cfg.ZIALegacy.APIKey = secret.Secret{}
 	if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
 		t.Fatalf("NewReader(missing ZIA legacy API key) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
+// TestValidateReaderConfigMissingCredentialsErrorOneAPIAllMissing verifies that
+// when all three OneAPI credentials are unset, validateReaderConfig returns a
+// *MissingCredentialsError listing all three names in order and still satisfies
+// errors.Is(err, ErrMissingCredentials).
+func TestValidateReaderConfigMissingCredentialsErrorOneAPIAllMissing(t *testing.T) {
+	t.Parallel()
+
+	// Empty config defaults to OneAPI mode.
+	err := validateReaderConfig(ReaderConfig{})
+
+	var mce *MissingCredentialsError
+	if !errors.As(err, &mce) {
+		t.Fatalf("validateReaderConfig(empty) error type = %T, want *MissingCredentialsError", err)
+	}
+	want := []string{"ZSCALERCTL_CLIENT_ID", "ZSCALERCTL_CLIENT_SECRET", "ZSCALERCTL_VANITY_DOMAIN"}
+	if !reflect.DeepEqual(mce.Missing, want) {
+		t.Errorf("MissingCredentialsError.Missing = %v, want %v", mce.Missing, want)
+	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Errorf("errors.Is(err, ErrMissingCredentials) = false, want true")
+	}
+}
+
+// TestValidateReaderConfigMissingCredentialsErrorOneAPISecretOnly verifies that
+// when only CLIENT_SECRET is unset, the Missing list contains exactly that name.
+func TestValidateReaderConfigMissingCredentialsErrorOneAPISecretOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validReaderConfig()
+	cfg.ClientSecret = secret.Secret{}
+
+	err := validateReaderConfig(cfg)
+
+	var mce *MissingCredentialsError
+	if !errors.As(err, &mce) {
+		t.Fatalf("validateReaderConfig(missing secret) error type = %T, want *MissingCredentialsError", err)
+	}
+	want := []string{"ZSCALERCTL_CLIENT_SECRET"}
+	if !reflect.DeepEqual(mce.Missing, want) {
+		t.Errorf("MissingCredentialsError.Missing = %v, want %v", mce.Missing, want)
+	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Errorf("errors.Is(err, ErrMissingCredentials) = false, want true")
 	}
 }
 

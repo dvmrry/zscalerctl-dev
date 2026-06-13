@@ -111,6 +111,24 @@ import (
 var (
 	ErrMissingCredentials  = errors.New("missing zscaler API credentials")
 	ErrUnsupportedResource = errors.New("unsupported zscaler resource")
+)
+
+// MissingCredentialsError reports every required credential environment
+// variable that is unset for the active auth mode. It records variable NAMES
+// only — never values — so it is always safe to render. It wraps
+// ErrMissingCredentials so errors.Is(err, ErrMissingCredentials) and the
+// exit-code/kind mapping continue to work.
+type MissingCredentialsError struct {
+	Missing []string
+}
+
+func (e *MissingCredentialsError) Error() string {
+	return fmt.Sprintf("missing zscaler API credentials: %s required", strings.Join(e.Missing, ", "))
+}
+
+func (e *MissingCredentialsError) Unwrap() error { return ErrMissingCredentials }
+
+var (
 	ErrInvalidResourceID   = errors.New("invalid zscaler resource id")
 	ErrResourceNotFound    = errors.New("zscaler resource not found")
 	ErrLiveAccessFailed    = errors.New("zscaler API request failed")
@@ -1312,29 +1330,38 @@ func validateReaderConfig(cfg ReaderConfig) error {
 	}
 	switch effectiveAuthMode(cfg.AuthMode) {
 	case AuthModeZIALegacy:
-		switch {
-		case !cfg.ZIALegacy.Username.IsSet():
-			return fmt.Errorf("%w: ZSCALERCTL_ZIA_USERNAME is required", ErrMissingCredentials)
-		case !cfg.ZIALegacy.Password.IsSet():
-			return fmt.Errorf("%w: ZSCALERCTL_ZIA_PASSWORD is required", ErrMissingCredentials)
-		case !cfg.ZIALegacy.APIKey.IsSet():
-			return fmt.Errorf("%w: ZSCALERCTL_ZIA_API_KEY is required", ErrMissingCredentials)
-		case strings.TrimSpace(cfg.ZIALegacy.Cloud) == "":
-			return fmt.Errorf("%w: ZSCALERCTL_ZIA_CLOUD is required", ErrMissingCredentials)
-		default:
-			return nil
+		var missing []string
+		if !cfg.ZIALegacy.Username.IsSet() {
+			missing = append(missing, "ZSCALERCTL_ZIA_USERNAME")
 		}
+		if !cfg.ZIALegacy.Password.IsSet() {
+			missing = append(missing, "ZSCALERCTL_ZIA_PASSWORD")
+		}
+		if !cfg.ZIALegacy.APIKey.IsSet() {
+			missing = append(missing, "ZSCALERCTL_ZIA_API_KEY")
+		}
+		if strings.TrimSpace(cfg.ZIALegacy.Cloud) == "" {
+			missing = append(missing, "ZSCALERCTL_ZIA_CLOUD")
+		}
+		if len(missing) > 0 {
+			return &MissingCredentialsError{Missing: missing}
+		}
+		return nil
 	case AuthModeOneAPI:
-		switch {
-		case !cfg.ClientID.IsSet():
-			return fmt.Errorf("%w: ZSCALERCTL_CLIENT_ID is required", ErrMissingCredentials)
-		case !cfg.ClientSecret.IsSet():
-			return fmt.Errorf("%w: ZSCALERCTL_CLIENT_SECRET is required", ErrMissingCredentials)
-		case cfg.VanityDomain == "":
-			return fmt.Errorf("%w: ZSCALERCTL_VANITY_DOMAIN is required", ErrMissingCredentials)
-		default:
-			return nil
+		var missing []string
+		if !cfg.ClientID.IsSet() {
+			missing = append(missing, "ZSCALERCTL_CLIENT_ID")
 		}
+		if !cfg.ClientSecret.IsSet() {
+			missing = append(missing, "ZSCALERCTL_CLIENT_SECRET")
+		}
+		if cfg.VanityDomain == "" {
+			missing = append(missing, "ZSCALERCTL_VANITY_DOMAIN")
+		}
+		if len(missing) > 0 {
+			return &MissingCredentialsError{Missing: missing}
+		}
+		return nil
 	default:
 		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
 	}
@@ -1345,7 +1372,7 @@ func validateProductConfig(cfg ReaderConfig, product resources.Product) error {
 		return nil
 	}
 	if product == resources.ProductZPA && strings.TrimSpace(cfg.ZPACustomerID) == "" {
-		return fmt.Errorf("%w: ZSCALERCTL_ZPA_CUSTOMER_ID is required for ZPA resources", ErrMissingCredentials)
+		return &MissingCredentialsError{Missing: []string{"ZSCALERCTL_ZPA_CUSTOMER_ID"}}
 	}
 	return nil
 }

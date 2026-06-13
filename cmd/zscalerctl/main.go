@@ -69,11 +69,12 @@ type errorEnvelope struct {
 func (errorEnvelope) OutputSafe() {}
 
 type errorBody struct {
-	Kind      string `json:"kind"`
-	Message   string `json:"message"`
-	Product   string `json:"product,omitempty"`
-	Resource  string `json:"resource,omitempty"`
-	Operation string `json:"operation,omitempty"`
+	Kind      string   `json:"kind"`
+	Message   string   `json:"message"`
+	Missing   []string `json:"missing,omitempty"`
+	Operation string   `json:"operation,omitempty"`
+	Product   string   `json:"product,omitempty"`
+	Resource  string   `json:"resource,omitempty"`
 }
 
 // errorFormat decides how a command-boundary error is rendered, keeping it
@@ -115,6 +116,10 @@ func errorDetails(err error) errorBody {
 	if errors.As(err, &notFound) {
 		body.Product = string(notFound.Product)
 		body.Resource = notFound.Resource
+	}
+	var mce *zscaler.MissingCredentialsError
+	if errors.As(err, &mce) {
+		body.Missing = mce.Missing
 	}
 	return body
 }
