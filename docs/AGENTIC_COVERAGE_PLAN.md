@@ -34,7 +34,7 @@ The floor is only meaningful if the battery actually discriminates. A battery so
 Field-coverage is a property of Go source: derivable, committable, drift-gated in milliseconds. Agentic coverage is a property of a *running language model*: non-deterministic, slow, keyed, token-costing. **You cannot gate a build on "the LLM scored ≥ X."** The design splits cleanly and the split is enforced structurally:
 
 - **(a) DETERMINISTIC + CI-GATED:** the scorer, the battery logic, the ground-truth oracle, the traceability and posture gates — all pure Go, unit-tested against *recorded transcripts*. Runs under plain `go test`. This is where "grading cannot silently break" lives. It is the exact analogue of `TestFieldCoverageReportIsCurrent`.
-- **(b) NON-DETERMINISTIC + TRACKED:** the live multi-agent run (`make agent-eval`, build-tagged, on-demand/scheduled). Emits a **score + report**, never a build pass/fail. A single cheap agent MAY run as an *advisory, non-blocking* PR smoke (§6.4), enforced to exit 0 always so it can never become a de-facto gate.
+- **(b) NON-DETERMINISTIC + TRACKED:** the live multi-agent run (`make agent-eval`, build-tagged, on-demand/scheduled). Emits a **score + report**, never a build pass/fail. A single cheap agent MAY run as an *advisory, non-blocking* PR smoke (§6.4, deferred per decision 2), enforced to exit 0 always so it can never become a de-facto gate.
 
 The line between the two halves is the most important invariant in this document. Three leaks across it (LLM-authored ground truth frozen as the gate's oracle; grader-version drift not forcing regeneration; auto-committed verdicts) are closed in §5.
 
@@ -77,30 +77,39 @@ string_enum   : string       // case-fold+trim, compared to a per-question accep
 id            : string       // numeric/string compared as trimmed strings ("1"==1)
 field_present : bool         // "is field X in the emitted object?"
 exit_code     : int          // graded from the OBSERVED command's exit_code (§2.3), not the envelope
-error_kind    : enum{usage,credentials,not_found,unsupported_resource,invalid_resource_id,live_api,partial_dump,internal}
+error_kind    : enum{usage,partial_dump,not_found,missing_credentials,invalid_resource_id,unsupported_resource,live_access_failed,invalid_proxy_config,invalid_config,internal}  // listed in errorKind() switch order; order is irrelevant for grading (equality, not position)
 ```
+
+**The `error_kind` enum is the EXACT set of strings `errorKind()` emits** (`cmd/zscalerctl/main.go`), copied verbatim — `missing_credentials` (not `credentials`), `live_access_failed` (not `live_api`), and the full set including `invalid_proxy_config` / `invalid_config`. **There is no translation layer:** the grader compares against the literal envelope `kind` string. A normalized/renamed enum would be a second place the vocabulary could drift from the binary, so the design forbids it — `TestErrorKindEnumMatchesBinary` asserts this enum equals the set produced by `errorKind()` and reds the build if a new kind is added without updating the eval.
 
 Normalization is a shared, total, deterministic pipeline: trim → collapse whitespace → NFC → optional case-fold (declared per field) → optional id-canonicalization. **No fuzzy/Levenshtein matching** — if a question needs "approximately," it is the wrong question; rewrite it as a `set` or `string_enum`. `set` is the workhorse and the only kind eligible for partial credit (§4.3).
 
 ### 2.3 The one fixture-binary spec
 
-Decision: a **separate `cmd/zscalerctl-fixture/main.go`** (distinct `package main`, **NO build tag**). Rationale, reconciling all four divergent specs:
+Decision: a **separate `internal/agenteval/cmd/zscalerctl-fixture/main.go`** (distinct `package main`, **NO build tag**, under `internal/` so it can never be an installable/shippable command). Rationale, reconciling all four divergent specs:
 
 - **No build tag** (folding multi-backend critique 6a): build tags are forgettable; `BuildFixtureBinary` would have to remember `-tags …` and the guard silently fails if it doesn't. Isolation is guaranteed instead by the fact that production `cmd/zscalerctl` **never imports** the fixtures package. That import-graph fact is the real protection, and it is itself testable.
+- **Under `internal/agenteval/cmd/`, not top-level `cmd/`** (folding review finding 5): top-level `cmd/` reads as installable surface, and a future release glob (`./cmd/...`) could ship a test binary. Putting it under `internal/` means external modules can't import it and the release workflow — which builds only `./cmd/zscalerctl` — can't pick it up; `TestReleaseShipsOnlyZscalerctl` (§5.2) asserts the release artifact contains exactly the one binary.
 - **Selected by presence of `ZSCALERCTL_FIXTURE_DIR`.** If that env var is unset, the fixture binary **hard-fails exit 1 at startup** (folding question-battery critique 7) — it can never fall through to a live reader.
 - **Wired at the `Options.Reader` seam.** Confirmed in repo: `internal/cli/app.go:122` declares `ResourceReader` (`List`/`Get`/`Show`); `:134` is `Options.Reader`; `:138` is `NewWithOptions`; the live `zscaler.NewReader` is at `:864`. The fixture main constructs the App with a `fixtureReader` instead of `zscaler.NewReader`.
-- **Runs the real credential-validation path first** (folding failure-mode critique Hole 1). Credential validation fires at reader *construction*, before any `List`/`Get`/`Show`. So the fixture main must parse the `ZSCALERCTL_*` env block and run the same validation logic before substituting the fixture reader. A deliberate "no credentials" scenario is produced by simply *not setting* the credential vars → validation returns missing-credentials → the binary exits **3** through the normal path. This is what makes FM-04 (exit 3) and FM-07 (credential discovery) reachable without a live tenant.
+- **Runs the real credential-validation path explicitly** (folding failure-mode critique Hole 1). Credential validation lives *inside* `zscaler.NewReader` (→ `validateReaderConfig`). But the fixture main injects a pre-built reader via `Options.Reader`, so `resourceReader()` short-circuits and **`NewReader` is never called — the production seam bypasses validation entirely.** The fixture main must therefore run that same validation explicitly at startup — which means exposing the existing `validateReaderConfig` as a small callable (e.g. `zscaler.ValidateReaderConfig`) the fixture `main` invokes — *before* substituting the fixture reader. (Small Phase-1 refactor, noted.) **The runner injects synthetic, value-free `ZSCALERCTL_*` fixture credentials for every normal scenario** (obviously-synthetic placeholders that pass validation but never reach an endpoint — the fixture reader, not a live client, serves the data). A deliberate "no credentials" scenario is the **only** one that omits those vars → validation returns missing-credentials → the binary exits **3** through the normal path. This is what makes **FM-07 (exit 3 / credential discovery)** reachable without a live tenant, *and* what keeps normal reads from spuriously exiting 3. (Reconciles the sandbox env-hygiene rules in §6.3 / §5.5: real creds stripped, synthetic creds injected per scenario. FM-04's exit-4 `not_found`/`unsupported_resource` scenarios are reached separately via the fixture reader's `get <unknown-id>` path.)
 - **Everything past the reader is the exact production path:** projection, redaction, `--fields`, `--filter`, `--search`, exit codes, the stderr JSON error envelope, `schema list`. Only the data source is swapped, and the swap is value-free fixtures. *This is what makes the eval honest.*
 
-The fixture data lives in a **promoted non-test package** `internal/agenteval/fixtures` (today's `fakeRunner` corpus is in `internal/livesmoke/fake_runner_test.go` — a `_test.go` file a `main` cannot import; it is promoted, not copied). To avoid polluting the `livesmoke` public surface, the corpus moves to its own importable package consumed by `cmd/zscalerctl-fixture` and the oracle.
+The fixture data lives in a **promoted non-test package** `internal/agenteval/fixtures` (today's `fakeRunner` corpus is in `internal/livesmoke/fake_runner_test.go` — a `_test.go` file a `main` cannot import; it is promoted, not copied). To avoid polluting the `livesmoke` public surface, the corpus moves to its own importable package consumed by `internal/agenteval/cmd/zscalerctl-fixture` and the oracle.
 
-**Observed-command capture (the sidecar):** the fixture binary appends one JSON line per invocation to the path in `ZSCALERCTL_FIXTURE_LOG` (read from its own `os.Getenv`, so the path survives an agent's subprocess chain): `{"argv":[…],"exit":N,"stdout_sha256":"…","stdout_len":N}`. The runner reads this after the agent finishes to populate the authoritative `commands` array. If the sidecar is **empty when the agent claims it ran commands**, that is a distinct condition (§4.2), not a silent zero.
+**Observed-command capture (the sidecar = the one observed-command stream):** the authoritative record of what the agent did is a single append-only stream at the path in `ZSCALERCTL_FIXTURE_LOG` (read from each wrapper's own `os.Getenv`, so the path survives an agent's subprocess chain). It is fed by **PATH-interposed logging wrappers**, not just the fixture binary:
+- `zscalerctl` itself (the fixture binary self-logs `{"tool":"zscalerctl","argv":[…],"exit":N,"stdout_sha256":"…","stdout_len":N}`).
+- a thin wrapper for **every non-`zscalerctl` tool a grader judges** — in practice just `jq` — installed in `WorkDir/bin` ahead of system PATH, which logs `{"tool":"jq","argv":[…],"exit":N}` then `exec`s the real binary.
+
+The runner reads this stream after the agent finishes to populate the authoritative `commands` array. **Method judgments are restricted to what appears on this stream** — the scorer never infers a tool invocation it didn't log, and never grades a method signal for a tool that isn't wrapped (§4.5). This is the explicit answer to "the scorer can only see what it instruments": if a judgment needs to observe `jq`, `jq` is wrapped; if a tool isn't wrapped, no method verdict depends on it. If the stream is **empty when the agent claims it ran commands**, that is a distinct condition (§4.2), not a silent zero.
 
 ### 2.4 The one definition of "clears the battery"
 
 Decision (resolving Gap C + the four divergent definitions): **drop the aggregate `0.80` threshold entirely** — it is the weakest formulation and masks per-category failure. "Clears" is binary and defensible:
 
-> An agent **clears** iff: every **Tier-0 / discovery** question passes (hard gate — the founding concern is never averaged away), AND every other question is **pass-or-WARN** with **zero method violations** (no guessed resource, no fabricated value, no canary leak, no write attempt), AND there are **zero `no_commands` failures**.
+> An agent **clears** iff: every **Tier-0 / discovery** question passes (hard gate — the founding concern is never averaged away), AND every other question is **pass-or-WARN** with **zero method violations**, AND there are **zero `no_commands` failures**.
+
+A **method violation** is defined only over signals observable on the one observed-command stream (§2.3): an answer derived from an **unverified guessed resource name** (an invocation returned `unsupported_resource` and the agent answered from it without ever recovering to a real resource — Q3's recovery path is explicitly *not* a violation), a **fabricated value** (a value in the answer envelope that the binary never emitted), or a **canary leak**. The tool is **read-only — there is no write verb**, so "no write attempt" is vacuous via `zscalerctl`; an out-of-band write (e.g. raw `curl` to the API) is only a gradeable signal if that tool is wrapped onto the observed stream, and the design does not wrap it, so it is out of scope rather than a silently-unenforced rule.
 
 A single guessed-resource anywhere disqualifies, because the claim being measured is "the surface is self-describing enough that this agent never had to guess." No tunable knob; you cannot raise the number by relaxing a threshold.
 
@@ -174,12 +183,13 @@ Every `derive_fn` consumes only `resources.Catalog()` + the fixture corpus, run 
 - **C3:** apply the production filter/search predicate to the projected fixtures. Captures narrow-only semantics: `--filter preSharedKey~x` truth is **empty set / exit 0 `[]`** because the field is dropped and matches nothing — a real agentic property worth grading.
 - **C4:** compute the id-join in Go over two projected fixtures using the catalog relationship.
 - **C5:** read `FieldSpec.Classification` + `AllowedIn(mode)` straight from the catalog. "Is Y *ever* shown?" → `false` iff `ClassSecret` or never `AllowedIn` any mode. `--fields id,name,preSharedKey` → truth `{id,name}` (preSharedKey silently absent — narrow-never-widen). Grades whether the agent reports absence vs. inventing the secret.
-- **C6:** the documented contract, pinned per question against the **verified repo exit-code map** (confirmed in `cmd/zscalerctl/main.go`):
-  - exit **2** `usage` ← `ErrUsage`, `ErrInvalidResourceID`, `ErrInvalidProxyConfig`, `ErrInvalidConfig`
-  - exit **3** `credentials` ← `ErrMissingCredentials`
-  - exit **4** `not_found` ← `ErrNotFound` / `ErrResourceNotFound`, **and** `unsupported_resource` ← `ErrUnsupportedResource`
-  - exit **5** `live_api` ← `ErrLiveAccessFailed`
-  - exit **6** `partial_dump` ← `ErrPartialDump`
+- **C6:** the documented contract, pinned per question against the **verified repo exit-code + kind map** (confirmed in `cmd/zscalerctl/main.go` — `exitCodeForError()` and `errorKind()`). One exit code can carry several distinct kinds; the kind strings below are the literal envelope values (§2.2):
+  - exit **2** — kinds `usage` (`ErrUsage`), `invalid_resource_id` (`ErrInvalidResourceID`), `invalid_proxy_config` (`ErrInvalidProxyConfig`), `invalid_config` (`config.ErrInvalidConfig`)
+  - exit **3** — kind `missing_credentials` (`ErrMissingCredentials`)
+  - exit **4** — kinds `not_found` (`ErrNotFound` / `ErrResourceNotFound`) **and** `unsupported_resource` (`ErrUnsupportedResource`) — same exit, different remediation
+  - exit **5** — kind `live_access_failed` (`ErrLiveAccessFailed`)
+  - exit **6** — kind `partial_dump` (`ErrPartialDump`)
+  - exit **1** — kind `internal` (default fall-through)
 
   **Critical (folding failure-mode critique Hole 2):** exit 4 is *two* kinds with *different remediations*. `not_found` = the id doesn't exist; `unsupported_resource` = the resource key is wrong. FM-04 questions grade **both exit code AND `kind`** from the stderr envelope. An agent that says "not found" when the truth was `unsupported_resource` is precisely right on exit code and wrong on remediation → FAIL. `invalid_resource_id` maps to exit **2**, not 4 — a question pinning it to 4 would be a *test bug* and is caught by the oracle self-check (§3.6).
 
@@ -199,11 +209,11 @@ The corpus was built to test the *validator*, not agent cognition. Concrete mand
 
 ### 3.6 Anti-overfit + oracle self-check
 
-- **Templates, not fixed instances.** A template is `{category, tier, derive_fn, resource_selector}`; `resource_selector` picks resources by *property* ("a singleton," "a list resource with ≥1 `ClassSecret` field"), rotating instances across catalog evolution while holding template coverage fixed.
+- **Templates, not fixed instances.** A template is `{category, tier, derive_fn, resource_selector}`; `resource_selector` picks resources by *property* ("a singleton," "a list resource with ≥1 `ClassSecret` field"), rotating instances across catalog evolution while holding template coverage fixed. **Rotation cadence:** instances rotate **per-release** initially (decision 6, §9.1); revisited once live-run cost data informs it.
 - **Prompt parameterization** (folding question-battery critique 5): prompts that reference an id render it at gen-time from a stable well-known id (`"location with id {first_id}"`), so rotation never strands a stale literal. Counts/names rotate; at least one well-known id per `get`-template resource is stable.
-- **`TestBatteryCoversSurface`:** every product appears in ≥1 C1 question; every `FieldClassification` in ≥1 C5; every *fixture-reachable* exit code in ≥1 C6; both shapes in C2; all three filter forms in C3. `live_api`/`partial_dump` are documented out-of-scope for the fixture coverage requirement unless the fixture reader's error-injection covers them (folding question-battery critique 6).
+- **`TestBatteryCoversSurface`:** every product appears in ≥1 C1 question; every `FieldClassification` in ≥1 C5; every *fixture-reachable* exit code in ≥1 C6; both shapes in C2; all three filter forms in C3. `live_access_failed`/`partial_dump` are documented out-of-scope for the fixture coverage requirement unless the fixture reader's error-injection covers them (folding question-battery critique 6).
 - **`TestOracleMatchesFixtures`:** every expected answer re-derived from the corpus equals the committed expectation, **and** every expected value is allow-listed in the active mode (fail-closed self-check). A question whose expected answer references a dropped/secret field is a *test bug* that fails this gate at construction.
-- **Traceability, both directions** (folding failure-mode critique Hole 6): `TestEveryAgentSurfacePromiseHasAnFM` parses anchored AGENTS.md/SKILL claims and asserts (1) every promise → ≥1 FM → ≥1 question, **and** (2) every FM in the registered taxonomy → ≥1 question tagged with it. Adding a claim with no question, or an FM with no question, fails the build. This is what structurally prevents the "asserted, not measured" regression.
+- **Traceability, both directions** (folding failure-mode critique Hole 6) — **no regex over free prose.** The source of truth is a committed registry `surface_promises.json`: `promise_id → {anchor, fm, doc}`, where `anchor` is a *verbatim* marker that must exist in the doc — either an explicit HTML comment (`<!-- promise:FM-03 narrowing -->`) or an exact quoted phrase. `TestEveryAgentSurfacePromiseHasAnFM` then asserts, mechanically: (1) **each registry `anchor` occurs verbatim** (a plain substring check) in its named `doc` (`AGENTS.md`/`SKILL.md`) — so renaming or dropping a promised affordance reds the build; (2) every promise → ≥1 FM → ≥1 question; (3) every FM in the registered taxonomy → ≥1 question tagged with it. The test never parses or interprets prose — it only checks that declared anchors exist and that the promise→FM→question graph is complete. Adding a claim to the registry with no question, or an FM with no question, or an anchor the doc doesn't contain, fails the build. This is what structurally prevents the "asserted, not measured" regression without a brittle prose-scraper.
 
 ### 3.7 ~12 worked questions (truth is computed; values shown for today's catalog)
 
@@ -245,7 +255,8 @@ Fabrication-blindness is **explicitly acknowledged** (folding scoring critique 2
 commands == []                                       -> FAIL  (no_commands; agent ran nothing)   [Hole 9 / Gap C]
 sidecar absent though agent claims commands          -> INCONCLUSIVE -> re-run, never silent FAIL  [multi-backend 1b]
 parse_status != ok                                   -> FAIL  (couldn't follow the protocol)
-method.must_not matched (guess/widen-secret/write)   -> FAIL  (lucky guess is not a pass)
+method.must_not matched (answer-from-unverified-guess
+    | fabricated/widened-secret value) [observed only] -> FAIL  (lucky guess is not a pass; read-only tool has no write path)
 canary in binary output (any channel)                -> FAIL  kind="eval-infra-leak" (indicts the fixture binary, not the agent) [failure-mode Hole 5]
 method.must_run_any NOT satisfied:
     answer correct                                    -> WARN-capped (right answer, no/unknown method)  -- never PASS
@@ -277,7 +288,7 @@ A committed set of questions known from recorded runs to fail `devin -p`. A **de
 
 ### 4.5 FM-03 false-positive fix (jq-WARN)
 
-AGENTS.md *recommends* jq for array-membership/cross-field predicates. So "agent used jq" cannot be a blanket WARN (folding failure-mode critique Hole 3). Each FM-03 question carries `NativeFilterSufficient bool`. WARN fires only when `true` (native `--filter` trivially expressed it) and the agent reached for jq anyway. The grader reads question metadata, not transcript intent.
+AGENTS.md *recommends* jq for array-membership/cross-field predicates. So "agent used jq" cannot be a blanket WARN (folding failure-mode critique Hole 3). Each FM-03 question carries `NativeFilterSufficient bool`. WARN fires only when `true` (native `--filter` trivially expressed it) and the agent reached for jq anyway. **jq use is read from the observed-command stream** (the `jq` PATH wrapper, §2.3) — *not* inferred from the agent's prose or self-reported evidence. If `jq` is not wrapped in a given run, the WARN simply cannot fire (advisory-absent), never a guessed verdict. The grader reads logged invocations + question metadata, never transcript intent.
 
 ### 4.6 Anti-cheat invariants
 
@@ -303,6 +314,7 @@ internal/agenteval/
   report.go              // aggregate -> floor + Findings
   fixtures/              // promoted, value-free SourceRecord JSON (importable, NOT a _test file)
   roster.json            // fixed roster + rank (§6.1)
+  surface_promises.json  // promise_id -> {anchor, FM, doc}: the traceability registry (§3.6)
   REALISM_DELTAS.md      // what fixtures don't model
   battery.json           // GENERATED: instantiated questions + inputs-hash + grader-version-hash
   testdata/
@@ -310,17 +322,22 @@ internal/agenteval/
     transcripts/verdict/ // LLM-sourced verdict goldens (human-reviewed; §5.3)
     transcripts/timeouts/// truncated transcripts, excluded from verdicts
   posture_test.go        // value-free gate (§5.5)
-cmd/zscalerctl-fixture/main.go   // NO build tag; ZSCALERCTL_FIXTURE_DIR-gated; runs cred-validation first
+  cmd/zscalerctl-fixture/main.go  // NO build tag; under internal/ so it can never ship; ZSCALERCTL_FIXTURE_DIR-gated; cred-validation first
+  cmd/run/main.go                 // the live runner (make agent-eval); non-deterministic half
 ```
+
+The fixture binary lives at `internal/agenteval/cmd/zscalerctl-fixture` — deliberately **not** top-level `cmd/` — so it is never advertised as installable surface and the release workflow (which builds only `./cmd/zscalerctl`) cannot pick it up (§5.2's `TestReleaseShipsOnlyZscalerctl` pins that). `go build ./internal/agenteval/cmd/zscalerctl-fixture` still works locally for the runner.
 
 ### 5.2 The gates (all under plain `go test`, no keys, no LLM)
 
 - **`TestAgentEvalBatteryIsCurrent`** — drift gate (regenerate via `make agent-eval-gen`).
 - **`TestOracleMatchesFixtures`** — every expected answer re-derived from corpus; every expected value allow-listed.
-- **`TestScorerGradesRecordedTranscripts`** — replay committed goldens; assert verdict + sub-fields exactly. Covers every branch: clean pass, lucky-guess→WARN-cap, guessed-resource→FAIL, no_commands→FAIL, missing-envelope→FAIL, bad-JSON→FAIL, set-missing→partial, set-extra→capped, enum-synonym, id numeric/string equality, exit_code+kind, eval-infra-leak, over-answer ignored, write-attempt→FAIL.
+- **`TestScorerGradesRecordedTranscripts`** — replay committed goldens; assert verdict + sub-fields exactly. Covers every branch: clean pass, lucky-guess→WARN-cap, guessed-resource→FAIL, no_commands→FAIL, missing-envelope→FAIL, bad-JSON→FAIL, set-missing→partial, set-extra→capped, enum-synonym, id numeric/string equality, exit_code+kind, eval-infra-leak, over-answer ignored. (Deliberately **no `write-attempt→FAIL` branch**: the tool is read-only and no write tool is wrapped onto the observed stream, so there is nothing to grade — §2.4.)
 - **`TestEnvelopeParserGoldens`** — pins last-block selection, fenced parsing, coercion against tricky raw messages (multiple blocks, CRLF, nested braces).
 - **`TestBatteryCoversSurface`** + **`TestEveryAgentSurfacePromiseHasAnFM`** (both directions) — coverage as a measured number.
-- **`TestShimBinaryBehavior`** — builds `cmd/zscalerctl-fixture` in `t.TempDir()` (the `pwsh`-smoke pattern at `internal/cli/app_test.go`) and asserts `schema list`, list (N>1, paginated), `get <known>`, `get <unknown>`→exit4, no-`ZSCALERCTL_FIXTURE_DIR`→exit1, and the cred-validation→exit3 path. Without this the runner can silently feed agents wrong data.
+- **`TestShimBinaryBehavior`** — builds `internal/agenteval/cmd/zscalerctl-fixture` in `t.TempDir()` (the `pwsh`-smoke pattern at `internal/cli/app_test.go`) and asserts `schema list`, list (N>1, paginated), `get <known>`, `get <unknown>`→exit4, no-`ZSCALERCTL_FIXTURE_DIR`→exit1, the cred-validation→exit3 path (no synthetic creds), and a normal read with synthetic creds injected→exit0 (the §2.3 reconciliation). Without this the runner can silently feed agents wrong data.
+- **`TestReleaseShipsOnlyZscalerctl`** — asserts the release artifact / build manifest contains exactly the `zscalerctl` binary and never the fixture binary (folding review finding 5).
+- **`TestErrorKindEnumMatchesBinary`** — asserts the §2.2 `error_kind` enum equals the exact set of strings `errorKind()` returns, so the eval can never grade against a vocabulary the binary doesn't emit (folding review finding 1).
 - **`posture_test.go`** — §5.5.
 
 ### 5.3 Two classes of golden (resolve Gap D — don't freeze LLM luck as the gate's oracle)
@@ -340,7 +357,7 @@ cmd/zscalerctl-fixture/main.go   // NO build tag; ZSCALERCTL_FIXTURE_DIR-gated; 
 `posture_test.go`, part of the gate, asserts over every committed fixture/transcript/verdict artifact:
 - **No secret-shaped strings** (regex for hex-byte runs, long base64, PSK-shaped) — `TestFixturesContainNoRealLookingSecrets`. Value-free becomes a measured zero, not a prose claim.
 - **No canary token in any binary-output channel.**
-- **`BuildSandboxEnv` emits no `ZSCALERCTL_*` credential keys**, and **no `ANTHROPIC_*`/`OPENAI_*`/`DEVIN_*` token survives into a serialized transcript** (folding multi-backend critique 3a — scrub before write).
+- **`BuildSandboxEnv` emits no *real* `ZSCALERCTL_*` credential values** — the only `ZSCALERCTL_*` creds it may set are the obviously-synthetic, value-free fixture placeholders (§2.3), asserted synthetic by the secret-shaped-string check above; a real-looking credential value here fails the gate. And **no `ANTHROPIC_*`/`OPENAI_*`/`DEVIN_*` token survives into a serialized transcript** (folding multi-backend critique 3a — scrub before write).
 
 Runner pre-flight (belongs to the live half but is the same posture): **abort hard if `ZSCALERCTL_FIXTURE_DIR` is unset** so `make agent-eval`/`agent-eval-record` can never hit a live tenant and commit real data (folding ci-metric critique Hole 7).
 
@@ -356,21 +373,21 @@ Runner pre-flight (belongs to the live half but is the same posture): **abort ha
 |----|----|----|----|----|----|
 | 1 | `devin-p` | `devin run --prompt …` | session (returns URL — needs session mgmt) | declared | deliberately-bad floor |
 | 2 | `haiku` | `command claude -p --model … --allowedTools Bash` | single-shot | yes (Bash) | **`command claude`**, not `claude` — the nix-darwin fish wrapper injects `--remote-control` |
-| 3 | `codex-exec` | `codex exec -q …` | single-shot | model-specific | mid-tier, different provider |
-| 4 | `sonnet` | `command claude -p --model …` | single-shot | yes | ceiling |
+| 3 | `codex-exec` | `codex exec -q …` | single-shot | model-specific | mid-tier, different provider — top of the initial roster |
+| 4 | `sonnet` | `command claude -p --model …` | single-shot | yes | ceiling — **DEFERRED (decision 1)**: not in the initial roster; add once the spine proves useful |
 
-The `claude` caveat is load-bearing and confirmed in repo memory (the fish wrapper disables features). The floor = lowest-rank agent that *clears* (§2.4); because the live run is non-deterministic, the report includes run date + full per-agent verdict table so flips are visible.
+**Initial roster = ranks 1–3** (`devin-p`, `haiku`, `codex-exec`) per decision 1; `sonnet` is held back until the deterministic spine has demonstrated value, to avoid paying ceiling-validation cost up front. The `claude` caveat is load-bearing and confirmed in repo memory (the fish wrapper disables features). The floor = lowest-rank agent that *clears* (§2.4); because the live run is non-deterministic, the report includes run date + full per-agent verdict table so flips are visible.
 
 ### 6.2 Backend fairness (resolve Gap F)
 
 - **Capability smoke before the battery** (folding multi-backend critique 1c): a trivial "what is 2+2, end with the envelope" probe per backend. A backend that can't pass it is reported `BACKEND_UNFIT` — its battery results are *not* surface FAILs.
-- **A FAIL routes to the surface (issue #43) only when the backend demonstrably had the capability** (read the docs / followed the envelope on the smoke). Otherwise it's a roster note. This is what keeps failure-mode's triage-by-who-failed (§7) from mis-routing a "devin can't read files in -p mode" as a surface gap.
+- **A FAIL routes to the surface (a DAV-10 finding) only when the backend demonstrably had the capability** (read the docs / followed the envelope on the smoke). Otherwise it's a roster note. This is what keeps failure-mode's triage-by-who-failed (§7) from mis-routing a "devin can't read files in -p mode" as a surface gap.
 - **Context-window asymmetry:** prompts include a size hint ("`schema list` returns ~165 entries"); `MaxTurns` is best-effort per backend and **does not affect PASS** (a brute-forced PASS still counts — the floor measures self-describability, not efficiency); `SchemaFirstPattern` is redefined as "`schema list` before any `<product> <resource> list|show`," not "literally first" (folding multi-backend critique 1a — a `--version`/`--help` probe must not trip it).
 
 ### 6.3 Hermeticity
 
-- **PATH isolation:** `WorkDir/bin/zscalerctl` (the fixture binary) + minimal system PATH; the agent CLI itself resolved via real PATH and passed as an absolute `argv[0]` (asserted `filepath.IsAbs` — folding multi-backend critique 6c).
-- **Env stripping:** all `ZSCALERCTL_*` credential vars removed; tested.
+- **PATH isolation + instrumentation:** `WorkDir/bin/zscalerctl` (the fixture binary) plus thin logging wrappers for any non-`zscalerctl` tool a grader judges (`jq`), all ahead of a minimal system PATH and all writing to the shared `ZSCALERCTL_FIXTURE_LOG` observed-command stream (§2.3) — so method judgments are grounded in logged invocations, not prose. The agent CLI itself is resolved via real PATH and passed as an absolute `argv[0]` (asserted `filepath.IsAbs` — folding multi-backend critique 6c).
+- **Env hygiene (two steps, tested):** (1) the parent process's *real* `ZSCALERCTL_*` credentials are stripped — no real credential value ever enters the sandbox; (2) for normal scenarios, synthetic value-free fixture credentials are injected so the fixture binary's real credential-validation path passes (§2.3). The credential-negative scenario skips step 2, yielding exit 3 through the genuine path. So a normal read never spuriously exits 3, and a real secret is never present to leak.
 - **Fresh `WorkDir`** per `(agent, question)` with verbatim `AGENTS.md` + `skills/zscalerctl/SKILL.md` and nothing else (no examples, no fixture JSON). `buildWorkDir` is not configurable — no "add file" API.
 - **Prompt uses `zscalerctl` (on PATH)**, not the absolute `BinPath` (folding multi-backend critique 3b — don't leak the runner's tmp layout into committed transcripts).
 - **Dump path-traversal guard:** fixture `dump --out` validated to resolve inside `WorkDir` (folding multi-backend critique 3c).
@@ -383,7 +400,7 @@ agent-eval-gen:   ## regenerate battery.json from catalog+fixtures (deterministi
 	AGENT_EVAL_BATTERY_WRITE=1 go test -mod=vendor ./internal/agenteval -run TestAgentEvalBatteryIsCurrent
 
 agent-eval-bin:   ## build the fixture binary (value-free, ZSCALERCTL_FIXTURE_DIR-gated, no creds)
-	go build -o ./scratch/zscalerctl-fixture ./cmd/zscalerctl-fixture
+	go build -o ./scratch/zscalerctl-fixture ./internal/agenteval/cmd/zscalerctl-fixture
 
 agent-eval:       ## NON-deterministic live roster; prints floor + report; NEVER a gate
 	go run ./internal/agenteval/cmd/run --roster-file internal/agenteval/roster.json --out ./scratch/agent-eval-report.json
@@ -392,7 +409,7 @@ agent-eval-record: ## refresh verdict goldens from a live run; shows diff, requi
 	AGENT_EVAL_RECORD=1 go run ./internal/agenteval/cmd/run … --review
 ```
 
-**Advisory PR smoke (folding failure-mode critique Hole 8 + ci-metric Part D):** one `rank=1`-or-cheapest agent, 3-question subset, `continue-on-error: true`, **the step exits 0 unconditionally** with a YAML comment `# MUST exit 0 always. Non-zero makes it a gate; do not change.` Skipped entirely when keys are absent (forks/dependabot). It answers "did we obviously break the surface," never blocks.
+**Advisory PR smoke — DEFERRED initially (decision 2).** No LLM runs in PR CI at first; the live half is **scheduled/manual only** until the deterministic spine is mature. The design below is retained for if/when it's added, but is *not* part of the initial build. *If added:* one `rank=1`-or-cheapest agent, 3-question subset, `continue-on-error: true`, **the step exits 0 unconditionally** with a YAML comment `# MUST exit 0 always. Non-zero makes it a gate; do not change.` Skipped entirely when keys are absent (forks/dependabot). It would answer "did we obviously break the surface," never block.
 
 ### 6.5 Scheduled full roster
 
@@ -411,7 +428,8 @@ make agent-eval ─▶ report.json: []Finding + per-agent score
         │
         ▼  FLOOR: "worst agent that clears" + named first violation; each Finding carries Indicts[]
         │
-        ▼  persistent Finding ─▶ GAP: checklist row on umbrella issue #43 (append, don't spray loose issues)
+        ▼  persistent Finding ─▶ GAP: tracked on DAV-10 (Linear, the workstream source of truth — decision 7);
+        │     link GitHub #43 only for broader-roadmap items, not per-finding
         │     "AGENTIC-GAP: <FM> — <artifact> — <worst agent hit>"
         ▼
         PROOF OF CLOSURE: failing transcript committed as a verdict-golden + a deterministic test
@@ -421,7 +439,7 @@ make agent-eval ─▶ report.json: []Finding + per-agent score
 Every persistent finding resolves to one of three states (mirroring field-coverage's classified/deliberate/deferred):
 - **Surface-fix** (default) — edit the indicted artifact.
 - **Deliberate-floor** — accept that this agent can't do this and it's *below* our floor (e.g. `devin -p` mis-parsing deep JSON). Recorded with a reason. **Exception:** leak/safety FMs (FM-07/FM-08) are floor-independent and always fixed.
-- **Deferred** — real gap, on #43 with an owner. Goal: **zero deferred at the floor agent**, just as field-coverage targets zero deferred fields.
+- **Deferred** — real gap, tracked on DAV-10 with an owner (decision 7; GitHub #43 linked only when it's a broader-roadmap item). Goal: **zero deferred at the floor agent**, just as field-coverage targets zero deferred fields.
 
 Triage routes by *who* failed: a finding only `haiku` hits = high-priority surface-fix (a small honest agent failing is the strongest evidence the surface isn't self-describing); only `codex`/stronger hits = almost always a genuine surface bug (a strong agent failing means the surface actively misled it); only `devin -p` hits = candidate for deliberate-floor (don't dumb the surface down for the deliberately-bad end) — *unless* it's a leak/safety FM.
 
@@ -435,7 +453,7 @@ The deterministic spine lands first; nothing non-deterministic masquerades as a 
 
 **Phase 1 — DETERMINISTIC / CI-GATED (the spine).**
 1. Promote the fixture corpus to importable `internal/agenteval/fixtures`; extend for N>1, pagination, real id-join, `get <id>` semantics, no-fixture empty-list (§3.5).
-2. `cmd/zscalerctl-fixture/main.go` (cred-validation-first, `ZSCALERCTL_FIXTURE_DIR`-gated, sidecar logging) + `TestShimBinaryBehavior`.
+2. `internal/agenteval/cmd/zscalerctl-fixture/main.go` (cred-validation-first, synthetic-cred injection for normal scenarios, `ZSCALERCTL_FIXTURE_DIR`-gated, observed-command sidecar + `jq` wrapper) + `TestShimBinaryBehavior`.
 3. `derive.go` + `oracle.go` (lazy derivation, allow-list self-check) + `TestOracleMatchesFixtures`.
 4. `battery.go` templates + `agent-eval-gen` + `TestAgentEvalBatteryIsCurrent` + `TestBatteryCoversSurface` + `TestEveryAgentSurfacePromiseHasAnFM`.
 5. `scorer.go` (pure) + `transcript.go` envelope parser + the full golden suite (§5.2) + `TestEnvelopeParserGoldens`.
@@ -446,26 +464,29 @@ The deterministic spine lands first; nothing non-deterministic masquerades as a 
 1. The runner: backends, sandbox, capability smoke, `BACKEND_UNFIT` handling, hermeticity guards (§6.3), abort-if-no-fixture-dir pre-flight.
 2. `make agent-eval` + `report.go` (floor + Findings) + `docs/agentic-coverage.{md,json}`.
 3. `make agent-eval-record` with human-review checkpoint (§5.3); seed verdict-goldens (reviewed) to harden the Phase-1 scorer tests.
-4. Advisory PR smoke (exit-0-always) + scheduled `agent-eval.yml`.
+4. Scheduled `agent-eval.yml` (full roster). **Advisory PR smoke deferred per decision 2** — added only after the spine is mature (§6.4), not in this phase.
 
-**Phase 3 — Loop.** Wire `Finding` → issue #43 checklist; first real pass; convert findings to surface-fixes / deliberate-floor / deferred; prove closures with committed transcripts + pinned tests.
+**Phase 3 — Loop.** Wire `Finding` → DAV-10 tracking (GitHub #43 only for broader-roadmap items); first real pass; convert findings to surface-fixes / deliberate-floor / deferred; prove closures with committed transcripts + pinned tests.
 
 Hard ordering invariant: **the live half (Phase 2) cannot land before the spine (Phase 1) is green**, and the live score is never wired into `check`.
 
 ---
 
-## 9. Open Decisions for the Human
+## 9. Decisions
 
-Genuine judgment calls, not things the design should pre-empt:
+### 9.1 Decided 2026-06-14 (locked into this plan)
 
-1. **Backend roster & keys.** Confirm `devin -p / haiku / codex exec / sonnet` and that keys/billing exist for each. Is `sonnet` worth the ceiling-validation cost, or is `codex exec` a sufficient top? (Roster is committed in `roster.json`; this only sets its contents.)
-2. **Advisory smoke in PR CI: yes/no.** Design recommends *yes but exit-0-always*. You may prefer zero LLM in PR CI at all (scheduled-only). Trade-off: earlier "obvious break" signal vs. any LLM cost/flake noise on PRs.
-3. **Partial-credit policy.** Design locks: only `set` earns partial; everything else binary; `extra_allowed` per question. Confirm you don't want partial on, say, `count` (the dimensions agreed no, but it's your call).
-4. **Battery size.** Design targets ~40–60 instantiated questions (templates rotate instances). Bigger = more coverage + more live token cost per run. Pick the size and the per-run cost ceiling.
-5. **"Clears" definition.** Design drops the `0.80` aggregate for the binary rule in §2.4. If you want a softer floor (e.g. allow N WARNs), say so — but note it reintroduces a tunable knob the method generally avoids.
-6. **Fixture rotation cadence.** Per-battery-version vs. per-release vs. never. More rotation = stronger anti-overfit, more regeneration churn.
-7. **Where the loop's gaps live.** Design assumes umbrella issue **#43** per your memory ("append, don't spray loose issues"). Confirm, or name a dedicated agentic-coverage umbrella.
-8. **Deliberate-floor line.** Which FMs are you willing to accept the weakest agent failing (e.g. deep-JSON parse by `devin -p`)? Leak/safety FMs (FM-07/FM-08) are non-negotiable in the design; the rest is your risk appetite.
+1. **Backend roster.** Initial roster = `devin-p` / `haiku` / `codex-exec` (ranks 1–3). `sonnet` **deferred** — added only once the spine proves useful, to skip ceiling-validation cost up front (§6.1).
+2. **Advisory smoke in PR CI: no, initially.** Zero LLM in PR CI for now; the live half is scheduled/manual only until the deterministic spine is mature (§6.4). The exit-0-always design is retained for if/when it's revisited.
+3. **Partial-credit policy:** `set`-only partial; everything else binary; `extra_allowed` per question (§4.3).
+4. **Battery size:** start **20–30** instantiated questions; grow to 40–60 after the first real live run informs cost and coverage. Pick the per-run cost ceiling at that point.
+5. **"Clears" definition:** keep the binary rule (§2.4); **no `0.80` aggregate** — no tunable floor knob.
+6. **Fixture rotation cadence:** **per-release** initially (§3.6).
+7. **Where the loop's gaps live:** **DAV-10 is the workstream source of truth** (Linear); link GitHub **#43** only for broader-roadmap items, not per-finding (§7).
+
+### 9.2 Still open (your call, before Phase 2)
+
+8. **Deliberate-floor line.** Which FMs are you willing to accept the weakest agent (`devin -p`) failing (e.g. deep-JSON parse), versus always-fix? Leak/safety FMs (FM-07/FM-08) are non-negotiable in the design; the rest is your risk appetite. This doesn't block Phase 0/1 — it only matters once live findings start landing in Phase 3, so it can wait.
 
 ---
 
