@@ -51,3 +51,17 @@ require_pattern 'cp -R skills/zscalerctl "dist/\$name/skills/"' "release archive
 require_pattern 'shasum -a 256 \*\.tar\.gz \*\.sbom\.cdx\.json > SHA256SUMS' "release workflow must checksum release tarballs and SBOMs"
 require_pattern 'actions/attest-build-provenance@[0-9a-f]{40}' "release workflow must use SHA-pinned build provenance attestation"
 require_pattern 'subject-checksums:[[:space:]]*dist/SHA256SUMS' "release workflow must attest the SHA256SUMS subject list"
+require_pattern 'sigstore/cosign-installer@[0-9a-f]{40}' "release workflow must use SHA-pinned cosign-installer"
+require_pattern 'cosign sign-blob --yes' "release workflow must keyless-sign the checksums with cosign"
+require_pattern 'output-signature SHA256SUMS\.sig' "release workflow must emit the cosign signature asset SHA256SUMS.sig"
+require_pattern 'output-certificate SHA256SUMS\.pem' "release workflow must emit the cosign certificate asset SHA256SUMS.pem"
+
+# Ordering: the cosign signature assets must be produced BEFORE the release is
+# created, or `gh release create dist/*` would publish the release without them.
+# Grep-based line-order check, enforced only when both steps are present.
+sign_line="$(grep -n 'cosign sign-blob' "$workflow" | head -1 | cut -d: -f1)"
+publish_line="$(grep -n 'gh release create' "$workflow" | head -1 | cut -d: -f1)"
+if [ -n "$sign_line" ] && [ -n "$publish_line" ] && [ "$sign_line" -ge "$publish_line" ]; then
+	echo "$workflow: cosign signing must run before 'gh release create' so SHA256SUMS.sig/.pem are uploaded" >&2
+	exit 1
+fi

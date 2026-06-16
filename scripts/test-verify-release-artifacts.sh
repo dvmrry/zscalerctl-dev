@@ -14,6 +14,8 @@ missing_install_doc="$tmp_dir/release-missing-install-doc.yml"
 missing_agents_doc="$tmp_dir/release-missing-agents-doc.yml"
 missing_manpage="$tmp_dir/release-missing-manpage.yml"
 missing_skill="$tmp_dir/release-missing-skill.yml"
+missing_cosign="$tmp_dir/release-missing-cosign.yml"
+bad_cosign_order="$tmp_dir/release-bad-cosign-order.yml"
 
 cat >"$good" <<'YAML'
 name: release
@@ -50,6 +52,15 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-checksums: dist/SHA256SUMS
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign checksums with cosign
+        run: |
+          cd dist
+          cosign sign-blob --yes --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS
+      - name: Publish release
+        run: |
+          gh release create "$VERSION" dist/*
 YAML
 
 cp "$good" "$missing_attest"
@@ -94,6 +105,13 @@ perl -0pi -e 's/\n          cp man\/zscalerctl\.1 "dist\/\$name\/man\/"//' "$mis
 cp "$good" "$missing_skill"
 perl -0pi -e 's/\n          cp -R skills\/zscalerctl "dist\/\$name\/skills\/"//' "$missing_skill"
 
+cp "$good" "$missing_cosign"
+perl -0pi -e 's/\n      - name: Install cosign.*?SHA256SUMS\n//s' "$missing_cosign"
+
+# Swap the cosign install/sign block to AFTER the publish step -> wrong order.
+cp "$good" "$bad_cosign_order"
+perl -0pi -e 's/(      - name: Install cosign\n.*?cosign sign-blob.*?SHA256SUMS\n)(      - name: Publish release\n        run: \|\n          gh release create[^\n]*\n)/$2$1/s' "$bad_cosign_order"
+
 ZSCALERCTL_RELEASE_WORKFLOW="$good" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
 	"$repo_root/scripts/verify-release-artifacts.sh"
 
@@ -121,6 +139,34 @@ fi
 
 if ! grep -Eq "CycloneDX SBOM tool|CycloneDX JSON SBOMs" "$tmp_dir/err"; then
 	echo "verify-release-artifacts failed without the expected SBOM message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$missing_cosign" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted a release workflow without cosign signing" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "cosign" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected cosign message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ZSCALERCTL_RELEASE_WORKFLOW="$bad_cosign_order" ZSCALERCTL_RELEASE_TOOLS_MOD="$tools_dir/go.mod" \
+	"$repo_root/scripts/verify-release-artifacts.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-release-artifacts accepted cosign signing after 'gh release create'" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
+if ! grep -q "must run before 'gh release create'" "$tmp_dir/err"; then
+	echo "verify-release-artifacts failed without the expected cosign-ordering message" >&2
 	cat "$tmp_dir/err" >&2
 	exit 1
 fi

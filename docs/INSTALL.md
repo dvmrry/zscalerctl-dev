@@ -20,8 +20,9 @@ support lands.
 ## Verify Release Artifacts
 
 GitHub releases include platform archives, per-target CycloneDX SBOMs,
-`SHA256SUMS`, and GitHub provenance attestations for the subjects listed in the
-checksum file.
+`SHA256SUMS`, a detached keyless cosign signature of `SHA256SUMS`
+(`SHA256SUMS.sig` + `SHA256SUMS.pem`), and GitHub provenance attestations for the
+subjects listed in the checksum file.
 
 After downloading release assets, verify the checksums from the directory that
 contains the archives:
@@ -29,6 +30,21 @@ contains the archives:
 ```sh
 shasum -a 256 -c SHA256SUMS
 ```
+
+Verify the cosign signature over `SHA256SUMS` (Sigstore keyless — no key to
+distribute; the certificate identity is the release workflow):
+
+```sh
+cosign verify-blob \
+  --certificate SHA256SUMS.pem \
+  --signature SHA256SUMS.sig \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/dvmrry/zscalerctl/\.github/workflows/release\.yml@' \
+  SHA256SUMS
+```
+
+A valid signature over `SHA256SUMS`, combined with `shasum -c`, transitively
+authenticates every archive and SBOM listed in it.
 
 Verify the provenance attestation for the archive you plan to run:
 
