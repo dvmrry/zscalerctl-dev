@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -818,6 +819,7 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	productsFlag := fs.String("products", "", "comma-separated products: zia,zpa")
 	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
 	continueOnError := fs.Bool("continue-on-error", false, "write a partial dump when individual resources fail")
+	force := fs.Bool("force", false, "replace an existing zscalerctl dump directory")
 	if err := fs.Parse(args); err != nil {
 		return UsageError{Message: err.Error()}
 	}
@@ -845,6 +847,9 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	}
 	a.diagLogger().Info("dump complete",
 		"resources", len(result.Entries), "errors", len(result.Errors))
+	if err := prepareForcedDumpDir(*outDir, *force); err != nil {
+		return err
+	}
 	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
 		return err
 	}
@@ -861,6 +866,129 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 		return PartialDumpError{Dir: *outDir, Errors: len(result.Errors)}
 	}
 	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
+}
+
+func prepareForcedDumpDir(dir string, force bool) error {
+	if !force {
+		return nil
+	}
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("%w: missing dump directory", dump.ErrUnsafePath)
+	}
+	if err := rejectDangerousForceTarget(dir); err != nil {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: inspect dump directory for --force: %v", dump.ErrUnsafePath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: --force target %s is a symlink", dump.ErrUnsafePath, dir)
+	}
+	target, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return fmt.Errorf("%w: resolve --force target symlinks: %v", dump.ErrUnsafePath, err)
+	}
+	if err := rejectDangerousForceTarget(target); err != nil {
+		return err
+	}
+	info, err = os.Lstat(target)
+	if err != nil {
+		return fmt.Errorf("%w: inspect resolved dump directory for --force: %v", dump.ErrUnsafePath, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: --force target %s is not a directory", dump.ErrUnsafePath, dir)
+	}
+	empty, err := isDirEmpty(target)
+	if err != nil {
+		return err
+	}
+	if empty {
+		return nil
+	}
+	if err := validateExistingDumpDir(target); err != nil {
+		return err
+	}
+	// The target was resolved after rejecting a final symlink. If a same-host
+	// actor swaps the directory after validation, RemoveAll on a symlink removes
+	// the link itself, not its target; the command still refuses cwd/home/root
+	// after symlink resolution before reaching this point.
+	if err := os.RemoveAll(target); err != nil {
+		return fmt.Errorf("%w: remove dump directory for --force: %v", dump.ErrUnsafePath, err)
+	}
+	return nil
+}
+
+func rejectDangerousForceTarget(dir string) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("%w: resolve --force target: %v", dump.ErrUnsafePath, err)
+	}
+	clean := filepath.Clean(abs)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("%w: resolve current directory: %v", dump.ErrUnsafePath, err)
+	}
+	if clean == filepath.Clean(cwd) {
+		return fmt.Errorf("%w: --force target cannot be the current directory", dump.ErrUnsafePath)
+	}
+	if filepath.Dir(clean) == clean {
+		return fmt.Errorf("%w: --force target cannot be the filesystem root", dump.ErrUnsafePath)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" && clean == filepath.Clean(home) {
+		return fmt.Errorf("%w: --force target cannot be the home directory", dump.ErrUnsafePath)
+	}
+	return nil
+}
+
+func isDirEmpty(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, fmt.Errorf("%w: inspect dump directory for --force: %v", dump.ErrUnsafePath, err)
+	}
+	return len(entries) == 0, nil
+}
+
+func validateExistingDumpDir(dir string) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("%w: open dump directory for --force: %v", dump.ErrUnsafePath, err)
+	}
+	defer root.Close()
+
+	info, err := root.Lstat("manifest.json")
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: inspect dump manifest for --force: %v", dump.ErrUnsafePath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: --force target manifest is a symlink", dump.ErrUnsafePath)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: --force target manifest is not a regular file", dump.ErrUnsafePath)
+	}
+	if info.Size() > 1<<20 {
+		return fmt.Errorf("%w: --force target manifest is too large", dump.ErrUnsafePath)
+	}
+	body, err := root.ReadFile("manifest.json")
+	if err != nil {
+		return fmt.Errorf("%w: read dump manifest for --force: %v", dump.ErrUnsafePath, err)
+	}
+	var manifest struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
+	}
+	if !strings.HasPrefix(manifest.Schema, "zscalerctl.dump.manifest.") {
+		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
+	}
+	return nil
 }
 
 func (a *App) resourceReader(cfg config.Config, opts globalOptions) (ResourceReader, error) {
@@ -1247,7 +1375,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
-	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error]")
+	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]")
 	fmt.Fprintf(w, "  completion %s\n", completionShellNames())
 	fmt.Fprintln(w, "  version")
 	for _, product := range knownProducts() {
@@ -1491,7 +1619,7 @@ func requireNoArgs(command string, args []string) error {
 
 func dumpUsage() string {
 	return fmt.Sprintf(
-		"usage: zscalerctl dump --out <dir> [--products %s] [--resources names] [--continue-on-error]",
+		"usage: zscalerctl dump --out <dir> [--products %s] [--resources names] [--continue-on-error] [--force]",
 		strings.Join(productNames(knownProducts()), ","),
 	)
 }

@@ -49,6 +49,10 @@ written. Use `--continue-on-error` only when a partial dump is acceptable; the
 manifest is marked `partial`, successful resources remain in `resources/`, and
 value-free per-resource failures are written to `errors.ndjson`.
 
+Dump refuses to overwrite by default. Use `--force` only to replace an existing
+zscalerctl dump directory from a previous run; it rejects populated directories
+that do not contain a zscalerctl dump manifest.
+
 ## ZIA Locations
 
 Commands:

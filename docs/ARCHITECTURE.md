@@ -43,6 +43,21 @@ This project should stay shell-native:
 Polished human output is useful, but a TUI is not a goal until a concrete
 workflow proves it is needed.
 
+## Agent Integration
+
+The supported agent interface is the CLI contract plus the repository guidance
+in [AGENTS.md](../AGENTS.md) and the installable skill at
+[skills/zscalerctl/](../skills/zscalerctl/SKILL.md). That combination is
+deliberate: it keeps the production surface to one audited read-only binary,
+while agents discover resources through `schema list`, parse deterministic
+JSON, and branch on stable exit codes.
+
+An MCP sidecar is not planned for the v1 surface. Revisit it only if a concrete
+host cannot consume shell commands, stdout/stderr, exit codes, and the skill
+guidance safely. Until then, adding a second protocol process would duplicate
+authorization, redaction, output, and packaging decisions without improving the
+core safety model.
+
 ## Initial Package Shape
 
 Package layout:
@@ -356,6 +371,9 @@ Dump writers should:
 
 - Use restrictive permissions.
 - Refuse unsafe overwrite by default.
+- Allow explicit `dump --force` only for empty directories or prior
+  zscalerctl dump directories, and clear the prior directory only after live
+  collection succeeds.
 - Write temporary files and rename atomically.
 - Avoid partial successful output looking complete.
 - Include enough manifest data to support review and diff workflows.

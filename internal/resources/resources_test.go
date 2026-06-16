@@ -69,6 +69,101 @@ func TestResourceSpecSupportsReadOperation(t *testing.T) {
 	}
 }
 
+func TestResourceSpecEffectiveGetKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec resources.ResourceSpec
+		want string
+	}{
+		{
+			name: "read operations default to id",
+			spec: resources.ResourceSpec{Operations: resources.ReadOperations()},
+			want: "id",
+		},
+		{
+			name: "explicit key overrides default",
+			spec: resources.ResourceSpec{Operations: resources.ReadOperations(), GetKey: "externalId"},
+			want: "externalId",
+		},
+		{
+			name: "list only has no get key",
+			spec: resources.ResourceSpec{Operations: resources.ListOperations()},
+			want: "",
+		},
+		{
+			name: "show only has no get key",
+			spec: resources.ResourceSpec{Operations: resources.ShowOperation()},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.spec.EffectiveGetKey(); got != tt.want {
+				t.Errorf("ResourceSpec.EffectiveGetKey() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResourceSpecJSONIncludesGetKeyForGetResources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		spec    resources.ResourceSpec
+		wantKey string
+	}{
+		{
+			name: "read resource",
+			spec: resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "example",
+				Operations: resources.ReadOperations(),
+				Fields: []resources.FieldSpec{
+					{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+				},
+			},
+			wantKey: "id",
+		},
+		{
+			name: "list-only resource",
+			spec: resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "example",
+				Operations: resources.ListOperations(),
+				Fields: []resources.FieldSpec{
+					{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+				},
+			},
+			wantKey: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.spec)
+			if err != nil {
+				t.Fatalf("json.Marshal(ResourceSpec) error = %v, want nil", err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatalf("json.Unmarshal(ResourceSpec) error = %v, want nil", err)
+			}
+			value, ok := got["get_key"]
+			if tt.wantKey == "" {
+				if ok {
+					t.Errorf("json.Marshal(ResourceSpec) get_key = %v, want omitted", value)
+				}
+				return
+			}
+			if !ok || value != tt.wantKey {
+				t.Errorf("json.Marshal(ResourceSpec) get_key = %v (present %t), want %q", value, ok, tt.wantKey)
+			}
+		})
+	}
+}
+
 func TestResourceSpecEffectiveShapeDefaultsToList(t *testing.T) {
 	t.Parallel()
 
@@ -395,6 +490,7 @@ func TestProjectRecordPreservesLongStructuredDisplayNames(t *testing.T) {
 		Name:       "display-name-test",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
+			testIDField(),
 			{
 				Name:           "name",
 				Classification: resources.ClassTenantConfig,
@@ -460,11 +556,14 @@ func TestProjectRecordRedactsSelfDescribingSecretInStructuredDisplayName(t *test
 		Product:    resources.ProductZIA,
 		Name:       "display-name-secret-test",
 		Operations: resources.ReadOperations(),
-		Fields: []resources.FieldSpec{{
-			Name:           "name",
-			Classification: resources.ClassTenantConfig,
-			AllowedModes:   []redact.Mode{redact.ModeStandard},
-		}},
+		Fields: []resources.FieldSpec{
+			testIDField(),
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+		},
 	}
 
 	got, report, err := resources.ProjectRecord(spec, redact.ModeStandard, resources.NewSourceRecord(map[string]any{
@@ -638,6 +737,7 @@ func TestProjectRecordAllowsExplicitNestedSpecOnly(t *testing.T) {
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
+			testIDField(),
 			{
 				Name:                "vpnCredentials",
 				Classification:      resources.ClassTenantConfig,
@@ -702,12 +802,15 @@ func TestAssertRenderedSubsetRejectsUnmodeledNestedField(t *testing.T) {
 		Product:    resources.ProductZIA,
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
-		Fields: []resources.FieldSpec{{
-			Name:                "vpnCredentials",
-			Classification:      resources.ClassTenantConfig,
-			AllowedModes:        []redact.Mode{redact.ModeStandard},
-			SensitiveNameReason: "test-only non-secret credential metadata wrapper",
-		}},
+		Fields: []resources.FieldSpec{
+			testIDField(),
+			{
+				Name:                "vpnCredentials",
+				Classification:      resources.ClassTenantConfig,
+				AllowedModes:        []redact.Mode{redact.ModeStandard},
+				SensitiveNameReason: "test-only non-secret credential metadata wrapper",
+			},
+		},
 	}
 	err := resources.AssertRenderedSubset(spec, redact.ModeStandard, map[string]any{
 		"vpnCredentials": map[string]any{
@@ -726,17 +829,20 @@ func TestAssertRenderedSubsetRejectsUnexpectedNestedField(t *testing.T) {
 		Product:    resources.ProductZIA,
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
-		Fields: []resources.FieldSpec{{
-			Name:                "vpnCredentials",
-			Classification:      resources.ClassTenantConfig,
-			AllowedModes:        []redact.Mode{redact.ModeStandard},
-			SensitiveNameReason: "test-only non-secret credential metadata wrapper",
-			Fields: []resources.FieldSpec{{
-				Name:           "authType",
-				Classification: resources.ClassOperational,
-				AllowedModes:   []redact.Mode{redact.ModeStandard},
-			}},
-		}},
+		Fields: []resources.FieldSpec{
+			testIDField(),
+			{
+				Name:                "vpnCredentials",
+				Classification:      resources.ClassTenantConfig,
+				AllowedModes:        []redact.Mode{redact.ModeStandard},
+				SensitiveNameReason: "test-only non-secret credential metadata wrapper",
+				Fields: []resources.FieldSpec{{
+					Name:           "authType",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			},
+		},
 	}
 	err := resources.AssertRenderedSubset(spec, redact.ModeStandard, map[string]any{
 		"vpnCredentials": map[string]any{
@@ -801,10 +907,13 @@ func TestResourceSpecValidationAllowsSensitiveNameAsSecret(t *testing.T) {
 		Product:    resources.ProductZIA,
 		Name:       "good",
 		Operations: resources.ReadOperations(),
-		Fields: []resources.FieldSpec{{
-			Name:           "token",
-			Classification: resources.ClassSecret,
-		}},
+		Fields: []resources.FieldSpec{
+			testIDField(),
+			{
+				Name:           "token",
+				Classification: resources.ClassSecret,
+			},
+		},
 	}
 	if err := spec.Validate(); err != nil {
 		t.Errorf("ResourceSpec.Validate(secret token) error = %v, want nil", err)
@@ -818,12 +927,15 @@ func TestResourceSpecValidationAllowsSensitiveNameWithDocumentedReason(t *testin
 		Product:    resources.ProductZIA,
 		Name:       "documented-exception",
 		Operations: resources.ReadOperations(),
-		Fields: []resources.FieldSpec{{
-			Name:                "publicCertificate",
-			Classification:      resources.ClassSensitiveIdentifier,
-			AllowedModes:        []redact.Mode{redact.ModeStandard},
-			SensitiveNameReason: "public certificate metadata, not private key material",
-		}},
+		Fields: []resources.FieldSpec{
+			testIDField(),
+			{
+				Name:                "publicCertificate",
+				Classification:      resources.ClassSensitiveIdentifier,
+				AllowedModes:        []redact.Mode{redact.ModeStandard},
+				SensitiveNameReason: "public certificate metadata, not private key material",
+			},
+		},
 	}
 	if err := spec.Validate(); err != nil {
 		t.Errorf("ResourceSpec.Validate(documented exception) error = %v, want nil", err)
@@ -842,17 +954,20 @@ func TestResourceSpecValidationRejectsGenericFieldNameWithoutReason(t *testing.T
 				Product:    resources.ProductZIA,
 				Name:       "bad-generic",
 				Operations: resources.ReadOperations(),
-				Fields: []resources.FieldSpec{{
-					Name:           name,
-					Classification: resources.ClassTenantConfig,
-					AllowedModes:   []redact.Mode{redact.ModeStandard},
-				}},
+				Fields: []resources.FieldSpec{
+					testIDField(),
+					{
+						Name:           name,
+						Classification: resources.ClassTenantConfig,
+						AllowedModes:   []redact.Mode{redact.ModeStandard},
+					},
+				},
 			}
 			if err := spec.Validate(); !errors.Is(err, resources.ErrInvalidResourceSpec) {
 				t.Errorf("Validate(generic %q without reason) error = %v, want ErrInvalidResourceSpec", name, err)
 			}
 
-			spec.Fields[0].SensitiveNameReason = "enum value of the parent policy action, not user data"
+			spec.Fields[1].SensitiveNameReason = "enum value of the parent policy action, not user data"
 			if err := spec.Validate(); err != nil {
 				t.Errorf("Validate(generic %q with reason) error = %v, want nil", name, err)
 			}
@@ -873,25 +988,28 @@ func TestResourceSpecValidationRejectsBareIdentifierBeyondStandard(t *testing.T)
 				Product:    resources.ProductZIA,
 				Name:       "bad-identifier",
 				Operations: resources.ReadOperations(),
-				Fields: []resources.FieldSpec{{
-					Name:           name,
-					Classification: resources.ClassTenantConfig,
-					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
-				}},
+				Fields: []resources.FieldSpec{
+					testIDField(),
+					{
+						Name:           name,
+						Classification: resources.ClassTenantConfig,
+						AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+					},
+				},
 			}
 			if err := spec.Validate(); !errors.Is(err, resources.ErrInvalidResourceSpec) {
 				t.Errorf("Validate(identifier %q in share) error = %v, want ErrInvalidResourceSpec", name, err)
 			}
 
 			// Standard-only is fine without justification.
-			spec.Fields[0].AllowedModes = []redact.Mode{redact.ModeStandard}
+			spec.Fields[1].AllowedModes = []redact.Mode{redact.ModeStandard}
 			if err := spec.Validate(); err != nil {
 				t.Errorf("Validate(identifier %q standard-only) error = %v, want nil", name, err)
 			}
 
 			// Explicit reason permits wider exposure.
-			spec.Fields[0].AllowedModes = []redact.Mode{redact.ModeStandard, redact.ModeShare}
-			spec.Fields[0].SensitiveNameReason = "configured policy domain, not a subject identifier"
+			spec.Fields[1].AllowedModes = []redact.Mode{redact.ModeStandard, redact.ModeShare}
+			spec.Fields[1].SensitiveNameReason = "configured policy domain, not a subject identifier"
 			if err := spec.Validate(); err != nil {
 				t.Errorf("Validate(identifier %q with reason) error = %v, want nil", name, err)
 			}
@@ -1028,6 +1146,88 @@ func TestResourceSpecValidationRejectsSingletonWithoutList(t *testing.T) {
 	}
 }
 
+func TestResourceSpecValidationRejectsInvalidGetKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec resources.ResourceSpec
+	}{
+		{
+			name: "without get operation",
+			spec: resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "example",
+				Operations: resources.ListOperations(),
+				GetKey:     "id",
+				Fields: []resources.FieldSpec{{
+					Name:           "id",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			},
+		},
+		{
+			name: "missing top-level field",
+			spec: resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "example",
+				Operations: resources.ReadOperations(),
+				GetKey:     "externalId",
+				Fields: []resources.FieldSpec{{
+					Name:           "id",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			},
+		},
+		{
+			name: "missing implicit default id field",
+			spec: resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "example",
+				Operations: resources.ReadOperations(),
+				Fields: []resources.FieldSpec{{
+					Name:           "externalId",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.spec.Validate()
+			if !errors.Is(err, resources.ErrInvalidResourceSpec) {
+				t.Errorf("ResourceSpec.Validate(%s) error = %v, want ErrInvalidResourceSpec", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestCatalogGetKeysMatchTopLevelFields(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range resources.Catalog() {
+		key := spec.EffectiveGetKey()
+		if key == "" {
+			continue
+		}
+		if !hasCatalogField(spec.Fields, key) {
+			t.Errorf("Catalog %s/%s EffectiveGetKey() = %q, want a top-level field with that JSON name", spec.Product, spec.Name, key)
+		}
+	}
+}
+
+func hasCatalogField(fields []resources.FieldSpec, name string) bool {
+	for _, field := range fields {
+		if field.JSONField() == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCatalogIsValidAndReadOnly(t *testing.T) {
 	t.Parallel()
 
@@ -1134,6 +1334,14 @@ func testSpec() resources.ResourceSpec {
 				Classification: resources.ClassSecret,
 			},
 		},
+	}
+}
+
+func testIDField() resources.FieldSpec {
+	return resources.FieldSpec{
+		Name:           "id",
+		Classification: resources.ClassOperational,
+		AllowedModes:   []redact.Mode{redact.ModeStandard},
 	}
 }
 

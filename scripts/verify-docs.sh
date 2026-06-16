@@ -50,6 +50,12 @@ then
   fail=1
 fi
 
+sdk_version="$(go list -m -mod=mod -f '{{.Version}}' github.com/zscaler/zscaler-sdk-go/v3)"
+if ! grep -Fq "github.com/zscaler/zscaler-sdk-go/v3 ${sdk_version}" docs/THREAT_MODEL.md; then
+  echo "verify-docs: docs/THREAT_MODEL.md review stamp must cite github.com/zscaler/zscaler-sdk-go/v3 ${sdk_version}" >&2
+  fail=1
+fi
+
 if (( fail != 0 )); then
   exit 1
 fi

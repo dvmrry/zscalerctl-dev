@@ -23,6 +23,7 @@ bash scripts/test-verify-ci-no-live-creds.sh
 bash scripts/verify-actions-pinned.sh
 bash scripts/test-verify-actions-pinned.sh
 make vuln
+make verify-licenses
 go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
 gitleaks dir .
 gitleaks git .
@@ -147,7 +148,8 @@ These thresholds are enforced by CI, not aspirational:
   remediated by version bump at the next opportunity.
 - **Dependency integrity and licensing:** dependencies are hash-verified
   (`go.sum`), vendored for review, and must carry an Apache-2.0-compatible
-  license; incompatible licenses are rejected at review.
+  license. `make verify-licenses` enforces the shipped binary's dependency
+  license allow-list with `go-licenses`; incompatible licenses block CI.
 - **Non-exploitable advisories (VEX):** when an advisory affects a declared
   dependency but not the shipped binary (for example, build-only tooling in
   `tools/`), a `not_affected` statement is recorded in the repository's

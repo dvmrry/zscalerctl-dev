@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/secret"
@@ -80,6 +81,50 @@ func TestRenderRecordsPrettyDoesNotStretchNarrowTable(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
 		if w := len([]rune(line)); w > 40 {
 			t.Errorf("narrow table line width = %d, want it left compact (<=40): %q", w, line)
+		}
+	}
+}
+
+func TestRenderRecordsPrettyKeepsWideCharactersWithinConfiguredWidth(t *testing.T) {
+	t.Parallel()
+
+	style := output.NewStyle(false, false)
+	style.Width = 44
+	got := output.RenderRecordsPretty(
+		[]string{"name", "note"},
+		[][]string{{
+			"東京支社",
+			"zero\u200dwidth e\u0301 中中文文中中文文 tail",
+		}},
+		style,
+	).String()
+
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if width := lipgloss.Width(line); width > style.Width {
+			t.Errorf("pretty line width = %d (> %d): %q", width, style.Width, line)
+		}
+	}
+	for _, want := range []string{"東京支社", "zero\u200dwidth", "e\u0301", "中中文文中中文文", "tail"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pretty output = %q, want retained %q", got, want)
+		}
+	}
+}
+
+func TestRenderKeyValuesPreservesWideAndCombiningText(t *testing.T) {
+	t.Parallel()
+
+	got := output.RenderKeyValues([]output.KV{
+		{Key: "name", Value: "東京支社"},
+		{Key: "note", Value: "zero\u200dwidth e\u0301 tail"},
+	}, output.NewStyle(false, false)).String()
+
+	if lines := strings.Count(strings.TrimRight(got, "\n"), "\n") + 1; lines != 2 {
+		t.Fatalf("RenderKeyValues line count = %d, want 2: %q", lines, got)
+	}
+	for _, want := range []string{"name", "東京支社", "note", "zero\u200dwidth", "e\u0301", "tail"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("RenderKeyValues output = %q, want retained %q", got, want)
 		}
 	}
 }

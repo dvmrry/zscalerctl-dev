@@ -125,6 +125,7 @@ jobs:
       - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
       - run: staticcheck ./...
       - run: make vuln
+      - run: make verify-licenses
       - run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
       - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: bash scripts/verify-semgrep.sh

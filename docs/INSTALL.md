@@ -99,6 +99,39 @@ Zidentity admin portal: Client Connector access for `zcc` resources, and Cloud
 resource list) for `ztw` resources. Without the grant, commands for that
 product fail at the API; no local configuration change can fix it.
 
+### Switching Tenants
+
+`zscalerctl` has no profile file and no implicit SDK config lookup. To switch
+tenants, switch the `ZSCALERCTL_*` environment block in the current shell or CI
+job.
+
+On macOS and Linux, keep one untracked env file per tenant and source the one
+you need:
+
+```sh
+chmod 600 ~/.config/zscalerctl/prod.env ~/.config/zscalerctl/preprod.env
+set -a
+. ~/.config/zscalerctl/prod.env
+set +a
+zscalerctl doctor
+```
+
+For CI, use the CI platform's protected environment or secret store and set the
+same variable names per job/environment. Do not commit env files, dump
+directories, or live-smoke artifacts.
+
+On Windows, use protected inline environment variables. File-backed secrets
+(`*_FILE`) fail closed until Windows ACL checks are designed and tested:
+
+```powershell
+$env:ZSCALERCTL_CLIENT_ID = '<client-id>'
+[Environment]::SetEnvironmentVariable('ZSCALERCTL_CLIENT_SECRET', '<client-secret>', 'Process')
+$env:ZSCALERCTL_VANITY_DOMAIN = '<vanity-domain>'
+$env:ZSCALERCTL_CLOUD = 'PRODUCTION'
+$env:ZSCALERCTL_ZPA_CUSTOMER_ID = '<zpa-customer-id>' # only for ZPA resources
+zscalerctl doctor
+```
+
 ZIA legacy auth is available for read-only ZIA resources when OneAPI
 credentials are not available. Use only `ZSCALERCTL_ZIA_*` variables; raw SDK
 names such as `ZIA_USERNAME`, `ZIA_PASSWORD`, and `ZIA_API_KEY` are ignored.

@@ -102,12 +102,32 @@ type ResourceSpec struct {
 	Name       string        `json:"name"`
 	Shape      ResourceShape `json:"shape,omitempty"`
 	Operations []Operation   `json:"operations"`
+	GetKey     string        `json:"-"`
 	Fields     []FieldSpec   `json:"fields"`
 }
 
 type ResourceCatalog []ResourceSpec
 
 func (ResourceCatalog) OutputSafe() {}
+
+func (s ResourceSpec) MarshalJSON() ([]byte, error) {
+	type resourceSpecJSON struct {
+		Product    Product       `json:"product"`
+		Name       string        `json:"name"`
+		Shape      ResourceShape `json:"shape,omitempty"`
+		Operations []Operation   `json:"operations"`
+		GetKey     string        `json:"get_key,omitempty"`
+		Fields     []FieldSpec   `json:"fields"`
+	}
+	return json.Marshal(resourceSpecJSON{
+		Product:    s.Product,
+		Name:       s.Name,
+		Shape:      s.Shape,
+		Operations: s.Operations,
+		GetKey:     s.EffectiveGetKey(),
+		Fields:     s.Fields,
+	})
+}
 
 func ReadOperations() []Operation {
 	return []Operation{
@@ -145,6 +165,16 @@ func (s ResourceSpec) SupportsReadOperation(name string) bool {
 		}
 	}
 	return false
+}
+
+func (s ResourceSpec) EffectiveGetKey() string {
+	if !s.SupportsReadOperation("get") {
+		return ""
+	}
+	if s.GetKey != "" {
+		return s.GetKey
+	}
+	return "id"
 }
 
 func ShowOperation() []Operation {
@@ -649,10 +679,27 @@ func (s ResourceSpec) Validate() error {
 	if s.EffectiveShape() == ShapeSingleton && !s.SupportsReadOperation("list") {
 		return fmt.Errorf("%w: %s/%s singleton resources must support list", ErrInvalidResourceSpec, s.Product, s.Name)
 	}
+	if s.GetKey != "" {
+		if !s.SupportsReadOperation("get") {
+			return fmt.Errorf("%w: %s/%s get_key requires get operation", ErrInvalidResourceSpec, s.Product, s.Name)
+		}
+	}
+	if key := s.EffectiveGetKey(); key != "" && !hasTopLevelField(s.Fields, key) {
+		return fmt.Errorf("%w: %s/%s get_key %q is not a top-level field", ErrInvalidResourceSpec, s.Product, s.Name, key)
+	}
 	if err := validateFields(s.Product, s.Name, "", s.Fields); err != nil {
 		return err
 	}
 	return nil
+}
+
+func hasTopLevelField(fields []FieldSpec, name string) bool {
+	for _, field := range fields {
+		if field.JSONField() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func validCatalogName(value string) bool {

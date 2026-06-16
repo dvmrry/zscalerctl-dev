@@ -12,7 +12,7 @@ import (
 
 var (
 	completionFlags     = []string{"--profile", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields", "--filter", "--search"}
-	completionDumpFlags = []string{"--out", "--products", "--resources", "--continue-on-error"}
+	completionDumpFlags = []string{"--out", "--products", "--resources", "--continue-on-error", "--force"}
 	completionFormats   = []string{"auto", "table", "json", "ndjson", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}

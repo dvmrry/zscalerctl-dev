@@ -32,6 +32,7 @@ registered path exists.
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
 | `scripts/verify-docs.sh` | verify | `make docs-check`; `.github/workflows/ci.yml` | No companion test yet; docs secret-pattern gate |
+| `scripts/verify-licenses.sh` | verify | `make verify-licenses`; `.github/workflows/ci.yml` | `go-licenses` allow-list check for the shipped binary |
 | `scripts/verify-release-artifacts.sh` | verify | `make verify-release-artifacts` | `scripts/test-verify-release-artifacts.sh` |
 | `scripts/verify-sdk-boundary.sh` | verify | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | `scripts/test-verify-sdk-boundary.sh` |
 | `scripts/verify-script-registry.sh` | verify | `make verify-script-registry` | `scripts/test-verify-script-registry.sh` |

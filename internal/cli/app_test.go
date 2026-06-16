@@ -803,6 +803,39 @@ func TestSchemaListTableIncludesReadOperations(t *testing.T) {
 	}
 }
 
+func TestSchemaListJSONIncludesGetKeyForGetResources(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	err := app.Run(context.Background(), []string{"--format", "json", "schema", "list"})
+	if err != nil {
+		t.Fatalf("App.Run(schema list json) error = %v, want nil", err)
+	}
+	var specs []struct {
+		Product string `json:"product"`
+		Name    string `json:"name"`
+		GetKey  string `json:"get_key,omitempty"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &specs); err != nil {
+		t.Fatalf("json.Unmarshal(schema list) error = %v, want nil", err)
+	}
+	seen := map[string]string{}
+	for _, spec := range specs {
+		seen[spec.Product+"/"+spec.Name] = spec.GetKey
+	}
+	if got := seen["zia/locations"]; got != "id" {
+		t.Errorf("schema zia/locations get_key = %q, want id", got)
+	}
+	if got := seen["zia/advanced-settings"]; got != "" {
+		t.Errorf("schema zia/advanced-settings get_key = %q, want omitted/empty", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(schema list json) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	t.Parallel()
 
@@ -2087,6 +2120,155 @@ func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 		t.Errorf("App.Run(dump overwrite) stdout = %q, want empty", out.String())
 	}
 	assertFileMode(t, outDir, 0o777)
+}
+
+func TestDumpForceReplacesExistingDumpDirectory(t *testing.T) {
+	t.Parallel()
+
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations"})
+	if err != nil {
+		t.Fatalf("App.Run(initial dump) error = %v, want nil", err)
+	}
+	stalePath := filepath.Join(outDir, "stale.txt")
+	if err := os.WriteFile(stalePath, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(stale) error = %v, want nil", err)
+	}
+	out.Reset()
+	errOut.Reset()
+
+	err = app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
+	if err != nil {
+		t.Fatalf("App.Run(dump --force) error = %v, want nil", err)
+	}
+	if _, err := os.Stat(stalePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("os.Stat(stale) error = %v, want os.ErrNotExist", err)
+	}
+	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
+	if _, err := os.Stat(resourcePath); err != nil {
+		t.Errorf("os.Stat(%q) error = %v, want nil", resourcePath, err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --force) stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errOut.String(), "dump written:") {
+		t.Errorf("App.Run(dump --force) stderr = %q, want dump written", errOut.String())
+	}
+}
+
+func TestDumpForceRejectsNonDumpDirectory(t *testing.T) {
+	t.Parallel()
+
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	if err := os.MkdirAll(outDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v, want nil", outDir, err)
+	}
+	notesPath := filepath.Join(outDir, "notes.txt")
+	if err := os.WriteFile(notesPath, []byte("not a dump"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(notes) error = %v, want nil", err)
+	}
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
+	if !errors.Is(err, dump.ErrUnsafePath) {
+		t.Fatalf("App.Run(dump --force non-dump) error = %v, want ErrUnsafePath", err)
+	}
+	if readFile(t, notesPath) != "not a dump" {
+		t.Errorf("notes file changed after rejected --force")
+	}
+	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
+	if _, err := os.Stat(resourcePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", resourcePath, err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --force non-dump) stdout = %q, want empty", out.String())
+	}
+}
+
+func TestDumpForceDoesNotRemovePreviousDumpWhenCollectionFails(t *testing.T) {
+	t.Parallel()
+
+	goodReader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: goodReader})
+	err := app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations"})
+	if err != nil {
+		t.Fatalf("App.Run(initial dump) error = %v, want nil", err)
+	}
+	manifestBefore := readFile(t, filepath.Join(outDir, "manifest.json"))
+	out.Reset()
+	errOut.Reset()
+
+	failingReader := selectiveErrorResourceReader{
+		failures: map[string]error{"zia/locations": errors.New("boom")},
+	}
+	app = cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingReader})
+	err = app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
+	if err == nil {
+		t.Fatalf("App.Run(dump --force collection error) error = nil, want error")
+	}
+	manifestAfter := readFile(t, filepath.Join(outDir, "manifest.json"))
+	if manifestAfter != manifestBefore {
+		t.Errorf("manifest changed after failed forced dump")
+	}
+}
+
+func TestDumpForceRejectsSymlinkParentResolvingToHome(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	child := filepath.Join(home, "child")
+	if err := os.MkdirAll(child, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v, want nil", child, err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.WriteFile(filepath.Join(home, "manifest.json"), []byte(`{"schema":"zscalerctl.dump.manifest.v2"}`), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(home manifest) error = %v, want nil", err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(child, link); err != nil {
+		t.Skipf("os.Symlink unavailable: %v", err)
+	}
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "123",
+			"name": "HQ",
+		})},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{"dump", "--out", filepath.Join(link, ".."), "--resources", "zia/locations", "--force"})
+	if !errors.Is(err, dump.ErrUnsafePath) {
+		t.Fatalf("App.Run(dump --force symlink-parent home) error = %v, want ErrUnsafePath", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "manifest.json")); err != nil {
+		t.Errorf("os.Stat(home manifest) error = %v, want nil", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --force symlink-parent home) stdout = %q, want empty", out.String())
+	}
 }
 
 type fakeResourceReader struct {

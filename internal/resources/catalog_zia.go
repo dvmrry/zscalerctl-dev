@@ -1516,6 +1516,7 @@ func catalogZIA() ResourceCatalog {
 			Product:    ProductZIA,
 			Name:       "cloud-app-instances",
 			Operations: ReadOperations(),
+			GetKey:     "instanceId",
 			Fields: []FieldSpec{
 				operationalField("instanceId", allModes()),
 				operationalField("instanceType", allModes()),
@@ -1640,6 +1641,7 @@ func catalogZIA() ResourceCatalog {
 			Product:    ProductZIA,
 			Name:       "dlp-edm-schemas",
 			Operations: ReadOperations(),
+			GetKey:     "schemaId",
 			Fields: []FieldSpec{
 				operationalField("schemaId", allModes()),
 				idNameExtensionsField("edmClient", standardOnlyMode()),
@@ -1664,6 +1666,7 @@ func catalogZIA() ResourceCatalog {
 			Product:    ProductZIA,
 			Name:       "dlp-idm-profile-lite",
 			Operations: ReadOperations(),
+			GetKey:     "profileId",
 			Fields: []FieldSpec{
 				operationalField("profileId", allModes()),
 				sensitiveIdentifierField("templateName"),
@@ -1677,6 +1680,7 @@ func catalogZIA() ResourceCatalog {
 			Product:    ProductZIA,
 			Name:       "dlp-idm-profiles",
 			Operations: ReadOperations(),
+			GetKey:     "profileId",
 			Fields: []FieldSpec{
 				operationalField("profileId", allModes()),
 				sensitiveIdentifierField("profileName"),

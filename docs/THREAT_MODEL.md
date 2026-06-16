@@ -9,6 +9,10 @@ This project is defensive administration software. It is not an exploitation,
 credential discovery, policy bypass, traffic interception, or offensive
 reconnaissance tool.
 
+Review stamp: last reviewed on 2026-06-16 against
+`github.com/zscaler/zscaler-sdk-go/v3 v3.8.38`. Re-review this threat model on
+every Zscaler SDK version bump.
+
 ## Security Objectives
 
 - Never print, log, store, commit, or export API credentials, bearer tokens,
@@ -148,6 +152,8 @@ Dump commands must:
 
 - Write with restrictive permissions.
 - Refuse unsafe overwrites by default.
+- Replace an existing dump only through explicit `dump --force`, and only when
+  the target already validates as a zscalerctl dump directory or is empty.
 - Use deterministic structure where possible.
 - Include a manifest and redaction report.
 - Avoid original secret values in reports.
