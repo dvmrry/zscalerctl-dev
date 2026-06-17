@@ -57,7 +57,7 @@ jobs:
       - name: Sign checksums with cosign
         run: |
           cd dist
-          cosign sign-blob --yes --bundle SHA256SUMS.bundle --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS
+          cosign sign-blob --yes --bundle SHA256SUMS.bundle SHA256SUMS
       - name: Publish release
         run: |
           gh release create "$VERSION" dist/*

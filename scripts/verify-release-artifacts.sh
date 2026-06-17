@@ -54,8 +54,6 @@ require_pattern 'subject-checksums:[[:space:]]*dist/SHA256SUMS' "release workflo
 require_pattern 'sigstore/cosign-installer@[0-9a-f]{40}' "release workflow must use SHA-pinned cosign-installer"
 require_pattern 'cosign sign-blob --yes' "release workflow must keyless-sign the checksums with cosign"
 require_pattern '--bundle SHA256SUMS\.bundle' "release workflow must emit the cosign bundle asset SHA256SUMS.bundle"
-require_pattern '--output-signature SHA256SUMS\.sig' "release workflow must emit the detached cosign signature SHA256SUMS.sig (OSSF Scorecard Signed-Releases recognizes .sig, not .bundle)"
-require_pattern '--output-certificate SHA256SUMS\.pem' "release workflow must emit the cosign certificate SHA256SUMS.pem alongside the detached signature"
 
 # Ordering: the cosign signature bundle must be produced BEFORE the release is
 # created, or `gh release create dist/*` would publish the release without them.

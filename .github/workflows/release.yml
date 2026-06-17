@@ -176,22 +176,25 @@ jobs:
         run: |
           set -euo pipefail
           # Keyless: signs with the job's OIDC identity (id-token: write) via
-          # Sigstore — no long-lived keys. SHA256SUMS.bundle is the primary,
-          # self-contained verification artifact and covers every release file
-          # through the SHA256SUMS subject list. We ALSO emit a detached
-          # SHA256SUMS.sig + SHA256SUMS.pem because OSSF Scorecard's
-          # Signed-Releases probe recognizes detached .sig assets but does not
-          # recognize the cosign .bundle format.
+          # Sigstore — no long-lived keys. SHA256SUMS.bundle covers every release
+          # file through the SHA256SUMS subject list and is the verification
+          # artifact (combined with the attest-build-provenance attestations).
+          # NOTE: OSSF Scorecard's Signed-Releases check scores this 0/10 — it
+          # does NOT recognize the cosign .bundle, nor read GitHub's attestation
+          # store, so the 0 is a known false-negative (releases ARE signed +
+          # attested). Do NOT add --output-signature/--output-certificate to
+          # appease it: cosign v4 deprecates and IGNORES those flags alongside
+          # --bundle (confirmed empirically — they emit nothing). See the
+          # signed-releases note in docs if a Scorecard-recognized asset is
+          # ever needed (would require a separate detached signing op).
           # Verify (see docs/INSTALL.md): cosign verify-blob
-          #   --bundle SHA256SUMS.bundle  (or: --signature SHA256SUMS.sig --certificate SHA256SUMS.pem)
+          #   --bundle SHA256SUMS.bundle
           #   --certificate-oidc-issuer https://token.actions.githubusercontent.com
           #   --certificate-identity-regexp '^https://github.com/<owner>/<repo>/\.github/workflows/release\.yml@'
           #   SHA256SUMS
           cd dist
           cosign sign-blob --yes \
             --bundle SHA256SUMS.bundle \
-            --output-signature SHA256SUMS.sig \
-            --output-certificate SHA256SUMS.pem \
             SHA256SUMS
 
       - name: Publish release
