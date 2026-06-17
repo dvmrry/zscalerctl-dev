@@ -9,8 +9,9 @@ a release note says otherwise.
 ## Reporting a Vulnerability
 
 Do not open a public issue for a suspected vulnerability, credential exposure, or
-unsafe output behavior. Use GitHub private vulnerability reporting from the
-repository's **Security** tab: **Report a vulnerability**.
+unsafe output behavior. Report privately through GitHub private vulnerability
+reporting: <https://github.com/dvmrry/zscalerctl/security/advisories/new> (also
+reachable from the repository's **Security** tab → **Report a vulnerability**).
 
 Please include:
 
