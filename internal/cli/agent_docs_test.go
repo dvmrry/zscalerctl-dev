@@ -16,12 +16,11 @@ import (
 // can never silently drift behind the flag set. This is the agent-facing twin of
 // TestManPageDocumentsFlagsAndCommands.
 var agentDocExemptFlags = map[string]string{
-	"--profile":   "cosmetic run label echoed in doctor/config show; selects no behavior (config is env-only)",
-	"--output":    "writes output to a file instead of stdout; agents read stdout, no effect on content",
-	"--color":     "human TTY styling; agents use --format json",
-	"--no-color":  "human TTY styling; agents use --format json",
-	"--no-cache":  "live reads already bypass the SDK cache regardless; config/status surface, not part of the agent data path",
-	"--log-level": "stderr diagnostics only (never data/secrets); not part of the agent data path",
+	"--profile":  "cosmetic run label echoed in doctor/config show; selects no behavior (config is env-only)",
+	"--output":   "writes output to a file instead of stdout; agents read stdout, no effect on content",
+	"--color":    "human TTY styling; agents use --format json",
+	"--no-color": "human TTY styling; agents use --format json",
+	"--no-cache": "live reads already bypass the SDK cache regardless; config/status surface, not part of the agent data path",
 }
 
 // flagDocumented reports whether docs reference flag as a whole token — the flag

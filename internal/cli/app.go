@@ -1872,7 +1872,8 @@ func requireNoArgs(command string, args []string) error {
 
 func dumpUsage() string {
 	return fmt.Sprintf(
-		"usage: zscalerctl dump --out <dir> [--products %s] [--resources names] [--continue-on-error] [--force]",
+		"usage: zscalerctl dump --out <dir> [--products %s] [--resources names] [--continue-on-error] [--force]\n"+
+			"tip: add --log-level info to see start, per-resource, and completion progress on stderr during a long dump",
 		strings.Join(productNames(knownProducts()), ","),
 	)
 }

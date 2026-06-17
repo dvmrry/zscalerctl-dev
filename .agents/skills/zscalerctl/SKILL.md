@@ -33,7 +33,8 @@ can modify tenant state.
   5 live API failure (possibly entitlement), 6 partial dump, 7 drift detected
   when `diff --fail-on-drift` is used.
 - `--fields a,b,c` narrows output; `zscalerctl dump --products zia --out DIR`
-  writes a sanitized export.
+  writes a sanitized export. A long dump is silent by default; add
+  `--log-level info` for start, per-resource, and completion progress on stderr.
 - `zscalerctl --format json diff OLD_DUMP_DIR NEW_DUMP_DIR` compares two
   existing dumps. It does not schedule collection or contact Zscaler; use cron,
   CI, or another scheduler to create dumps on a cadence.

@@ -52,7 +52,10 @@ Bypass the API cache where supported.
 .TP
 .BI \-\-log-level " off|error|warn|info|debug"
 Diagnostic logging to stderr. Defaults to off. Diagnostics are metadata only
-and never include record values, credentials, or secrets.
+and never include record values, credentials, or secrets. During a long
+\fBdump\fR, \fB\-\-log-level info\fR reports progress on stderr: a starting
+event with the selected resource count, one event per resource as it is read,
+and a completion summary with the resource and error counts.
 .TP
 .BI \-\-fields " a,b,c"
 Comma-separated list of output fields to keep, applied across all formats. It
@@ -92,24 +95,48 @@ including security-alert categories and the matched cloud application. A
 diagnostic query, not a catalog resource: the backing endpoint performs a pure
 lookup and never modifies tenant state. At least one URL is required.
 .TP
-.B dump \-\-out <dir> [\-\-products ...] [\-\-resources ...] [\-\-continue-on-error]
+.B dump \-\-out <dir> [\-\-products ...] [\-\-resources ...] [\-\-continue-on-error] [\-\-force]
 Write a sanitized multi-resource dump (manifest.json, redaction_report.json,
 per-resource files, and errors.ndjson on failure) into a new directory.
+\fB\-\-force\fR replaces an existing destination, but only after verifying it is
+itself a zscalerctl dump directory; it refuses to follow symlinks and refuses
+the current working directory, the home directory, and the filesystem root.
 .TP
 .B diff <old-dump-dir> <new-dump-dir> [\-\-products ...] [\-\-resources ...] [\-\-ignore-operational] [\-\-detail] [\-\-allow-partial] [\-\-fail-on-drift]
-Compare two existing dump directories and emit a local drift report. By
-default drift is reported with exit 0; \fB\-\-fail-on-drift\fR returns exit 7
-when added, removed, or changed records are detected. List and array fields are
-compared in order, so reordering a list is reported as drift. The command
-performs no live API calls and does not schedule collection; use cron, CI, or
-another external scheduler to create dumps at the cadence you need.
+Compare two existing dump directories and emit a local drift report. List and
+array fields are compared in order, so reordering a list is reported as drift.
+The command performs no live API calls and does not schedule collection; use
+cron, CI, or another external scheduler to create dumps at the cadence you need.
+The flags are:
+.RS
+.TP
+.B \-\-detail
+Add record-level rows (the individual added/removed/changed records) to the
+\fBtable\fR and \fBpretty\fR reports. It is a no-op under \fB\-\-format json\fR,
+whose report already contains the full record-level detail.
+.TP
+.B \-\-ignore-operational
+Ignore fields classified as operational metadata (such as identifiers and SDK
+timestamps) on keyed and singleton resources, so only configuration changes are
+reported.
+.TP
+.B \-\-allow-partial
+Permit the comparison to proceed when an input dump is partial (was written
+with some resources failing) instead of refusing it.
+.TP
+.B \-\-fail-on-drift
+Return exit 7 when added, removed, or changed records are detected; without it,
+drift is reported with exit 0.
+.RE
 .TP
 .B schema list
 Print the resource catalog (products, resources, operations, field model).
 .TP
 .B doctor
-Report configuration, auth mode, and live-API reachability without exposing
-secrets.
+Report configuration readiness and the resolved auth mode without exposing
+secrets. \fBdoctor\fR inspects \fBZSCALERCTL_*\fR configuration only and never
+contacts Zscaler; its \fBlive_api\fR field is derived from whether credentials
+are configured, not from a live reachability probe.
 .TP
 .B auth status
 Report credential presence and live-API reachability.
@@ -190,6 +217,62 @@ Partial dump (some resources failed; see errors.ndjson).
 .TP
 .B 7
 Drift detected when \fBdiff \-\-fail-on-drift\fR is used.
+.SH EXAMPLES
+Enumerate every product, resource, operation, and field in the catalog:
+.RS
+.EX
+zscalerctl \-\-format json schema list
+.EE
+.RE
+.PP
+List a resource as machine-readable JSON:
+.RS
+.EX
+zscalerctl \-\-format json zia locations list
+.EE
+.RE
+.PP
+Get a single resource by id:
+.RS
+.EX
+zscalerctl \-\-format json zia locations get 12345
+.EE
+.RE
+.PP
+Show a singleton/status resource:
+.RS
+.EX
+zscalerctl \-\-format json zia advanced-settings show
+.EE
+.RE
+.PP
+Narrow a list with a case-insensitive substring filter:
+.RS
+.EX
+zscalerctl zia url-filtering-rules list \-\-filter name~social
+.EE
+.RE
+.PP
+Write a sanitized, single-product dump to a scratch directory:
+.RS
+.EX
+zscalerctl dump \-\-products zia \-\-out ./scratch-live-dump
+.EE
+.RE
+.PP
+Compare two existing dumps and fail when drift is detected:
+.RS
+.EX
+zscalerctl \-\-format json diff ./old-dump ./new-dump \-\-fail-on-drift
+.EE
+.RE
+.PP
+Resolve the URL category classification for a URL:
+.RS
+.EX
+zscalerctl zia url-lookup https://example.com
+.EE
+.RE
 .SH SEE ALSO
 Project documentation under \fBdocs/\fR, including ARCHITECTURE.md,
 THREAT_MODEL.md, and the published dump and diff schemas in docs/schema/.

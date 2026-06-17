@@ -31,6 +31,11 @@ zscalerctl dump --products zia --out ./scratch-live-dump   # sanitized whole-pro
 zscalerctl --format json diff ./old-dump ./new-dump        # compare two existing dumps
 ```
 
+A whole-tenant `dump` can run for minutes. Add `--log-level info` to follow it
+on stderr: it emits a start event with the selected resource count, one event
+per resource as it is read, and a completion summary with resource and error
+counts (metadata only — never record values or secrets).
+
 ## Credentials
 
 Configuration is environment-only, via `ZSCALERCTL_*` variables — never

@@ -70,6 +70,19 @@ and changed records; singleton resources report changes to their single record;
 list-only resources without a stable key use a canonical non-operational content
 hash and report added/removed records only.
 
+The diff flags are:
+
+- `--detail`: add record-level rows (the individual added/removed/changed
+  records) to the `table` and `pretty` reports. It is a no-op under
+  `--format json`, whose report already carries the full record-level detail.
+- `--ignore-operational`: ignore fields classified as operational metadata
+  (such as identifiers and SDK timestamps) on keyed and singleton resources, so
+  only configuration changes are reported.
+- `--allow-partial`: compare dumps written as partial (some resources failed)
+  instead of rejecting them.
+- `--fail-on-drift`: exit `7` when added, removed, or changed records are
+  detected; without it, drift is reported with exit `0`.
+
 ## ZIA Locations
 
 Commands:

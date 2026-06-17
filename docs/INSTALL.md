@@ -17,6 +17,13 @@ must use protected inline environment variables such as
 `ZSCALERCTL_ZIA_API_KEY`; `*_FILE` variables fail closed on Windows until ACL
 support lands.
 
+Relatedly, `dump` creates its output directory and files with owner-only
+permissions on macOS and Linux, but that enforcement does not apply on Windows:
+the underlying `os.Chmod` has no ACL effect there, so the mode bits are not
+honored. On Windows, write dumps into a directory that is already restricted to
+your account (for example under your user profile), since the dump's own
+permission tightening is a no-op.
+
 ## Verify Release Artifacts
 
 GitHub releases include platform archives, per-target CycloneDX SBOMs,

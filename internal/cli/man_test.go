@@ -32,6 +32,19 @@ func TestManPageDocumentsFlagsAndCommands(t *testing.T) {
 		}
 	}
 
+	// dump and diff sub-flags are their own completion surface; gate them too so
+	// a flag like --force cannot silently drift out of the man page.
+	for _, flag := range completionDumpFlags {
+		if !strings.Contains(content, flag) {
+			t.Errorf("man/zscalerctl.1 does not document dump flag %q", flag)
+		}
+	}
+	for _, flag := range completionDiffFlags {
+		if !strings.Contains(content, flag) {
+			t.Errorf("man/zscalerctl.1 does not document diff flag %q", flag)
+		}
+	}
+
 	// Diagnostic verbs are not catalog resources, so completionCommandNames
 	// never yields them — gate their documentation explicitly or a future
 	// deletion of the man entry would pass every test (the un-driftable-docs
