@@ -855,6 +855,9 @@ func TestKeyringHelperProcess(t *testing.T) {
 			break
 		}
 	}
+	if len(args) == 0 {
+		os.Exit(2) // malformed helper invocation — exit cleanly, don't panic
+	}
 	switch args[0] {
 	case "echo":
 		fmt.Fprint(os.Stdout, args[1])
@@ -933,15 +936,20 @@ func TestRunKeyringCmdEmptyArgv(t *testing.T) { // must not panic on argv[0]
 	}
 }
 
-func TestRunKeyringCmdStartFailureUnwrapsErrNotFound(t *testing.T) { // Linux missing-tool detection
+func TestRunKeyringCmdStartFailureIsUnavailable(t *testing.T) {
+	// An ABSOLUTE path that doesn't exist yields *fs.PathError (os.ErrNotExist),
+	// NOT exec.ErrNotFound — that sentinel is only for bare names via LookPath.
+	// runKeyringCmd wraps any start failure with ErrUnavailable, which is what
+	// resolveKeyring keys on. (The Linux missing-tool case is caught earlier by
+	// exec.LookPath in the backend, not here.)
 	_, _, _, err := runKeyringCmd(context.Background(), time.Second, []string{"/nonexistent-zscalerctl-bin"})
-	if err == nil || !errors.Is(err, exec.ErrNotFound) {
-		t.Fatalf("start failure must unwrap exec.ErrNotFound: %v", err)
+	if err == nil || !errors.Is(err, ErrUnavailable) || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("start failure must wrap ErrUnavailable and os.ErrNotExist: %v", err)
 	}
 }
 ```
 
-> Test imports: `context`, `errors`, `fmt`, `os`, `os/exec`, `strconv`, `strings`, `testing`, `time`.
+> Test imports: `context`, `errors`, `fmt`, `os`, `strconv`, `strings`, `testing`, `time`.
 
 - [ ] **Step 2: Run → FAIL** (undefined: `runKeyringCmd`).
 - [ ] **Step 3: Implement `exec.go`** (mirrors `resolveCmd`'s leak-safety; `cappedWriter`/`summarizeStderr` duplicated here intentionally — keyring is a *lower* layer than `secretref` and cannot import it; a shared `execcapture` extraction is a deferred YAGNI cleanup):
@@ -979,18 +987,17 @@ func runKeyringCmd(ctx context.Context, timeout time.Duration, argv []string) (s
 	cmd.Env = filterEnv(os.Environ()) // strip ZSCALERCTL_* so a child never sees our other secrets
 
 	stdout := &cappedWriter{limit: 64 * 1024}
-	stderr := &cappedWriter{limit: 16 * 1024}
+	stderr := &cappedWriter{limit: 16 * 1024, truncate: true} // diagnostic-only: truncate, don't fail a good lookup
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
 	runErr := cmd.Run()
-	// Output overflow takes precedence: a capped writer makes cmd.Run() return the
-	// write error, which must NOT be misread as an exec start-failure.
+	// stdout overflow takes precedence: a >64KB "secret" is bogus, and the capped
+	// writer makes cmd.Run() return the write error — don't misread it as a start
+	// failure. stderr truncates silently, so a noisy-but-successful command (exit 0
+	// with >16KB of warnings) is never failed over diagnostic output.
 	if stdout.err != nil {
 		return "", "", -1, fmt.Errorf("keyring: %q stdout too large", argv[0])
-	}
-	if stderr.err != nil {
-		return "", "", -1, fmt.Errorf("keyring: %q stderr too large", argv[0])
 	}
 	out := strings.TrimRight(stdout.String(), "\r\n")
 	errOut := stderr.String()
@@ -1008,8 +1015,9 @@ func runKeyringCmd(ctx context.Context, timeout time.Duration, argv []string) (s
 			// Process ran and exited non-zero — hand the code back to the caller.
 			return out, errOut, exitErr.ExitCode(), nil
 		}
-		// Exec never started (binary missing / not executable). Double-wrap so
-		// callers can detect BOTH exec.ErrNotFound and ErrUnavailable. Value-free.
+		// Exec never started (binary missing / not executable). Double-wrap so the
+		// underlying cause stays inspectable (exec.ErrNotFound for a bare name,
+		// fs.ErrNotExist for an absolute path) alongside ErrUnavailable. Value-free.
 		return "", "", -1, fmt.Errorf("keyring: %q could not run: %w (%w)", argv[0], runErr, ErrUnavailable)
 	}
 	return out, errOut, 0, nil
@@ -1032,10 +1040,15 @@ func summarizeStderr(s string) string {
 	return fmt.Sprintf("stderr omitted (%d bytes)", len(s))
 }
 
+// cappedWriter bounds an in-memory buffer at limit bytes. With truncate=false
+// (stdout) it errors on overflow so an oversized "secret" is rejected. With
+// truncate=true (stderr) it silently drops the overflow and reports success, so
+// a noisy-but-successful command is never failed over diagnostic output.
 type cappedWriter struct {
-	buf   bytes.Buffer
-	limit int
-	err   error
+	buf      bytes.Buffer
+	limit    int
+	truncate bool
+	err      error
 }
 
 func (w *cappedWriter) Write(p []byte) (int, error) {
@@ -1043,6 +1056,12 @@ func (w *cappedWriter) Write(p []byte) (int, error) {
 		return 0, w.err
 	}
 	if w.buf.Len()+len(p) > w.limit {
+		if w.truncate {
+			if room := w.limit - w.buf.Len(); room > 0 {
+				w.buf.Write(p[:room])
+			}
+			return len(p), nil // pretend full success; overflow dropped
+		}
 		w.err = errors.New("output limit exceeded")
 		return 0, w.err
 	}
@@ -1068,6 +1087,8 @@ package keyring
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -1106,7 +1127,18 @@ func TestDarwinGetLive(t *testing.T) {
 	if os.Getenv("ZSCALERCTL_KEYRING_LIVE") == "" {
 		t.Skip("set ZSCALERCTL_KEYRING_LIVE=1 to run against the real Keychain")
 	}
-	// ... add-generic-password, Get, assert, delete-generic-password, assert ErrNotFound
+	const svc, acct, want = "zscalerctl-livetest", "k", "naïve-pä$$wörd" // non-ASCII exercises the decode
+	if out, err := exec.Command("/usr/bin/security", "add-generic-password", "-s", svc, "-a", acct, "-w", want, "-U").CombinedOutput(); err != nil {
+		t.Fatalf("seed failed: %v: %s", err, out)
+	}
+	// Always clean up, even if an assertion below fails (no leaked test credential).
+	t.Cleanup(func() {
+		_ = exec.Command("/usr/bin/security", "delete-generic-password", "-s", svc, "-a", acct).Run()
+	})
+	got, err := New().Get(context.Background(), svc, acct)
+	if err != nil || got != want {
+		t.Fatalf("Get = %q, %v; want %q", got, err, want)
+	}
 }
 ```
 
@@ -1123,9 +1155,14 @@ import (
 	"time"
 )
 
-// errSecItemNotFoundExit is the low byte of errSecItemNotFound (OSStatus
-// 0xFFFF9D2C & 0xFF = 0x2C = 44). Verified live on Darwin 24.6.0.
-const errSecItemNotFoundExit = 44
+const (
+	// errSecItemNotFoundExit is the low byte of errSecItemNotFound (OSStatus
+	// 0xFFFF9D2C & 0xFF = 0x2C = 44). Verified live on Darwin 24.6.0.
+	errSecItemNotFoundExit = 44
+	// errSecInteractionNotAllowedExit is the low byte of errSecInteractionNotAllowed
+	// (-25308 = 0xFFFF9D24 & 0xFF = 0x24 = 36): keychain locked / no interaction allowed.
+	errSecInteractionNotAllowedExit = 36
+)
 
 type macOSGetter struct {
 	run     runnerFunc
@@ -1144,6 +1181,10 @@ func (g *macOSGetter) Get(ctx context.Context, service, key string) (string, err
 	}
 	if code == errSecItemNotFoundExit {
 		return "", ErrNotFound
+	}
+	if code == errSecInteractionNotAllowedExit {
+		// Locked keychain / interaction disallowed (headless): actionable hint.
+		return "", fmt.Errorf("keyring: macOS Keychain is locked or requires interaction; unlock it or use env:/file:/cmd: (%w)", ErrUnavailable)
 	}
 	if code != 0 {
 		return "", fmt.Errorf("keyring: /usr/bin/security failed (exit %d)", code)
@@ -1168,8 +1209,22 @@ func (g *macOSGetter) Get(ctx context.Context, service, key string) (string, err
 
 func newLinuxWithRunner(r runnerFunc) *linuxGetter { return &linuxGetter{run: r, timeout: time.Second, lookPath: func(string) (string, error) { return "/usr/bin/secret-tool", nil }} }
 
-func TestLinuxGetFound(t *testing.T) { /* code 0, stdout "s3cr3t" → "s3cr3t" */ }
-func TestLinuxGetNotFound(t *testing.T) { /* code 1, stdout "", stderr "No matching secrets" → ErrNotFound */ }
+func TestLinuxGetFound(t *testing.T) {
+	g := newLinuxWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "s3cr3t", "", 0, nil
+	})
+	if got, err := g.Get(context.Background(), "svc", "k"); err != nil || got != "s3cr3t" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+func TestLinuxGetNotFound(t *testing.T) {
+	g := newLinuxWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "", "No matching secrets", 1, nil // exit 1 + empty stdout = not found
+	})
+	if _, err := g.Get(context.Background(), "svc", "k"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
 func TestLinuxGetServiceUnavailable(t *testing.T) {
 	g := newLinuxWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
 		return "", "Failed to connect to the D-Bus session bus", 1, nil
@@ -1406,19 +1461,7 @@ func (unsupportedGetter) Get(context.Context, string, string) (string, error) {
 }
 ```
 
-- [ ] **Step 2: Failing integration test** in `load_test.go` — a profile with `client_secret_ref: "keyring:svc/key"` must surface a deferred source whose `Scheme()` is `"keyring"` (resolution itself is exercised by the resolver tests; this proves the wiring reaches `keyring.New()`):
-
-```go
-func TestLoadConfigKeyringRefIsDeferredKeyringSource(t *testing.T) {
-	// write an owner-only profile with client_secret_ref: "keyring:svc/key"
-	cfg := loadProfileFixture(t, `client_secret_ref: "keyring:svc/key"`)
-	if got := cfg.ClientSecret.Scheme(); got != "keyring" {
-		t.Fatalf("want keyring source, got %q", got)
-	}
-}
-```
-
-- [ ] **Step 3: Run → FAIL** (resolver built without a `Keyring`, so the keyring ref errors at build). **Step 4: Wire `load.go:58-61`** — add the field to the nil-guard branch (only evaluated when the caller passes no `Resolver`):
+- [ ] **Step 2: Wire `load.go:58-61`** — add the `Keyring` field to the nil-guard branch (only evaluated when the caller passes no `Resolver`):
 
 ```go
 	if resolver == nil {
@@ -1431,7 +1474,31 @@ func TestLoadConfigKeyringRefIsDeferredKeyringSource(t *testing.T) {
 
 Add the import `"github.com/dvmrry/zscalerctl/internal/keyring"`.
 
-- [ ] **Step 5: Run → PASS** (`go test ./internal/config/`). **Step 6: Commit** — `feat(keyring): wire keyring.New() into the resolver`.
+- [ ] **Step 3: Coverage test** in `internal/config/load_test.go`, using the existing `writeConfig` + `LoadConfig` pattern. A `keyring:` ref is **deferred** — it does NOT resolve at load time, so this passes *without* a keyring getter; it pins that a keyring profile ref flows through `LoadConfig` into a keyring-scheme deferred source. The `keyring.New()` injection above is plumbing verified by the build + the `resolveKeyring` tests in Task 3.1 (there is no genuine red-before-green for a one-line wiring change).
+
+```go
+func TestLoadConfigKeyringRefIsDeferredKeyringSource(t *testing.T) {
+	t.Parallel()
+	path := writeConfig(t, `
+default_profile: prod
+profiles:
+  prod:
+    vanity_domain: v
+    client_id: c
+    client_secret_ref: keyring:svc/key
+    zpa_customer_id: z
+`)
+	cfg, err := config.LoadConfig(nil, config.LoadOptions{ConfigPath: path})
+	if err != nil {
+		t.Fatalf("LoadConfig(keyring ref) error = %v, want nil", err)
+	}
+	if got := cfg.Credentials.ClientSecret.Scheme(); got != "keyring" {
+		t.Fatalf("ClientSecret scheme = %q, want keyring", got)
+	}
+}
+```
+
+- [ ] **Step 4: Run → PASS** (`go test ./internal/config/`). **Step 5: Commit** — `feat(keyring): wire keyring.New() into the resolver`.
 
 ### Task 3.7: `CGO_ENABLED=0` matrix + zero-new-deps gate + docs + draft PR
 
