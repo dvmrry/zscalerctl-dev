@@ -6,7 +6,7 @@
 
 **Architecture:** Additive layer over the existing `config.LoadEnv(environ) → Config` seam. Credential fields on `Config` become a lazy-capable `SecretSource`. Precedence is `flag > env > profile > default`; env-inline/env-file resolve eagerly (today's behavior), profile `*_ref`s resolve only at live-reader construction. Providers live behind small interfaces; keyring is cgo-free.
 
-**Tech Stack:** Go (existing), `gopkg.in/yaml.v3` (config parse), `golang.org/x/sys/windows` (DACL validation, cgo-free), `os/exec` (cmd provider), `godbus/dbus` + `x/sys/windows` + `security` CLI (keyring backends).
+**Tech Stack:** Go (existing), `gopkg.in/yaml.v3` (config parse), `golang.org/x/sys/windows` (DACL validation + Windows `CredReadW`, cgo-free), `os/exec` (cmd provider + macOS `security` / Linux `secret-tool` keyring backends). **Zero new module dependencies** — the keyring is hand-rolled per OS (see Phase 3's "Backend approach — DECIDED").
 
 **Frozen spec:** [docs/superpowers/specs/2026-06-17-config-profiles-secret-providers-design.md](../specs/2026-06-17-config-profiles-secret-providers-design.md). Read it before starting; this plan implements it.
 
@@ -18,9 +18,9 @@
 - `internal/secretref/ref.go` — `SecretRef` type + `UnmarshalYAML` (string-or-structured), scheme parsing/validation.
 - `internal/secretref/source.go` — `SecretSource` interface + `resolved`/`deferred`/`unset` impls.
 - `internal/secretref/resolver.go` — `Resolver` dispatching a `SecretRef` to a provider.
-- `internal/secretref/provider_env.go`, `provider_file.go`, `provider_cmd.go`, `provider_keyring.go` — one provider each.
+- `internal/secretref/resolver.go` — all provider dispatch (`env`/`file`/`cmd`/`keyring`) as `resolve*` methods. (The per-`provider_*.go` split in this draft was not used; phases 1–3 keep dispatch in `resolver.go`.)
 - `internal/fileperm/fileperm.go` + `fileperm_posix.go` + `fileperm_windows.go` — owner-only (POSIX) and DACL (Windows) validation, shared by config loader and `file:` provider.
-- `internal/keyring/keyring.go` (interface) + `keyring_linux.go` / `keyring_windows.go` / `keyring_darwin.go` — cgo-free backends behind a mockable `Client`.
+- `internal/keyring/keyring.go` (`Getter` interface, `ErrNotFound`, `decodeUTF16LE`, `New()`) + `exec.go` (shared leak-safe `runKeyringCmd`) + build-tagged `keyring_darwin.go` / `keyring_linux.go` / `keyring_windows.go` / `keyring_other.go` — cgo-free, hand-rolled backends behind the mockable `Getter`. (`resolveKeyring` lives in `resolver.go`, not a separate provider file.)
 - `internal/config/profile.go` — config-file model + YAML load + profile selection.
 - `internal/config/load.go` — `LoadConfig(...)` that layers flag/env/profile/default into `Config` (wraps existing `LoadEnv`).
 - `docs/schema/config.schema.json` — drift-gated config schema.
@@ -592,22 +592,758 @@ A deferred secret that fails to `Resolve` at reader-build time (bad `cmd:`, disa
 
 ## PHASE 3 — `keyring:` cgo-free backend (read)
 
-**Outcome:** `keyring:` refs resolve from the OS keychain, cgo-free, static binary intact, behind a mockable interface. Mergeable PR.
+**Outcome:** `keyring:` refs resolve from the OS keychain — macOS Keychain via `/usr/bin/security`, Linux Secret Service via `secret-tool`, Windows Credential Manager via the `CredReadW` syscall — all cgo-free, **zero new Go dependencies**, static binary intact, behind a mockable `Getter` interface. Mergeable `semver:minor` PR.
 
-### Task 3.1: `keyring.Client` interface + mock; wire `resolveKeyring`
+### Backend approach — DECIDED: zero new dependencies (hand-roll all three)
 
-**Files:** `internal/keyring/keyring.go`, `internal/secretref/provider_keyring.go`, tests.
+Each backend uses only the stdlib (`os/exec` for macOS/Linux) or an already-vendored dependency (`golang.org/x/sys/windows`, present since the phase-1 DACL work). Rationale:
 
-- [ ] **Step 1: Failing test** — `resolveKeyring` calls `Client.Get(service,key)` and returns the secret; a not-found error from the client surfaces a clear "use env:/file:/cmd:" message; nil client (no backend) errors clearly.
-- [ ] **Step 2–4:** Define `type Getter interface { Get(service, key string) (string, error) }`; `resolveKeyring` calls `r.opts.Keyring.Get(...)`. Commit.
+- The project posture is aggressively supply-chain-minimal (Scorecard, pinned deps, `verify-licenses.sh`, govulncheck) and `keyring:` is an **optional convenience** — `env:`/`file:`/`cmd:` already cover every credential, including headless/CI use. Adding `zalando/go-keyring` (pulls `godbus` + `danieljoos/wincred`) or `godbus/dbus` for an optional read path is not worth the dependency surface. A strategy panel (three independent lenses, including a pro-library steelman) unanimously chose hand-roll.
+- macOS + Linux reuse the **exact phase-2 `cmd:` leak-safe exec discipline** (no shell, bounded output, bounded timeout + `WaitDelay`, `ZSCALERCTL_*`-scrubbed env, value-free errors).
+- Windows: `golang.org/x/sys/windows` does **not** export `CredReadW`/`CREDENTIALW` (confirmed — only DACL/security APIs are vendored). The backend declares its own `advapi32.dll` `LazyProc` and `credentialW` struct — ~80 lines of unsafe syscall code. This is the highest-risk surface; it carries a **mandatory live acceptance test on a real Windows host** before merge (an operator-provided host is available), plus cross-family review.
+- **Trade-off (documented):** Linux requires `secret-tool` (libsecret-tools) on `PATH`; if absent, the backend returns a clear install-hint error (not a crash, not `ErrNotFound`). Native D-Bus via `godbus` remains a documented, reversible future upgrade.
 
-### Task 3.2: cgo-free backends (Linux D-Bus / Windows wincred / macOS `security`)
+**Storage conventions (read invocation + how the operator provisions the credential):**
 
-**Files:** `internal/keyring/keyring_linux.go` / `_windows.go` / `_darwin.go` (build-tagged), tests gated behind an env flag so CI never hits a real keychain.
+| OS | Read invocation | Not-found signal | Secret encoding | How operator stores the credential |
+|----|-----------------|------------------|-----------------|-------------------------------------|
+| **macOS** | `/usr/bin/security find-generic-password -s <service> -a <key> -w` (absolute path, anti-hijack; `-w` routes **only** the raw password to stdout — never `-g`, which leaks it to stderr) | Exit code **44** (low byte of `errSecItemNotFound` OSStatus `0xFFFF9D2C`) | Raw bytes + trailing LF; `strings.TrimRight(stdout, "\r\n")` | `security add-generic-password -s <service> -a <key> -w` or Keychain Access.app → File ▸ New Password Item ("Keychain Item Name" = service, "Account Name" = key) |
+| **Linux** | `secret-tool lookup service <service> account <key>` (PATH-resolved; `exec.LookPath` first for a clear install-hint if absent) | Exit **1** AND trimmed stdout empty. Exit 1 + non-empty stdout = hard error; D-Bus language in stderr + empty stdout = "Secret Service unavailable" hard error | UTF-8, no trailing newline in libsecret ≥ 0.18 (trim `\r\n` defensively) | `secret-tool store --label="zscalerctl: <service>/<key>" service <service> account <key>` (type secret at prompt) |
+| **Windows** | `CredReadW` via `advapi32.dll` `NewLazySystemDLL` + `NewProc` (System32-only load; no subprocess, no PATH) | `r1 == 0` and `lastErr == windows.ERROR_NOT_FOUND` (`syscall.Errno(1168)`) | UTF-16LE blob, no guaranteed NUL terminator; decode via pure-Go `decodeUTF16LE` (Task 3.1) | `cmdkey /generic:<service>/<key> /user:<service>/<key> /pass:<secret>` or Credential Manager → Windows Credentials ▸ Add a generic credential (address = `<service>/<key>`) |
+| **Other** | N/A — `Get` returns a hard "not supported on this platform" error | N/A | N/A | N/A |
 
-- [ ] **Decision step:** evaluate `zalando/go-keyring` (cgo-free: D-Bus/syscall/`security`) vs hand-rolling. If using the dependency: `go get` + `go mod vendor` + pass `verify-licenses.sh` + pin/vet; wrap it behind our `Getter` so it stays swappable. If hand-rolling: macOS = `exec security find-generic-password -s <service> -a <key> -w`; Windows = `x/sys/windows` `CredRead`; Linux = `godbus/dbus` Secret Service `GetSecret`. **Record the choice + rationale in the PR.**
-- [ ] **Steps:** implement the chosen backend behind `Getter`; unit-test the macOS exec path by stubbing the command runner; keep real-keychain tests behind `ZSCALERCTL_KEYRING_LIVE=1` (off in CI). Build all three via build tags; confirm `CGO_ENABLED=0` cross-compile still works in the release matrix (dry-run `go build`).
-- [ ] **Commit + phase-3 PR** (`semver:minor`); confirm the release `CGO_ENABLED=0` darwin/linux/windows builds still pass.
+The config ref is always `keyring:<service>/<key>`, e.g. `client_secret_ref: "keyring:zscalerctl/prod-client-secret"`.
+
+### Reality check — shipped shapes this phase builds on (verified against `main`)
+
+- `SecretRef{Service, Key}` is **already** parsed + validated in `internal/secretref/ref.go` (`keyring:service/key`, both segments non-empty, no extra `/`). Phase 3 only *consumes* `ref.Service`/`ref.Key` — no new parsing.
+- `Resolve`'s `case "keyring"` is a live stub at `internal/secretref/resolver.go:49-50` returning `ErrInvalidRef`. Phase 3 replaces it.
+- `ResolverOpts` is `{AllowCmd bool}` at `resolver.go:19-21`. Phase 3 adds a `Keyring keyring.Getter` field.
+- `resolveCmd` lives in `resolver.go` (not a separate `provider_cmd.go`). Put `resolveKeyring` there too. The original "File Structure" names `provider_keyring.go` / `keyring.Client` / `godbus` are **superseded** by this section.
+- `internal/config/load.go:58-61` is a **nil-guard branch**: `if resolver == nil { resolver = secretref.NewResolver(secretref.ResolverOpts{AllowCmd: !disallowCmd}) }`. `keyring.New()` is only evaluated when `opts.Resolver == nil`; add the `Keyring:` field there.
+
+### Architecture — one exec primitive, exit-code-driven, `ctx`-threaded
+
+macOS + Linux both shell out and **share one leak-safe primitive** `runKeyringCmd(ctx, timeout, argv) (stdout, stderr string, exitCode int, err error)` in `internal/keyring/exec.go`. It returns the process **exit code directly** so backends never string-match an error message (a regression that silently breaks not-found detection). `err` is non-nil only for exec-level failures (start failure, timeout, output overflow); a non-zero exit is reported via `exitCode`, not `err`. `Getter.Get(ctx, service, key)` takes a context so the caller's deadline/cancel is honoured (the backend layers its own `defaultKeyringTimeout = 10s` on top). Windows uses no subprocess — a direct `CredReadW` call.
+
+**File layout (`internal/keyring/`):** `keyring.go` (interface, `ErrNotFound`, `decodeUTF16LE`, `New()`, `runnerFunc`), `exec.go` (`runKeyringCmd`, `cappedWriter`, `summarizeStderr`, `filterEnv`), build-tagged `keyring_darwin.go` / `keyring_linux.go` / `keyring_windows.go` / `keyring_other.go`, and matching `_test.go` files.
+
+### Task 3.1: `Getter` interface (`ctx`-threaded) + `ErrNotFound` + `decodeUTF16LE` + un-stub `resolveKeyring`
+
+**Files:**
+- Create: `internal/keyring/keyring.go`
+- Modify: `internal/secretref/resolver.go` (add `Keyring` to `ResolverOpts`; replace the `keyring` stub at `:49-50`)
+- Test: `internal/keyring/keyring_test.go`, `internal/secretref/resolver_keyring_test.go`
+
+- [ ] **Step 1: Failing test — `decodeUTF16LE`.** In `keyring_test.go` (package `keyring`, cross-platform):
+
+```go
+func TestDecodeUTF16LE(t *testing.T) {
+	// "hi" little-endian: 0x68 0x00 0x69 0x00
+	got, err := decodeUTF16LE([]byte{0x68, 0x00, 0x69, 0x00})
+	if err != nil || got != "hi" {
+		t.Fatalf("got %q, %v; want \"hi\", nil", got, err)
+	}
+}
+func TestDecodeUTF16LEOddBytes(t *testing.T) {
+	if _, err := decodeUTF16LE([]byte{0x68}); err == nil {
+		t.Fatal("odd byte count must error")
+	}
+}
+func TestDecodeUTF16LEAllNul(t *testing.T) {
+	got, err := decodeUTF16LE([]byte{0x00, 0x00, 0x00, 0x00})
+	if err != nil || got != "" {
+		t.Fatalf("all-NUL blob must decode to empty, got %q, %v", got, err)
+	}
+}
+```
+
+- [ ] **Step 2: Run — `go test ./internal/keyring/` → FAIL** (undefined: `decodeUTF16LE`).
+- [ ] **Step 3: Write `keyring.go`.**
+
+```go
+// Package keyring provides a cgo-free, read-only OS keychain backend behind a
+// mockable Getter. macOS/Linux shell out to the OS tool; Windows calls CredReadW.
+package keyring
+
+import (
+	"context"
+	"errors"
+	"time"
+	"unicode/utf16"
+)
+
+// ErrNotFound is returned by Getter.Get when no credential exists for service/key.
+var ErrNotFound = errors.New("keyring item not found")
+
+const defaultKeyringTimeout = 10 * time.Second
+
+// Getter reads a single credential from the OS keychain. Implementations are
+// cgo-free and build-tagged per OS. Get returns ErrNotFound when the item is
+// absent; every other error is value-free (it never contains the secret).
+type Getter interface {
+	Get(ctx context.Context, service, key string) (string, error)
+}
+
+// New returns the production Getter for the current platform.
+func New() Getter { return newBackend() }
+
+// runnerFunc runs argv (no shell) and reports trimmed stdout, captured stderr,
+// the process exit code (-1 if it never ran), and a value-free error for
+// exec-level failures only (start failure, timeout, overflow). A non-zero exit
+// is NOT an error here — the caller interprets exitCode.
+type runnerFunc func(ctx context.Context, timeout time.Duration, argv []string) (stdout, stderr string, exitCode int, err error)
+
+// decodeUTF16LE decodes a little-endian UTF-16 byte blob (as stored by Windows
+// Credential Manager) into a Go string, trimming at the first NUL. It is pure
+// Go so it is unit-testable on every platform, not just Windows.
+func decodeUTF16LE(b []byte) (string, error) {
+	if len(b)%2 != 0 {
+		return "", errors.New("keyring: UTF-16LE blob has odd byte count")
+	}
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		u[i] = uint16(b[2*i]) | uint16(b[2*i+1])<<8
+	}
+	for i, c := range u { // cmdkey may or may not NUL-terminate
+		if c == 0 {
+			u = u[:i]
+			break
+		}
+	}
+	return string(utf16.Decode(u)), nil
+}
+```
+
+- [ ] **Step 4: Failing test — `resolveKeyring`.** In `internal/secretref/resolver_keyring_test.go` (package `secretref`), with a fake Getter. Coordinate names (service/key) MAY appear in errors; resolved values MUST NOT:
+
+```go
+type fakeGetter struct {
+	val string
+	err error
+}
+
+func (f fakeGetter) Get(_ context.Context, _, _ string) (string, error) { return f.val, f.err }
+
+func TestResolveKeyringReturnsSecret(t *testing.T) {
+	r := NewResolver(ResolverOpts{Keyring: fakeGetter{val: "s3cr3t"}})
+	got, err := r.Resolve(context.Background(), SecretRef{Scheme: "keyring", Service: "svc", Key: "k"})
+	if err != nil || got.Value() != "s3cr3t" {
+		t.Fatalf("got %q, %v", got.Value(), err)
+	}
+}
+
+func TestResolveKeyringNotFound(t *testing.T) {
+	r := NewResolver(ResolverOpts{Keyring: fakeGetter{err: keyring.ErrNotFound}})
+	_, err := r.Resolve(context.Background(), SecretRef{Scheme: "keyring", Service: "svc", Key: "k"})
+	if err == nil || !strings.Contains(err.Error(), "env:/file:/cmd:") {
+		t.Fatalf("not-found must hint at alternatives: %v", err)
+	}
+}
+
+func TestResolveKeyringBackendErrorIsValueFree(t *testing.T) {
+	// A buggy backend error must never be echoed (it could embed token material).
+	r := NewResolver(ResolverOpts{Keyring: fakeGetter{err: errors.New("D-Bus said s3cr3t")}})
+	_, err := r.Resolve(context.Background(), SecretRef{Scheme: "keyring", Service: "svc", Key: "k"})
+	if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "D-Bus") {
+		t.Fatalf("backend error must not leak: %v", err)
+	}
+}
+
+func TestResolveKeyringNilGetter(t *testing.T) {
+	r := NewResolver(ResolverOpts{}) // no Keyring
+	_, err := r.Resolve(context.Background(), SecretRef{Scheme: "keyring", Service: "svc", Key: "k"})
+	if err == nil {
+		t.Fatal("nil Getter must error clearly")
+	}
+}
+```
+
+- [ ] **Step 5: Run → FAIL** (`ResolverOpts` has no `Keyring`; `keyring` import unused).
+- [ ] **Step 6: Implement in `resolver.go`.** Add the import `"github.com/dvmrry/zscalerctl/internal/keyring"`, extend `ResolverOpts`, and replace the stub:
+
+```go
+type ResolverOpts struct {
+	AllowCmd bool
+	Keyring  keyring.Getter
+}
+```
+
+```go
+	case "keyring":
+		return r.resolveKeyring(ctx, ref)
+```
+
+```go
+func (r *Resolver) resolveKeyring(ctx context.Context, ref SecretRef) (secret.Secret, error) {
+	if r.opts.Keyring == nil {
+		return secret.Secret{}, fmt.Errorf("%w: keyring is not available in this build", ErrInvalidRef)
+	}
+	value, err := r.opts.Keyring.Get(ctx, ref.Service, ref.Key)
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return secret.Secret{}, fmt.Errorf("%w: keyring has no entry for service=%q key=%q; store it or use env:/file:/cmd:", ErrInvalidRef, ref.Service, ref.Key)
+		}
+		// Value-free: never echo err.Error() — a buggy backend could embed output.
+		return secret.Secret{}, fmt.Errorf("%w: keyring lookup failed for service=%q key=%q", ErrInvalidRef, ref.Service, ref.Key)
+	}
+	if value == "" {
+		return secret.Secret{}, fmt.Errorf("%w: keyring entry for service=%q key=%q is empty", ErrInvalidRef, ref.Service, ref.Key)
+	}
+	return secret.New(value), nil
+}
+```
+
+- [ ] **Step 7: Run → PASS** (`go test ./internal/keyring/ ./internal/secretref/`).
+- [ ] **Step 8: Commit** — `feat(keyring): Getter interface, decodeUTF16LE, resolveKeyring dispatch`.
+
+### Task 3.2: `runKeyringCmd` leak-safe exec primitive (returns exit code)
+
+**Files:** Create `internal/keyring/exec.go`; Test `internal/keyring/exec_test.go`.
+
+- [ ] **Step 1: Failing tests.** In `exec_test.go` (no shell; tests may pass `/usr/bin/env` or `/bin/sh` as a *real executable* — `runKeyringCmd` itself never shell-interprets args):
+
+```go
+func TestRunKeyringCmdStripsZscalerctlEnv(t *testing.T) {
+	t.Setenv("ZSCALERCTL_CLIENT_SECRET", "leak-me")
+	out, _, code, err := runKeyringCmd(context.Background(), 5*time.Second, []string{"/usr/bin/env"})
+	if err != nil || code != 0 {
+		t.Fatalf("env run failed: code=%d err=%v", code, err)
+	}
+	if strings.Contains(out, "leak-me") || strings.Contains(out, "ZSCALERCTL_") {
+		t.Fatalf("ZSCALERCTL_* must be stripped from child env")
+	}
+}
+
+func TestRunKeyringCmdNonZeroExitIsValueFree(t *testing.T) {
+	// /bin/sh is a legitimate executable here; runKeyringCmd does not shell-expand.
+	_, _, code, err := runKeyringCmd(context.Background(), 5*time.Second,
+		[]string{"/bin/sh", "-c", "echo TOKEN >&2; exit 7"})
+	if err != nil {
+		t.Fatalf("non-zero exit is NOT an exec error, got %v", err)
+	}
+	if code != 7 {
+		t.Fatalf("want exit code 7, got %d", code)
+	}
+}
+
+func TestRunKeyringCmdTimeoutKillsProcess(t *testing.T) {
+	start := time.Now()
+	_, _, _, err := runKeyringCmd(context.Background(), 10*time.Millisecond,
+		[]string{"/bin/sh", "-c", "sleep 5"})
+	if err == nil || time.Since(start) > 3*time.Second {
+		t.Fatalf("timeout must bound the run, took %s err=%v", time.Since(start), err)
+	}
+}
+```
+
+- [ ] **Step 2: Run → FAIL** (undefined: `runKeyringCmd`).
+- [ ] **Step 3: Implement `exec.go`** (mirrors `resolveCmd`'s leak-safety; `cappedWriter`/`summarizeStderr` duplicated here intentionally — keyring is a *lower* layer than `secretref` and cannot import it; a shared `execcapture` extraction is a deferred YAGNI cleanup):
+
+```go
+package keyring
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+// runKeyringCmd runs argv with no shell, a bounded timeout (+WaitDelay grace),
+// a ZSCALERCTL_*-scrubbed env, and bounded output. It returns trimmed stdout,
+// captured stderr, the exit code (-1 if the process never ran), and a
+// value-free error for exec-level failures only. A non-zero exit is reported
+// via exitCode, not err. It never includes stdout/stderr CONTENT in its error.
+func runKeyringCmd(ctx context.Context, timeout time.Duration, argv []string) (string, string, int, error) {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// #nosec G204 -- argv[0] is a fixed OS keychain tool; service/key are
+	// validated and passed as separate argv elements with no shell. Mirrors resolveCmd.
+	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
+	cmd.WaitDelay = 2 * time.Second
+	cmd.Env = filterEnv(os.Environ()) // strip ZSCALERCTL_* so a child never sees our other secrets
+
+	stdout := &cappedWriter{limit: 64 * 1024}
+	stderr := &cappedWriter{limit: 16 * 1024}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+
+	runErr := cmd.Run()
+	if stdout.err != nil {
+		return "", "", -1, fmt.Errorf("keyring: %q output too large", argv[0])
+	}
+	out := strings.TrimRight(stdout.String(), "\r\n")
+	errOut := stderr.String() // stderr overflow on success is harmless — we only use stdout
+
+	if runErr != nil {
+		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			return "", "", -1, fmt.Errorf("keyring: %q timed out after %s (keychain may be locked or require interaction)", argv[0], timeout)
+		}
+		if cctx.Err() != nil {
+			return "", "", -1, fmt.Errorf("keyring: %q cancelled", argv[0])
+		}
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			// Process ran and exited non-zero — hand the code back to the caller.
+			return out, errOut, exitErr.ExitCode(), nil
+		}
+		// Exec never started (binary missing / not executable). Wrap so callers
+		// can detect exec.ErrNotFound (e.g. secret-tool absent). Value-free.
+		return "", "", -1, fmt.Errorf("keyring: %q could not run: %w", argv[0], runErr)
+	}
+	return out, errOut, 0, nil
+}
+
+func filterEnv(environ []string) []string {
+	out := environ[:0:0]
+	for _, e := range environ {
+		if !strings.HasPrefix(e, "ZSCALERCTL_") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func summarizeStderr(s string) string {
+	if s == "" {
+		return "no stderr"
+	}
+	return fmt.Sprintf("stderr omitted (%d bytes)", len(s))
+}
+
+type cappedWriter struct {
+	buf   bytes.Buffer
+	limit int
+	err   error
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	if w.buf.Len()+len(p) > w.limit {
+		w.err = errors.New("output limit exceeded")
+		return 0, w.err
+	}
+	return w.buf.Write(p)
+}
+
+func (w *cappedWriter) String() string { return w.buf.String() }
+```
+
+- [ ] **Step 4: Run → PASS.** **Step 5: Commit** — `feat(keyring): bounded leak-safe runKeyringCmd exec primitive`.
+
+### Task 3.3: macOS backend (`/usr/bin/security`)
+
+**Files:** Create `internal/keyring/keyring_darwin.go`; Test `internal/keyring/keyring_darwin_test.go`.
+
+- [ ] **Step 1: Failing test** with an injected runner seam (no real keychain; the stub returns what the *real* `runKeyringCmd` would — `(stdout, stderr, exitCode, nil)` — so it cannot mask the exit-code path):
+
+```go
+//go:build darwin
+
+package keyring
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
+
+func newDarwinWithRunner(r runnerFunc) *macOSGetter { return &macOSGetter{run: r, timeout: time.Second} }
+
+func TestDarwinGetNotFoundExit44(t *testing.T) {
+	g := newDarwinWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "", "security: ... item could not be found", 44, nil
+	})
+	if _, err := g.Get(context.Background(), "svc", "k"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("exit 44 must map to ErrNotFound, got %v", err)
+	}
+}
+
+func TestDarwinGetSuccess(t *testing.T) {
+	g := newDarwinWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "s3cr3t", "", 0, nil
+	})
+	if got, err := g.Get(context.Background(), "svc", "k"); err != nil || got != "s3cr3t" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestDarwinGetEmptyValueErrors(t *testing.T) {
+	g := newDarwinWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "", "", 0, nil
+	})
+	if _, err := g.Get(context.Background(), "svc", "k"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("empty stored value is a hard error, got %v", err)
+	}
+}
+
+// Live, off in CI: ZSCALERCTL_KEYRING_LIVE=1 adds/reads/deletes a real item.
+func TestDarwinGetLive(t *testing.T) {
+	if os.Getenv("ZSCALERCTL_KEYRING_LIVE") == "" {
+		t.Skip("set ZSCALERCTL_KEYRING_LIVE=1 to run against the real Keychain")
+	}
+	// ... add-generic-password, Get, assert, delete-generic-password, assert ErrNotFound
+}
+```
+
+- [ ] **Step 2: Run → FAIL.** **Step 3: Implement `keyring_darwin.go`:**
+
+```go
+//go:build darwin
+
+package keyring
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+// errSecItemNotFoundExit is the low byte of errSecItemNotFound (OSStatus
+// 0xFFFF9D2C & 0xFF = 0x2C = 44). Verified live on Darwin 24.6.0.
+const errSecItemNotFoundExit = 44
+
+type macOSGetter struct {
+	run     runnerFunc
+	timeout time.Duration
+}
+
+func newBackend() Getter { return &macOSGetter{run: runKeyringCmd, timeout: defaultKeyringTimeout} }
+
+func (g *macOSGetter) Get(ctx context.Context, service, key string) (string, error) {
+	// -w writes ONLY the raw password to stdout. NEVER use -g (routes it to stderr).
+	// Absolute path: a rogue `security` in PATH must not intercept the lookup.
+	argv := []string{"/usr/bin/security", "find-generic-password", "-s", service, "-a", key, "-w"}
+	stdout, _, code, err := g.run(ctx, g.timeout, argv)
+	if err != nil {
+		return "", err // already value-free (timeout / overflow / exec failure)
+	}
+	if code == errSecItemNotFoundExit {
+		return "", ErrNotFound
+	}
+	if code != 0 {
+		return "", fmt.Errorf("keyring: /usr/bin/security failed (exit %d)", code)
+	}
+	if stdout == "" {
+		return "", fmt.Errorf("keyring: item has no value")
+	}
+	return stdout, nil
+}
+```
+
+- [ ] **Step 4: Run → PASS** (`go test ./internal/keyring/` on macOS). **Step 5: Commit** — `feat(keyring): macOS security backend`.
+
+### Task 3.4: Linux backend (`secret-tool`)
+
+**Files:** Create `internal/keyring/keyring_linux.go`; Test `internal/keyring/keyring_linux_test.go`.
+
+- [ ] **Step 1: Failing test** (runner seam; covers found / not-found / D-Bus-unavailable). `secret-tool` exits 1 for *both* not-found and service-unavailable — empty trimmed stdout is the discriminator; stderr language separates unavailable from absent:
+
+```go
+//go:build linux
+
+func newLinuxWithRunner(r runnerFunc) *linuxGetter { return &linuxGetter{run: r, timeout: time.Second, lookPath: func(string) (string, error) { return "/usr/bin/secret-tool", nil }} }
+
+func TestLinuxGetFound(t *testing.T) { /* code 0, stdout "s3cr3t" → "s3cr3t" */ }
+func TestLinuxGetNotFound(t *testing.T) { /* code 1, stdout "", stderr "No matching secrets" → ErrNotFound */ }
+func TestLinuxGetServiceUnavailable(t *testing.T) {
+	g := newLinuxWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+		return "", "Failed to connect to the D-Bus session bus", 1, nil
+	})
+	_, err := g.Get(context.Background(), "svc", "k")
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("D-Bus failure must be a hard error, not ErrNotFound: %v", err)
+	}
+}
+func TestLinuxGetToolMissing(t *testing.T) {
+	g := &linuxGetter{run: nil, timeout: time.Second, lookPath: func(string) (string, error) { return "", exec.ErrNotFound }}
+	_, err := g.Get(context.Background(), "svc", "k")
+	if err == nil || errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "libsecret-tools") {
+		t.Fatalf("missing tool must give an install hint, not ErrNotFound: %v", err)
+	}
+}
+```
+
+- [ ] **Step 2: Run → FAIL.** **Step 3: Implement `keyring_linux.go`** (`lookPath` is a struct field so the missing-tool path is testable without mutating a global):
+
+```go
+//go:build linux
+
+package keyring
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+type linuxGetter struct {
+	run      runnerFunc
+	timeout  time.Duration
+	lookPath func(string) (string, error)
+}
+
+func newBackend() Getter {
+	return &linuxGetter{run: runKeyringCmd, timeout: defaultKeyringTimeout, lookPath: exec.LookPath}
+}
+
+func (g *linuxGetter) Get(ctx context.Context, service, key string) (string, error) {
+	if _, err := g.lookPath("secret-tool"); err != nil {
+		return "", fmt.Errorf("keyring: secret-tool not found; install libsecret-tools (apt install libsecret-tools / dnf install libsecret) or use env:/file:/cmd:")
+	}
+	argv := []string{"secret-tool", "lookup", "service", service, "account", key}
+	stdout, stderr, code, err := g.run(ctx, g.timeout, argv)
+	if err != nil {
+		return "", err
+	}
+	if code == 0 {
+		if stdout == "" {
+			return "", ErrNotFound
+		}
+		return stdout, nil
+	}
+	if code == 1 && stdout == "" {
+		if looksLikeServiceUnavailable(stderr) {
+			return "", fmt.Errorf("keyring: Secret Service unavailable; ensure gnome-keyring or kwallet is running, or use env:/file:/cmd: for headless use")
+		}
+		return "", ErrNotFound
+	}
+	return "", fmt.Errorf("keyring: secret-tool failed (exit %d)", code)
+}
+
+// looksLikeServiceUnavailable is a conservative best-effort heuristic over
+// stderr (never echoed). False-negatives (treating unavailable as not-found)
+// are preferred to false-positives; "gdbus"/D-Bus markers are intentionally broad.
+func looksLikeServiceUnavailable(stderr string) bool {
+	s := strings.ToLower(stderr)
+	for _, m := range []string{"failed to connect", "could not connect", "no such interface", "org.freedesktop.dbus", "gdbus"} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+```
+
+- [ ] **Step 4: Run → PASS** (`GOOS=linux go test` or on a Linux host). **Step 5: Commit** — `feat(keyring): Linux secret-tool backend`.
+
+### Task 3.5: Windows backend (`CredReadW`) — highest-risk; live Windows-host validation required
+
+**Files:** Create `internal/keyring/keyring_windows.go`; Test `internal/keyring/keyring_windows_test.go`. **`x/sys/windows` does not export `CredReadW`** — declare the `LazyProc` and `credentialW` struct here.
+
+- [ ] **Step 1: Failing struct-layout test** (amd64-specific; the 4-byte pad is the single highest-risk detail):
+
+```go
+//go:build windows && amd64
+
+package keyring
+
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestCredentialWLayout(t *testing.T) {
+	var c credentialW
+	if off := unsafe.Offsetof(c.CredentialBlob); off != 40 {
+		t.Fatalf("CredentialBlob must be at offset 40 on amd64 (pad missing?), got %d", off)
+	}
+	if sz := unsafe.Sizeof(c); sz != 80 {
+		t.Fatalf("credentialW must be 80 bytes on amd64, got %d", sz)
+	}
+}
+```
+
+- [ ] **Step 2: Run → FAIL** (`GOOS=windows GOARCH=amd64 go test ./internal/keyring/`). **Step 3: Implement `keyring_windows.go`:**
+
+```go
+//go:build windows
+
+package keyring
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+// credentialW mirrors CREDENTIALW on amd64. The 4-byte pad between
+// CredentialBlobSize and CredentialBlob is MANDATORY on 64-bit Windows — the C
+// compiler inserts it to 8-byte-align the pointer. Omitting it silently misreads
+// the blob. Verify: unsafe.Offsetof(credentialW{}.CredentialBlob) == 40 (Task 3.5 test).
+type credentialW struct {
+	Flags              uint32
+	Type               uint32
+	TargetName         *uint16
+	Comment            *uint16
+	LastWritten        windows.Filetime
+	CredentialBlobSize uint32
+	_                  [4]byte // alignment pad — do NOT remove
+	CredentialBlob     *byte
+	Persist            uint32
+	AttributeCount     uint32
+	Attributes         uintptr
+	TargetAlias        *uint16
+	UserName           *uint16
+}
+
+const credTypeGeneric uint32 = 1 // CRED_TYPE_GENERIC
+
+var (
+	// NewLazySystemDLL forces System32-only load (DLL-hijack-proof).
+	modAdvapi32   = windows.NewLazySystemDLL("advapi32.dll")
+	procCredReadW = modAdvapi32.NewProc("CredReadW")
+	procCredFree  = modAdvapi32.NewProc("CredFree")
+)
+
+type windowsGetter struct{}
+
+func newBackend() Getter { return windowsGetter{} }
+
+// Get reads the credential stored under TargetName = service+"/"+key.
+// Errors are value-free: they name the service only — never the key, the
+// target name, the errno text, or any blob bytes.
+func (windowsGetter) Get(ctx context.Context, service, key string) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+	targetPtr, err := windows.UTF16PtrFromString(service + "/" + key)
+	if err != nil {
+		return "", fmt.Errorf("keyring: invalid target name for service %q", service)
+	}
+
+	var cred *credentialW
+	r1, _, lastErr := procCredReadW.Call(
+		uintptr(unsafe.Pointer(targetPtr)),
+		uintptr(credTypeGeneric),
+		0,
+		uintptr(unsafe.Pointer(&cred)),
+	)
+	if r1 == 0 {
+		if errors.Is(lastErr, windows.ERROR_NOT_FOUND) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("keyring: read failed for service %q (windows errno %d)", service, lastErr)
+	}
+	// cred points to OS-allocated memory; deref at call time, not at defer-registration.
+	defer func() { procCredFree.Call(uintptr(unsafe.Pointer(cred))) }() //nolint:errcheck // CredFree has no return
+
+	blobSize := cred.CredentialBlobSize
+	if blobSize == 0 {
+		return "", fmt.Errorf("keyring: credential for service %q has empty blob", service)
+	}
+	// Copy the blob into Go memory BEFORE CredFree fires, then decode UTF-16LE.
+	blob := make([]byte, blobSize)
+	copy(blob, unsafe.Slice((*byte)(unsafe.Pointer(cred.CredentialBlob)), blobSize))
+	value, derr := decodeUTF16LE(blob)
+	if derr != nil {
+		return "", fmt.Errorf("keyring: credential for service %q is corrupted", service)
+	}
+	if value == "" { // all-NUL blob decodes to empty
+		return "", fmt.Errorf("keyring: credential for service %q is empty", service)
+	}
+	return value, nil
+}
+```
+
+- [ ] **Step 4: Live-gated test** in `keyring_windows_test.go` (imports `os`, `testing`; `ZSCALERCTL_KEYRING_LIVE=1`, off in CI): pre-seed via `cmdkey /generic:zscalerctl-test/k /user:x /pass:hunter2`, assert `Get` returns `hunter2`, assert a missing target → `ErrNotFound`.
+- [ ] **Step 5: Run → PASS** (struct-layout test on the cross-compile; unit/live on the host). **Step 6: Commit** — `feat(keyring): Windows CredReadW backend`.
+- [ ] **Step 7: MANDATORY live acceptance on the operator's Windows host** (the merge gate for this task — see "Required before merge"). Empirically confirm the blob encoding: store via `cmdkey` AND via the Credential Manager GUI, read both back, confirm `decodeUTF16LE` yields the exact secret; confirm not-found → `ErrNotFound`. Record the result in the PR.
+
+### Task 3.6: unsupported-platform backend + wire `keyring.New()` into `load.go` (test-first)
+
+**Files:** Create `internal/keyring/keyring_other.go`; Modify `internal/config/load.go:58-61`; Test `internal/config/load_test.go`.
+
+- [ ] **Step 1: `keyring_other.go`** (so non-darwin/linux/windows still builds; `New()` is always non-nil):
+
+```go
+//go:build !darwin && !linux && !windows
+
+package keyring
+
+import (
+	"context"
+	"fmt"
+)
+
+type unsupportedGetter struct{}
+
+func newBackend() Getter { return unsupportedGetter{} }
+
+func (unsupportedGetter) Get(context.Context, string, string) (string, error) {
+	return "", fmt.Errorf("keyring: not supported on this platform; use env:/file:/cmd:")
+}
+```
+
+- [ ] **Step 2: Failing integration test** in `load_test.go` — a profile with `client_secret_ref: "keyring:svc/key"` must surface a deferred source whose `Scheme()` is `"keyring"` (resolution itself is exercised by the resolver tests; this proves the wiring reaches `keyring.New()`):
+
+```go
+func TestLoadConfigKeyringRefIsDeferredKeyringSource(t *testing.T) {
+	// write an owner-only profile with client_secret_ref: "keyring:svc/key"
+	cfg := loadProfileFixture(t, `client_secret_ref: "keyring:svc/key"`)
+	if got := cfg.ClientSecret.Scheme(); got != "keyring" {
+		t.Fatalf("want keyring source, got %q", got)
+	}
+}
+```
+
+- [ ] **Step 3: Run → FAIL** (resolver built without a `Keyring`, so the keyring ref errors at build). **Step 4: Wire `load.go:58-61`** — add the field to the nil-guard branch (only evaluated when the caller passes no `Resolver`):
+
+```go
+	if resolver == nil {
+		resolver = secretref.NewResolver(secretref.ResolverOpts{
+			AllowCmd: !disallowCmd,
+			Keyring:  keyring.New(),
+		})
+	}
+```
+
+Add the import `"github.com/dvmrry/zscalerctl/internal/keyring"`.
+
+- [ ] **Step 5: Run → PASS** (`go test ./internal/config/`). **Step 6: Commit** — `feat(keyring): wire keyring.New() into the resolver`.
+
+### Task 3.7: `CGO_ENABLED=0` matrix + zero-new-deps gate + docs + draft PR
+
+**Files:** `docs/THREAT_MODEL.md`, `docs/INSTALL.md`; no code.
+
+- [ ] **Step 1: Static-binary gate** — confirm cgo-free cross-compiles for all three OSes:
+
+```
+CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build ./...
+CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build ./...
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...
+```
+Expected: all succeed (no cgo). Run `GOOS=windows GOARCH=amd64 go vet ./internal/keyring/` to type-check the unsafe Windows path.
+
+- [ ] **Step 2: Zero-new-deps gate** — `git diff main -- go.mod go.sum` MUST be empty. (`golang.org/x/sys` is already present at its vendored version and the `windows` sub-package is already vendored — this gate forbids *new* `go.mod`/`go.sum` entries, not `x/sys` usage. Do not remove the `x/sys/windows` import to "satisfy" it.)
+- [ ] **Step 3: `make check`** fully green (`go test`, `-race`, vet, staticcheck, govulncheck, gitleaks, verify scripts).
+- [ ] **Step 4: `THREAT_MODEL.md`** — after the `cmd:`-provider paragraph (ends "... `ZSCALERCTL_DISALLOW_CMD=true`."), add a `keyring:` subsection: read-only; no shell (macOS/Linux exec absolute-path/PATH-resolved, bounded, env-scrubbed, value-free errors); Windows direct `CredReadW` via System32-only DLL load (no PATH/DLL hijack), UTF-16LE blob; headless caveat (locked/absent keychain → bounded-timeout error, use env:/file:/cmd:); per-OS storage conventions reference the table above.
+- [ ] **Step 5: `INSTALL.md`** — create a `### Secret providers` subsection if absent (current headers: Switching Tenants, Bash/Zsh/Fish/PowerShell); document the `keyring:<service>/<key>` ref form and the per-OS **store** commands (macOS `security add-generic-password`; Linux `secret-tool store` + the `libsecret-tools` requirement and the `service`/`account` attribute names; Windows `cmdkey` / Credential Manager). Note keyring is a desktop convenience — agents/CI keep using env.
+- [ ] **Step 6: Commit docs** (`docs(keyring): threat model + install conventions`) — **before** opening the PR so all commits are present at creation.
+- [ ] **Step 7: Open the draft PR** (`semver:minor`). PR body: the zero-dep decision + rationale, the per-OS conventions, and an explicit **"Required before merge"** checklist (below). Request the cross-family security review.
+
+### Required before merge
+
+- [ ] **Cross-family security review** of `keyring_windows.go` (the unsafe `CredReadW` syscall: struct layout/pad, `CredFree` lifetime, UTF-16LE decode, `ERROR_NOT_FOUND` mapping) and the shared exec leak-safety (`runKeyringCmd`, value-free errors, env scrub) — the established discipline that caught real bugs in the phase-1 DACL and phase-2 `cmd:` paths.
+- [ ] **Live acceptance on the operator's Windows host** (Task 3.5 Step 7): empirically pin the blob encoding (store via `cmdkey` and the GUI, read both back), confirm a real read and a not-found → `ErrNotFound`. This is the gate that justifies hand-rolling Windows rather than taking a library.
+- [ ] **Live keychain smoke** on macOS (`ZSCALERCTL_KEYRING_LIVE=1`): add → read → delete → `ErrNotFound`.
+- [ ] `CGO_ENABLED=0` matrix green; `git diff main -- go.mod go.sum` empty; `make check` green.
 
 ---
 
