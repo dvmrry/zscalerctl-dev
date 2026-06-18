@@ -488,52 +488,105 @@ Bound the read (reuse the `1<<20`-style guard pattern). Reject unknown YAML keys
 
 ---
 
-## PHASE 2 — `cmd:` provider (structured, timeout, kill-switch) + threat-model docs
+## PHASE 2 — `cmd:` provider (structured argv, no-shell, timeout, kill-switch) + threat-model docs
 
-**Outcome:** `cmd:` refs resolve via direct argv exec, bounded by timeout, gated by `ZSCALERCTL_DISALLOW_CMD`. Mergeable PR.
+**Outcome:** `cmd:` refs resolve by exec'ing a structured argv **directly (no shell)**, bounded by a per-ref-or-default **10s** timeout, gated by `ZSCALERCTL_DISALLOW_CMD`. This provider executes code from the config file, so it is **security-critical**: PR review = Opus + a **GPT-5.5 cross-check of the exec path**. Mergeable PR.
 
-### Task 2.1: `cmd` provider — direct argv exec, no shell, timeout
+**Reality alignment (what phase 1 ALREADY shipped — build on it, don't recreate):**
+- `SecretRef` already parses structured `cmd` into `.Argv []string` (parse guarantees non-empty with a non-blank `argv[0]`) and `.Timeout time.Duration`; `DefaultCmdTimeout = 10 * time.Second` exists — all in `internal/secretref/ref.go`.
+- `Resolver.Resolve` already has `case "cmd":` returning `"cmd refs are not enabled in this build phase"` — this phase **replaces that stub** (`internal/secretref/resolver.go`).
+- `ResolverOpts` is currently `struct{}` (empty) — this phase **adds the `AllowCmd` field**.
+- The resolver is built at **`internal/config/load.go:55`** as `secretref.NewResolver(secretref.ResolverOpts{})` — this phase threads `AllowCmd` in there.
+- Resolve already early-returns on `ctx.Done()`; the config gate (owner-only POSIX + Windows DACL) it sits on was hardened in phase 1 and is the trust anchor for executing `cmd:`.
 
-**Files:** `internal/secretref/provider_cmd.go`, `provider_cmd_test.go`
+### Task 2.1: Add `AllowCmd` to `ResolverOpts` + implement `resolveCmd`
 
-- [ ] **Step 1: Failing tests** — (a) argv `["/bin/echo","-n","abc"]` resolves to `abc`; (b) a ref whose argv element is `"$(touch pwned)"` is passed **literally** (no shell — assert no file created); (c) a hanging script exceeds a 200ms test timeout and errors; (d) non-zero exit errors with stderr summarized but the secret/stdout never logged.
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement** `resolveCmd`:
+**Files:** Modify `internal/secretref/resolver.go`; add `internal/secretref/resolver_cmd_test.go` (keep `resolveCmd` in `resolver.go` to match the package layout).
+
+- [ ] **Step 1: Add the opt.** Change `type ResolverOpts struct{}` to:
 
 ```go
-func (r *Resolver) resolveCmd(ctx context.Context, ref SecretRef) (secret.Secret, error) {
-	if !r.opts.AllowCmd {
-		return secret.Secret{}, fmt.Errorf("%w: cmd: secret providers are disabled (ZSCALERCTL_DISALLOW_CMD)", ErrInvalidRef)
-	}
-	to := ref.Timeout
-	if to <= 0 { to = DefaultCmdTimeout }
-	cctx, cancel := context.WithTimeout(ctx, to)
-	defer cancel()
-	cmd := exec.CommandContext(cctx, ref.Argv[0], ref.Argv[1:]...) // no shell
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		if cctx.Err() == context.DeadlineExceeded {
-			return secret.Secret{}, fmt.Errorf("%w: cmd provider timed out after %s", ErrInvalidRef, to)
-		}
-		return secret.Secret{}, fmt.Errorf("%w: cmd provider failed: %s", ErrInvalidRef, strings.TrimSpace(errb.String()))
-	}
-	return secret.New(strings.TrimRight(out.String(), "\r\n")), nil
+type ResolverOpts struct {
+	AllowCmd bool // false disables cmd: refs (set from ZSCALERCTL_DISALLOW_CMD)
 }
 ```
 
-- [ ] **Step 4: Run, pass. Commit.** `git commit -m "Add cmd secret provider (no-shell argv, timeout)"`
+- [ ] **Step 2: Write failing tests.** Build resolvers via `NewResolver(ResolverOpts{AllowCmd: true})` unless noted. Use a real interpreter argv where needed (e.g. `{"/bin/sh","/path/to/fixture.sh"}` written into `t.TempDir()`), NOT a shell string in one argv element.
+  - **echo:** `{"/bin/echo","-n","s3cr3t"}` → `Resolve` returns a secret revealing `s3cr3t`.
+  - **no-shell (literal argv):** `{"/bin/echo", "$(touch SENTINEL)", ";", "rm -rf x", "|", "cat"}` where `SENTINEL` is an absolute temp path → output contains the literal strings AND `SENTINEL` is **not** created (assert `os.Stat` is `ErrNotExist`). Proves no shell expansion.
+  - **trailing newline trimmed:** a fixture that prints `secret\n` → revealed secret is `secret` (no trailing `\n`).
+  - **timeout:** `{"/bin/sleep","5"}` with `ref.Timeout = 200*time.Millisecond` → returns a timeout error within ~timeout (process killed by `CommandContext`); assert the error is the timeout branch, not a generic failure.
+  - **non-zero exit is value-free:** a fixture that writes a known token (e.g. `LEAK-<rand>`) to BOTH stdout and stderr and `exit 1` → `Resolve` errors, and the error string contains **neither** the token (stdout never surfaced; stderr summarized+bounded so the token isn't echoed in full — see `summarizeStderr`).
+  - **disabled does not exec:** `NewResolver(ResolverOpts{})` (AllowCmd=false) with a cmd ref whose `argv` would `touch SENTINEL` → returns the disabled error AND `SENTINEL` is **not** created (the command must never run when disabled).
+- [ ] **Step 3: Run, fail.**
+- [ ] **Step 4: Implement.** Replace the `case "cmd":` stub body in `Resolve` with `return r.resolveCmd(ctx, ref)`, and add (imports: `bytes`, `context`, `os/exec`, `strings`):
 
-### Task 2.2: Wire `ZSCALERCTL_DISALLOW_CMD` (bool-parsed, value-free errors)
+```go
+// resolveCmd execs ref.Argv directly (no shell), bounded by a timeout, and
+// returns trimmed stdout as the secret. Never logs stdout (the secret); stderr
+// is summarized and bounded so a misbehaving provider cannot leak via the error.
+func (r *Resolver) resolveCmd(ctx context.Context, ref SecretRef) (secret.Secret, error) {
+	if !r.opts.AllowCmd {
+		return secret.Secret{}, fmt.Errorf("%w: cmd refs are disabled (ZSCALERCTL_DISALLOW_CMD)", ErrInvalidRef)
+	}
+	timeout := ref.Timeout
+	if timeout <= 0 {
+		timeout = DefaultCmdTimeout
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// ref.Argv is guaranteed non-empty with a non-blank argv[0] by SecretRef parsing.
+	cmd := exec.CommandContext(cctx, ref.Argv[0], ref.Argv[1:]...) // no shell: direct argv exec
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if cctx.Err() == context.DeadlineExceeded {
+			return secret.Secret{}, fmt.Errorf("%w: cmd provider %q timed out after %s", ErrInvalidRef, ref.Argv[0], timeout)
+		}
+		return secret.Secret{}, fmt.Errorf("%w: cmd provider %q failed: %s", ErrInvalidRef, ref.Argv[0], summarizeStderr(stderr.String()))
+	}
+	return secret.New(strings.TrimRight(stdout.String(), "\r\n")), nil
+}
 
-**Files:** `internal/config/config.go` (parse), `internal/config/load.go` (pass `AllowCmd` into the resolver), tests.
+// summarizeStderr returns a short, single-line, length-bounded view of stderr
+// so a provider that dumps a secret to stderr cannot leak it through the error.
+func summarizeStderr(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	const max = 200
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	if s == "" {
+		s = "(no stderr)"
+	}
+	return s
+}
+```
 
-- [ ] **Step 1: Failing test** — `DISALLOW_CMD=true` → resolver built with `AllowCmd=false`; garbage value (`"maybe"`) → `ErrInvalidConfig` whose message does **not** contain `"maybe"`.
-- [ ] **Step 2–4:** Implement using the existing `parseBoolEnv`; on parse error return a value-free error. Commit. `git commit -m "Wire ZSCALERCTL_DISALLOW_CMD kill-switch"`
+- [ ] **Step 5: Run, pass. Commit.** `git commit -m "Enable cmd: secret provider (no-shell argv, timeout, AllowCmd gate)"`
 
-### Task 2.3: THREAT_MODEL.md + INSTALL.md cmd section; phase-2 PR
+### Task 2.2: Wire `ZSCALERCTL_DISALLOW_CMD` (existing bool parser, value-free errors)
 
-- [ ] Document the `cmd:` code-execution surface, the owner-only/DACL gate, no-shell argv, the timeout, and the kill-switch, per the spec's threat-model section. `make check` (incl. `verify-docs`). Open phase-2 PR (`semver:minor`), review, merge.
+**Files:** `internal/config/config.go` (env constant), `internal/config/load.go:55` (thread `AllowCmd`), test.
+
+- [ ] **Step 1: Failing test** — (a) `ZSCALERCTL_DISALLOW_CMD=true` → a profile `cmd:` ref resolves to the **disabled** error (resolver built with `AllowCmd=false`); (b) unset / `false` → `cmd:` enabled; (c) garbage (`"maybe"`) → `ErrInvalidConfig` whose message does **NOT** contain `"maybe"` (value-free).
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement.** Add `EnvDisallowCmd = "ZSCALERCTL_DISALLOW_CMD"` to the env constants in `config.go`. In `LoadConfig`, parse it with the existing `parseBoolEnv`; on parse error return `fmt.Errorf("%w: invalid %s", ErrInvalidConfig, EnvDisallowCmd)` (no value echoed). Change `load.go:55` to `secretref.NewResolver(secretref.ResolverOpts{AllowCmd: !disallowCmd})`.
+- [ ] **Step 4: Run, pass. Commit.** `git commit -m "Wire ZSCALERCTL_DISALLOW_CMD kill-switch"`
+
+### Task 2.3: Surfacing test + docs + phase-2 PR
+
+- [ ] **Surfacing (no exec):** add a test that a profile with a `cmd:` ref makes `config show`/`doctor` report `scheme=cmd, configured=true` WITHOUT executing the command (reuse the panic-on-resolve `fakeResolver` pattern from `internal/config/load_test.go`).
+- [ ] **THREAT_MODEL.md:** add the `cmd:` section per the frozen spec — the code-execution surface; the gate is the **phase-1-hardened** owner-only POSIX + Windows-DACL config validation; `cmd:` execs a structured argv directly (no shell); bounded by the 10s-default timeout; `ZSCALERCTL_DISALLOW_CMD` opt-out for hardened fleets; the "owner-only config ⇒ no new privilege (you could run it yourself)" reasoning; secret/stdout never logged, stderr summarized + bounded.
+- [ ] **INSTALL.md:** add a `cmd:` profile example (structured `argv` + optional `timeout`), state no-shell (wrap pipelines/SOPS in a script the `argv` points at), and document `ZSCALERCTL_DISALLOW_CMD`.
+- [ ] **Validate:** `go test -mod=vendor ./...`; `make check` (incl. `verify-docs`, `sync-agents-skill --check`). Apply `semver:minor`.
+- [ ] **Open phase-2 PR (draft).** Review = Opus + **GPT-5.5 cross-check of the exec path** (no-shell argv, timeout actually killing a hung provider, value-free errors, the `AllowCmd` gate). Merge after clean.
+
+**Open decision for the implementer/reviewer:** whether to require `argv[0]` to be an absolute path (reject relative / PATH-resolved binaries) to harden against PATH hijacking. Lean: allow PATH (the config is owner-only and PATH is the operator's own) but **document** that `argv[0]` resolves via the operator's `PATH` and recommend absolute paths. Decide in the PR.
+
+### Resolve-error exit-code note (applies to all deferred providers)
+
+A deferred secret that fails to `Resolve` at reader-build time (bad `cmd:`, disabled, timeout, missing `env:`, etc.) must map to a sensible exit code — **exit 3 (missing/invalid credentials)**, since the effect is "the credential could not be obtained" — not the internal-error code. Confirm the reader-build path classifies a `Resolve` error (wrapping `secretref.ErrInvalidRef`) to the credentials exit code, and add a test. (This wasn't needed in phase 1 because only eager env/file sources existed; it becomes reachable the moment a `cmd:` ref resolves.)
 
 ---
 
