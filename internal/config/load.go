@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/keyring"
@@ -72,6 +73,14 @@ func LoadConfig(environ []string, opts LoadOptions) (Config, error) {
 	return cfg, nil
 }
 
+// ResolveConfigPath reports the config path the loader would use for the given
+// environment and options, and whether it came from an explicit override
+// (--config or ZSCALERCTL_CONFIG) rather than a platform default. `config init`
+// uses it so the file it writes lands exactly where LoadConfig will later look.
+func ResolveConfigPath(environ []string, opts LoadOptions) (string, bool) {
+	return configPathFromOptions(parseEnv(environ), opts)
+}
+
 func configPathFromOptions(env map[string]string, opts LoadOptions) (string, bool) {
 	if strings.TrimSpace(opts.ConfigPath) != "" {
 		return strings.TrimSpace(opts.ConfigPath), true
@@ -79,16 +88,34 @@ func configPathFromOptions(env map[string]string, opts LoadOptions) (string, boo
 	if strings.TrimSpace(env[EnvConfig]) != "" {
 		return strings.TrimSpace(env[EnvConfig]), true
 	}
+	// XDG_CONFIG_HOME and HOME stay cross-platform overrides so an operator can
+	// pin a location on any OS; only the final platform default is OS-specific.
 	if xdg := strings.TrimSpace(env["XDG_CONFIG_HOME"]); xdg != "" {
 		return filepath.Join(xdg, "zscalerctl", "config.yaml"), false
 	}
 	if home := strings.TrimSpace(env["HOME"]); home != "" {
 		return filepath.Join(home, ".config", "zscalerctl", "config.yaml"), false
 	}
-	if dir, err := os.UserConfigDir(); err == nil && dir != "" {
-		return filepath.Join(dir, "zscalerctl", "config.yaml"), false
+	return defaultConfigPath(runtime.GOOS, env), false
+}
+
+// defaultConfigPath resolves the platform default config path. On Windows it
+// prefers %LOCALAPPDATA%, which is non-roamed and stays on the local fixed
+// drive — finance AD images fold-redirect %APPDATA% (Roaming, returned by
+// os.UserConfigDir) to a UNC home, which the fileperm volume rule rejects.
+// LOCALAPPDATA avoids that redirect, so the tool's own default passes
+// validation. It is split out (taking goos + env) so the Windows branch can be
+// exercised from a non-Windows test host.
+func defaultConfigPath(goos string, env map[string]string) string {
+	if goos == "windows" {
+		if local := strings.TrimSpace(env["LOCALAPPDATA"]); local != "" {
+			return filepath.Join(local, "zscalerctl", "config.yaml")
+		}
 	}
-	return filepath.Join(".config", "zscalerctl", "config.yaml"), false
+	if dir, err := os.UserConfigDir(); err == nil && dir != "" {
+		return filepath.Join(dir, "zscalerctl", "config.yaml")
+	}
+	return filepath.Join(".config", "zscalerctl", "config.yaml")
 }
 
 func applyProfile(cfg *Config, profile profileData, env map[string]string, resolver SecretResolver) error {

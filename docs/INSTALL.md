@@ -128,6 +128,17 @@ metadata plus secret references such as `env:NAME` or `file:/path`; the file is
 rejected unless it is owner-only. Secret values themselves do not belong in the
 profile file.
 
+The fastest way to create a valid owner-only profile file is `zscalerctl config
+init`, which writes a commented starter `config.yaml` to the default location
+with permissions the loader accepts, then prints the path and next steps. The
+default location is `$XDG_CONFIG_HOME/zscalerctl/config.yaml` (falling back to
+`~/.config/zscalerctl/config.yaml`) on macOS and Linux, and
+`%LOCALAPPDATA%\zscalerctl\config.yaml` on Windows. `%LOCALAPPDATA%` is used on
+Windows instead of `%APPDATA%` (Roaming) because Roaming is frequently
+fold-redirected to a UNC home on managed AD images, and `zscalerctl` only reads
+config and secret files from a local fixed NTFS/ReFS volume. Pass `--force` to
+overwrite an existing file, or `--config <path>` to write somewhere else.
+
 Profiles can also reference a local secret command. `cmd` refs use a structured
 argv array and are executed directly — no shell, no quoting or expansion — with
 a 10 second timeout unless the ref sets a shorter or longer positive duration:

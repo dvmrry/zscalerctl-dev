@@ -5,6 +5,8 @@ package fileperm
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"unsafe"
 
@@ -131,6 +133,76 @@ func validateSecurityDescriptor(path string, sd *windows.SECURITY_DESCRIPTOR) er
 		return rejectSID(path, sid)
 	}
 	return nil
+}
+
+func writeOwnerOnly(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- caller-supplied config path; created O_EXCL and locked down via icacls + re-validated below.
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("write file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("close file: %w", err)
+	}
+	// Newly created files inherit the parent directory's DACL, which on a shared
+	// or fold-redirected profile can grant broad principals. Break inheritance
+	// and grant ONLY the current user so the file passes validateOpenFile.
+	if err := lockDownToCurrentUser(path); err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	// Self-verify against the same read-side validator the loader uses; never
+	// leave a config whose DACL the loader would later reject.
+	verify, err := openOwnerOnly(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("verify owner-only permissions: %w", err)
+	}
+	_ = verify.Close()
+	return nil
+}
+
+// lockDownToCurrentUser breaks DACL inheritance on path and grants full control
+// to only the current user, via the absolute icacls path with no shell. This is
+// the verified A9 recipe: `icacls <path> /inheritance:r /grant:r <user>:F`.
+func lockDownToCurrentUser(path string) error {
+	user, err := currentUserName()
+	if err != nil {
+		return err
+	}
+	icacls := filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe")
+	cmd := exec.Command(icacls, path, "/inheritance:r", "/grant:r", user+":F") // #nosec G204 -- absolute system binary, fixed flags; path is caller-supplied and user is derived from the process token.
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("icacls lock down %s: %w: %s", path, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// currentUserName returns the account name (DOMAIN\user) for the process token
+// user, the form icacls expects for a /grant principal. It falls back to the
+// USERNAME environment variable only when the token lookup fails.
+func currentUserName() (string, error) {
+	token, err := windows.OpenCurrentProcessToken()
+	if err == nil {
+		defer token.Close()
+		if user, uerr := token.GetTokenUser(); uerr == nil {
+			if account, domain, _, aerr := user.User.Sid.LookupAccount(""); aerr == nil {
+				if domain != "" {
+					return domain + `\` + account, nil
+				}
+				return account, nil
+			}
+		}
+	}
+	if name := strings.TrimSpace(os.Getenv("USERNAME")); name != "" {
+		return name, nil
+	}
+	return "", fmt.Errorf("%w: cannot determine current Windows user for owner-only write", ErrInsecurePermissions)
 }
 
 // rejectSID builds a value-free rejection error that names both the friendly

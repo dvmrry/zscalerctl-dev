@@ -74,7 +74,7 @@ _zscalerctl()
     --resources) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
     completion) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
     auth) COMPREPLY=( $(compgen -W "status" -- "$cur") ); return ;;
-    config) COMPREPLY=( $(compgen -W "show" -- "$cur") ); return ;;
+    config) COMPREPLY=( $(compgen -W "show init" -- "$cur") ); return ;;
     schema) COMPREPLY=( $(compgen -W "list" -- "$cur") ); return ;;
     dump) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
     diff) COMPREPLY=( $(compgen -W "%s" -- "$cur") ); return ;;
@@ -130,7 +130,7 @@ _zscalerctl() {
     --resources) compadd -- "${dump_resources[@]}"; return ;;
     completion) compadd -- "${shells[@]}"; return ;;
     auth) compadd -- status; return ;;
-    config) compadd -- show; return ;;
+    config) compadd -- show init; return ;;
     schema) compadd -- list; return ;;
     dump) compadd -- "${dump_flags[@]}"; return ;;
     diff) compadd -- "${diff_flags[@]}"; return ;;
@@ -179,7 +179,7 @@ complete -c zscalerctl -l search -r -d 'Narrow list results: case-insensitive su
 complete -c zscalerctl -n '__fish_use_subcommand' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from completion' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from auth' -a 'status'
-complete -c zscalerctl -n '__fish_seen_subcommand_from config' -a 'show'
+complete -c zscalerctl -n '__fish_seen_subcommand_from config' -a 'show init'
 complete -c zscalerctl -n '__fish_seen_subcommand_from schema' -a 'list'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -a '%s'
 complete -c zscalerctl -n '__fish_seen_subcommand_from dump' -l products -x -a '%s'
@@ -257,7 +257,7 @@ Register-ArgumentCompleter -Native -CommandName zscalerctl -ScriptBlock {
     '--resources' { Complete-ZscalerctlWords $dumpResources; return }
     'completion' { Complete-ZscalerctlWords $shells; return }
     'auth' { Complete-ZscalerctlWords @('status'); return }
-    'config' { Complete-ZscalerctlWords @('show'); return }
+    'config' { Complete-ZscalerctlWords @('show', 'init'); return }
     'schema' { Complete-ZscalerctlWords @('list'); return }
     'dump' { Complete-ZscalerctlWords $dumpFlags; return }
     'diff' { Complete-ZscalerctlWords $diffFlags; return }

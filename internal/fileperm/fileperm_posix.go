@@ -41,6 +41,35 @@ func validateOpenFile(file *os.File) error {
 	return nil
 }
 
+func writeOwnerOnly(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- caller-supplied config path; created O_EXCL with 0600 and re-validated below.
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("write file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("close file: %w", err)
+	}
+	// Re-assert 0600 explicitly in case a permissive umask widened the create
+	// mode, then self-verify the file passes the read-side validator.
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("set owner-only permissions: %w", err)
+	}
+	verify, err := openOwnerOnly(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("verify owner-only permissions: %w", err)
+	}
+	_ = verify.Close()
+	return nil
+}
+
 func openOwnerOnly(path string) (*os.File, error) {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {

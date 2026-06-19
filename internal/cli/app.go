@@ -244,6 +244,11 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 			return rejectUnsupportedFormat("diff", opts.format)
 		}
 		return a.runDiff(opts, rest[1:])
+	case rest[0] == "config" && len(rest) >= 2 && rest[1] == "init":
+		// config init writes the starter config and must run before LoadConfig:
+		// the target file is expected not to exist yet, and with an explicit
+		// --config a missing file is otherwise a hard ErrInvalidConfig.
+		return a.runConfigInit(opts, rest[2:])
 	case isRunnableCommand(rest[0]):
 	default:
 		a.writeUsageForHumans(opts)
@@ -1609,6 +1614,7 @@ func (a *App) writeHelp(w io.Writer, rest []string) {
 			return
 		case "config":
 			fmt.Fprintln(w, "usage: zscalerctl config show")
+			fmt.Fprintln(w, "       zscalerctl config init [--force]")
 			return
 		case "schema":
 			fmt.Fprintln(w, "usage: zscalerctl schema list")
@@ -1654,6 +1660,7 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "  doctor")
 	fmt.Fprintln(w, "  auth status")
 	fmt.Fprintln(w, "  config show")
+	fmt.Fprintln(w, "  config init [--force]")
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]")
