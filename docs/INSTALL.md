@@ -149,6 +149,48 @@ through the operator's `PATH`. If a workflow needs shell features, put them in a
 reviewed wrapper script and point `argv` at that script. Set
 `ZSCALERCTL_DISALLOW_CMD=true` to reject `cmd` refs fleet-wide.
 
+### Secret Providers
+
+Profile secret references can use `env:NAME`, `file:/path/to/secret`,
+structured `cmd:`, or `keyring:<service>/<key>`. `keyring:` is intended for
+local operator desktops; agents and CI should continue to use protected
+environment variables or owner-only secret files.
+
+Store a macOS Keychain item with service and account matching the reference:
+
+```sh
+security add-generic-password -s zscalerctl -a prod-client-secret -w '<secret>'
+```
+
+Non-ASCII secret values round-trip correctly: `security -w` may emit such values
+as hex, which the reader transparently decodes while preserving a literal
+hex-looking secret unchanged.
+
+Then reference it as:
+
+```yaml
+client_secret_ref: keyring:zscalerctl/prod-client-secret
+```
+
+On Linux, install `secret-tool` (`libsecret-tools` on Debian/Ubuntu) and store
+the item with the `service` and `account` attributes:
+
+```sh
+secret-tool store --label="zscalerctl: zscalerctl/prod-client-secret" \
+  service zscalerctl account prod-client-secret
+```
+
+On Windows, store a generic credential whose target is `<service>/<key>`:
+
+```powershell
+cmdkey /generic:zscalerctl/prod-client-secret /user:zscalerctl/prod-client-secret /pass:<secret>
+```
+
+You can also use Credential Manager: Windows Credentials -> Add a generic
+credential, with "Internet or network address" set to `<service>/<key>`.
+Use Keychain Access.app or Credential Manager instead of the CLI examples when
+you do not want the secret value to appear in shell history.
+
 For CI, use the CI platform's protected environment or secret store and set the
 same variable names per job/environment. Do not commit env files, dump
 directories, or live-smoke artifacts.

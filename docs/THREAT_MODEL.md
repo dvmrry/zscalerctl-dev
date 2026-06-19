@@ -127,7 +127,16 @@ Allowed secret sources:
   content so helper failures cannot leak token material through error messages.
   Operators can disable this provider entirely with
   `ZSCALERCTL_DISALLOW_CMD=true`.
-- A future OS keychain integration.
+- OS keychain references through `keyring:<service>/<key>`. This provider is
+  read-only and value-free on failure. macOS reads with the absolute
+  `/usr/bin/security` helper (`-w` primary; a second `-g` call only to
+  disambiguate hex-looking output, whose stderr is captured but never surfaced
+  raw), Linux reads with `secret-tool` using bounded
+  no-shell execution and a `ZSCALERCTL_*`-scrubbed environment, and Windows
+  reads directly through `CredReadW` from `advapi32.dll` loaded with
+  `NewLazySystemDLL`. Locked or unavailable keychains fail with bounded,
+  actionable errors; headless workflows should keep using `env:`, `file:`, or
+  structured `cmd:` providers.
 
 Config files should contain non-secret profile settings only. Commands such as
 `config show`, `doctor`, and `auth status` must render through secret-safe

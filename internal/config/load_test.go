@@ -213,6 +213,27 @@ profiles:
 	}
 }
 
+func TestLoadConfigKeyringRefIsDeferredKeyringSource(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `
+default_profile: prod
+profiles:
+  prod:
+    vanity_domain: v
+    client_id: c
+    client_secret_ref: keyring:svc/key
+    zpa_customer_id: z
+`)
+	cfg, err := config.LoadConfig(nil, config.LoadOptions{ConfigPath: path})
+	if err != nil {
+		t.Fatalf("LoadConfig(keyring ref) error = %v, want nil", err)
+	}
+	if got := cfg.Credentials.ClientSecret.Scheme(); got != "keyring" {
+		t.Fatalf("ClientSecret scheme = %q, want keyring", got)
+	}
+}
+
 func TestLoadConfigRejectsMalformedDisallowCmdWithoutValueLeak(t *testing.T) {
 	t.Parallel()
 

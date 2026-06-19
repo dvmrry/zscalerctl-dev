@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/credentials"
+	"github.com/dvmrry/zscalerctl/internal/keyring"
 	"github.com/dvmrry/zscalerctl/internal/secret"
 )
 
@@ -18,6 +19,7 @@ var ErrNoResolver = errors.New("secret resolver is not configured")
 
 type ResolverOpts struct {
 	AllowCmd bool
+	Keyring  keyring.Getter
 }
 
 type Resolver struct {
@@ -47,10 +49,30 @@ func (r *Resolver) Resolve(ctx context.Context, ref SecretRef) (secret.Secret, e
 	case "cmd":
 		return r.resolveCmd(ctx, ref)
 	case "keyring":
-		return secret.Secret{}, fmt.Errorf("%w: keyring refs are not enabled in this build phase", ErrInvalidRef)
+		return r.resolveKeyring(ctx, ref)
 	default:
 		return secret.Secret{}, fmt.Errorf("%w: unknown scheme %q", ErrInvalidRef, ref.Scheme)
 	}
+}
+
+func (r *Resolver) resolveKeyring(ctx context.Context, ref SecretRef) (secret.Secret, error) {
+	if r.opts.Keyring == nil {
+		return secret.Secret{}, fmt.Errorf("%w: keyring is not available in this build", ErrInvalidRef)
+	}
+	value, err := r.opts.Keyring.Get(ctx, ref.Service, ref.Key)
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return secret.Secret{}, fmt.Errorf("%w: keyring has no entry for service=%q key=%q; store it or use env:/file:/cmd refs", ErrInvalidRef, ref.Service, ref.Key)
+		}
+		if errors.Is(err, keyring.ErrUnavailable) {
+			return secret.Secret{}, fmt.Errorf("%w: %s", ErrInvalidRef, err)
+		}
+		return secret.Secret{}, fmt.Errorf("%w: keyring lookup failed for service=%q key=%q", ErrInvalidRef, ref.Service, ref.Key)
+	}
+	if value == "" {
+		return secret.Secret{}, fmt.Errorf("%w: keyring entry for service=%q key=%q is empty", ErrInvalidRef, ref.Service, ref.Key)
+	}
+	return secret.New(value), nil
 }
 
 func (r *Resolver) resolveCmd(ctx context.Context, ref SecretRef) (secret.Secret, error) {
