@@ -48,7 +48,7 @@ func (w *writer) Close() error {
 	}
 	w.closed = true
 
-	redacted, _ := w.redactor.ScanRenderedString(w.buf.String())
+	redacted, _ := w.redactor.ScanRenderedString(w.buf.String()) // second value is a Report, not an error
 	_, err := io.WriteString(w.dst, redacted)
 	return err
 }

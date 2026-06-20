@@ -2,6 +2,7 @@ package redact_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -17,9 +18,15 @@ func TestRedactingWriterRedactsAcrossWrites(t *testing.T) {
 
 	var buf bytes.Buffer
 	w := redact.NewWriter(&buf, redact.ModeStandard)
-	io.WriteString(w, "token=AKIA")           // pattern split across writes
-	io.WriteString(w, "abcdef1234567890XYZ\n")
-	w.(io.Closer).Close() // flush
+	_, err := io.WriteString(w, "token=AKIA") // pattern split across writes
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.WriteString(w, "abcdef1234567890XYZ\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Close() // flush
 	if strings.Contains(buf.String(), "AKIAabcdef1234567890XYZ") {
 		t.Fatalf("secret leaked across write boundary: %q", buf.String())
 	}
@@ -34,7 +41,7 @@ func TestRedactingWriterPassesThroughNonSecret(t *testing.T) {
 	w := redact.NewWriter(&buf, redact.ModeStandard)
 	want := "Usage: zscalerctl [flags]\n"
 	io.WriteString(w, want)
-	w.(io.Closer).Close()
+	w.Close()
 	if buf.String() != want {
 		t.Errorf("non-secret line changed: got %q, want %q", buf.String(), want)
 	}
@@ -51,9 +58,12 @@ func TestRedactingWriterRedactsMultiLinePEM(t *testing.T) {
 	w := redact.NewWriter(&buf, redact.ModeStandard)
 	// Write line by line to confirm full-buffer catches the block.
 	for _, line := range strings.SplitAfter(pem, "\n") {
-		io.WriteString(w, line)
+		_, err := io.WriteString(w, line)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	w.(io.Closer).Close()
+	w.Close()
 	out := buf.String()
 	if strings.Contains(out, "BEGIN PRIVATE KEY") {
 		t.Errorf("PEM block not redacted: %q", out)
@@ -71,8 +81,56 @@ func TestRedactingWriterFlushesOnCloseWithoutNewline(t *testing.T) {
 	var buf bytes.Buffer
 	w := redact.NewWriter(&buf, redact.ModeStandard)
 	io.WriteString(w, "no newline at end")
-	w.(io.Closer).Close()
+	w.Close()
 	if buf.String() != "no newline at end" {
 		t.Errorf("close did not flush: got %q", buf.String())
+	}
+}
+
+// errWriter is a stub io.Writer whose Write always returns an error.
+type errWriter struct{}
+
+func (errWriter) Write([]byte) (int, error) { return 0, errors.New("boom") }
+
+// TestRedactingWriterUnderlyingWriterErrorPropagatesOnClose verifies that an
+// error from the wrapped writer surfaces through Close, so a broken downstream
+// writer (e.g. Cobra's) is not silently swallowed.
+func TestRedactingWriterUnderlyingWriterErrorPropagatesOnClose(t *testing.T) {
+	t.Parallel()
+
+	w := redact.NewWriter(errWriter{}, redact.ModeStandard)
+	io.WriteString(w, "not a secret")
+	if err := w.Close(); err == nil {
+		t.Fatal("expected Close to return an error from the underlying writer, got nil")
+	}
+}
+
+// TestRedactingWriterEmptyInputClose verifies that Close on a writer that has
+// received no writes neither panics nor returns an error, and leaves the
+// destination buffer empty.
+func TestRedactingWriterEmptyInputClose(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := redact.NewWriter(&buf, redact.ModeStandard)
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close on empty writer returned error: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected empty buffer after no writes, got %q", buf.String())
+	}
+}
+
+// TestRedactingWriterWriteAfterClose verifies that a Write call after Close
+// returns io.ErrClosedPipe.
+func TestRedactingWriterWriteAfterClose(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := redact.NewWriter(&buf, redact.ModeStandard)
+	w.Close()
+	_, err := w.Write([]byte("late write"))
+	if !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("expected io.ErrClosedPipe after Close, got %v", err)
 	}
 }
