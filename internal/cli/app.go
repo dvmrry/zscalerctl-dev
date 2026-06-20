@@ -2282,7 +2282,7 @@ func isRunnableCommand(name string) bool {
 // instead of the generic --fields usage error.
 func isKnownCommand(name string) bool {
 	switch name {
-	case "help", "version", "completion":
+	case "help", "version", "completion", "introspect":
 		return true
 	}
 	return isRunnableCommand(name)
