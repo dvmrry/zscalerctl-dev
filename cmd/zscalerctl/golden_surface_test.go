@@ -412,10 +412,10 @@ func TestParseErrorsExitTwo(t *testing.T) {
 	}
 
 	type exitCase struct {
-		name     string   // sub-test name
-		args     []string // CLI args passed to the binary
-		source   string   // which parse layer this exercises
-		alsoGolden bool   // true when TestGoldenSurface already covers this case
+		name       string   // sub-test name
+		args       []string // CLI args passed to the binary
+		source     string   // which parse layer this exercises
+		alsoGolden bool     // true when TestGoldenSurface already covers this case
 	}
 
 	cases := []exitCase{
