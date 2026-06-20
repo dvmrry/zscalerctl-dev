@@ -87,6 +87,7 @@ type App struct {
 	err       io.Writer
 	env       []string
 	stdoutTTY bool
+	stderrTTY bool
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
@@ -130,6 +131,7 @@ func newDiagLogger(w io.Writer, level string) (*slog.Logger, error) {
 func New(out, err io.Writer, env []string) *App {
 	return NewWithOptions(out, err, env, Options{
 		StdoutTTY: output.IsTerminal(out),
+		StderrTTY: output.IsTerminal(err),
 	})
 }
 
@@ -145,6 +147,7 @@ type resourceSessionProvider interface {
 
 type Options struct {
 	StdoutTTY bool
+	StderrTTY bool
 	Reader    ResourceReader
 	Catalog   resources.ResourceCatalog
 }
@@ -165,6 +168,7 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 		err:       err,
 		env:       envCopy,
 		stdoutTTY: opts.StdoutTTY,
+		stderrTTY: opts.StderrTTY,
 		reader:    opts.Reader,
 		catalog:   catalog,
 	}
@@ -172,6 +176,22 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 
 func (a *App) resourceCatalog() resources.ResourceCatalog {
 	return append(resources.ResourceCatalog(nil), a.catalog...)
+}
+
+// spinnerActive reports whether a progress spinner should render: stderr must
+// be an interactive TTY, no diagnostic logging may be active (log lines share
+// stderr and would clash with the \r-redrawn spinner line), and color must not
+// be disabled (--color never / --no-color signals plain output).
+func (a *App) spinnerActive(opts globalOptions) bool {
+	return a.stderrTTY &&
+		(opts.logLevel == "" || opts.logLevel == "off") &&
+		opts.colorMode != output.ColorNever
+}
+
+// newSpinner returns a Spinner bound to stderr, active only when spinnerActive
+// returns true. The caller is responsible for calling Start/Stop.
+func (a *App) newSpinner(opts globalOptions) *output.Spinner {
+	return output.NewSpinner(a.err, a.spinnerActive(opts))
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
