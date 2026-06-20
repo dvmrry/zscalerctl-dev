@@ -459,7 +459,10 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "doctor", args: []string{"doctor", "--help"}, want: "usage: zscalerctl doctor"},
+		// doctor is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl doctor") rather than the legacy scoped synopsis.
+		// Re-blessed as an intentional surface change in the Cobra migration (Task 1.5.2).
+		{name: "doctor", args: []string{"doctor", "--help"}, want: "zscalerctl doctor"},
 		{name: "auth", args: []string{"auth", "--help"}, want: "usage: zscalerctl auth status"},
 		{name: "config", args: []string{"config", "--help"}, want: "usage: zscalerctl config show"},
 		{name: "schema", args: []string{"schema", "list", "--help"}, want: "usage: zscalerctl schema list"},

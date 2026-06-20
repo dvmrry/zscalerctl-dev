@@ -312,6 +312,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
+		// ── doctor --help (Cobra help surface; frozen after Task 1.5.2 migration) ─
+		{
+			name:     "doctor-help",
+			args:     []string{"doctor", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 		// ── product help ──────────────────────────────────────────────────────────
 		{
 			name:     "zia-help",

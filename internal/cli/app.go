@@ -274,8 +274,6 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	applyOptions(&cfg, opts)
 
 	switch rest[0] {
-	case "doctor":
-		return a.runDoctor(ctx, cfg, opts, rest[1:])
 	case "auth":
 		return a.runAuth(ctx, cfg, opts, rest[1:])
 	case "config":
@@ -693,7 +691,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version":
+	case "version", "doctor":
 		return true
 	}
 	return false
@@ -715,7 +713,7 @@ func isMigrated(cmd string) bool {
 // slips through.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts))
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts))
 
 	args := rest
 	if opts.help {
@@ -741,6 +739,30 @@ func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
 		Short: "print version, commit, build date, and runtime info",
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.runVersion(opts, args)
+		},
+	}
+}
+
+// newDoctorCmd returns the Cobra "doctor" subcommand. Doctor requires a loaded
+// config, so RunE loads it lazily — replicating the legacy path's LoadConfig +
+// applyOptions calls that normally run in the second-switch shared header.
+//
+// No restrictive Args validator is set here — runDoctor's requireNoArgs produces
+// the same UsageError message as before, preserving the surface.
+func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "check configuration, credentials, and connectivity",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runDoctor(cmd.Context(), cfg, opts, args)
 		},
 	}
 }

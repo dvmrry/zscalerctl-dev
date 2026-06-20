@@ -1,13 +1,14 @@
 package cli_test
 
-// cobra_dispatch_test.go — Tests for the hybrid Cobra/legacy dispatch (Tasks 1.4 + 1.5).
+// cobra_dispatch_test.go — Tests for the hybrid Cobra/legacy dispatch (Tasks 1.4 + 1.5 + 1.5.2).
 //
 // Tests here verify:
-//  1. Hybrid routing: migrated command (version) goes through Cobra; un-migrated
-//     commands (zia) still go through the legacy path.
-//  2. version --help → Cobra-rendered help, routed through the redactor.
-//  3. version --output <file>: the migrated command runs inside the --output wrapper.
+//  1. Hybrid routing: migrated command (version, doctor) goes through Cobra; un-migrated
+//     commands (zia, auth) still go through the legacy path.
+//  2. version --help / doctor --help → Cobra-rendered help.
+//  3. version/doctor --output <file>: migrated commands run inside the --output wrapper.
 //  4. Format/arity surface preservation: --format ndjson → exit 2; extra args → UsageError.
+//  5. doctor config-lazy RunE: loads config itself; config-error path surfaces correctly.
 
 import (
 	"bytes"
@@ -19,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/config"
 )
 
 // testVersionApp returns an App wired to in-memory buffers with no env.
@@ -170,4 +172,206 @@ func TestVersionExtraArg_UsageError(t *testing.T) {
 	if !strings.Contains(err.Error(), "usage: zscalerctl version") {
 		t.Errorf("App.Run(version somearg) error = %q, want 'usage: zscalerctl version' message", err)
 	}
+}
+
+// ── doctor Cobra dispatch tests (Task 1.5.2) ────────────────────────────────
+
+// testDoctorApp returns an App with no env (hermetic: no credentials, no config file).
+func testDoctorApp(t *testing.T) (*cli.App, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	var out, errBuf bytes.Buffer
+	a := cli.New(&out, &errBuf, nil)
+	return a, &out, &errBuf
+}
+
+// TestHybridRouting_DoctorGoesViaCobra confirms that "doctor" is dispatched
+// through Cobra and produces output identical to the legacy path (same key rows).
+func TestHybridRouting_DoctorGoesViaCobra(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"--format", "table", "doctor"})
+	if err != nil {
+		t.Fatalf("App.Run(doctor) error = %v, want nil", err)
+	}
+	got := out.String()
+
+	// The doctor table renders these keys exactly as before.
+	for _, key := range []string{"Status", "Mode", "Profile", "Config", "Redaction", "Timeout", "Credentials"} {
+		if !strings.Contains(got, key) {
+			t.Errorf("App.Run(doctor) stdout = %q, want key %q", got, key)
+		}
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(doctor) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestDoctorHelp_CobraRenderedHelp confirms that "doctor --help" emits Cobra-
+// formatted help that contains "zscalerctl doctor".
+func TestDoctorHelp_CobraRenderedHelp(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"doctor", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(doctor --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	if got == "" {
+		t.Fatal("App.Run(doctor --help) stdout is empty; redactor may not have flushed")
+	}
+	if !strings.Contains(got, "zscalerctl doctor") {
+		t.Errorf("App.Run(doctor --help) stdout = %q, want 'zscalerctl doctor'", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(doctor --help) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestDoctorOutputFile confirms that the migrated "doctor" command runs inside
+// the --output wrapper: when --output is set, the table is written to the file
+// and stdout is empty.
+func TestDoctorOutputFile(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "doctor-out.txt")
+
+	a, out, errBuf := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"--format", "table", "--output", outFile, "doctor"})
+	if err != nil {
+		t.Fatalf("App.Run(doctor --output) error = %v, want nil", err)
+	}
+
+	if out.Len() != 0 {
+		t.Errorf("App.Run(doctor --output) stdout = %q, want empty", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(doctor --output) stderr = %q, want empty", errBuf.String())
+	}
+
+	fileBytes, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("output file %s not created: %v", outFile, err)
+	}
+	fileContent := string(fileBytes)
+	for _, key := range []string{"Status", "Mode", "Redaction"} {
+		if !strings.Contains(fileContent, key) {
+			t.Errorf("output file %s = %q, want key %q", outFile, fileContent, key)
+		}
+	}
+}
+
+// TestDoctorUnknownFlag_UsageError confirms that an unknown flag on the migrated
+// doctor command returns UsageError (exit 2) via Cobra's flag parsing.
+func TestDoctorUnknownFlag_UsageError(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"doctor", "--nope"})
+	if err == nil {
+		t.Fatal("App.Run(doctor --nope) error = nil, want UsageError")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(doctor --nope) error = %v, want UsageError (exit 2)", err)
+	}
+}
+
+// TestDoctorFormatNDJSON_Rejected confirms that --format ndjson on the migrated
+// doctor command returns UsageError (exit 2) via runDoctor's format check.
+func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"--format", "ndjson", "doctor"})
+	if err == nil {
+		t.Fatal("App.Run(--format ndjson doctor) error = nil, want UsageError")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(--format ndjson doctor) error = %v, want UsageError (exit 2)", err)
+	}
+}
+
+// TestDoctorExtraArg_UsageError confirms that extra positional args to the
+// migrated doctor command return UsageError (exit 2) via requireNoArgs.
+// The error message must match the legacy "usage: zscalerctl doctor" shape.
+func TestDoctorExtraArg_UsageError(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"doctor", "somearg"})
+	if err == nil {
+		t.Fatal("App.Run(doctor somearg) error = nil, want UsageError")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(doctor somearg) error = %v, want UsageError (exit 2)", err)
+	}
+	if !strings.Contains(err.Error(), "usage: zscalerctl doctor") {
+		t.Errorf("App.Run(doctor somearg) error = %q, want 'usage: zscalerctl doctor' message", err)
+	}
+}
+
+// TestDoctorConfigError_NonexistentPath confirms that the config-lazy RunE in
+// the migrated doctor command surfaces a config load error (ErrInvalidConfig →
+// exit 2) when --config points to a nonexistent path.
+func TestDoctorConfigError_NonexistentPath(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"--config", "/nonexistent/path/zscalerctl.yaml", "doctor"})
+	if err == nil {
+		t.Fatal("App.Run(doctor --config /nonexistent) error = nil, want config load error")
+	}
+	if !errors.Is(err, config.ErrInvalidConfig) {
+		t.Errorf("App.Run(doctor --config /nonexistent) error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+// TestDoctorRedactionFollowsConfig confirms that the migrated doctor uses
+// a.renderer(cfg, opts) — which reads cfg.Defaults.Redaction — rather than
+// hardcoding ModeStandard. Setting a non-standard redaction mode via env must be
+// reflected in the doctor output.
+func TestDoctorRedactionFollowsConfig(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"share", "paranoid"} {
+		mode := mode
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+
+			var out, errBuf bytes.Buffer
+			a := cli.New(&out, &errBuf, []string{config.EnvRedaction + "=" + mode})
+			err := a.Run(context.Background(), []string{"--format", "table", "doctor"})
+			if err != nil {
+				t.Fatalf("App.Run(doctor, redaction=%s) error = %v, want nil", mode, err)
+			}
+			if !strings.Contains(out.String(), "Redaction") || !strings.Contains(out.String(), mode) {
+				t.Errorf("App.Run(doctor) output = %q, want redaction mode %q", out.String(), mode)
+			}
+			if errBuf.Len() != 0 {
+				t.Errorf("App.Run(doctor, redaction=%s) stderr = %q, want empty", mode, errBuf.String())
+			}
+		})
+	}
+}
+
+// TestHybridRouting_AuthStillLegacy confirms that an un-migrated config-requiring
+// command (auth status) is NOT dispatched through Cobra — it still reaches its
+// normal legacy path. With no credentials the error must NOT be a Cobra error.
+func TestHybridRouting_AuthStillLegacy(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"auth", "status"})
+	// auth status with no credentials still returns a non-Cobra error (missing creds).
+	// What it must NOT return: a Cobra unknown-command error or ErrUsage from Cobra.
+	if err != nil {
+		errMsg := err.Error()
+		if strings.HasPrefix(errMsg, "unknown command") {
+			t.Errorf("App.Run(auth status) returned Cobra unknown-command error %q; legacy path should have handled it", errMsg)
+		}
+	}
+	// "auth status" with no creds reaches the auth dispatch but not the Cobra root,
+	// so if it ever hits "unknown command" that's a regression.
 }
