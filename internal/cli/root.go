@@ -128,6 +128,32 @@ func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []strin
 	return root.ExecuteContext(ctx)
 }
 
+// executeRootCompletion is like executeRoot but bypasses the redactor on stdout.
+// It must be used for completion paths ("completion", "__complete",
+// "__completeNoDesc") where Cobra emits a generated shell script or completion
+// candidates on stdout. The high-entropy redactor heuristic false-positives on
+// shell variable assignments such as "local shellCompDirectiveFilterFileExt=8",
+// corrupting the script and breaking file-extension filtering in the shell.
+//
+// Safety: completion output is derived entirely from the command tree and the
+// static resource catalog — it never contains runtime credential values (proven
+// by TestCompletionScriptsDoNotReadCredentialFilesOrUseReader). Bypassing the
+// redactor on stdout cannot leak secrets; it only prevents script corruption.
+// Stderr remains redacted because completion errors (if any) could in theory
+// echo back user-supplied tokens.
+func (a *App) executeRootCompletion(ctx context.Context, root *cobra.Command, args []string) error {
+	// stdout: raw writer — the generated script bytes must be emitted exactly.
+	// stderr: still redacted — errors may echo user input.
+	errW := redact.NewWriter(a.err, redact.ModeStandard)
+	defer func() { _ = errW.Close() }()
+
+	root.SetOut(a.out)
+	root.SetErr(errW)
+	root.SetArgs(args)
+
+	return root.ExecuteContext(ctx)
+}
+
 // exactArgs returns a cobra.PositionalArgs validator that requires exactly n
 // positional arguments. Failures are wrapped in UsageError so exitCodeForError
 // maps them to exit 2, not exit 1.

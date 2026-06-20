@@ -674,13 +674,41 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 		args = append(rest[:len(rest):len(rest)], "--help")
 	}
 
-	err := a.executeRoot(ctx, root, args)
+	// Completion paths (static script generation and the __complete runtime
+	// protocol) must bypass the stdout redactor: the redactor's high-entropy
+	// heuristic false-positives on shell variable assignments such as
+	// "local shellCompDirectiveFilterFileExt=8", corrupting the script.
+	// stderr remains redacted — errors may echo user-supplied tokens.
+	// Safety proof: TestCompletionScriptsDoNotReadCredentialFilesOrUseReader
+	// demonstrates that completion never resolves credentials, so bypassing the
+	// redactor on stdout cannot leak anything.
+	var err error
+	if isCompletionArgs(args) {
+		err = a.executeRootCompletion(ctx, root, args)
+	} else {
+		err = a.executeRoot(ctx, root, args)
+	}
 	if err != nil && strings.HasPrefix(err.Error(), "unknown command") {
 		// During the hybrid this can't fire (isMigrated gates to known commands),
 		// but this is the documented hook for when Cobra owns the root.
 		return UsageError{Message: err.Error()}
 	}
 	return err
+}
+
+// isCompletionArgs reports whether args represents a completion invocation:
+// the static script generators ("completion bash|zsh|fish|powershell") or
+// Cobra's dynamic completion protocol ("__complete", "__completeNoDesc").
+// These paths require executeRootCompletion (raw stdout, no redactor).
+func isCompletionArgs(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+	return false
 }
 
 // newProductCmd returns a Cobra subcommand for the given product (e.g. "zia",

@@ -44,10 +44,13 @@ func completionProductValues() []string {
 // completionDiagnosticVerbs lists per-product diagnostic verbs that are
 // dispatched directly in app.go rather than registered as catalog resources, so
 // resourceNames (which reads the catalog) omits them. They still need shell
-// completion. url-lookup is the zia-only URL-category diagnostic.
-var completionDiagnosticVerbs = map[resources.Product][]string{
-	resources.ProductZIA: {urlLookupCommandName},
-}
+// completion.
+//
+// url-lookup was listed here before Phase 2b. Phase 2b registered it as a real
+// Cobra subcommand of "zia" via newURLLookupCmd, so Cobra now completes it
+// automatically from the subcommand list. Keeping it here too produced a
+// duplicate entry in __complete zia output. It has been removed.
+var completionDiagnosticVerbs = map[resources.Product][]string{}
 
 // completionResourceNames returns the completion candidates for a product's
 // second positional word: its catalog resources plus any diagnostic verbs that

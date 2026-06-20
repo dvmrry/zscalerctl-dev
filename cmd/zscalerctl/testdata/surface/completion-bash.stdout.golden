@@ -63,7 +63,7 @@ __zscalerctl_process_completion_results() {
     local shellCompDirectiveError=1
     local shellCompDirectiveNoSpace=2
     local shellCompDirectiveNoFileComp=4
-    local <REDACTED:SECRET>
+    local shellCompDirectiveFilterFileExt=8
     local shellCompDirectiveFilterDirs=16
     local shellCompDirectiveKeepOrder=32
 
@@ -239,7 +239,7 @@ __zscalerctl_handle_completion_types() {
         # Type: menu-complete/menu-complete-backward and insert-completions
         # If the user requested inserting one completion at a time, or all
         # completions at once on the command-line we must remove the descriptions.
-        # https://<REDACTED:SECRET>
+        # https://github.com/spf13/cobra/issues/1508
 
         # If there are no completions, we don't need to do anything
         (( ${#completions[@]} == 0 )) && return 0

@@ -994,6 +994,39 @@ func TestCompletionRejectsUnknownShell(t *testing.T) {
 	}
 }
 
+// TestCompletionScriptBashNotRedacted guards the §5a spec requirement: the
+// redactor must NEVER be applied to completion script stdout. If the redactor
+// were applied, its high-entropy heuristic would corrupt shell variable
+// assignments such as "local shellCompDirectiveFilterFileExt=8" (treating "=8"
+// as a high-entropy secret) and mangle URLs in comments, silently breaking
+// file-extension filtering in the generated bash script.
+//
+// The guard checks two things:
+//  1. No "<REDACTED" substring appears anywhere in the bash completion script.
+//  2. The specific variable assignment that was historically corrupted is intact.
+func TestCompletionScriptBashNotRedacted(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	app := cli.New(&out, io.Discard, nil)
+
+	if err := app.Run(context.Background(), []string{"completion", "bash"}); err != nil {
+		t.Fatalf("App.Run(completion bash) error = %v, want nil", err)
+	}
+	got := out.String()
+
+	// Guard 1: no redactor tokens anywhere in the script.
+	if strings.Contains(got, "<REDACTED") {
+		t.Errorf("completion bash stdout contains <REDACTED — redactor must not be applied to completion output:\n%s", got)
+	}
+
+	// Guard 2: the specific variable assignment that the redactor false-positives on.
+	const needle = "local shellCompDirectiveFilterFileExt=8"
+	if !strings.Contains(got, needle) {
+		t.Errorf("completion bash stdout does not contain %q — script may be corrupted or Cobra changed its generator:\n%s", needle, got)
+	}
+}
+
 func TestSchemaListTableIncludesReadOperations(t *testing.T) {
 	t.Parallel()
 
