@@ -12,9 +12,10 @@
 // location and git-diffs the result against the committed file.
 //
 // Design constraints:
-//   - Zero additional dependencies: walks the tree with Cobra's introspection
-//     API only (cmd.Commands(), cmd.Use, cmd.Short, cmd.Long, cmd.Example,
-//     cmd.Flags(), cmd.LocalFlags(), cmd.InheritedFlags(), cmd.Aliases).
+//   - Zero additional dependencies: uses cli.WalkCobraTree (shared with
+//     cli.IntrospectTree) plus Cobra's introspection API (cmd.Use, cmd.Short,
+//     cmd.Long, cmd.Example, cmd.LocalFlags(), cmd.InheritedFlags(), cmd.Aliases).
+//     Using the shared walk ensures docs and the agent JSON map cannot drift.
 //   - No timestamps or other non-deterministic output.
 //   - Config-free: BuildCommandTree uses zero-value globalOptions so no
 //     credentials or config file are needed.
@@ -64,6 +65,8 @@ func main() {
 
 // writeDoc emits the full CLI reference into w, starting with a global preamble
 // then one section per command in depth-first, alphabetically-sorted order.
+// The command enumeration is driven by cli.WalkCobraTree — the same shared walk
+// that cli.IntrospectTree uses — so docs and the agent JSON map cannot drift.
 func writeDoc(w io.StringWriter, root *cobra.Command) {
 	writeLines(w,
 		"# zscalerctl CLI Reference",
@@ -80,56 +83,34 @@ func writeDoc(w io.StringWriter, root *cobra.Command) {
 	writeLines(w, "")
 
 	writeLines(w, "## Commands", "")
-	// depth=3 → "###" for top-level subcommands; path="" means no prefix yet.
-	writeCommandSections(w, root, "", 3)
-}
 
-// writeCommandSections writes a section for each non-hidden subcommand of cmd,
-// recursing depth-first.
-//
-// path is the space-separated command words accumulated so far (not including
-// "zscalerctl"); e.g. "" at the top level, "config" for config's children.
-// depth is the Markdown heading level (### = 3) for this tier.
-func writeCommandSections(w io.StringWriter, cmd *cobra.Command, path string, depth int) {
-	subs := cmd.Commands()
-	// Deterministic order: sort by command name.
-	sort.Slice(subs, func(i, j int) bool {
-		return subs[i].Name() < subs[j].Name()
-	})
-	for _, sub := range subs {
-		if sub.Hidden {
-			continue
+	// Track depth per command by counting spaces in the path. Each call to fn
+	// receives the command and its space-joined path; we derive the Markdown
+	// heading depth from len(path components) + 3 (top-level == "###" == 3).
+	cli.WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		if cmd.Hidden {
+			return
 		}
-		writeCommandSection(w, sub, path, depth)
-	}
+		depth := strings.Count(path, " ") + 3
+		writeCommandSection(w, cmd, path, depth)
+	})
 }
 
-// writeCommandSection emits one Markdown section for cmd, then recurses into
-// its non-hidden subcommands.
+// writeCommandSection emits one Markdown section for cmd.
 //
-// path is the accumulated parent path (space-separated command words, not
-// including "zscalerctl"); e.g. "" for top-level, "config" for config's children.
-// depth is the Markdown heading level for this tier (3 = ###).
+// path is the space-joined command path without the root program name
+// (e.g. "config", "config init"); depth is the Markdown heading level (3=###).
 func writeCommandSection(w io.StringWriter, cmd *cobra.Command, path string, depth int) {
-	// Full path: e.g. "config" at top level, "config init" one level down.
-	var fullPath string
-	if path == "" {
-		fullPath = cmd.Name()
-	} else {
-		fullPath = path + " " + cmd.Name()
-	}
-
-	heading := strings.Repeat("#", depth) + " " + fullPath
-
+	heading := strings.Repeat("#", depth) + " " + path
 	writeLines(w, heading, "")
 
 	if cmd.Short != "" {
 		writeLines(w, cmd.Short, "")
 	}
 
-	// Usage line: "zscalerctl <fullPath> [args...]"
+	// Usage line: "zscalerctl <path> [args...]"
 	suffix := usageSuffix(cmd)
-	usageLine := "zscalerctl " + fullPath
+	usageLine := "zscalerctl " + path
 	if suffix != "" {
 		usageLine += " " + suffix
 	}
@@ -154,9 +135,6 @@ func writeCommandSection(w io.StringWriter, cmd *cobra.Command, path string, dep
 		writeFlagTable(w, local)
 		writeLines(w, "")
 	}
-
-	// Recurse into subcommands at the next heading level.
-	writeCommandSections(w, cmd, fullPath, depth+1)
 }
 
 // usageSuffix extracts the argument/operand portion of cmd.Use (everything
