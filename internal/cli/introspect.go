@@ -19,6 +19,7 @@ package cli
 // config-free.
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -27,7 +28,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// schemaURL is the canonical JSON Schema URL for IntrospectDoc.
+// schemaURL is the canonical JSON Schema URL for IntrospectDoc. The file
+// docs/schema/introspect.schema.json is published separately and the URL
+// intentionally floats on main; the introspect_version field carries the real
+// contract version.
 const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json"
 
 // IntrospectDoc is the top-level document returned by IntrospectTree.
@@ -59,13 +63,15 @@ type CommandDoc struct {
 
 // FlagDoc describes a single flag (global or local).
 type FlagDoc struct {
-	Name      string   `json:"name"`
-	Shorthand string   `json:"shorthand,omitempty"`
-	Type      string   `json:"type"`
-	Default   string   `json:"default,omitempty"`
-	Required  bool     `json:"required,omitempty"`
-	Usage     string   `json:"usage"`
-	Enum      []string `json:"enum,omitempty"`
+	Name      string `json:"name"`
+	Shorthand string `json:"shorthand,omitempty"`
+	Type      string `json:"type"`
+	Default   string `json:"default,omitempty"`
+	// Required is never true: the project deliberately avoids required flags.
+	// The field is retained for forward-compatibility with the published schema.
+	Required bool     `json:"required,omitempty"`
+	Usage    string   `json:"usage"`
+	Enum     []string `json:"enum,omitempty"`
 }
 
 // ArgsDoc describes the positional argument policy for a command.
@@ -147,7 +153,7 @@ func IntrospectTree(a *App) IntrospectDoc {
 	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
 		// A command is a product group node if it is a direct child of root
 		// (no space in path) and its name is a known product in the catalog.
-		if !strings.Contains(path, " ") && isKnownProductName(cmd.Name()) {
+		if !strings.Contains(path, " ") && knownProductCommand(cmd.Name()) {
 			// Do not emit a CommandDoc for the bare "zia" / "zpa" / … node.
 			// Synthesize virtual entries for each {product} {resource} {op}
 			// triple from the catalog instead.
@@ -190,7 +196,7 @@ func buildCatalog() CatalogDoc {
 
 	// Collect ordered, deduplicated product list.
 	seen := make(map[resources.Product]bool)
-	var products []string
+	products := make([]string, 0)
 	for _, spec := range cat {
 		if !seen[spec.Product] {
 			seen[spec.Product] = true
@@ -220,6 +226,11 @@ func buildCatalog() CatalogDoc {
 //
 // SOURCE OF TRUTH: cmd/zscalerctl/main.go (exitCodeForError, constants block).
 // Update this table whenever exit codes change in that file.
+//
+// Note: ExitCodeDoc.Kind is the coarse exit-code category, NOT necessarily
+// identical to the per-error JSON envelope "kind" field produced by errorKind.
+// For example, exit code 4 covers both the "not_found" and "unsupported_resource"
+// JSON error kinds because exitCodeForError maps both to exitNotFound.
 func buildExitCodes() []ExitCodeDoc {
 	return []ExitCodeDoc{
 		{Code: 0, Kind: "ok", Retryable: false,
@@ -231,7 +242,7 @@ func buildExitCodes() []ExitCodeDoc {
 		{Code: 3, Kind: "missing_credentials", Retryable: false,
 			Description: "credentials not configured or incomplete"},
 		{Code: 4, Kind: "not_found", Retryable: false,
-			Description: "requested resource or operation is not found"},
+			Description: "resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)"},
 		{Code: 5, Kind: "live_access_failed", Retryable: true,
 			Description: "Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable"},
 		{Code: 6, Kind: "partial_dump", Retryable: false,
@@ -264,17 +275,6 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 		doc.Aliases = []string{}
 	}
 	return doc
-}
-
-// isKnownProductName reports whether name is a known product in the catalog.
-// This avoids importing knownProducts() directly (it's an internal helper).
-func isKnownProductName(name string) bool {
-	for _, spec := range resources.Catalog() {
-		if string(spec.Product) == name {
-			return true
-		}
-	}
-	return false
 }
 
 // buildProductResourceDocs synthesizes CommandDoc entries for each
@@ -316,7 +316,7 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 				Deprecated:     "",
 				Mutating:       false,
 				Args:           argsPolicy,
-				Flags:          nil,
+				Flags:          []FlagDoc{},
 				InheritedFlags: inheritedNames,
 				OutputFields:   fields,
 			}
@@ -330,6 +330,8 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 // The policy is best-effort: "none", "exact", "range", or "arbitrary".
 func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 	if len(cmd.ValidArgs) > 0 {
+		// ValidArgs is the set of valid values for ONE positional argument, so
+		// N=1 is correct even when len(ValidArgs) > 1 — do not "fix" this.
 		return ArgsDoc{
 			Policy:      "exact",
 			N:           1,
@@ -365,7 +367,7 @@ func usageSuffixIntrospect(cmd *cobra.Command) string {
 // local (non-inherited) flags are included here; inherited flag names are
 // captured separately by buildInheritedFlagNames.
 func buildLocalFlagDocs(cmd *cobra.Command) []FlagDoc {
-	var docs []FlagDoc
+	docs := make([]FlagDoc, 0)
 	cmd.NonInheritedFlags().VisitAll(func(f *pflag.Flag) {
 		def := f.DefValue
 		if f.Value.Type() == "stringArray" && def == "[]" {
@@ -386,7 +388,7 @@ func buildLocalFlagDocs(cmd *cobra.Command) []FlagDoc {
 // buildInheritedFlagNames returns the names of flags inherited from parent
 // commands (i.e. cmd.InheritedFlags()), without the leading "--".
 func buildInheritedFlagNames(cmd *cobra.Command) []string {
-	var names []string
+	names := make([]string, 0)
 	cmd.InheritedFlags().VisitAll(func(f *pflag.Flag) {
 		names = append(names, f.Name)
 	})
@@ -420,11 +422,9 @@ func walkCobraSubtree(cmd *cobra.Command, parentPath string, fn func(*cobra.Comm
 	// Sort alphabetically — matches gen-cli-docs sort order (deterministic).
 	sortedSubs := make([]*cobra.Command, len(subs))
 	copy(sortedSubs, subs)
-	for i := 1; i < len(sortedSubs); i++ {
-		for j := i; j > 0 && sortedSubs[j].Name() < sortedSubs[j-1].Name(); j-- {
-			sortedSubs[j], sortedSubs[j-1] = sortedSubs[j-1], sortedSubs[j]
-		}
-	}
+	sort.Slice(sortedSubs, func(i, j int) bool {
+		return sortedSubs[i].Name() < sortedSubs[j].Name()
+	})
 	for _, sub := range sortedSubs {
 		var path string
 		if parentPath == "" {

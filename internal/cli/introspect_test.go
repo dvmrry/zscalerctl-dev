@@ -34,7 +34,7 @@ func TestIntrospectTree(t *testing.T) {
 		}
 	}
 
-	// GlobalFlags must match globalFlagDefs (13 flags).
+	// GlobalFlags must match globalFlagDefs.
 	if got := len(doc.GlobalFlags); got != len(cli.ExportedGlobalFlagDefs) {
 		t.Errorf("len(GlobalFlags) = %d, want %d (len(globalFlagDefs))", got, len(cli.ExportedGlobalFlagDefs))
 	}
@@ -72,6 +72,27 @@ func TestIntrospectTree(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("zia locations list: InheritedFlags does not contain %q; got %v", "format", ziaLocList.InheritedFlags)
+	}
+
+	// Commands must be in alphabetical order by path at the top level.
+	// Find "auth" and "version" (both are always present) and assert auth < version.
+	authIdx, versionIdx := -1, -1
+	for i, cmd := range doc.Commands {
+		switch cmd.Path {
+		case "auth":
+			authIdx = i
+		case "version":
+			versionIdx = i
+		}
+	}
+	if authIdx == -1 {
+		t.Error("command \"auth\" not found in doc.Commands")
+	}
+	if versionIdx == -1 {
+		t.Error("command \"version\" not found in doc.Commands")
+	}
+	if authIdx != -1 && versionIdx != -1 && authIdx > versionIdx {
+		t.Errorf("commands not in alphabetical order: \"auth\" at index %d appears after \"version\" at index %d", authIdx, versionIdx)
 	}
 
 	// ExitCodes must be populated.
