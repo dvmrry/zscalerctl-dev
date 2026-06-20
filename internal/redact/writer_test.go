@@ -52,7 +52,11 @@ func TestRedactingWriterPassesThroughNonSecret(t *testing.T) {
 func TestRedactingWriterRedactsMultiLinePEM(t *testing.T) {
 	t.Parallel()
 
-	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASC\nBKYwggSiAgEAAoIBAQC7dummyfake==\n-----END PRIVATE KEY-----\n"
+	// The body carries the repo's "key-material" canary marker so the gitleaks
+	// test-fixture allowlist (.gitleaks.toml) recognizes it as a known fake, not
+	// a real leak. The redactor keys on the BEGIN/END markers, so the body
+	// content does not affect what this test verifies.
+	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASC\nfake-key-material-canary-not-a-real-key\n-----END PRIVATE KEY-----\n"
 
 	var buf bytes.Buffer
 	w := redact.NewWriter(&buf, redact.ModeStandard)
