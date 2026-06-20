@@ -1,0 +1,343 @@
+zscalerctl CLI surface map
+  version:   <VERSION>
+  read-only: true
+  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json
+
+Global flags (13):
+  --color (string, default "auto")  color output: auto, always, never
+  --config (string)  config file path
+  --fields (string)  comma-separated output fields to keep (narrows the sanitized output)
+  --filter (stringArray)  narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
+  --format (string, default "auto")  output format: auto, table, json, ndjson, pretty
+  --log-level (string, default "off")  diagnostic logging to stderr: off, error, warn, info, debug
+  --no-cache (bool, default "false")  bypass API cache where supported
+  --no-color (bool, default "false")  disable color output
+  --output (string)  output path
+  --profile (string)  profile name
+  --redaction (string)  redaction mode: standard, share, paranoid
+  --search (string)  narrow list results to records whose rendered values contain term (case-insensitive)
+  --timeout (duration, default "30s")  request timeout
+
+Commands (289):
+  auth                                      inspect authentication configuration
+  auth status                               show authentication status for the active profile
+  completion                                Generate the autocompletion script for the specified shell
+  completion bash                           Generate the autocompletion script for bash
+      --no-descriptions (bool, default "false")
+  completion fish                           Generate the autocompletion script for fish
+      --no-descriptions (bool, default "false")
+  completion powershell                     Generate the autocompletion script for powershell
+      --no-descriptions (bool, default "false")
+  completion zsh                            Generate the autocompletion script for zsh
+      --no-descriptions (bool, default "false")
+  config                                    manage zscalerctl configuration
+  config init                               write a starter config file with owner-only permissions
+      --force (bool, default "false")
+  config show                               show the active configuration (redacted)
+  diff                                      compare two dump directories and report configuration drift
+      --allow-partial (bool, default "false")
+      --detail (bool, default "false")
+      --fail-on-drift (bool, default "false")
+      --ignore-operational (bool, default "false")
+      --products (string)
+      --resources (string)
+  doctor                                    check configuration, credentials, and connectivity
+  dump                                      write a full or filtered resource dump to a directory
+      --continue-on-error (bool, default "false")
+      --force (bool, default "false")
+      --out (string)
+      --products (string)
+      --resources (string)
+  introspect                                print a machine-readable map of all commands, flags, and resources (JSON)
+  schema                                    inspect the resource catalog schema
+  schema list                               list all catalog resources and their supported operations
+  version                                   print version, commit, build date, and runtime info
+  zcc fail-open-policy list                 list zcc fail-open-policy
+  zcc forwarding-profiles list              list zcc forwarding-profiles
+  zcc trusted-networks list                 list zcc trusted-networks
+  zcc web-app-services list                 list zcc web-app-services
+  zcc application-profiles list             list zcc application-profiles
+  zcc custom-ip-apps list                   list zcc custom-ip-apps
+  zcc predefined-ip-apps list               list zcc predefined-ip-apps
+  zcc process-based-apps list               list zcc process-based-apps
+  zcc devices list                          list zcc devices
+  zcc admin-roles list                      list zcc admin-roles
+  zcc company-info show                     show zcc company-info
+  zia locations list                        list zia locations
+  zia locations get                         get zia locations
+  zia location-groups list                  list zia location-groups
+  zia location-groups get                   get zia location-groups
+  zia rule-labels list                      list zia rule-labels
+  zia rule-labels get                       get zia rule-labels
+  zia auth-settings list                    list zia auth-settings
+  zia static-ips list                       list zia static-ips
+  zia static-ips get                        get zia static-ips
+  zia gre-tunnels list                      list zia gre-tunnels
+  zia gre-tunnels get                       get zia gre-tunnels
+  zia sublocations list                     list zia sublocations
+  zia sublocations get                      get zia sublocations
+  zia ssl-inspection-rules list             list zia ssl-inspection-rules
+  zia ssl-inspection-rules get              get zia ssl-inspection-rules
+  zia url-categories list                   list zia url-categories
+  zia url-categories get                    get zia url-categories
+  zia url-filtering-rules list              list zia url-filtering-rules
+  zia url-filtering-rules get               get zia url-filtering-rules
+  zia firewall-filtering-rules list         list zia firewall-filtering-rules
+  zia firewall-filtering-rules get          get zia firewall-filtering-rules
+  zia ips-signature-rules list              list zia ips-signature-rules
+  zia ips-signature-rules get               get zia ips-signature-rules
+  zia ips-policies list                     list zia ips-policies
+  zia ips-policies get                      get zia ips-policies
+  zia forwarding-rules list                 list zia forwarding-rules
+  zia forwarding-rules get                  get zia forwarding-rules
+  zia ip-source-groups list                 list zia ip-source-groups
+  zia ip-source-groups get                  get zia ip-source-groups
+  zia ip-destination-groups list            list zia ip-destination-groups
+  zia ip-destination-groups get             get zia ip-destination-groups
+  zia network-services list                 list zia network-services
+  zia network-services get                  get zia network-services
+  zia network-service-groups list           list zia network-service-groups
+  zia network-service-groups get            get zia network-service-groups
+  zia network-applications list             list zia network-applications
+  zia network-applications get              get zia network-applications
+  zia application-services list             list zia application-services
+  zia application-services get              get zia application-services
+  zia application-service-groups list       list zia application-service-groups
+  zia application-service-groups get        get zia application-service-groups
+  zia network-application-groups list       list zia network-application-groups
+  zia network-application-groups get        get zia network-application-groups
+  zia time-windows list                     list zia time-windows
+  zia time-windows get                      get zia time-windows
+  zia proxies list                          list zia proxies
+  zia proxies get                           get zia proxies
+  zia proxy-gateways list                   list zia proxy-gateways
+  zia proxy-gateways get                    get zia proxy-gateways
+  zia dedicated-ip-gateways list            list zia dedicated-ip-gateways
+  zia dedicated-ip-gateways get             get zia dedicated-ip-gateways
+  zia time-intervals list                   list zia time-intervals
+  zia time-intervals get                    get zia time-intervals
+  zia bandwidth-classes list                list zia bandwidth-classes
+  zia bandwidth-classes get                 get zia bandwidth-classes
+  zia bandwidth-control-rules list          list zia bandwidth-control-rules
+  zia bandwidth-control-rules get           get zia bandwidth-control-rules
+  zia dns-gateways list                     list zia dns-gateways
+  zia dns-gateways get                      get zia dns-gateways
+  zia nat-control-rules list                list zia nat-control-rules
+  zia nat-control-rules get                 get zia nat-control-rules
+  zia groups list                           list zia groups
+  zia groups get                            get zia groups
+  zia departments list                      list zia departments
+  zia departments get                       get zia departments
+  zia users list                            list zia users
+  zia users get                             get zia users
+  zia device-groups list                    list zia device-groups
+  zia device-groups get                     get zia device-groups
+  zia devices list                          list zia devices
+  zia devices get                           get zia devices
+  zia workload-groups list                  list zia workload-groups
+  zia workload-groups get                   get zia workload-groups
+  zia alert-subscriptions list              list zia alert-subscriptions
+  zia alert-subscriptions get               get zia alert-subscriptions
+  zia activation-status show                show zia activation-status
+  zia eusa-status show                      show zia eusa-status
+  zia auth-exempted-urls show               show zia auth-exempted-urls
+  zia intermediate-ca-certificates list     list zia intermediate-ca-certificates
+  zia intermediate-ca-certificates get      get zia intermediate-ca-certificates
+  zia cloud-app-instances list              list zia cloud-app-instances
+  zia cloud-app-instances get               get zia cloud-app-instances
+  zia tenancy-restriction-profiles list     list zia tenancy-restriction-profiles
+  zia tenancy-restriction-profiles get      get zia tenancy-restriction-profiles
+  zia vzen-clusters list                    list zia vzen-clusters
+  zia vzen-clusters get                     get zia vzen-clusters
+  zia vzen-nodes list                       list zia vzen-nodes
+  zia vzen-nodes get                        get zia vzen-nodes
+  zia dlp-engines list                      list zia dlp-engines
+  zia dlp-engines get                       get zia dlp-engines
+  zia dlp-dictionaries list                 list zia dlp-dictionaries
+  zia dlp-dictionaries get                  get zia dlp-dictionaries
+  zia dlp-edm-schemas list                  list zia dlp-edm-schemas
+  zia dlp-edm-schemas get                   get zia dlp-edm-schemas
+  zia dlp-idm-profile-lite list             list zia dlp-idm-profile-lite
+  zia dlp-idm-profile-lite get              get zia dlp-idm-profile-lite
+  zia dlp-idm-profiles list                 list zia dlp-idm-profiles
+  zia dlp-idm-profiles get                  get zia dlp-idm-profiles
+  zia dlp-web-rules list                    list zia dlp-web-rules
+  zia dlp-web-rules get                     get zia dlp-web-rules
+  zia dlp-icap-servers list                 list zia dlp-icap-servers
+  zia dlp-icap-servers get                  get zia dlp-icap-servers
+  zia dlp-incident-receiver-servers list    list zia dlp-incident-receiver-servers
+  zia dlp-incident-receiver-servers get     get zia dlp-incident-receiver-servers
+  zia dlp-notification-templates list       list zia dlp-notification-templates
+  zia dlp-notification-templates get        get zia dlp-notification-templates
+  zia c2c-incident-receivers list           list zia c2c-incident-receivers
+  zia c2c-incident-receivers get            get zia c2c-incident-receivers
+  zia risk-profiles list                    list zia risk-profiles
+  zia risk-profiles get                     get zia risk-profiles
+  zia nss-servers list                      list zia nss-servers
+  zia nss-servers get                       get zia nss-servers
+  zia nss-feeds list                        list zia nss-feeds
+  zia nss-feeds get                         get zia nss-feeds
+  zia file-type-rules list                  list zia file-type-rules
+  zia file-type-rules get                   get zia file-type-rules
+  zia sandbox-rules list                    list zia sandbox-rules
+  zia sandbox-rules get                     get zia sandbox-rules
+  zia firewall-dns-rules list               list zia firewall-dns-rules
+  zia firewall-dns-rules get                get zia firewall-dns-rules
+  zia custom-file-types list                list zia custom-file-types
+  zia custom-file-types get                 get zia custom-file-types
+  zia zpa-gateways list                     list zia zpa-gateways
+  zia zpa-gateways get                      get zia zpa-gateways
+  zia browser-isolation-profiles list       list zia browser-isolation-profiles
+  zia dlp-edm-schemas-lite list             list zia dlp-edm-schemas-lite
+  zia dc-exclusions list                    list zia dc-exclusions
+  zia sub-clouds list                       list zia sub-clouds
+  zia ipv6-config show                      show zia ipv6-config
+  zia ipv6-dns64-prefixes list              list zia ipv6-dns64-prefixes
+  zia ipv6-nat64-prefixes list              list zia ipv6-nat64-prefixes
+  zia pac-files list                        list zia pac-files
+  zia cloud-app-control list                list zia cloud-app-control
+  zia cloud-application-policy list         list zia cloud-application-policy
+  zia cloud-application-ssl-policy list     list zia cloud-application-ssl-policy
+  zia domain-profiles list                  list zia domain-profiles
+  zia casb-tombstone-templates list         list zia casb-tombstone-templates
+  zia casb-email-labels list                list zia casb-email-labels
+  zia casb-tenants list                     list zia casb-tenants
+  zia casb-dlp-rules list                   list zia casb-dlp-rules
+  zia casb-malware-rules list               list zia casb-malware-rules
+  zia browser-control-settings show         show zia browser-control-settings
+  zia supported-browser-versions list       list zia supported-browser-versions
+  zia ftp-control-policy show               show zia ftp-control-policy
+  zia remote-assistance show                show zia remote-assistance
+  zia admin-users list                      list zia admin-users
+  zia admin-users get                       get zia admin-users
+  zia admin-roles list                      list zia admin-roles
+  zia admin-roles get                       get zia admin-roles
+  zia email-profiles list                   list zia email-profiles
+  zia email-profiles get                    get zia email-profiles
+  zia advanced-settings show                show zia advanced-settings
+  zia advanced-threat-settings show         show zia advanced-threat-settings
+  zia mobile-threat-settings show           show zia mobile-threat-settings
+  zia sandbox-settings show                 show zia sandbox-settings
+  zia end-user-notification-settings show   show zia end-user-notification-settings
+  zia org-information show                  show zia org-information
+  zia atp-malware-policy show               show zia atp-malware-policy
+  zia atp-malware-settings show             show zia atp-malware-settings
+  zia atp-malware-inspection show           show zia atp-malware-inspection
+  zia atp-malware-protocols show            show zia atp-malware-protocols
+  zia malicious-urls show                   show zia malicious-urls
+  zia security-exceptions show              show zia security-exceptions
+  zia url-allow-list show                   show zia url-allow-list
+  zia url-deny-list show                    show zia url-deny-list
+  zia url-lookup                            look up URL categories for one or more URLs
+  zidentity groups list                     list zidentity groups
+  zidentity groups get                      get zidentity groups
+  zidentity users list                      list zidentity users
+  zidentity users get                       get zidentity users
+  zidentity resource-servers list           list zidentity resource-servers
+  zidentity resource-servers get            get zidentity resource-servers
+  zpa microtenants list                     list zpa microtenants
+  zpa microtenants get                      get zpa microtenants
+  zpa version-profiles list                 list zpa version-profiles
+  zpa client-types list                     list zpa client-types
+  zpa platforms list                        list zpa platforms
+  zpa isolation-profiles list               list zpa isolation-profiles
+  zpa branch-connectors list                list zpa branch-connectors
+  zpa user-portals list                     list zpa user-portals
+  zpa user-portals get                      get zpa user-portals
+  zpa user-portal-aups list                 list zpa user-portal-aups
+  zpa user-portal-aups get                  get zpa user-portal-aups
+  zpa user-portal-links list                list zpa user-portal-links
+  zpa user-portal-links get                 get zpa user-portal-links
+  zpa browser-access list                   list zpa browser-access
+  zpa browser-access get                    get zpa browser-access
+  zpa inspection-app-segments list          list zpa inspection-app-segments
+  zpa inspection-app-segments get           get zpa inspection-app-segments
+  zpa pra-app-segments list                 list zpa pra-app-segments
+  zpa pra-app-segments get                  get zpa pra-app-segments
+  zpa server-groups list                    list zpa server-groups
+  zpa server-groups get                     get zpa server-groups
+  zpa segment-groups list                   list zpa segment-groups
+  zpa segment-groups get                    get zpa segment-groups
+  zpa application-segments list             list zpa application-segments
+  zpa application-segments get              get zpa application-segments
+  zpa app-connectors list                   list zpa app-connectors
+  zpa app-connectors get                    get zpa app-connectors
+  zpa app-connector-groups list             list zpa app-connector-groups
+  zpa app-connector-groups get              get zpa app-connector-groups
+  zpa app-servers list                      list zpa app-servers
+  zpa app-servers get                       get zpa app-servers
+  zpa machine-groups list                   list zpa machine-groups
+  zpa machine-groups get                    get zpa machine-groups
+  zpa trusted-networks list                 list zpa trusted-networks
+  zpa trusted-networks get                  get zpa trusted-networks
+  zpa service-edge-groups list              list zpa service-edge-groups
+  zpa service-edge-groups get               get zpa service-edge-groups
+  zpa service-edges list                    list zpa service-edges
+  zpa service-edges get                     get zpa service-edges
+  zpa cloud-connector-groups list           list zpa cloud-connector-groups
+  zpa cloud-connector-groups get            get zpa cloud-connector-groups
+  zpa cloud-connectors list                 list zpa cloud-connectors
+  zpa posture-profiles list                 list zpa posture-profiles
+  zpa posture-profiles get                  get zpa posture-profiles
+  zpa cbi-zpa-profiles list                 list zpa cbi-zpa-profiles
+  zpa cbi-zpa-profiles get                  get zpa cbi-zpa-profiles
+  zpa c2c-ip-ranges list                    list zpa c2c-ip-ranges
+  zpa c2c-ip-ranges get                     get zpa c2c-ip-ranges
+  zpa config-overrides list                 list zpa config-overrides
+  ztw activation-status show                show ztw activation-status
+  ztw workload-groups list                  list ztw workload-groups
+  ztw workload-groups get                   get ztw workload-groups
+  ztw public-cloud-accounts list            list ztw public-cloud-accounts
+  ztw public-cloud-accounts get             get ztw public-cloud-accounts
+  ztw dns-gateways list                     list ztw dns-gateways
+  ztw dns-gateways get                      get ztw dns-gateways
+  ztw forwarding-gateways list              list ztw forwarding-gateways
+  ztw forwarding-gateways get               get ztw forwarding-gateways
+  ztw ec-groups list                        list ztw ec-groups
+  ztw ec-groups get                         get ztw ec-groups
+  ztw ip-source-groups list                 list ztw ip-source-groups
+  ztw ip-source-groups get                  get ztw ip-source-groups
+  ztw ip-destination-groups list            list ztw ip-destination-groups
+  ztw ip-destination-groups get             get ztw ip-destination-groups
+  ztw ip-groups list                        list ztw ip-groups
+  ztw ip-groups get                         get ztw ip-groups
+  ztw network-services list                 list ztw network-services
+  ztw network-services get                  get ztw network-services
+  ztw network-service-groups list           list ztw network-service-groups
+  ztw network-service-groups get            get ztw network-service-groups
+  ztw admin-users list                      list ztw admin-users
+  ztw admin-users get                       get ztw admin-users
+  ztw admin-roles list                      list ztw admin-roles
+  ztw admin-roles get                       get ztw admin-roles
+  ztw locations list                        list ztw locations
+  ztw locations get                         get ztw locations
+  ztw location-templates list               list ztw location-templates
+  ztw location-templates get                get ztw location-templates
+  ztw account-groups list                   list ztw account-groups
+  ztw account-groups get                    get ztw account-groups
+  ztw public-cloud-info list                list ztw public-cloud-info
+  ztw public-cloud-info get                 get ztw public-cloud-info
+  ztw zpa-application-segments list         list ztw zpa-application-segments
+  ztw forwarding-rules list                 list ztw forwarding-rules
+  ztw forwarding-rules get                  get ztw forwarding-rules
+  ztw traffic-dns-rules list                list ztw traffic-dns-rules
+  ztw traffic-dns-rules get                 get ztw traffic-dns-rules
+  ztw traffic-log-rules list                list ztw traffic-log-rules
+  ztw traffic-log-rules get                 get ztw traffic-log-rules
+
+Catalog: 5 products, 165 resources
+  zia: 102 resource(s)
+  zpa: 28 resource(s)
+  ztw: 21 resource(s)
+  zcc: 11 resource(s)
+  zidentity: 3 resource(s)
+
+Exit codes (8):
+  0  ok                         success
+  1  internal                   unexpected internal error (bug or panic)
+  2  usage                      invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)
+  3  missing_credentials        credentials not configured or incomplete
+  4  not_found                  resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)
+  5  live_access_failed         Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable [retryable]
+  6  partial_dump               dump completed but some resources failed; see errors.ndjson in the output directory
+  7  drift_detected             drift check found differences between two snapshots

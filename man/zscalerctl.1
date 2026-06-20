@@ -149,6 +149,11 @@ Render the active, secret-safe configuration.
 .B completion bash|zsh|fish|powershell
 Print a shell completion script.
 .TP
+.B introspect
+Print a machine-readable JSON map of all commands, flags, resources, and exit
+codes. Config-free and network-free; safe to run without credentials. Use
+\fB\-\-format pretty\fR for a human-readable indented tree.
+.TP
 .B version
 Print version, commit, and build date.
 .TP

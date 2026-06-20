@@ -26,7 +26,7 @@ func completionShellNames() string {
 // drift gate and agent-docs drift gate. It must stay in sync with the actual
 // command tree.
 func completionCommandNames() []string {
-	commands := []string{"doctor", "auth", "config", "schema", "dump", "diff", "completion", "version", "help"}
+	commands := []string{"doctor", "auth", "config", "schema", "dump", "diff", "completion", "version", "help", "introspect"}
 	commands = append(commands, productNames(knownProducts())...)
 	sort.Strings(commands)
 	return commands

@@ -43,3 +43,8 @@ func ProductCmdCompletions(t *testing.T, productName string, args []string) ([]s
 func KnownProductNames(_ *App) []string {
 	return productNames(knownProducts())
 }
+
+// ExportedGlobalFlagDefs exposes the internal globalFlagDefs slice so the
+// cli_test package can assert that IntrospectTree returns exactly one GlobalFlag
+// entry per definition without duplicating the count.
+var ExportedGlobalFlagDefs = globalFlagDefs

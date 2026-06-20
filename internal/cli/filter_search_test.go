@@ -281,6 +281,7 @@ func TestFieldsIsUsageErrorOutsideResourceReads(t *testing.T) {
 		{name: "fields on version", args: []string{"--fields", "name", "version"}},
 		{name: "fields on dump", args: []string{"--fields", "name", "dump", "--out", "ignored"}},
 		{name: "fields on resource without operation", args: []string{"--fields", "name", "zia", "locations"}},
+		{name: "fields on introspect", args: []string{"--fields", "name", "introspect"}},
 	}
 	for _, tt := range tests {
 		tt := tt

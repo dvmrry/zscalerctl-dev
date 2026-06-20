@@ -10,6 +10,7 @@
   auth status
   config show
   config init
+  introspect
   schema list
   dump
   diff

@@ -159,6 +159,22 @@ var (
 	reTimeToken = regexp.MustCompile(`time=\S+`)
 )
 
+// reIntrospectFieldArrays matches the per-field "fields" and "output_fields"
+// arrays in introspect JSON output. [^\]]* matches newlines (it is any character
+// except ']') so the pattern works for both single-line and multi-line arrays;
+// the arrays contain only simple string elements with no nested brackets, so no
+// look-ahead for nested structure is needed.
+var reIntrospectFieldArrays = regexp.MustCompile(`"(fields|output_fields)": \[[^\]]*\]`)
+
+// collapseIntrospectFieldArrays replaces the per-field "fields" and
+// "output_fields" arrays in introspect output with a stable placeholder, so the
+// surface golden captures command/flag/exit-code structure and catalog
+// products/resources/ops without freezing the (separately gated) per-field
+// catalog data. The catalog field content is asserted by TestIntrospectAndDocsAgree.
+func collapseIntrospectFieldArrays(s string) string {
+	return reIntrospectFieldArrays.ReplaceAllString(s, `"$1": ["<omitted>"]`)
+}
+
 // runCase executes one golden case against the pre-built binary.
 // It returns scrubbed stdout, scrubbed stderr, and the actual exit code.
 func runCase(t *testing.T, homeDir string, args []string, extraEnv []string) (stdout, stderr string, code int) {
@@ -479,6 +495,29 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "bare-parent-usage-error",
 		},
+		// ── Task 1.4: introspect command ──────────────────────────────────────────
+		// introspect (default JSON; stdout is not a TTY in the hermetic env so
+		// FormatAuto resolves to JSON — the machine-first default).
+		{
+			name:     "introspect",
+			args:     []string{"introspect"},
+			wantCode: 0,
+			note:     "json-surface-map",
+		},
+		// introspect --format pretty: human-readable tree renderer.
+		{
+			name:     "introspect-pretty",
+			args:     []string{"--format", "pretty", "introspect"},
+			wantCode: 0,
+			note:     "human-tree",
+		},
+		// introspect --format ndjson: rejected (single document, not a stream).
+		{
+			name:     "introspect-ndjson-rejected",
+			args:     []string{"--format", "ndjson", "introspect"},
+			wantCode: 2,
+			note:     "format-allowlist",
+		},
 	}
 
 	for _, tc := range cases {
@@ -492,6 +531,15 @@ func TestGoldenSurface(t *testing.T) {
 			}
 
 			stdout, stderr, code := runCase(t, caseHome, tc.args, tc.extraEnv)
+
+			// Collapse per-field arrays in introspect JSON output so the surface golden
+			// captures CLI structure (commands/flags/exit-codes/catalog products+ops)
+			// without freezing per-field catalog data that is separately gated by
+			// TestIntrospectAndDocsAgree. Apply only to introspect cases; no other
+			// goldens are affected.
+			if strings.HasPrefix(tc.name, "introspect") {
+				stdout = collapseIntrospectFieldArrays(stdout)
+			}
 
 			// Exit code is always asserted in Go — never overwritten by -update.
 			if code != tc.wantCode {
@@ -823,6 +871,7 @@ func TestCommandTreeInventory(t *testing.T) {
 		"auth status",
 		"config show",
 		"config init",
+		"introspect",
 		"schema list",
 		"dump",
 		"diff",
@@ -924,6 +973,19 @@ func TestScrubPseudoVersion(t *testing.T) {
 			name:  "no-base-tag in json",
 			input: `"version": "v0.0.0-20260620152824-f3a2eda1c513"`,
 			want:  `"version": "<VERSION>"`,
+		},
+		{
+			// cli_version is the JSON key used by introspect output; verify it is
+			// scrubbed in both pseudo-version forms so introspect.stdout.golden is
+			// byte-stable across machines with and without a base tag.
+			name:  "cli_version no-base-tag in json",
+			input: `"cli_version": "v0.0.0-20260620152824-f3a2eda1c513"`,
+			want:  `"cli_version": "<VERSION>"`,
+		},
+		{
+			name:  "cli_version with-base-tag in json",
+			input: `"cli_version": "v0.68.1-0.20260620073434-79678e7c1f63"`,
+			want:  `"cli_version": "<VERSION>"`,
 		},
 		{
 			name:  "plain semver unchanged by pseudo-version pass",
