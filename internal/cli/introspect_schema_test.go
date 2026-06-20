@@ -127,6 +127,86 @@ func TestIntrospectSchemaRequiredPresentInOutput(t *testing.T) {
 	}
 }
 
+// TestIntrospectSchemaRequiredDepth checks that every name in each schema
+// "required" array (top level and each $defs entry) is an actual JSON field of
+// the corresponding struct. This catches a required entry that references a
+// non-existent field name (e.g. a rename where required was not updated).
+func TestIntrospectSchemaRequiredDepth(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		typ     reflect.Type
+		reqPath []string // JSON pointer path to the object that has "required"
+	}{
+		{"IntrospectDoc", reflect.TypeOf(cli.IntrospectDoc{}), []string{}},
+		{"commandDoc", reflect.TypeOf(cli.CommandDoc{}), []string{"$defs", "commandDoc"}},
+		{"flagDoc", reflect.TypeOf(cli.FlagDoc{}), []string{"$defs", "flagDoc"}},
+		{"argsDoc", reflect.TypeOf(cli.ArgsDoc{}), []string{"$defs", "argsDoc"}},
+		{"catalogDoc", reflect.TypeOf(cli.CatalogDoc{}), []string{"$defs", "catalogDoc"}},
+		{"resourceDoc", reflect.TypeOf(cli.ResourceDoc{}), []string{"$defs", "resourceDoc"}},
+		{"exitCodeDoc", reflect.TypeOf(cli.ExitCodeDoc{}), []string{"$defs", "exitCodeDoc"}},
+	}
+
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect.schema.json")
+	body, err := os.ReadFile(schemaFile)
+	if err != nil {
+		t.Fatalf("read introspect.schema.json: %v", err)
+	}
+	var schemaDoc map[string]any
+	if err := json.Unmarshal(body, &schemaDoc); err != nil {
+		t.Fatalf("parse introspect.schema.json: %v", err)
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Navigate to the target object in the schema.
+			var cur any = schemaDoc
+			for _, seg := range tc.reqPath {
+				m, ok := cur.(map[string]any)
+				if !ok {
+					t.Fatalf("introspect.schema.json: %q is not an object while navigating %v", seg, tc.reqPath)
+				}
+				next, ok := m[seg]
+				if !ok {
+					t.Fatalf("introspect.schema.json: missing %q while navigating %v", seg, tc.reqPath)
+				}
+				cur = next
+			}
+			obj, ok := cur.(map[string]any)
+			if !ok {
+				t.Fatalf("introspect.schema.json: node at %v is not an object", tc.reqPath)
+			}
+
+			// Extract the required array; skip if absent (no required fields is fine).
+			rawReq, ok := obj["required"].([]any)
+			if !ok {
+				return
+			}
+
+			// Build the set of actual JSON field names from the struct.
+			structFields := make(map[string]bool)
+			for _, name := range introspectJSONFieldNames(tc.typ) {
+				structFields[name] = true
+			}
+
+			for _, v := range rawReq {
+				req, ok := v.(string)
+				if !ok {
+					t.Errorf("%s: non-string entry in required: %v", tc.name, v)
+					continue
+				}
+				if !structFields[req] {
+					t.Errorf("%s: required field %q does not exist as a JSON field on %s", tc.name, req, tc.typ.Name())
+				}
+			}
+		})
+	}
+}
+
 // ── DRY gate ─────────────────────────────────────────────────────────────────
 
 // TestIntrospectAndDocsAgree verifies three contracts:

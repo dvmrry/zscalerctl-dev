@@ -891,6 +891,14 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 		Use:                urlLookupCommandName + " <url> [url...]",
 		Short:              "look up URL categories for one or more URLs",
 		DisableFlagParsing: true,
+		Annotations: map[string]string{
+			// Use suffix "<url> [url...]" would be inferred as arbitrary by
+			// buildArgsDoc; the annotation makes the real constraint explicit.
+			"introspect/args-policy": "at_least:1",
+			// url-lookup emits structured JSON; record the field order so
+			// buildSingleCommandDoc can populate OutputFields.
+			"introspect/output-fields": strings.Join(urlLookupFieldOrder, ","),
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// DisableFlagParsing means --help arrives as a raw arg; handle it
 			// before runURLLookup's "-" check fires and rejects it.
@@ -1317,6 +1325,11 @@ func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <old-dump-dir> <new-dump-dir>",
 		Short: "compare two dump directories and report configuration drift",
+		Annotations: map[string]string{
+			// Exactly 2 positionals required; Use suffix alone is not enough for
+			// buildArgsDoc to infer this — the annotation makes it explicit.
+			"introspect/args-policy": "exact:2",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject --format ndjson first (mirrors legacy path, before any work).
 			if opts.format == output.FormatNDJSON {

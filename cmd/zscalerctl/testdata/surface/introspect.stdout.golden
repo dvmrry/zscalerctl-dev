@@ -156,7 +156,6 @@
     {
       "path": "completion",
       "short": "Generate the autocompletion script for the specified shell",
-      "long": "Generate the autocompletion script for zscalerctl for the specified shell.\nSee each sub-command's help for details on how to use the generated script.",
       "aliases": [],
       "hidden": false,
       "mutating": false,
@@ -183,7 +182,6 @@
     {
       "path": "completion bash",
       "short": "Generate the autocompletion script for bash",
-      "long": "Generate the autocompletion script for the bash shell.\n\nThis script depends on the 'bash-completion' package.\nIf it is not installed already, you can install it via your OS's package manager.\n\nTo load completions in your current shell session:<REDACTED:SECRET> \u003c(zscalerctl completion bash)\n\nTo load completions for every new session, execute once:\n\n#### Linux:\n\n\tzscalerctl completion bash \u003e /etc/bash_completion.d/zscalerctl\n\n#### macOS:\n\n\tzscalerctl completion bash \u003e $(brew --prefix)/etc/bash_completion.d/zscalerctl\n\nYou will need to start a new shell for this setup to take effect.",
       "aliases": [],
       "hidden": false,
       "mutating": false,
@@ -217,7 +215,6 @@
     {
       "path": "completion fish",
       "short": "Generate the autocompletion script for fish",
-      "long": "Generate the autocompletion script for the fish shell.\n\nTo load completions in your current shell session:<REDACTED:SECRET> completion fish | source\n\nTo load completions for every new session, execute once:\n\n\tzscalerctl completion fish \u003e ~/.config/fish/completions/zscalerctl.fish\n\nYou will need to start a new shell for this setup to take effect.",
       "aliases": [],
       "hidden": false,
       "mutating": false,
@@ -251,7 +248,6 @@
     {
       "path": "completion powershell",
       "short": "Generate the autocompletion script for powershell",
-      "long": "Generate the autocompletion script for powershell.\n\nTo load completions in your current shell session:<REDACTED:SECRET> completion powershell | Out-String | Invoke-Expression\n\nTo load completions for every new session, add the output of the above command\nto your powershell profile.",
       "aliases": [],
       "hidden": false,
       "mutating": false,
@@ -285,7 +281,6 @@
     {
       "path": "completion zsh",
       "short": "Generate the autocompletion script for zsh",
-      "long": "Generate the autocompletion script for the zsh shell.\n\nIf shell completion is not already enabled in your environment you will need\nto enable it.  You can execute the following once:\n\n\techo \"autoload -U compinit; compinit\" \u003e\u003e ~/.zshrc\n\nTo load completions in your current shell session:<REDACTED:SECRET> \u003c(zscalerctl completion zsh)\n\nTo load completions for every new session, execute once:\n\n#### Linux:\n\n\tzscalerctl completion zsh \u003e \"${fpath[1]}/_zscalerctl\"\n\n#### macOS:\n\n\tzscalerctl completion zsh \u003e $(brew --prefix)/share/zsh/site-functions/_zscalerctl\n\nYou will need to start a new shell for this setup to take effect.",
       "aliases": [],
       "hidden": false,
       "mutating": false,
@@ -408,7 +403,8 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "arbitrary"
+        "policy": "exact",
+        "n": 2
       },
       "flags": [
         {
@@ -5468,7 +5464,8 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "arbitrary"
+        "policy": "at_least",
+        "n": 1
       },
       "flags": [],
       "inherited_flags": [
@@ -5485,7 +5482,8 @@
         "redaction",
         "search",
         "timeout"
-      ]
+      ],
+      "output_fields": ["<omitted>"]
     },
     {
       "path": "zidentity groups list",
@@ -9550,7 +9548,7 @@
       "code": 2,
       "kind": "usage",
       "retryable": false,
-      "description": "invalid command syntax, flag, or argument"
+      "description": "invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"
     },
     {
       "code": 3,

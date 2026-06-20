@@ -335,7 +335,7 @@ Catalog: 5 products, 165 resources
 Exit codes (8):
   0  ok                         success
   1  internal                   unexpected internal error (bug or panic)
-  2  usage                      invalid command syntax, flag, or argument
+  2  usage                      invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)
   3  missing_credentials        credentials not configured or incomplete
   4  not_found                  resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)
   5  live_access_failed         Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable [retryable]

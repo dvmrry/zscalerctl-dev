@@ -246,7 +246,7 @@ func buildExitCodes() []ExitCodeDoc {
 		{Code: 1, Kind: "internal", Retryable: false,
 			Description: "unexpected internal error (bug or panic)"},
 		{Code: 2, Kind: "usage", Retryable: false,
-			Description: "invalid command syntax, flag, or argument"},
+			Description: "invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"},
 		{Code: 3, Kind: "missing_credentials", Retryable: false,
 			Description: "credentials not configured or incomplete"},
 		{Code: 4, Kind: "not_found", Retryable: false,
@@ -266,10 +266,25 @@ func buildExitCodes() []ExitCodeDoc {
 // (zia, zpa, etc.) are handled separately by the caller; this function is
 // only called for real leaf/branch commands that should appear as-is.
 func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
+	// Fix #3: completion subcommand Long prose triggers the redactor (it
+	// contains "source <(..." which matches the secret-assignment pattern).
+	// The shell-setup instructions are not useful to agents; suppress Long for
+	// any command whose path starts with "completion".
+	longText := strings.TrimSpace(cmd.Long)
+	if strings.HasPrefix(path, "completion") {
+		longText = ""
+	}
+
+	// Fix #8: populate OutputFields for commands that annotate their fields.
+	var outputFields []string
+	if ann, ok := cmd.Annotations["introspect/output-fields"]; ok && ann != "" {
+		outputFields = strings.Split(ann, ",")
+	}
+
 	doc := CommandDoc{
 		Path:           path,
 		Short:          cmd.Short,
-		Long:           strings.TrimSpace(cmd.Long),
+		Long:           longText,
 		Aliases:        cmd.Aliases,
 		Hidden:         cmd.Hidden,
 		Deprecated:     cmd.Deprecated,
@@ -277,7 +292,7 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 		Args:           buildArgsDoc(cmd),
 		Flags:          buildLocalFlagDocs(cmd),
 		InheritedFlags: buildInheritedFlagNames(cmd),
-		OutputFields:   nil, // non-product commands have no catalog output fields
+		OutputFields:   outputFields,
 	}
 	if doc.Aliases == nil {
 		doc.Aliases = []string{}
@@ -334,8 +349,12 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 	return docs
 }
 
-// buildArgsDoc derives an ArgsDoc from the command's ValidArgs and Use string.
-// The policy is best-effort: "none", "exact", "range", or "arbitrary".
+// buildArgsDoc derives an ArgsDoc from the command's ValidArgs, the
+// "introspect/args-policy" annotation, and the Use string (in that priority).
+//
+// Annotation format: "exact:N" or "at_least:N" (e.g. "exact:2", "at_least:1").
+// When the annotation is present it overrides the Use-suffix heuristic entirely.
+// The heuristic remains the fallback for commands with no annotation.
 func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 	if len(cmd.ValidArgs) > 0 {
 		// ValidArgs is the set of valid values for ONE positional argument, so
@@ -344,6 +363,12 @@ func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 			Policy:      "exact",
 			N:           1,
 			ValidValues: cmd.ValidArgs,
+		}
+	}
+	// Explicit annotation overrides the Use-suffix heuristic.
+	if ann, ok := cmd.Annotations["introspect/args-policy"]; ok {
+		if doc, parsed := parseArgsPolicyAnnotation(ann); parsed {
+			return doc
 		}
 	}
 	// Derive from Use suffix — look for common arg patterns.
@@ -357,6 +382,26 @@ func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 	default:
 		return ArgsDoc{Policy: "arbitrary"}
 	}
+}
+
+// parseArgsPolicyAnnotation parses an "introspect/args-policy" annotation value
+// of the form "exact:N" or "at_least:N" into an ArgsDoc. Returns (doc, true) on
+// success, (ArgsDoc{}, false) if the annotation is not in a recognised format.
+func parseArgsPolicyAnnotation(ann string) (ArgsDoc, bool) {
+	idx := strings.LastIndex(ann, ":")
+	if idx < 0 {
+		return ArgsDoc{}, false
+	}
+	policy := ann[:idx]
+	var n int
+	if _, err := fmt.Sscanf(ann[idx+1:], "%d", &n); err != nil {
+		return ArgsDoc{}, false
+	}
+	switch policy {
+	case "exact", "at_least":
+		return ArgsDoc{Policy: policy, N: n}, true
+	}
+	return ArgsDoc{}, false
 }
 
 // usageSuffixIntrospect extracts the argument portion from cmd.Use (everything

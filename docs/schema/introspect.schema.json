@@ -146,8 +146,8 @@
       "properties": {
         "policy": {
           "type": "string",
-          "enum": ["none", "exact", "range", "arbitrary"],
-          "description": "Argument-count policy: none (no args), exact (exactly N), range (0–N), arbitrary (any number)."
+          "enum": ["none", "exact", "at_least", "range", "arbitrary"],
+          "description": "Argument-count policy: none (no args), exact (exactly N), at_least (at least N), range (0–N), arbitrary (any number)."
         },
         "n": {
           "type": "integer",

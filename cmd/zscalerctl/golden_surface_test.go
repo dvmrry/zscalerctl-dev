@@ -871,6 +871,7 @@ func TestCommandTreeInventory(t *testing.T) {
 		"auth status",
 		"config show",
 		"config init",
+		"introspect",
 		"schema list",
 		"dump",
 		"diff",
