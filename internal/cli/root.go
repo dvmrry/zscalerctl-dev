@@ -91,17 +91,6 @@ func newRootCmd(a *App) *cobra.Command {
 		return UsageError{Message: err.Error()}
 	})
 
-	// Disable the auto-generated "help" subcommand. We install a hidden no-op in
-	// its place so Cobra's internal AddCommand("help") guard does not re-add one.
-	// This avoids a conflict with the legacy "help" token handling in App.Run.
-	// The --help FLAG is NOT affected by this; Cobra adds it separately and it
-	// remains fully functional.
-	root.SetHelpCommand(&cobra.Command{
-		Use:    "no-op-help",
-		Hidden: true,
-		Run:    func(*cobra.Command, []string) {},
-	})
-
 	// Register the mirrored global persistent flags so --help output and shell
 	// completion see them. Cobra never parses these; App.Run strips globals before
 	// dispatching via splitGlobalArgs.

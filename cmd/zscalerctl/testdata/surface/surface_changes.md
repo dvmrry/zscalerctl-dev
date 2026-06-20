@@ -55,6 +55,7 @@ Column definitions:
 | `introspect` | (none — new case) | JSON surface map: `$schema`, `introspect_version`, `cli_version` (`<VERSION>` after scrub), `read_only`, `global_flags`, `commands`, `catalog`, `exit_codes`. FormatAuto resolves to JSON in hermetic (non-TTY) env. Config-free: no credentials loaded. Exit code 0. | introspect command frozen (Task 1.4); `cli_version` is scrubbed by `rePseudoVersion` (verified by `TestScrubPseudoVersion`). | `new-surface` |
 | `introspect-pretty` | (none — new case) | Human-readable tree: `zscalerctl CLI surface map` header + global-flags block + commands block + catalog summary + exit-codes block. `version: <VERSION>` scrubbed. Exit code 0. | `--format pretty` path of introspect frozen (Task 1.4). | `new-surface` |
 | `introspect-ndjson-rejected` | (none — new case) | `{"error":{"kind":"usage","message":"introspect does not support ndjson output yet"}}` on stderr; stdout empty. Exit code 2. | Mirrors `version-ndjson-rejected`; introspect is a single document, not a record stream. | `new-surface` |
+| `help` | Legacy `writeUsage` printed a custom global usage synopsis; `help` was not a real command in the tree | Cobra-native `help [command]` with standard Cobra help output; `zscalerctl help` lists `Available Commands` and `zscalerctl help <command>` works; `help` now appears in `introspect` and `docs/cli/zscalerctl.md` | Remove the hidden no-op help override and legacy `help` token dispatch; `help` is now the canonical Cobra help command. | `command-added` |
 
 ---
 

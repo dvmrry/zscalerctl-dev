@@ -544,8 +544,12 @@ func TestUsageListsKnownProducts(t *testing.T) {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
 	for _, want := range []string{
-		"products: zia",
-		"zia <resource> list|get|show",
+		"Available Commands",
+		"zia",
+		"zpa",
+		"ztw",
+		"zcc",
+		"zidentity",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
@@ -1121,8 +1125,14 @@ func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
-	if !strings.Contains(out.String(), "completion bash|zsh|fish|powershell") {
-		t.Errorf("App.Run(help) stdout = %q, want completion usage", out.String())
+	for _, want := range []string{"Available Commands", "completion"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
+		}
+	}
+	forbidden := "/path/that/must/not-be-read"
+	if strings.Contains(out.String(), forbidden) {
+		t.Errorf("App.Run(help) stdout = %q, must not contain %q", out.String(), forbidden)
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(help) stderr = %q, want empty", errOut.String())

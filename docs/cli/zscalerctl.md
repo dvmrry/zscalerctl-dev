@@ -253,6 +253,17 @@ zscalerctl dump
 | `--products` | `string` | `—` | comma-separated products: zia,zpa |
 | `--resources` | `string` | `—` | comma-separated resources: locations or zia/locations |
 
+### help
+
+Help about any command
+
+```
+zscalerctl help [command]
+```
+
+Help provides help for any command in the application.
+Simply type zscalerctl help [path to command] for full details.
+
 ### introspect
 
 print a machine-readable map of all commands, flags, and resources (JSON)

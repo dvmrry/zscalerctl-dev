@@ -324,13 +324,6 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
 	}
-	// "help" without a migrated command: show global usage. Any other unknown
-	// token produces an error. All runnable commands are now migrated (isMigrated
-	// above) so there is no reachable fallthrough path.
-	if rest[0] == "help" {
-		a.writeUsage(a.out)
-		return nil
-	}
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0])}
 }
@@ -690,7 +683,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect", "help":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -707,6 +700,7 @@ func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}
+	root.InitDefaultHelpCmd()
 	return root
 }
 
