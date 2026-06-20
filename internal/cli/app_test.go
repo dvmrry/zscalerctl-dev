@@ -1113,6 +1113,77 @@ func TestSchemaListJSONIncludesGetKeyForGetResources(t *testing.T) {
 	}
 }
 
+// noopReader is a ResourceReader stub whose methods return empty results and
+// nil errors. It is injected into an App with an empty catalog to prove the
+// schema-list empty-catalog branch never reaches the reader.
+type noopReader struct{}
+
+func (noopReader) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	return nil, nil
+}
+func (noopReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, nil
+}
+func (noopReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, nil
+}
+
+// TestSchemaListEmptyCatalog covers the empty-catalog branch of runSchema, a
+// known coverage gap: an explicit empty (non-nil) ResourceCatalog is injected
+// via NewWithOptions so resourceCatalog() returns zero entries.
+//
+//   - --format table: the sentinel "no resources enabled yet" text is emitted.
+//   - --format json: an empty array "[]" is emitted.
+//
+// Neither path must error or touch the reader.
+func TestSchemaListEmptyCatalog(t *testing.T) {
+	t.Parallel()
+
+	t.Run("table", func(t *testing.T) {
+		t.Parallel()
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+			Catalog: resources.ResourceCatalog{},
+			Reader:  noopReader{},
+		})
+		if err := app.Run(context.Background(), []string{"--format", "table", "schema", "list"}); err != nil {
+			t.Fatalf("App.Run(schema list table) empty-catalog error = %v, want nil", err)
+		}
+		if got := out.String(); !strings.Contains(got, "no resources enabled yet") {
+			t.Errorf("schema list table empty-catalog stdout = %q, want sentinel \"no resources enabled yet\"", got)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("schema list table empty-catalog stderr = %q, want empty", errOut.String())
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+			Catalog: resources.ResourceCatalog{},
+			Reader:  noopReader{},
+		})
+		if err := app.Run(context.Background(), []string{"--format", "json", "schema", "list"}); err != nil {
+			t.Fatalf("App.Run(schema list json) empty-catalog error = %v, want nil", err)
+		}
+		var specs []json.RawMessage
+		if err := json.Unmarshal(out.Bytes(), &specs); err != nil {
+			t.Fatalf("json.Unmarshal(schema list json) error = %v\noutput: %s", err, out.String())
+		}
+		if len(specs) != 0 {
+			t.Errorf("schema list json empty-catalog: got %d entries, want 0 (output: %s)", len(specs), out.String())
+		}
+		// The renderer must emit a literal empty array, not "null".
+		if got := strings.TrimSpace(out.String()); got != "[]" {
+			t.Errorf("schema list json empty-catalog stdout = %q, want \"[]\"", got)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("schema list json empty-catalog stderr = %q, want empty", errOut.String())
+		}
+	})
+}
+
 func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	t.Parallel()
 

@@ -38,6 +38,11 @@ import (
 const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json"
 
 // IntrospectDoc is the top-level document returned by IntrospectTree.
+//
+// ReadOnly is tenant-scoped: `read_only: true` means the CLI never mutates
+// the Zscaler TENANT (read-only API); individual commands may still have
+// LOCAL side effects (e.g. `config init` writes a local config file — see
+// per-command `mutating`).
 type IntrospectDoc struct {
 	Schema            string        `json:"$schema"`
 	IntrospectVersion string        `json:"introspect_version"`
@@ -145,10 +150,13 @@ func IntrospectTree(a *App) IntrospectDoc {
 		Schema:            schemaURL,
 		IntrospectVersion: "1",
 		CLIVersion:        "",
-		ReadOnly:          true,
-		GlobalFlags:       buildGlobalFlags(),
-		Catalog:           buildCatalog(),
-		ExitCodes:         buildExitCodes(),
+		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant
+		// (read-only API). Local side effects (e.g. config init writing a
+		// local file) are flagged per-command via `mutating`.
+		ReadOnly:    true,
+		GlobalFlags: buildGlobalFlags(),
+		Catalog:     buildCatalog(),
+		ExitCodes:   buildExitCodes(),
 	}
 
 	// WalkCobraTree drives the real-command enumeration in depth-first,

@@ -22,7 +22,7 @@
     },
     "read_only": {
       "type": "boolean",
-      "description": "True when every command in this CLI surface is read-only (no mutations). Currently always true."
+      "description": "Tenant-scoped guarantee: true means the CLI never mutates the Zscaler tenant (read-only API). Individual commands may still have LOCAL side effects (e.g. config init writes a local config file); see per-command `mutating`. Currently always true."
     },
     "global_flags": {
       "type": "array",
@@ -78,7 +78,7 @@
         },
         "mutating": {
           "type": "boolean",
-          "description": "Whether the command modifies state. Currently always false (CLI is read-only)."
+          "description": "Whether the command has any side effects. Most commands are non-mutating (read-only tenant access). A command with LOCAL side effects (e.g. config init writes a local config file) is marked true; this never implies tenant mutation — the CLI-wide read_only guarantee is tenant-scoped."
         },
         "args": {
           "$ref": "#/$defs/argsDoc",

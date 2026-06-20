@@ -32,10 +32,37 @@ func TestIntrospectTree(t *testing.T) {
 		t.Errorf("CLIVersion = %q, want empty (set by command, not introspectTree)", doc.CLIVersion)
 	}
 
-	// Every command must be non-mutating (all ops are read-only today).
-	for _, cmd := range doc.Commands {
-		if cmd.Mutating {
-			t.Errorf("command %q has Mutating=true but CLI is read-only", cmd.Path)
+	// Per-command `mutating` is the de-tautologized contract:
+	//   - config init writes a LOCAL config file → Mutating must be true.
+	//   - read-only commands (version, a product read like zia locations list)
+	//     → Mutating must be false.
+	// The CLI-wide read_only guarantee is tenant-scoped; `mutating` flags
+	// local side effects, not tenant mutation.
+	findByPath := func(path string) *cli.CommandDoc {
+		for i := range doc.Commands {
+			if doc.Commands[i].Path == path {
+				return &doc.Commands[i]
+			}
+		}
+		return nil
+	}
+
+	configInit := findByPath("config init")
+	if configInit == nil {
+		t.Fatal("command \"config init\" not found in doc.Commands")
+	}
+	if !configInit.Mutating {
+		t.Errorf("config init: Mutating = false, want true (writes a local config file)")
+	}
+
+	for _, path := range []string{"version", "zia locations list"} {
+		c := findByPath(path)
+		if c == nil {
+			t.Errorf("command %q not found in doc.Commands", path)
+			continue
+		}
+		if c.Mutating {
+			t.Errorf("command %q: Mutating = true, want false (read-only)", path)
 		}
 	}
 

@@ -50,6 +50,12 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "write a starter config file with owner-only permissions",
+		// config init writes a LOCAL config file (os.MkdirAll +
+		// fileperm.WriteOwnerOnly); it never mutates the Zscaler tenant. The
+		// introspect/mutating annotation marks the local side effect so the
+		// surface map reports it accurately — the CLI-wide read_only guarantee
+		// is tenant-scoped, not "no side effects at all".
+		Annotations: map[string]string{"introspect/mutating": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject extra positional args before any filesystem work.
 			if cmd.Flags().NArg() != 0 {

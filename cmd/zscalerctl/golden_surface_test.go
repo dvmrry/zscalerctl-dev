@@ -116,7 +116,7 @@ func scrub(s, homeDir, binPath string) string {
 	// Safe because reGoVersion already handled "go<version>" above.
 	s = reSemver.ReplaceAllString(s, "<VERSION>")
 	// "dev" version string (the fallback when built without ldflags)
-	s = reDevVersion.ReplaceAllString(s, "${1}${2}<VERSION>${3}")
+	s = reDevVersion.ReplaceAllString(s, "${1}${2}${4}<VERSION>${3}")
 	// Git commit SHA (7-40 hex chars)
 	s = reCommit.ReplaceAllString(s, "${1}<COMMIT>")
 	// Build date (ISO-8601 or RFC3339 timestamps)
@@ -150,7 +150,10 @@ var (
 	//        (group 2) and closing quote (group 3) so both are preserved in the
 	//        replacement. Handles both "version" (version --format json) and
 	//        "cli_version" (introspect output).
-	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("(?:cli_)?version":\s*")dev(")`)
+	// arm3: (version:\s+)dev\b captures the introspect --format pretty tree
+	//        label "version:   " (group 4, lowercase with colon) — the human
+	//        tree renderer emits `  version:   <cli_version>\n`.
+	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("(?:cli_)?version":\s*")dev(")|(version:\s+)dev\b`)
 	// Git commit SHA: 7-40 hex digits following "Commit" label or "commit" JSON key.
 	// Group 1 captures the label/key prefix (e.g. "Commit    " or `"commit": "`);
 	// group 2 is consumed (the hex SHA). Replacement restores group 1.
@@ -1061,10 +1064,18 @@ func TestScrubDevVersion(t *testing.T) {
 			want:  `"cli_version": "<VERSION>"`,
 		},
 		{
-			// Multi-line: both arms in one string, label whitespace preserved.
-			name:  "multiline table and json",
-			input: "Version   dev\n\"version\": \"dev\"\n\"cli_version\": \"dev\"",
-			want:  "Version   <VERSION>\n\"version\": \"<VERSION>\"\n\"cli_version\": \"<VERSION>\"",
+			// introspect --format pretty tree: lowercase "version:" label with
+			// colon (distinct from the table "Version   " label). The human
+			// tree renderer emits `  version:   <cli_version>\n`.
+			name:  "pretty tree form",
+			input: "  version:   dev",
+			want:  "  version:   <VERSION>",
+		},
+		{
+			// Multi-line: all three arms in one string, label whitespace preserved.
+			name:  "multiline table, json, and pretty",
+			input: "Version   dev\n\"version\": \"dev\"\n\"cli_version\": \"dev\"\n  version:   dev",
+			want:  "Version   <VERSION>\n\"version\": \"<VERSION>\"\n\"cli_version\": \"<VERSION>\"\n  version:   <VERSION>",
 		},
 		{
 			// Negative: "developer" must not be truncated.

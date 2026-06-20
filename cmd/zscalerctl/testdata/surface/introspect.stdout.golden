@@ -342,7 +342,7 @@
       "short": "write a starter config file with owner-only permissions",
       "aliases": [],
       "hidden": false,
-      "mutating": false,
+      "mutating": true,
       "args": {
         "policy": "none"
       },

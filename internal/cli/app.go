@@ -154,11 +154,13 @@ type Options struct {
 
 func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 	envCopy := append([]string(nil), env...)
-	// Resolve the catalog once at construction: use the caller-supplied override
-	// when provided (test injection), otherwise build from the full static catalog.
+	// Resolve the catalog once at construction: use the caller-supplied
+	// catalog when explicitly provided (even if empty — a non-nil slice is an
+	// intentional injection, e.g. an empty catalog for the empty-catalog
+	// schema-list test path); otherwise build from the full static catalog.
 	// All later calls to resourceCatalog() return a cheap copy of this slice.
 	var catalog resources.ResourceCatalog
-	if len(opts.Catalog) > 0 {
+	if opts.Catalog != nil {
 		catalog = append(resources.ResourceCatalog(nil), opts.Catalog...)
 	} else {
 		catalog = resources.Catalog()
@@ -175,7 +177,13 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 }
 
 func (a *App) resourceCatalog() resources.ResourceCatalog {
-	return append(resources.ResourceCatalog(nil), a.catalog...)
+	catalog := append(resources.ResourceCatalog(nil), a.catalog...)
+	// Guarantee a non-nil slice so an empty catalog serialises to JSON as
+	// "[]" rather than "null" (e.g. the empty-catalog schema-list path).
+	if catalog == nil {
+		return resources.ResourceCatalog{}
+	}
+	return catalog
 }
 
 // spinnerActive reports whether a progress spinner should render. Three
