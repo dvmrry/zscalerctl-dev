@@ -19,7 +19,7 @@ Column definitions:
 
 | Case | Old | New | Reason | Category |
 |------|-----|-----|--------|----------|
-| *(empty — no intentional deltas yet; this is the pre-Cobra baseline)* | | | | |
+| `version-unknown-flag` | `"message": "usage: zscalerctl version"` (extra arg treated as positional, rejected by requireNoArgs) | `"message": "unknown flag: --nope"` (Cobra flag parsing rejects unknown flags before RunE) | Cobra flag parsing — better error; `--nope` is now correctly identified as an unknown flag rather than an extra positional argument. Exit code stays 2. Category: inline-win. | `error-wording` |
 
 ---
 

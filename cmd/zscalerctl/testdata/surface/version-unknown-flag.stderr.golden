@@ -1,6 +1,6 @@
 {
   "error": {
     "kind": "usage",
-    "message": "usage: zscalerctl version"
+    "message": "unknown flag: --nope"
   }
 }
