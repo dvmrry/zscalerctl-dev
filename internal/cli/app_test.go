@@ -474,7 +474,12 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		// "products:" which would otherwise trigger the false-positive assertion.
 		// Re-blessed as an intentional surface change in the Cobra migration (Phase 3a).
 		{name: "dump", args: []string{"dump", "--help"}, want: "zscalerctl dump", skipGlobalCheck: true},
-		{name: "diff", args: []string{"diff", "--help"}, want: "usage: zscalerctl diff <old-dump-dir> <new-dump-dir>"},
+		// diff is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl diff") rather than the legacy scoped synopsis.
+		// skipGlobalCheck is true because the --products flag description contains
+		// "products:" which would otherwise trigger the false-positive assertion.
+		// Re-blessed as an intentional surface change in the Cobra migration (Phase 3b).
+		{name: "diff", args: []string{"diff", "--help"}, want: "zscalerctl diff", skipGlobalCheck: true},
 		{name: "completion", args: []string{"completion", "--help"}, want: "usage: zscalerctl completion bash|zsh|fish|powershell"},
 		// version is now a Cobra command; --help renders Cobra-formatted help
 		// ("Usage:\n  zscalerctl version") rather than the legacy scoped synopsis.

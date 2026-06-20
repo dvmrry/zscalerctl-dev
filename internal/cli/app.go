@@ -248,11 +248,6 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 			return rejectUnsupportedFormat("completion", opts.format)
 		}
 		return a.runCompletion(rest[1:])
-	case rest[0] == "diff":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("diff", opts.format)
-		}
-		return a.runDiff(opts, rest[1:])
 	case rest[0] == "config" && len(rest) >= 2 && rest[1] == "init":
 		// config init writes the starter config and must run before LoadConfig:
 		// the target file is expected not to exist yet, and with an explicit
@@ -591,48 +586,6 @@ func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
 	return global, rest, help, nil
 }
 
-func splitDiffArgs(args []string) ([]string, []string, error) {
-	boolFlags := map[string]bool{
-		"ignore-operational": true,
-		"detail":             true,
-		"allow-partial":      true,
-		"fail-on-drift":      true,
-	}
-	valueFlags := map[string]bool{
-		"products":  true,
-		"resources": true,
-	}
-	var flags []string
-	var positionals []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			positionals = append(positionals, args[i+1:]...)
-			break
-		}
-		name, hasValue := flagName(arg)
-		if name == "" {
-			positionals = append(positionals, arg)
-			continue
-		}
-		flags = append(flags, arg)
-		if hasValue || boolFlags[name] {
-			continue
-		}
-		if !valueFlags[name] {
-			// Let flag.FlagSet produce the canonical "flag provided but not
-			// defined" error for unknown flags.
-			continue
-		}
-		if i+1 >= len(args) {
-			return nil, nil, UsageError{Message: fmt.Sprintf("flag needs an argument: -%s", name)}
-		}
-		i++
-		flags = append(flags, args[i])
-	}
-	return flags, positionals, nil
-}
-
 func flagName(arg string) (string, bool) {
 	var name string
 	switch {
@@ -687,7 +640,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump":
+	case "version", "doctor", "dump", "diff":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -712,7 +665,7 @@ func isMigrated(cmd string) bool {
 // slips through.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts))
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}
@@ -1224,40 +1177,38 @@ func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
 	return cmd
 }
 
-func (a *App) runDiff(opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	productsFlag := fs.String("products", "", "comma-separated products")
-	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
-	ignoreOperational := fs.Bool("ignore-operational", false, "ignore operational metadata on keyed and singleton resources")
-	detail := fs.Bool("detail", false, "include record-level table details")
-	allowPartial := fs.Bool("allow-partial", false, "compare partial dumps instead of rejecting them")
-	failOnDrift := fs.Bool("fail-on-drift", false, "exit 7 when drift is detected")
-	flagArgs, positionalArgs, err := splitDiffArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return UsageError{Message: err.Error()}
-	}
-	if len(positionalArgs) != 2 {
-		return UsageError{Message: diffUsage()}
-	}
+// diffOptions holds the parsed local flags for the diff command.
+// The struct is populated by the Cobra RunE path reading cmd.Flags().
+type diffOptions struct {
+	products          string
+	resources         string
+	ignoreOperational bool
+	detail            bool
+	allowPartial      bool
+	failOnDrift       bool
+}
+
+// runDiffWithOptions executes the diff logic after flags have been parsed into d.
+// All Compare/error-mapping/ModeStandard render/DriftDetectedError behaviour is
+// identical to the former inline runDiff; only flag parsing has moved to the
+// Cobra RunE. Config-FREE: diff compares two local dump dirs and never needs
+// LoadConfig.
+func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newDir string) error {
 	catalog := a.resourceCatalog()
-	products, err := parseProducts(*productsFlag)
+	products, err := parseProducts(d.products)
 	if err != nil {
 		return err
 	}
-	selectedResources, err := parseDumpResources(*resourcesFlag, products, catalog)
+	selectedResources, err := parseDumpResources(d.resources, products, catalog)
 	if err != nil {
 		return err
 	}
-	report, err := dumpdiff.Compare(positionalArgs[0], positionalArgs[1], dumpdiff.Options{
+	report, err := dumpdiff.Compare(oldDir, newDir, dumpdiff.Options{
 		Catalog:           catalog,
 		Products:          products,
 		Resources:         diffResourceSelection(selectedResources),
-		IgnoreOperational: *ignoreOperational,
-		AllowPartial:      *allowPartial,
+		IgnoreOperational: d.ignoreOperational,
+		AllowPartial:      d.allowPartial,
 	})
 	if err != nil {
 		if errors.Is(err, dumpdiff.ErrInvalidDump) ||
@@ -1267,6 +1218,8 @@ func (a *App) runDiff(opts globalOptions, args []string) error {
 		}
 		return err
 	}
+	// ModeStandard is always used for diff — independent of any configured
+	// redaction mode (diff compares local dump dirs, not live API data).
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
 	switch opts.format {
 	case output.FormatJSON:
@@ -1274,16 +1227,68 @@ func (a *App) runDiff(opts globalOptions, args []string) error {
 			return err
 		}
 	case output.FormatTable, output.FormatPretty:
-		if err := renderer.WriteText(a.out, renderDiffTable(report, *detail, a.style(opts))); err != nil {
+		if err := renderer.WriteText(a.out, renderDiffTable(report, d.detail, a.style(opts))); err != nil {
 			return err
 		}
 	default:
 		return rejectUnsupportedFormat("diff", opts.format)
 	}
-	if *failOnDrift && report.HasDrift() {
+	if d.failOnDrift && report.HasDrift() {
 		return DriftDetectedError{}
 	}
 	return nil
+}
+
+// newDiffCmd returns the Cobra "diff" subcommand. Diff is config-FREE — it
+// compares two local dump directories and never calls LoadConfig.
+//
+// Local flags (--products, --resources, --ignore-operational, --detail,
+// --allow-partial, --fail-on-drift) are declared as Cobra local flags and
+// read inside RunE after parsing.
+//
+// --format ndjson is rejected before any Compare work (fast-path, mirrors the
+// legacy path). The two positional dirs are read from cmd.Flags().Args() and
+// exactly 2 are required (len != 2 → UsageError{diffUsage()}).
+//
+// MarkFlagRequired is NOT used — the legacy UsageError must be returned.
+// cobra.ExactArgs is NOT used — plain error → wrong exit code.
+func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "diff <old-dump-dir> <new-dump-dir>",
+		Short: "compare two dump directories and report configuration drift",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject --format ndjson first (mirrors legacy path, before any work).
+			if opts.format == output.FormatNDJSON {
+				return rejectUnsupportedFormat("diff", opts.format)
+			}
+			// Cobra passes non-flag args here; require exactly 2 dir positionals.
+			positionals := cmd.Flags().Args()
+			if len(positionals) != 2 {
+				return UsageError{Message: diffUsage()}
+			}
+			products, _ := cmd.Flags().GetString("products")
+			resources, _ := cmd.Flags().GetString("resources")
+			ignoreOperational, _ := cmd.Flags().GetBool("ignore-operational")
+			detail, _ := cmd.Flags().GetBool("detail")
+			allowPartial, _ := cmd.Flags().GetBool("allow-partial")
+			failOnDrift, _ := cmd.Flags().GetBool("fail-on-drift")
+			return a.runDiffWithOptions(opts, diffOptions{
+				products:          products,
+				resources:         resources,
+				ignoreOperational: ignoreOperational,
+				detail:            detail,
+				allowPartial:      allowPartial,
+				failOnDrift:       failOnDrift,
+			}, positionals[0], positionals[1])
+		},
+	}
+	cmd.Flags().String("products", "", "comma-separated products: zia,zpa")
+	cmd.Flags().String("resources", "", "comma-separated resources: locations or zia/locations")
+	cmd.Flags().Bool("ignore-operational", false, "ignore operational metadata on keyed and singleton resources")
+	cmd.Flags().Bool("detail", false, "include record-level table details")
+	cmd.Flags().Bool("allow-partial", false, "compare partial dumps instead of rejecting them")
+	cmd.Flags().Bool("fail-on-drift", false, "exit 7 when drift is detected")
+	return cmd
 }
 
 func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) output.SafeText {

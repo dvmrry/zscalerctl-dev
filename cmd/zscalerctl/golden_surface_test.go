@@ -381,6 +381,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
+		// ── diff --help (Cobra help surface; frozen after Phase 3b migration) ────
+		{
+			name:     "diff-help",
+			args:     []string{"diff", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 	}
 
 	for _, tc := range cases {

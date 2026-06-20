@@ -30,6 +30,7 @@ Column definitions:
 | `zia-locations-help` | (none — new case) | Resource-specific field list: "usage: zscalerctl zia locations list\|get" + fields block | Phase 2c: new golden freezes `zia locations --help` path (without explicit op). Identical output to `zia-locations-list-help`. Exit code 0. | `new-surface` |
 
 | `dump-help` | (none — new case) | Cobra help surface frozen: short description + Usage line + local flags (--out/--products/--resources/--continue-on-error/--force) + global flags | dump migrated to Cobra (Phase 3a); `dump --help` now emits Cobra-formatted help. Legacy `usage: zscalerctl dump --out <dir>` synopsis is replaced by Cobra's standard help format. No credential leaks. Exit code stays 0. | `new-surface` |
+| `diff-help` | (none — new case) | Cobra help surface frozen: short description + Usage line + local flags (--products/--resources/--ignore-operational/--detail/--allow-partial/--fail-on-drift) + global flags | diff migrated to Cobra (Phase 3b); `diff --help` now emits Cobra-formatted help. Legacy `usage: zscalerctl diff <old-dump-dir> <new-dump-dir>` synopsis is replaced by Cobra's standard help format. No credential leaks. Exit code stays 0. | `new-surface` |
 
 ---
 
