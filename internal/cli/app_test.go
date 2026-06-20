@@ -466,7 +466,10 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		{name: "dump", args: []string{"dump", "--help"}, want: "usage: zscalerctl dump --out <dir>"},
 		{name: "diff", args: []string{"diff", "--help"}, want: "usage: zscalerctl diff <old-dump-dir> <new-dump-dir>"},
 		{name: "completion", args: []string{"completion", "--help"}, want: "usage: zscalerctl completion bash|zsh|fish|powershell"},
-		{name: "version", args: []string{"version", "--help"}, want: "usage: zscalerctl version"},
+		// version is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl version") rather than the legacy scoped synopsis.
+		// Re-blessed as an intentional surface change in the Cobra migration (Task 1.5).
+		{name: "version", args: []string{"version", "--help"}, want: "zscalerctl version"},
 	}
 	for _, tt := range tests {
 		tt := tt

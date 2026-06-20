@@ -24,6 +24,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
+	"github.com/spf13/cobra"
 )
 
 var ErrUsage = errors.New("usage error")
@@ -206,7 +207,11 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if logger, err := newDiagLogger(a.err, opts.logLevel); err == nil {
 		a.logger = logger
 	}
-	if opts.help {
+	// Legacy help early-return: fire only when there is no migrated command to
+	// dispatch to. When rest[0] is a migrated command (e.g. "version --help"),
+	// opts.help is true but we let it fall through to execCobra below, which
+	// re-inserts "--help" so Cobra renders the subcommand's help instead.
+	if opts.help && (len(rest) == 0 || !isMigrated(rest[0])) {
 		a.writeHelp(a.out, rest)
 		return nil
 	}
@@ -228,12 +233,16 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if len(opts.fields) > 0 && isKnownCommand(rest[0]) && !isResourceReadInvocation(rest) {
 		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
 	}
+	// Hybrid dispatch: migrated commands go through Cobra; legacy commands continue
+	// through the switch below. isMigrated gates the early-return for --help above
+	// (version --help must reach Cobra) and routes here before the switch.
+	if isMigrated(rest[0]) {
+		return a.execCobra(ctx, opts, rest)
+	}
 	switch {
 	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
 		a.writeUsage(a.out)
 		return nil
-	case rest[0] == "version":
-		return a.runVersion(opts, rest[1:])
 	case rest[0] == "completion":
 		if opts.format == output.FormatNDJSON {
 			return rejectUnsupportedFormat("completion", opts.format)
@@ -677,6 +686,63 @@ func applyOptions(cfg *config.Config, opts globalOptions) {
 // only non-table/non-pretty formats reach here.
 func rejectUnsupportedFormat(command string, format output.Format) error {
 	return UsageError{Message: fmt.Sprintf("%s does not support %s output yet", command, format)}
+}
+
+// isMigrated reports whether cmd has been migrated to Cobra dispatch. Only
+// commands in this list are routed through execCobra; all others continue
+// through the legacy switch in runParsed. Grows one command per phase.
+func isMigrated(cmd string) bool {
+	switch cmd {
+	case "version":
+		return true
+	}
+	return false
+}
+
+// execCobra builds a transient Cobra root, adds the migrated subcommand(s), and
+// dispatches rest through it. It is only called when isMigrated(rest[0]) is true.
+//
+// --help re-insertion (v2.1 fix): parseGlobal strips --help into opts.help.
+// If the caller had "version --help", rest is ["version"] and opts.help is true.
+// We re-append "--help" so Cobra renders the subcommand help rather than running
+// the command.
+//
+// TODO(phase2/3): preserve "--" for positional commands — not needed for version.
+//
+// Unknown-command wrap (defensive): during the hybrid phase this can't fire
+// because isMigrated gates dispatch to known-migrated commands only. The wrap is
+// the documented hook for when Cobra owns the full root and an unknown command
+// slips through.
+func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
+	root := newRootCmd(a)
+	root.AddCommand(a.newVersionCmd(opts))
+
+	args := rest
+	if opts.help {
+		args = append(rest, "--help")
+	}
+
+	err := a.executeRoot(ctx, root, args)
+	if err != nil && strings.HasPrefix(err.Error(), "unknown command") {
+		// During the hybrid this can't fire (isMigrated gates to known commands),
+		// but this is the documented hook for when Cobra owns the root.
+		return UsageError{Message: err.Error()}
+	}
+	return err
+}
+
+// newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
+// runVersion so all format/arity/redaction behaviour is identical to the legacy
+// path. No restrictive Args validator is set here — runVersion's requireNoArgs
+// produces the same UsageError message as before, preserving the surface.
+func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "print version, commit, build date, and runtime info",
+		RunE: func(_ *cobra.Command, args []string) error {
+			return a.runVersion(opts, args)
+		},
+	}
 }
 
 func (a *App) runVersion(opts globalOptions, args []string) error {
