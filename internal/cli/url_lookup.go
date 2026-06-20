@@ -70,7 +70,9 @@ func (a *App) runURLLookup(ctx context.Context, cfg config.Config, opts globalOp
 	if !ok {
 		return fmt.Errorf("%w: %s/%s", zscaler.ErrUnsupportedResource, resources.ProductZIA, urlLookupCommandName)
 	}
-	classifications, err := lookupReader.URLLookup(ctx, lookupURLs)
+	classifications, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]zscaler.URLClassification, error) {
+		return lookupReader.URLLookup(ctx, lookupURLs)
+	})
 	if err != nil {
 		return err
 	}

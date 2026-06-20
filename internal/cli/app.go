@@ -87,6 +87,7 @@ type App struct {
 	err       io.Writer
 	env       []string
 	stdoutTTY bool
+	stderrTTY bool
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
@@ -130,6 +131,7 @@ func newDiagLogger(w io.Writer, level string) (*slog.Logger, error) {
 func New(out, err io.Writer, env []string) *App {
 	return NewWithOptions(out, err, env, Options{
 		StdoutTTY: output.IsTerminal(out),
+		StderrTTY: output.IsTerminal(err),
 	})
 }
 
@@ -145,6 +147,7 @@ type resourceSessionProvider interface {
 
 type Options struct {
 	StdoutTTY bool
+	StderrTTY bool
 	Reader    ResourceReader
 	Catalog   resources.ResourceCatalog
 }
@@ -165,6 +168,7 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 		err:       err,
 		env:       envCopy,
 		stdoutTTY: opts.StdoutTTY,
+		stderrTTY: opts.StderrTTY,
 		reader:    opts.Reader,
 		catalog:   catalog,
 	}
@@ -172,6 +176,47 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 
 func (a *App) resourceCatalog() resources.ResourceCatalog {
 	return append(resources.ResourceCatalog(nil), a.catalog...)
+}
+
+// spinnerActive reports whether a progress spinner should render. Three
+// conditions must all be true:
+//
+//  1. stderr is an interactive TTY (a.stderrTTY). This is an EXPLICIT gate:
+//     even if --color always is set, we never write braille bytes to a
+//     non-TTY stderr (e.g. piped to a file). ColorAlways overrides the isTTY
+//     arg inside ShouldColor, so without this explicit check --color always
+//     would activate the spinner on non-TTY stderr.
+//  2. No diagnostic logging is active (logLevel "" or "off"). Log lines share
+//     stderr and would clash with the \r-redrawn spinner line.
+//  3. ShouldColor returns true. This folds in --color never/always, NO_COLOR=1,
+//     and TERM=dumb — all of which signal plain output where \r overwriting is
+//     unsafe or unwanted on a real TTY.
+func (a *App) spinnerActive(opts globalOptions) bool {
+	return a.stderrTTY &&
+		(opts.logLevel == "" || opts.logLevel == "off") &&
+		output.ShouldColor(opts.colorMode, a.env, a.stderrTTY)
+}
+
+// newSpinner returns a Spinner bound to stderr, active only when spinnerActive
+// returns true. The caller is responsible for calling Start/Stop.
+func (a *App) newSpinner(opts globalOptions) *output.Spinner {
+	return output.NewSpinner(a.err, a.spinnerActive(opts))
+}
+
+// callWithSpinner runs fn while showing an indeterminate progress spinner on
+// stderr (gated by spinnerActive), clearing it before fn's result is used.
+// Stop is called synchronously before returning so the caller can safely check
+// the error and render to stdout without racing with a live spinner on stderr.
+//
+// defer s.Stop() is registered immediately after Start so that a panic inside
+// fn does not orphan the spinner goroutine (which would otherwise keep writing
+// to stderr until process exit). Stop is idempotent, so the deferred call is
+// a safe no-op if fn returns normally and Stop has already been called.
+func callWithSpinner[T any](a *App, opts globalOptions, msg string, fn func() (T, error)) (T, error) {
+	s := a.newSpinner(opts)
+	s.Start(msg)
+	defer s.Stop()
+	return fn()
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
@@ -1103,7 +1148,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return err
 	}
 	if op == "show" {
-		record, err := reader.Show(ctx, product, resource)
+		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
+			return reader.Show(ctx, product, resource)
+		})
 		if err != nil {
 			return err
 		}
@@ -1114,7 +1161,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
 	}
 	if op == "get" {
-		record, err := reader.Get(ctx, product, resource, args[2])
+		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
+			return reader.Get(ctx, product, resource, args[2])
+		})
 		if err != nil {
 			return err
 		}
@@ -1124,7 +1173,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		}
 		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
 	}
-	records, err := reader.List(ctx, product, resource)
+	records, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]resources.SourceRecord, error) {
+		return reader.List(ctx, product, resource)
+	})
 	if err != nil {
 		return err
 	}
@@ -1161,7 +1212,19 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 	if err != nil {
 		return err
 	}
-	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError)
+	s := a.newSpinner(opts)
+	s.Start("dumping")
+	// defer s.Stop() covers a panic inside collectDump: without it, the spinner
+	// goroutine would stay live and keep writing to stderr after main.run
+	// recovers the panic. The explicit s.Stop() below still runs on the normal
+	// path (and is a no-op for the deferred call) to preserve Stop-before-render
+	// ordering: the status notice that follows must not race with a live spinner.
+	defer s.Stop()
+	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError,
+		func(done, total int, p resources.Product, r string) {
+			s.Update(fmt.Sprintf("[%d/%d] %s/%s", done, total, p, r))
+		})
+	s.Stop()
 	if err != nil {
 		return err
 	}
@@ -1651,6 +1714,7 @@ func (a *App) collectDump(
 	products map[resources.Product]bool,
 	selectedResources map[dumpResourceKey]bool,
 	continueOnError bool,
+	progress func(done, total int, product resources.Product, resource string),
 ) (dump.Result, error) {
 	result := dump.Result{}
 	catalog := a.resourceCatalog()
@@ -1668,6 +1732,7 @@ func (a *App) collectDump(
 	a.diagLogger().Info("dump starting", "resources", selectedCount)
 
 	readers := make(map[resources.Product]ResourceReader)
+	done := 0
 	for _, spec := range catalog {
 		if !products[spec.Product] {
 			continue
@@ -1689,6 +1754,10 @@ func (a *App) collectDump(
 			readers[spec.Product] = reader
 			// Register cleanup once per product session, not once per resource.
 			defer cleanup()
+		}
+		done++
+		if progress != nil {
+			progress(done, selectedCount, spec.Product, spec.Name)
 		}
 		a.diagLogger().Info("dump reading resource", "product", spec.Product, "resource", spec.Name)
 		if spec.SupportsReadOperation("show") {

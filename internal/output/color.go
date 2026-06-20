@@ -35,11 +35,10 @@ func IsTerminal(w io.Writer) bool {
 	if !ok {
 		return false
 	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	// term.IsTerminal uses the OS-level isatty check (TIOCGWINSZ on Unix,
+	// GetConsoleMode on Windows) rather than os.ModeCharDevice, which is set
+	// for Windows \\.\nul and would cause false positives there.
+	return term.IsTerminal(file.Fd())
 }
 
 // TerminalWidth returns the column count of the terminal behind w, or 0 when w
