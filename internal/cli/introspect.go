@@ -4,11 +4,13 @@ package cli
 // tree, the resource catalog, and the global-flag definitions.
 //
 // IntrospectTree is the single exported entry point. It is consumed by:
-//   - scripts/gen-cli-docs.go (markdown generator): iterates IntrospectDoc.Commands
-//     instead of re-walking the raw *cobra.Command tree, ensuring docs and the
-//     agent JSON map cannot drift from one another.
 //   - internal/cli (introspect command, Task 1.2): calls IntrospectTree, sets
 //     CLIVersion, and serialises to JSON.
+//
+// The tree enumeration is driven by WalkCobraTree (see its doc comment), which
+// is also used directly by scripts/gen-cli-docs.go (markdown generator).
+// Walking from the same function ensures docs and the agent JSON map always
+// enumerate the identical command set and cannot drift.
 //
 // No-leak contract: IntrospectTree emits ONLY static structure (command/flag
 // names, descriptions, catalog names, exit-code text). It must remain
@@ -111,6 +113,12 @@ var globalFlagEnums = map[string][]string{
 // produce a fully-populated IntrospectDoc. It is config-free: no credentials,
 // config files, or network calls are made.
 //
+// The real Cobra commands are enumerated by calling WalkCobraTree — the same
+// shared depth-first walk used by scripts/gen-cli-docs.go for markdown
+// generation. Virtual "{product} {resource} {op}" entries (e.g. "zia locations
+// list") are sourced separately from resources.Catalog(), which is already the
+// single source of truth for resources.
+//
 // CLIVersion is intentionally left empty. The caller (e.g. newIntrospectCmd in
 // Task 1.2) is responsible for setting it from version.Current().
 func IntrospectTree(a *App) IntrospectDoc {
@@ -129,9 +137,27 @@ func IntrospectTree(a *App) IntrospectDoc {
 		ExitCodes:         buildExitCodes(),
 	}
 
-	// Walk the full command tree, stripping the root program name from paths.
-	doc.Commands = walkCommandTree(root, "")
+	// WalkCobraTree drives the real-command enumeration in depth-first,
+	// alphabetically-sorted order (identical to gen-cli-docs). For product
+	// group nodes (zia, zpa, etc.) we skip emitting a bare product CommandDoc
+	// and instead append virtual {product} {resource} {op} entries from the
+	// catalog. All other commands (including hidden/deprecated) are included so
+	// agents see the full command surface.
+	var cmds []CommandDoc
+	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		// A command is a product group node if it is a direct child of root
+		// (no space in path) and its name is a known product in the catalog.
+		if !strings.Contains(path, " ") && isKnownProductName(cmd.Name()) {
+			// Do not emit a CommandDoc for the bare "zia" / "zpa" / … node.
+			// Synthesize virtual entries for each {product} {resource} {op}
+			// triple from the catalog instead.
+			cmds = append(cmds, buildProductResourceDocs(cmd, path)...)
+			return
+		}
+		cmds = append(cmds, buildSingleCommandDoc(cmd, path))
+	})
 
+	doc.Commands = cmds
 	return doc
 }
 
@@ -215,55 +241,14 @@ func buildExitCodes() []ExitCodeDoc {
 	}
 }
 
-// walkCommandTree recursively visits every command in the tree and returns a
-// flat slice of CommandDoc values in depth-first order. The root command itself
-// is not included; only its descendants are.
-//
-// parentPath is the accumulated space-joined path of command words above this
-// level (not including the root program name "zscalerctl"). It is "" for
-// direct children of root.
-func walkCommandTree(cmd *cobra.Command, parentPath string) []CommandDoc {
-	var docs []CommandDoc
-	for _, sub := range cmd.Commands() {
-		docs = append(docs, buildCommandDocs(sub, parentPath)...)
-	}
-	return docs
-}
-
-// buildCommandDocs produces a CommandDoc for cmd and recurses into its children.
-// For product commands (zia, zpa, ztw, zcc, zidentity), instead of emitting a
-// single "zia" entry, it synthesizes virtual CommandDoc entries per
-// {product} {resource} {op} triple from the catalog. This matches the spec's
-// intended shape: "zia locations list", "zia locations get", etc., so agents
-// can map each invocation form to its output_fields and args.
-func buildCommandDocs(cmd *cobra.Command, parentPath string) []CommandDoc {
-	// Compute this command's path (space-joined, no root program name).
-	var fullPath string
-	if parentPath == "" {
-		fullPath = cmd.Name()
-	} else {
-		fullPath = parentPath + " " + cmd.Name()
-	}
-
-	// Product commands are identified by being a direct child of the root
-	// (parentPath == "") whose name matches a known product. For these, we
-	// synthesize virtual entries from the catalog instead of treating "zia"
-	// as a leaf command, because the spec's target shape is "zia locations list".
-	if parentPath == "" {
-		if isKnownProductName(cmd.Name()) {
-			var docs []CommandDoc
-			// First, include any real Cobra subcommands of the product (e.g. url-lookup).
-			for _, sub := range cmd.Commands() {
-				docs = append(docs, buildCommandDocs(sub, fullPath)...)
-			}
-			// Then synthesize virtual entries for each catalog resource × read-op.
-			docs = append(docs, buildProductResourceDocs(cmd, fullPath)...)
-			return docs
-		}
-	}
-
+// buildSingleCommandDoc builds one CommandDoc for the given cobra command.
+// path is the space-joined command path without the root program name
+// (e.g. "config", "config init", "zia url-lookup"). Product group nodes
+// (zia, zpa, etc.) are handled separately by the caller; this function is
+// only called for real leaf/branch commands that should appear as-is.
+func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 	doc := CommandDoc{
-		Path:           fullPath,
+		Path:           path,
 		Short:          cmd.Short,
 		Long:           strings.TrimSpace(cmd.Long),
 		Aliases:        cmd.Aliases,
@@ -278,14 +263,7 @@ func buildCommandDocs(cmd *cobra.Command, parentPath string) []CommandDoc {
 	if doc.Aliases == nil {
 		doc.Aliases = []string{}
 	}
-
-	var docs []CommandDoc
-	docs = append(docs, doc)
-	// Recurse into children.
-	for _, sub := range cmd.Commands() {
-		docs = append(docs, buildCommandDocs(sub, fullPath)...)
-	}
-	return docs
+	return doc
 }
 
 // isKnownProductName reports whether name is a known product in the catalog.
@@ -417,12 +395,22 @@ func buildInheritedFlagNames(cmd *cobra.Command) []string {
 
 // WalkCobraTree visits each non-root command in the Cobra tree rooted at root,
 // calling fn(cmd, path) for each one in depth-first, alphabetically-sorted
-// order (matching gen-cli-docs sort order). path is the space-joined command
-// path without the root program name (e.g. "config", "config init").
+// order. path is the space-joined command path without the root program name
+// (e.g. "config", "config init").
 //
-// This is the shared enumeration used by both the markdown docs generator
-// (scripts/gen-cli-docs.go) and IntrospectTree. Walking from the same function
-// ensures docs and the agent JSON map always enumerate the identical command set.
+// This is the genuine single shared walk over the real Cobra command tree. It
+// is used by:
+//   - scripts/gen-cli-docs.go (markdown generator): drives the per-command
+//     section output; render-time filtering (e.g. cmd.Hidden) is the caller's
+//     responsibility.
+//   - IntrospectTree (JSON agent map): drives the real-command entries. Virtual
+//     "{product} {resource} {op}" entries (e.g. "zia locations list") are NOT
+//     produced here; they are sourced separately from resources.Catalog() by
+//     IntrospectTree.
+//
+// Walking from the same function ensures that the generated markdown and the
+// agent JSON map always enumerate the identical real Cobra command set and
+// cannot drift from one another.
 func WalkCobraTree(root *cobra.Command, fn func(cmd *cobra.Command, path string)) {
 	walkCobraSubtree(root, "", fn)
 }
