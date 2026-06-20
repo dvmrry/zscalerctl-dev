@@ -479,6 +479,29 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "bare-parent-usage-error",
 		},
+		// ── Task 1.4: introspect command ──────────────────────────────────────────
+		// introspect (default JSON; stdout is not a TTY in the hermetic env so
+		// FormatAuto resolves to JSON — the machine-first default).
+		{
+			name:     "introspect",
+			args:     []string{"introspect"},
+			wantCode: 0,
+			note:     "json-surface-map",
+		},
+		// introspect --format pretty: human-readable tree renderer.
+		{
+			name:     "introspect-pretty",
+			args:     []string{"--format", "pretty", "introspect"},
+			wantCode: 0,
+			note:     "human-tree",
+		},
+		// introspect --format ndjson: rejected (single document, not a stream).
+		{
+			name:     "introspect-ndjson-rejected",
+			args:     []string{"--format", "ndjson", "introspect"},
+			wantCode: 2,
+			note:     "format-allowlist",
+		},
 	}
 
 	for _, tc := range cases {
@@ -924,6 +947,19 @@ func TestScrubPseudoVersion(t *testing.T) {
 			name:  "no-base-tag in json",
 			input: `"version": "v0.0.0-20260620152824-f3a2eda1c513"`,
 			want:  `"version": "<VERSION>"`,
+		},
+		{
+			// cli_version is the JSON key used by introspect output; verify it is
+			// scrubbed in both pseudo-version forms so introspect.stdout.golden is
+			// byte-stable across machines with and without a base tag.
+			name:  "cli_version no-base-tag in json",
+			input: `"cli_version": "v0.0.0-20260620152824-f3a2eda1c513"`,
+			want:  `"cli_version": "<VERSION>"`,
+		},
+		{
+			name:  "cli_version with-base-tag in json",
+			input: `"cli_version": "v0.68.1-0.20260620073434-79678e7c1f63"`,
+			want:  `"cli_version": "<VERSION>"`,
 		},
 		{
 			name:  "plain semver unchanged by pseudo-version pass",

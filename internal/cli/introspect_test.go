@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 func TestIntrospectTree(t *testing.T) {
@@ -218,5 +219,52 @@ func TestIntrospectConfigFree(t *testing.T) {
 	}
 	if out.Len() == 0 {
 		t.Error("introspect produced no output")
+	}
+}
+
+// neverCalledReader is a ResourceReader stub whose methods call t.Fatal if
+// invoked. Injected into an App via NewWithOptions to prove introspect never
+// touches the reader (no List/Get/Show calls means no credential or network
+// access for any format path).
+type neverCalledReader struct{ t *testing.T }
+
+func (r neverCalledReader) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	r.t.Fatal("introspect: ResourceReader.List must never be called")
+	return nil, nil
+}
+
+func (r neverCalledReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	r.t.Fatal("introspect: ResourceReader.Get must never be called")
+	return resources.SourceRecord{}, nil
+}
+
+func (r neverCalledReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	r.t.Fatal("introspect: ResourceReader.Show must never be called")
+	return resources.SourceRecord{}, nil
+}
+
+// TestIntrospectNeverTouchesReader proves that all introspect format paths are
+// config-free at the ResourceReader boundary. A reader stub whose methods call
+// t.Fatal is injected into the App; if introspect ever calls List/Get/Show, the
+// test fails immediately. This is stronger than TestIntrospectConfigFree (nil
+// env) because it exercises all three output paths and asserts at the API
+// boundary, not merely at the error-return level.
+func TestIntrospectNeverTouchesReader(t *testing.T) {
+	t.Parallel()
+
+	formats := []string{"json", "table", "pretty"}
+	for _, format := range formats {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+
+			stub := neverCalledReader{t: t}
+			a := cli.NewWithOptions(io.Discard, io.Discard, nil, cli.Options{Reader: stub})
+
+			args := []string{"--format", format, "introspect"}
+			if err := a.Run(context.Background(), args); err != nil {
+				t.Fatalf("App.Run(--format %s introspect) with reader stub error = %v, want nil", format, err)
+			}
+		})
 	}
 }
