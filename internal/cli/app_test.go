@@ -424,7 +424,8 @@ func TestHelpFlagsReturnUsage(t *testing.T) {
 	tests := [][]string{
 		{"--help"},
 		{"-h"},
-		{"schema", "list", "--help"},
+		// "schema list --help" is now a Cobra command; its help uses Cobra format ("Usage:\n  zscalerctl schema list")
+		// and is covered by TestPerCommandHelpPrintsScopedSynopsis instead.
 		// "dump --help" is now a Cobra command; its help uses Cobra format ("Usage:\n  zscalerctl dump")
 		// and is covered by TestPerCommandHelpPrintsScopedSynopsis instead.
 	}
@@ -465,9 +466,18 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		// ("Usage:\n  zscalerctl doctor") rather than the legacy scoped synopsis.
 		// Re-blessed as an intentional surface change in the Cobra migration (Task 1.5.2).
 		{name: "doctor", args: []string{"doctor", "--help"}, want: "zscalerctl doctor"},
-		{name: "auth", args: []string{"auth", "--help"}, want: "usage: zscalerctl auth status"},
-		{name: "config", args: []string{"config", "--help"}, want: "usage: zscalerctl config show"},
-		{name: "schema", args: []string{"schema", "list", "--help"}, want: "usage: zscalerctl schema list"},
+		// auth is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl auth") rather than the legacy scoped synopsis.
+		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		{name: "auth", args: []string{"auth", "--help"}, want: "zscalerctl auth", skipGlobalCheck: true},
+		// config is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl config") rather than the legacy scoped synopsis.
+		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		{name: "config", args: []string{"config", "--help"}, want: "zscalerctl config", skipGlobalCheck: true},
+		// schema list is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl schema list") rather than the legacy scoped synopsis.
+		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		{name: "schema", args: []string{"schema", "list", "--help"}, want: "zscalerctl schema list"},
 		// dump is now a Cobra command; --help renders Cobra-formatted help
 		// ("Usage:\n  zscalerctl dump") rather than the legacy scoped synopsis.
 		// skipGlobalCheck is true because the --products flag description contains

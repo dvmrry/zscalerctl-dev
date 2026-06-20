@@ -248,41 +248,18 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 			return rejectUnsupportedFormat("completion", opts.format)
 		}
 		return a.runCompletion(rest[1:])
-	case rest[0] == "config" && len(rest) >= 2 && rest[1] == "init":
-		// config init writes the starter config and must run before LoadConfig:
-		// the target file is expected not to exist yet, and with an explicit
-		// --config a missing file is otherwise a hard ErrInvalidConfig.
-		return a.runConfigInit(opts, rest[2:])
 	case isRunnableCommand(rest[0]):
 	default:
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
 
-	cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-		Profile:    opts.profile,
-		ConfigPath: opts.configPath,
-	})
-	if err != nil {
-		return err
-	}
-	applyOptions(&cfg, opts)
-
-	switch rest[0] {
-	case "auth":
-		return a.runAuth(ctx, cfg, opts, rest[1:])
-	case "config":
-		return a.runConfig(ctx, cfg, opts, rest[1:])
-	case "schema":
-		return a.runSchema(ctx, cfg, opts, rest[1:])
-	default:
-		// Product commands are handled by isMigrated → execCobra above; they never
-		// reach this branch. "dump" is now migrated and also handled by execCobra.
-		// This default remains for any un-migrated legacy command that passes
-		// isRunnableCommand but has no case above.
-		a.writeUsageForHumans(opts)
-		return UsageError{Message: unknownCommandMessage(rest[0])}
-	}
+	// All previously-dispatched legacy commands (auth, config, schema) are now
+	// migrated to Cobra and handled by isMigrated → execCobra above. The second
+	// switch only remains as a fallback for any future un-migrated command that
+	// passes isRunnableCommand but has no isMigrated case.
+	a.writeUsageForHumans(opts)
+	return UsageError{Message: unknownCommandMessage(rest[0])}
 }
 
 // writeUsageForHumans writes the usage block to stderr only when the
@@ -640,7 +617,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -665,7 +642,8 @@ func isMigrated(cmd string) bool {
 // slips through.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts))
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}

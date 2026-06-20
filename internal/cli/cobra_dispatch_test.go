@@ -356,22 +356,26 @@ func TestDoctorRedactionFollowsConfig(t *testing.T) {
 	}
 }
 
-// TestHybridRouting_AuthStillLegacy confirms that an un-migrated config-requiring
-// command (auth status) is NOT dispatched through Cobra — it still reaches its
-// normal legacy path. With no credentials the error must NOT be a Cobra error.
-func TestHybridRouting_AuthStillLegacy(t *testing.T) {
+// TestHybridRouting_AuthGoesViaCobra confirms that "auth" is now dispatched
+// through Cobra (Phase 4 migration) and produces its status output via runAuth.
+// With no credentials the config loads without error (no-creds is not an
+// ErrInvalidConfig), so auth status succeeds in the hermetic env.
+func TestHybridRouting_AuthGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := testDoctorApp(t)
-	err := a.Run(context.Background(), []string{"auth", "status"})
-	// auth status with no credentials still returns a non-Cobra error (missing creds).
-	// What it must NOT return: a Cobra unknown-command error or ErrUsage from Cobra.
+	a, out, errBuf := testDoctorApp(t)
+	err := a.Run(context.Background(), []string{"--format", "table", "auth", "status"})
 	if err != nil {
-		errMsg := err.Error()
-		if strings.HasPrefix(errMsg, "unknown command") {
-			t.Errorf("App.Run(auth status) returned Cobra unknown-command error %q; legacy path should have handled it", errMsg)
+		t.Fatalf("App.Run(auth status) error = %v, want nil", err)
+	}
+	got := out.String()
+	// runAuth renders key rows including "Credentials" and "Live API".
+	for _, key := range []string{"Credentials", "Live API"} {
+		if !strings.Contains(got, key) {
+			t.Errorf("App.Run(auth status) stdout = %q, want key %q", got, key)
 		}
 	}
-	// "auth status" with no creds reaches the auth dispatch but not the Cobra root,
-	// so if it ever hits "unknown command" that's a regression.
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(auth status) stderr = %q, want empty", errBuf.String())
+	}
 }

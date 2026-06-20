@@ -388,6 +388,86 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
+		// ── Phase 4: config command group ────────────────────────────────────────
+		// config init: path on stdout, exit 0; temp HOME is scrubbed to <TMPDIR>.
+		{
+			name:     "config-init",
+			args:     []string{"config", "init"},
+			wantCode: 0,
+			note:     "config-init-creates-file",
+		},
+		// config --help: Cobra parent help listing init|show subcommands.
+		{
+			name:     "config-help",
+			args:     []string{"config", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// config init --help: Cobra subcommand help.
+		{
+			name:     "config-init-help",
+			args:     []string{"config", "init", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// config show --help: Cobra subcommand help.
+		{
+			name:     "config-show-help",
+			args:     []string{"config", "show", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// bare config: UsageError exit 2.
+		{
+			name:     "config-bare",
+			args:     []string{"config"},
+			wantCode: 2,
+			note:     "bare-parent-usage-error",
+		},
+		// ── Phase 4: schema command group ────────────────────────────────────────
+		// schema --help: Cobra parent help.
+		{
+			name:     "schema-help",
+			args:     []string{"schema", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// schema list --help: Cobra subcommand help.
+		{
+			name:     "schema-list-help",
+			args:     []string{"schema", "list", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// bare schema: UsageError exit 2.
+		{
+			name:     "schema-bare",
+			args:     []string{"schema"},
+			wantCode: 2,
+			note:     "bare-parent-usage-error",
+		},
+		// ── Phase 4: auth command group ──────────────────────────────────────────
+		// auth --help: Cobra parent help.
+		{
+			name:     "auth-help",
+			args:     []string{"auth", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// auth status --help: Cobra subcommand help.
+		{
+			name:     "auth-status-help",
+			args:     []string{"auth", "status", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
+		// bare auth: UsageError exit 2.
+		{
+			name:     "auth-bare",
+			args:     []string{"auth"},
+			wantCode: 2,
+			note:     "bare-parent-usage-error",
+		},
 	}
 
 	for _, tc := range cases {
@@ -572,6 +652,72 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			name:       "dump-no-out",
 			args:       []string{"dump"},
 			source:     "runDumpWithOptions-empty-out",
+			alsoGolden: false,
+		},
+
+		// ── Phase 4: config/schema/auth ndjson rejection ──────────────────────────
+		// config init is format-agnostic (exit 0), so it is NOT in this table.
+		// config show rejects ndjson → exit 2.
+		{
+			name:       "ndjson-config-show",
+			args:       []string{"--format", "ndjson", "config", "show"},
+			source:     "rejectUnsupportedFormat-config-show",
+			alsoGolden: false,
+		},
+		// schema list rejects ndjson → exit 2.
+		{
+			name:       "ndjson-schema-list",
+			args:       []string{"--format", "ndjson", "schema", "list"},
+			source:     "rejectUnsupportedFormat-schema-list",
+			alsoGolden: false,
+		},
+		// auth status rejects ndjson → exit 2.
+		{
+			name:       "ndjson-auth-status",
+			args:       []string{"--format", "ndjson", "auth", "status"},
+			source:     "rejectUnsupportedFormat-auth-status",
+			alsoGolden: false,
+		},
+		// bare config → exit 2; covered by TestGoldenSurface/config-bare.
+		{
+			name:       "bare-config",
+			args:       []string{"config"},
+			source:     "bare-parent-UsageError-config",
+			alsoGolden: true,
+		},
+		// bare schema → exit 2; covered by TestGoldenSurface/schema-bare.
+		{
+			name:       "bare-schema",
+			args:       []string{"schema"},
+			source:     "bare-parent-UsageError-schema",
+			alsoGolden: true,
+		},
+		// bare auth → exit 2; covered by TestGoldenSurface/auth-bare.
+		{
+			name:       "bare-auth",
+			args:       []string{"auth"},
+			source:     "bare-parent-UsageError-auth",
+			alsoGolden: true,
+		},
+		// config bogus → exit 2 (Cobra unknown subcommand).
+		{
+			name:       "config-bogus",
+			args:       []string{"config", "bogus"},
+			source:     "cobra-unknown-subcommand-config",
+			alsoGolden: false,
+		},
+		// schema bogus → exit 2.
+		{
+			name:       "schema-bogus",
+			args:       []string{"schema", "bogus"},
+			source:     "cobra-unknown-subcommand-schema",
+			alsoGolden: false,
+		},
+		// auth bogus → exit 2.
+		{
+			name:       "auth-bogus",
+			args:       []string{"auth", "bogus"},
+			source:     "cobra-unknown-subcommand-auth",
 			alsoGolden: false,
 		},
 	}
