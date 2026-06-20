@@ -2991,23 +2991,30 @@ func TestDumpLogsPerResourceProgressAtInfo(t *testing.T) {
 func TestProductHelpListsItsResources(t *testing.T) {
 	t.Parallel()
 
-	// A cold agent's natural probe is `zscalerctl zia --help`; the response
-	// must enumerate the real resource names, not a <resource> placeholder
-	// (observed failure mode: a weak agent could not discover object names).
+	// After the Cobra migration, `zscalerctl zia --help` shows Cobra-formatted
+	// help (short description + global flags) rather than the legacy resource-list.
+	// The primary discoverability path is now the error message from an unknown
+	// resource (ResourceNotFoundError) and `schema list`. This test verifies the
+	// Cobra help emits the product name and that the error-path discoverability
+	// hints remain intact.
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, nil)
 	if err := app.Run(context.Background(), []string{"zia", "--help"}); err != nil {
 		t.Fatalf("App.Run(zia --help) error = %v, want nil", err)
 	}
 	got := out.String()
-	for _, want := range []string{"locations", "url-filtering-rules", "schema list"} {
+	// Cobra help must include "zscalerctl zia" in the Usage line.
+	for _, want := range []string{"zscalerctl zia"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("zia --help = %q, want it to mention %q", got, want)
 		}
 	}
 
-	// The bare-product usage error must carry the same discoverability.
-	err := app.Run(context.Background(), []string{"zpa", "bogus-resource", "list"})
+	// The bare-product usage error must still carry the discoverability hints:
+	// "zpa --help" and "schema list" point the user (or agent) at the two
+	// enumeration paths. ResourceNotFoundError.Error() still includes these.
+	app2 := cli.New(&out, &errOut, nil)
+	err := app2.Run(context.Background(), []string{"zpa", "bogus-resource", "list"})
 	if err == nil {
 		t.Fatal("App.Run(zpa bogus) error = nil, want usage error")
 	}

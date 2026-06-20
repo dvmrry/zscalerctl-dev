@@ -286,9 +286,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		}
 		return a.runDump(ctx, cfg, opts, rest[1:])
 	default:
-		if knownProductCommand(rest[0]) {
-			return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
-		}
+		// Product commands are handled by isMigrated → execCobra above; they never
+		// reach this branch. This default remains for any un-migrated legacy command
+		// that passes isRunnableCommand but has no case above.
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
@@ -694,7 +694,7 @@ func isMigrated(cmd string) bool {
 	case "version", "doctor":
 		return true
 	}
-	return false
+	return knownProductCommand(cmd)
 }
 
 // execCobra builds a transient Cobra root, adds the migrated subcommand(s), and
@@ -705,7 +705,10 @@ func isMigrated(cmd string) bool {
 // We re-append "--help" so Cobra renders the subcommand help rather than running
 // the command.
 //
-// TODO(phase2/3): preserve "--" for positional commands — not needed for version.
+// For product commands the positional args (resource, op, id) are passed through
+// to runProduct; "--" separator preservation is not needed because products do
+// not accept flags of their own (all flags are global and are stripped before
+// this point by splitGlobalArgs).
 //
 // Unknown-command wrap (defensive): during the hybrid phase this can't fire
 // because isMigrated gates dispatch to known-migrated commands only. The wrap is
@@ -714,6 +717,9 @@ func isMigrated(cmd string) bool {
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := newRootCmd(a)
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts))
+	for _, p := range knownProducts() {
+		root.AddCommand(a.newProductCmd(p, opts))
+	}
 
 	args := rest
 	if opts.help {
@@ -727,6 +733,36 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 		return UsageError{Message: err.Error()}
 	}
 	return err
+}
+
+// newProductCmd returns a Cobra subcommand for the given product (e.g. "zia",
+// "zpa", "ztw", "zcc"). All resource/op/id positional arguments are forwarded
+// to runProduct, which enforces arity and produces the canonical usage messages.
+//
+// No restrictive cobra.Args validator is set: runProduct's own arity checks
+// produce the exact UsageError messages that the legacy path emitted; a Cobra
+// validator would fire first and change those messages.
+//
+// Config is loaded lazily inside RunE (same pattern as newDoctorCmd) so the
+// no-credentials path (exit 3) is preserved for product commands: they load
+// config and then attempt to build a reader, which fails when credentials are
+// absent.
+func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   string(product),
+		Short: "read " + string(product) + " resources",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runProduct(cmd.Context(), cfg, opts, string(product), args)
+		},
+	}
 }
 
 // newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
