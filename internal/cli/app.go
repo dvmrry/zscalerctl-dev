@@ -412,20 +412,24 @@ func (authStatus) OutputSafe() {}
 func parseGlobal(args []string) (globalOptions, []string, error) {
 	fs := flag.NewFlagSet("zscalerctl", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	profile := fs.String("profile", "", "profile name")
-	configPath := fs.String("config", "", "config file path")
-	format := fs.String("format", string(output.FormatAuto), "output format: auto, table, json, ndjson, pretty")
-	outputPath := fs.String("output", "", "output path")
-	timeout := fs.Duration("timeout", 30*time.Second, "request timeout")
-	redactionFlag := fs.String("redaction", "", "redaction mode: standard, share, paranoid")
-	noCache := fs.Bool("no-cache", false, "bypass API cache where supported")
-	colorFlag := fs.String("color", string(output.ColorAuto), "color output: auto, always, never")
-	noColor := fs.Bool("no-color", false, "disable color output")
-	logLevel := fs.String("log-level", "off", "diagnostic logging to stderr: off, error, warn, info, debug")
-	fieldsFlag := fs.String("fields", "", "comma-separated output fields to keep (narrows the sanitized output)")
+	// All 13 global flags are registered via defineGlobalFlags (globalflags.go),
+	// which derives from globalFlagDefs — the single source of truth. The drift
+	// test calls defineGlobalFlags on a fresh flag.FlagSet to enumerate canonical
+	// names/types; any flag added here must be added to globalFlagDefs first.
 	var filterFlags repeatableFlag
-	fs.Var(&filterFlags, "filter", "narrow list results: key=value (exact) or key~value (substring); repeatable, all must match")
-	searchFlag := fs.String("search", "", "narrow list results to records whose rendered values contain term (case-insensitive)")
+	gp := defineGlobalFlags(fs, &filterFlags)
+	profile := gp.profile
+	configPath := gp.configPath
+	format := gp.format
+	outputPath := gp.outputPath
+	timeout := gp.timeout
+	redactionFlag := gp.redaction
+	noCache := gp.noCache
+	colorFlag := gp.colorFlag
+	noColor := gp.noColor
+	logLevel := gp.logLevel
+	fieldsFlag := gp.fieldsFlag
+	searchFlag := gp.searchFlag
 	globalArgs, rest, help, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
