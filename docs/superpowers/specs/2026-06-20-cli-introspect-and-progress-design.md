@@ -21,7 +21,7 @@ A **visible**, **config-free** Cobra command that emits a one-shot machine-reada
 
 ### 3a. Output shape (define our own; ecosystem has no standard)
 
-JSON to stdout by default (never opt-in — JSON is the command's entire purpose). `--pretty`/`table`/`pretty` formats render a human-readable tree; `ndjson` rejected (single document, not a stream). One call returns the full tree (zscalerctl's surface is bounded; no lazy per-command form needed).
+Output follows the CLI's standard auto-format convention (the same machine-first/pretty-on-TTY behavior as `version` and `schema`): when stdout is **piped/non-interactive** — the agent case — it emits **JSON** with no flag required; on an **interactive TTY** it renders a human-readable tree. `--format json` forces JSON anywhere (e.g. an agent allocating a PTY); `--format table`/`pretty` force the tree; `ndjson` is rejected (single document, not a record stream). `--format auto` is collapsed to the concrete format by `resolveFormat` before the command runs, so the command itself only ever sees json/table/pretty/ndjson. One call returns the full tree (zscalerctl's surface is bounded; no lazy per-command form needed). Net effect: agents (piped) always get JSON without opting in, while a human running it interactively gets the readable tree.
 
 ```jsonc
 {
