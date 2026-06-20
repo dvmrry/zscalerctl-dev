@@ -1,0 +1,57 @@
+usage: zscalerctl zia <resource> list|get|show
+
+resources (102; see also: zscalerctl --format json schema list):
+  activation-status               firewall-filtering-rules
+  admin-roles                     forwarding-rules
+  admin-users                     ftp-control-policy
+  advanced-settings               gre-tunnels
+  advanced-threat-settings        groups
+  alert-subscriptions             intermediate-ca-certificates
+  application-service-groups      ip-destination-groups
+  application-services            ip-source-groups
+  atp-malware-inspection          ips-policies
+  atp-malware-policy              ips-signature-rules
+  atp-malware-protocols           ipv6-config
+  atp-malware-settings            ipv6-dns64-prefixes
+  auth-exempted-urls              ipv6-nat64-prefixes
+  auth-settings                   location-groups
+  bandwidth-classes               locations
+  bandwidth-control-rules         malicious-urls
+  browser-control-settings        mobile-threat-settings
+  browser-isolation-profiles      nat-control-rules
+  c2c-incident-receivers          network-application-groups
+  casb-dlp-rules                  network-applications
+  casb-email-labels               network-service-groups
+  casb-malware-rules              network-services
+  casb-tenants                    nss-feeds
+  casb-tombstone-templates        nss-servers
+  cloud-app-control               org-information
+  cloud-app-instances             pac-files
+  cloud-application-policy        proxies
+  cloud-application-ssl-policy    proxy-gateways
+  custom-file-types               remote-assistance
+  dc-exclusions                   risk-profiles
+  dedicated-ip-gateways           rule-labels
+  departments                     sandbox-rules
+  device-groups                   sandbox-settings
+  devices                         security-exceptions
+  dlp-dictionaries                ssl-inspection-rules
+  dlp-edm-schemas                 static-ips
+  dlp-edm-schemas-lite            sub-clouds
+  dlp-engines                     sublocations
+  dlp-icap-servers                supported-browser-versions
+  dlp-idm-profile-lite            tenancy-restriction-profiles
+  dlp-idm-profiles                time-intervals
+  dlp-incident-receiver-servers   time-windows
+  dlp-notification-templates      url-allow-list
+  dlp-web-rules                   url-categories
+  dns-gateways                    url-deny-list
+  domain-profiles                 url-filtering-rules
+  email-profiles                  users
+  end-user-notification-settings  vzen-clusters
+  eusa-status                     vzen-nodes
+  file-type-rules                 workload-groups
+  firewall-dns-rules              zpa-gateways
+
+diagnostics:
+  zscalerctl zia url-lookup <url> [url...]

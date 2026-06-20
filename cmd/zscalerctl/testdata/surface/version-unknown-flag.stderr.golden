@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "usage: zscalerctl version"
+  }
+}

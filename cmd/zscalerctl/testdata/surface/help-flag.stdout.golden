@@ -1,0 +1,35 @@
+usage: zscalerctl [global flags] <command> [args]
+
+products: zia, zpa, ztw, zcc, zidentity
+
+commands:
+  doctor
+  auth status
+  config show
+  config init [--force]
+  zia url-lookup <url> [url...]
+  schema list
+  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]
+  diff <old-dump-dir> <new-dump-dir> [--products names] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]
+  completion bash|zsh|fish|powershell
+  version
+  zia <resource> list|get|show
+  zpa <resource> list|get
+  ztw <resource> list|get|show
+  zcc <resource> list|show
+  zidentity <resource> list|get
+
+global flags:
+  --profile <name>
+  --config <path>
+  --format auto|table|json|ndjson|pretty
+  --output <path>
+  --timeout <duration>
+  --redaction standard|share|paranoid
+  --color auto|always|never
+  --no-color
+  --no-cache
+  --log-level off|error|warn|info|debug
+  --fields <a,b,c>
+  --filter <key=value|key~value>   (list only; repeatable, all must match)
+  --search <term>                  (list only; case-insensitive, any field)

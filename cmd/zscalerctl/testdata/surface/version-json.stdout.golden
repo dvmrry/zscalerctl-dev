@@ -1,0 +1,8 @@
+{
+  "version": "<VERSION>",
+  "commit": "unknown",
+  "date": "unknown",
+  "go": "go<VERSION>",
+  "os": "<OS>",
+  "arch": "<ARCH>"
+}

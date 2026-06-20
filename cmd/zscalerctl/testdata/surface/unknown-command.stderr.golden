@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "unknown command \"frobnicate\""
+  }
+}

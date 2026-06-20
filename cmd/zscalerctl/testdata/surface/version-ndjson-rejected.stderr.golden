@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "version does not support ndjson output yet"
+  }
+}
