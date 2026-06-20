@@ -1,5 +1,5 @@
 zscalerctl CLI surface map
-  version:   dev
+  version:   <VERSION>
   read-only: true
   schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json
 
