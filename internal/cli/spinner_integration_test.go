@@ -342,8 +342,10 @@ func TestSpinnerNoLeak_DumpSecretField(t *testing.T) {
 		t.Errorf("SECURITY: secret sentinel leaked to stderr via spinner:\nstderr = %q", stderr)
 	}
 	// Confirm the spinner was active (so we're testing the live path, not no-op).
+	// This must be an error: a regression that silently disables the spinner
+	// would leave the no-leak assertion vacuously true.
 	if !containsBraille(stderr) && !strings.Contains(stderr, "[1/") {
-		t.Logf("note: spinner appears inactive in dump no-leak test; stderr = %q", stderr)
+		t.Errorf("spinner appears inactive in dump no-leak test (StderrTTY=true, color=auto); stderr = %q", stderr)
 	}
 }
 
@@ -460,9 +462,11 @@ func TestSpinnerStderrOnly_ListCommand(t *testing.T) {
 		t.Errorf("'contacting Zscaler' appeared on stdout: %q", stdout)
 	}
 	// Confirm spinner was active on stderr.
+	// This must be an error: a regression that silently disables the spinner
+	// would leave the stdout-clean assertion vacuously true.
 	stderr := errBuf.String()
 	if !containsBraille(stderr) && !strings.Contains(stderr, "contacting Zscaler") {
-		t.Logf("note: spinner appears inactive; stderr = %q", stderr)
+		t.Errorf("spinner appears inactive in list stderr-only test (StderrTTY=true, color=auto); stderr = %q", stderr)
 	}
 }
 
@@ -492,9 +496,11 @@ func TestSpinnerStderrOnly_DumpCommand(t *testing.T) {
 		t.Errorf("dump stdout = %q, want empty", stdout)
 	}
 	// Confirm spinner was active on stderr.
+	// This must be an error: a regression that silently disables the spinner
+	// would leave the stdout-clean assertion vacuously true.
 	stderr := errBuf.String()
 	if !containsBraille(stderr) && !strings.Contains(stderr, "[1/") {
-		t.Logf("note: spinner appears inactive; stderr = %q", stderr)
+		t.Errorf("spinner appears inactive in dump stderr-only test (StderrTTY=true, color=auto); stderr = %q", stderr)
 	}
 }
 

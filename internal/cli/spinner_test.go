@@ -10,8 +10,9 @@ import (
 )
 
 // TestSpinnerActive is a table-driven white-box test for App.spinnerActive,
-// verifying the three-gate logic: stderrTTY AND (logLevel == "" or "off") AND
-// colorMode != ColorNever.
+// verifying the gate logic: ShouldColor(colorMode, env, stderrTTY) AND
+// (logLevel == "" or "off"). ShouldColor folds in --color never/always,
+// NO_COLOR=1, and TERM=dumb — all of which suppress spinner output.
 func TestSpinnerActive(t *testing.T) {
 	t.Parallel()
 
@@ -20,6 +21,7 @@ func TestSpinnerActive(t *testing.T) {
 		stderrTTY bool
 		logLevel  string
 		colorMode output.ColorMode
+		env       []string
 		want      bool
 	}{
 		{
@@ -85,12 +87,46 @@ func TestSpinnerActive(t *testing.T) {
 			colorMode: output.ColorNever,
 			want:      false,
 		},
+		// NO_COLOR and TERM=dumb: ShouldColor returns false in ColorAuto mode,
+		// so spinnerActive must also return false even when stderrTTY=true.
+		{
+			name:      "NO_COLOR=1 disables spinner (TTY=true, color=auto)",
+			stderrTTY: true,
+			logLevel:  "off",
+			colorMode: output.ColorAuto,
+			env:       []string{"NO_COLOR=1"},
+			want:      false,
+		},
+		{
+			name:      "TERM=dumb disables spinner (TTY=true, color=auto)",
+			stderrTTY: true,
+			logLevel:  "off",
+			colorMode: output.ColorAuto,
+			env:       []string{"TERM=dumb"},
+			want:      false,
+		},
+		{
+			name:      "NO_COLOR=1 does not disable spinner when color=always",
+			stderrTTY: true,
+			logLevel:  "off",
+			colorMode: output.ColorAlways,
+			env:       []string{"NO_COLOR=1"},
+			want:      true,
+		},
+		{
+			name:      "TERM=dumb does not disable spinner when color=always",
+			stderrTTY: true,
+			logLevel:  "off",
+			colorMode: output.ColorAlways,
+			env:       []string{"TERM=dumb"},
+			want:      true,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			a := NewWithOptions(io.Discard, io.Discard, nil, Options{
+			a := NewWithOptions(io.Discard, io.Discard, tc.env, Options{
 				StderrTTY: tc.stderrTTY,
 			})
 			opts := globalOptions{

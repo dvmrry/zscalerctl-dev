@@ -22,7 +22,9 @@ const spinnerTickInterval = 100 * time.Millisecond
 // \r<frame> <text> on each tick; Stop joins the goroutine and clears the line.
 //
 // Spinner is safe for concurrent use: Start, Update, and Stop may be called
-// from different goroutines.
+// from different goroutines. The invariant is that every write to w happens
+// while holding mu, and every write first checks stopped under the same lock,
+// so a concurrent Update during or after Stop will never emit a stray frame.
 type Spinner struct {
 	w      io.Writer
 	active bool
@@ -108,16 +110,20 @@ func (s *Spinner) Stop() {
 	s.mu.Unlock()
 
 	close(s.stopCh)
+	// IMPORTANT: mu must NOT be held here; the ticker goroutine calls redraw()
+	// which acquires mu. Holding mu across wg.Wait() would deadlock.
 	s.wg.Wait()
 
-	// Clear the last rendered line: \r + spaces wide enough to erase + \r.
+	// The goroutine is done. Re-acquire mu for the clear-line write so that
+	// any concurrent Update's redraw (which sees stopped=true and returns early)
+	// cannot interleave with our clear. Re-check lastWidth under the same lock.
 	s.mu.Lock()
 	w := s.lastWidth
-	s.mu.Unlock()
 	if w < 1 {
 		w = 1
 	}
 	fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", w))
+	s.mu.Unlock()
 }
 
 // run is the goroutine launched by Start. It redraws the spinner line on every
@@ -142,14 +148,21 @@ func (s *Spinner) run() {
 // safe to call from both the ticker goroutine and the caller of Start/Update.
 // The entire read-compute-write sequence is protected to prevent interleaved
 // output when Update triggers an immediate redraw while the goroutine is ticking.
+// If stopped is true (Stop has been called) the write is skipped, ensuring no
+// stray frame can land after the clear-line that Stop writes.
 func (s *Spinner) redraw() {
 	s.mu.Lock()
+	if !s.active || s.stopped {
+		s.mu.Unlock()
+		return
+	}
 	frame := brailleFrames[s.frame%len(brailleFrames)]
 	text := s.text
 	s.frame++
 	line := fmt.Sprintf("%c %s", frame, text)
 	s.lastWidth = len([]rune(line))
-	// Write to w while holding the mutex so concurrent redraws cannot interleave.
+	// Write to w while holding the mutex so concurrent redraws cannot interleave,
+	// and so Stop's clear-line write (also under mu) cannot interleave with us.
 	fmt.Fprintf(s.w, "\r%s", line)
 	s.mu.Unlock()
 }

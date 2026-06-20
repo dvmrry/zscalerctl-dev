@@ -181,11 +181,13 @@ func (a *App) resourceCatalog() resources.ResourceCatalog {
 // spinnerActive reports whether a progress spinner should render: stderr must
 // be an interactive TTY, no diagnostic logging may be active (log lines share
 // stderr and would clash with the \r-redrawn spinner line), and color must not
-// be disabled (--color never / --no-color signals plain output).
+// be disabled. ShouldColor folds in --color never/always, NO_COLOR=1, and
+// TERM=dumb — all of which signal plain output where \r overwriting is unsafe
+// or unwanted. The stderrTTY flag is passed as the isTTY argument so the same
+// env-based suppression applies to stderr (the spinner's stream).
 func (a *App) spinnerActive(opts globalOptions) bool {
-	return a.stderrTTY &&
-		(opts.logLevel == "" || opts.logLevel == "off") &&
-		opts.colorMode != output.ColorNever
+	return (opts.logLevel == "" || opts.logLevel == "off") &&
+		output.ShouldColor(opts.colorMode, a.env, a.stderrTTY)
 }
 
 // newSpinner returns a Spinner bound to stderr, active only when spinnerActive
