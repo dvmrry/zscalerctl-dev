@@ -4,12 +4,40 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"runtime"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 )
+
+// syncBuf is a thread-safe bytes.Buffer used in leak-detection tests. A leaked
+// spinner goroutine keeps writing braille frames; a stopped one does not. By
+// reading Len() before and after a settle window we can determine whether the
+// goroutine is still alive without touching runtime.NumGoroutine(), which is
+// unreliable under parallel test runs.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Len()
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
 
 // TestSpinnerActive is a table-driven white-box test for App.spinnerActive,
 // verifying the gate logic: ShouldColor(colorMode, env, stderrTTY) AND
@@ -232,46 +260,52 @@ func TestNewSpinnerReturnsCorrectActiveState(t *testing.T) {
 }
 
 // TestCallWithSpinnerPanicSafe verifies fix #3: if fn panics while the spinner
-// is active, the deferred s.Stop() prevents a goroutine leak. Without the
-// defer, the spinner goroutine would stay live indefinitely after recovery,
-// keeping writing to stderr until process exit.
+// is active, the deferred s.Stop() in callWithSpinner prevents a goroutine
+// leak. Without the defer, the spinner goroutine would stay live indefinitely
+// after recovery, keeping writing to stderr until process exit.
 //
-// The test uses an inactive spinner (StderrTTY: false) so no bytes reach the
-// buffer; we focus purely on the goroutine-count invariant and panic safety.
-// The active-spinner variant is covered in internal/output spinner tests.
+// Leak detection is deterministic: we use an active spinner (StderrTTY: true)
+// backed by a syncBuf so we can safely read the byte count from the test
+// goroutine. After the panic+recover, we record Len(), sleep 250 ms (> 2 ×
+// 100 ms tick interval), and assert Len() has not grown. A leaked goroutine
+// would have written ≥1 more braille frame; a stopped one writes nothing.
 func TestCallWithSpinnerPanicSafe(t *testing.T) {
 	t.Parallel()
 
-	// Establish goroutine baseline after a settle period.
-	runtime.GC()
-	time.Sleep(20 * time.Millisecond)
-	baseline := runtime.NumGoroutine()
+	errBuf := &syncBuf{}
+	// StderrTTY: true activates the spinner so the goroutine is actually
+	// launched; we can then observe whether it keeps writing after the panic.
+	// ColorAlways overrides the NO_COLOR/TERM env heuristics so the spinner
+	// is active regardless of the test runner's environment.
+	a := NewWithOptions(io.Discard, errBuf, []string{"NO_COLOR="}, Options{StderrTTY: true})
+	opts := globalOptions{logLevel: "off", colorMode: output.ColorAlways}
 
-	var errBuf bytes.Buffer
-	a := NewWithOptions(io.Discard, &errBuf, nil, Options{StderrTTY: false})
-	opts := globalOptions{logLevel: "off", colorMode: output.ColorAuto}
-
+	panicked := false
 	// Wrap the panicking call in a recover so the test continues.
 	func() {
-		defer func() { recover() }() //nolint:errcheck // intentional panic recovery
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
 		_, _ = callWithSpinner(a, opts, "test-panic", func() (int, error) {
 			panic("simulated panic inside fn")
 		})
 	}()
 
-	// Give any goroutines a moment to settle (deferred Stop should have joined).
-	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-	// Allow a small tolerance for test-runtime goroutines that may come and go.
-	const tolerance = 3
-	if after > baseline+tolerance {
-		t.Errorf("goroutine leak after panic recovery: baseline=%d, after=%d (delta %d > tolerance %d)",
-			baseline, after, after-baseline, tolerance)
+	if !panicked {
+		t.Fatal("expected callWithSpinner to propagate the panic; it did not")
 	}
-	// No bytes must be written to stderr (inactive spinner).
-	if errBuf.Len() != 0 {
-		t.Errorf("inactive spinner wrote %d bytes to stderr after panic, want 0", errBuf.Len())
+
+	// Give the deferred Stop inside callWithSpinner a moment to fully join the
+	// goroutine (it should already be done, but be safe).
+	// Then confirm no further frames arrive in the next 250 ms.
+	n1 := errBuf.Len()
+	time.Sleep(250 * time.Millisecond) // > 2 × 100 ms tick interval
+	n2 := errBuf.Len()
+
+	if n2 != n1 {
+		t.Errorf("goroutine leak after panic recovery: errBuf grew from %d to %d bytes in 250 ms after Stop",
+			n1, n2)
 	}
 }

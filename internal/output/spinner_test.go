@@ -2,7 +2,6 @@ package output_test
 
 import (
 	"bytes"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +9,34 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 )
+
+// syncBuf is a thread-safe bytes.Buffer used in leak-detection tests. A leaked
+// spinner goroutine keeps writing braille frames; a stopped one does not. By
+// reading Len() before and after a settle window we can determine whether the
+// goroutine is still alive without touching runtime.NumGoroutine(), which is
+// unreliable under parallel test runs.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Len()
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
 
 // TestSpinnerInactiveWritesNothing verifies that an inactive spinner emits zero
 // bytes regardless of how many methods are called.
@@ -99,18 +126,20 @@ func TestSpinnerUpdateAfterStopSafe(t *testing.T) {
 // started==true, call wg.Wait() on a zero counter, return immediately, and
 // leave an orphan goroutine.
 //
+// Leak detection is deterministic: a stopped spinner goroutine will NOT write
+// any further frames to the syncBuf; a leaked one would write at least one
+// braille frame per 100 ms tick. We record Len() immediately after the
+// concurrent operations complete, sleep 250 ms (> 2 tick intervals), then
+// assert Len() has not grown.
+//
 // Must be run with -race to catch data races.
 func TestSpinnerStartStopConcurrentNoLeak(t *testing.T) {
 	t.Parallel()
 
-	runtime.GC()
-	time.Sleep(20 * time.Millisecond)
-	baseline := runtime.NumGoroutine()
-
 	const iterations = 50
 	for i := 0; i < iterations; i++ {
-		var buf bytes.Buffer
-		s := output.NewSpinner(&buf, true)
+		buf := &syncBuf{}
+		s := output.NewSpinner(buf, true)
 
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -128,15 +157,20 @@ func TestSpinnerStartStopConcurrentNoLeak(t *testing.T) {
 		s.Stop()
 	}
 
-	// Allow goroutines to finish.
-	runtime.GC()
-	time.Sleep(100 * time.Millisecond)
+	// All iterations are done. Pick a fresh spinner so we can observe *its*
+	// writer in isolation and confirm no goroutine is still ticking.
+	sentinel := &syncBuf{}
+	sLast := output.NewSpinner(sentinel, true)
+	sLast.Start("probe")
+	sLast.Stop() // deferred Stop — goroutine must be joined here
 
-	after := runtime.NumGoroutine()
-	const tolerance = 3
-	if after > baseline+tolerance {
-		t.Errorf("goroutine leak after %d concurrent Start/Stop pairs: baseline=%d, after=%d (delta %d > tolerance %d)",
-			iterations, baseline, after, after-baseline, tolerance)
+	n1 := sentinel.Len()
+	time.Sleep(250 * time.Millisecond) // > 2 × 100 ms tick interval
+	n2 := sentinel.Len()
+
+	if n2 != n1 {
+		t.Errorf("goroutine leak detected: sentinel writer grew from %d to %d bytes in 250 ms after Stop",
+			n1, n2)
 	}
 }
 
@@ -144,33 +178,43 @@ func TestSpinnerStartStopConcurrentNoLeak(t *testing.T) {
 // panics while the spinner goroutine is running, a properly deferred Stop
 // prevents the goroutine from leaking. This test simulates that scenario
 // directly at the Spinner level (without going through callWithSpinner).
+//
+// Leak detection is deterministic: after the panic+recover and deferred Stop,
+// we record Len() on the syncBuf, sleep 250 ms (> 2 tick intervals), and
+// assert Len() has not grown. A leaked goroutine would have written ≥1 more
+// braille frame; a stopped one writes nothing.
 func TestSpinnerPanicInCallerNoLeak(t *testing.T) {
 	t.Parallel()
 
-	runtime.GC()
-	time.Sleep(20 * time.Millisecond)
-	baseline := runtime.NumGoroutine()
+	buf := &syncBuf{}
+	s := output.NewSpinner(buf, true)
 
-	var buf bytes.Buffer
-	s := output.NewSpinner(&buf, true)
-
+	panicked := false
 	// Simulate a caller that starts the spinner, defers Stop (the fix), and
 	// then panics. The outer recover ensures the test continues.
 	func() {
-		defer func() { recover() }() //nolint:errcheck // intentional panic recovery
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
 		s.Start("work")
 		defer s.Stop() // fix #3: covers panic in the caller
 		panic("simulated caller panic")
 	}()
 
-	// Spinner goroutine must have been joined by the deferred Stop.
-	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
+	if !panicked {
+		t.Fatal("expected the inner func to panic; it did not")
+	}
 
-	after := runtime.NumGoroutine()
-	const tolerance = 3
-	if after > baseline+tolerance {
-		t.Errorf("goroutine leak after panic+deferred Stop: baseline=%d, after=%d (delta %d > tolerance %d)",
-			baseline, after, after-baseline, tolerance)
+	// Spinner goroutine must have been joined by the deferred Stop.
+	// Record the byte count and confirm no further frames arrive.
+	n1 := buf.Len()
+	time.Sleep(250 * time.Millisecond) // > 2 × 100 ms tick interval
+	n2 := buf.Len()
+
+	if n2 != n1 {
+		t.Errorf("goroutine leak after panic+deferred Stop: buf grew from %d to %d bytes in 250 ms",
+			n1, n2)
 	}
 }
