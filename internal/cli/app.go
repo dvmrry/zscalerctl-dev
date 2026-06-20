@@ -194,6 +194,18 @@ func (a *App) newSpinner(opts globalOptions) *output.Spinner {
 	return output.NewSpinner(a.err, a.spinnerActive(opts))
 }
 
+// callWithSpinner runs fn while showing an indeterminate progress spinner on
+// stderr (gated by spinnerActive), clearing it before fn's result is used.
+// Stop is called synchronously before returning so the caller can safely check
+// the error and render to stdout without racing with a live spinner on stderr.
+func callWithSpinner[T any](a *App, opts globalOptions, msg string, fn func() (T, error)) (T, error) {
+	s := a.newSpinner(opts)
+	s.Start(msg)
+	v, err := fn()
+	s.Stop()
+	return v, err
+}
+
 func (a *App) Run(ctx context.Context, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1123,7 +1135,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return err
 	}
 	if op == "show" {
-		record, err := reader.Show(ctx, product, resource)
+		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
+			return reader.Show(ctx, product, resource)
+		})
 		if err != nil {
 			return err
 		}
@@ -1134,7 +1148,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
 	}
 	if op == "get" {
-		record, err := reader.Get(ctx, product, resource, args[2])
+		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
+			return reader.Get(ctx, product, resource, args[2])
+		})
 		if err != nil {
 			return err
 		}
@@ -1144,7 +1160,9 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		}
 		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
 	}
-	records, err := reader.List(ctx, product, resource)
+	records, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]resources.SourceRecord, error) {
+		return reader.List(ctx, product, resource)
+	})
 	if err != nil {
 		return err
 	}

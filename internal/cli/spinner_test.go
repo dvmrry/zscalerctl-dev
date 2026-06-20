@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"io"
 	"testing"
 
@@ -100,6 +102,50 @@ func TestSpinnerActive(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCallWithSpinner verifies that callWithSpinner propagates fn's return
+// values, writes zero bytes to stderr when the spinner is inactive (non-TTY),
+// and is race-clean.
+func TestCallWithSpinner(t *testing.T) {
+	t.Parallel()
+
+	// Inactive spinner (stderrTTY = false): nothing must be written to stderr.
+	var errBuf bytes.Buffer
+	a := NewWithOptions(io.Discard, &errBuf, nil, Options{StderrTTY: false})
+	opts := globalOptions{logLevel: "off", colorMode: output.ColorAuto}
+
+	t.Run("returns value and nil error", func(t *testing.T) {
+		t.Parallel()
+		got, err := callWithSpinner(a, opts, "contacting Zscaler", func() (int, error) {
+			return 42, nil
+		})
+		if err != nil {
+			t.Fatalf("callWithSpinner() error = %v, want nil", err)
+		}
+		if got != 42 {
+			t.Errorf("callWithSpinner() value = %d, want 42", got)
+		}
+		if errBuf.Len() != 0 {
+			t.Errorf("callWithSpinner() wrote %d bytes to stderr, want 0", errBuf.Len())
+		}
+	})
+
+	t.Run("propagates error", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("sentinel")
+		var errBuf2 bytes.Buffer
+		a2 := NewWithOptions(io.Discard, &errBuf2, nil, Options{StderrTTY: false})
+		_, err := callWithSpinner(a2, opts, "contacting Zscaler", func() (string, error) {
+			return "", sentinel
+		})
+		if !errors.Is(err, sentinel) {
+			t.Errorf("callWithSpinner() error = %v, want sentinel", err)
+		}
+		if errBuf2.Len() != 0 {
+			t.Errorf("callWithSpinner() wrote %d bytes to stderr on error path, want 0", errBuf2.Len())
+		}
+	})
 }
 
 // TestNewSpinnerReturnsCorrectActiveState verifies that newSpinner propagates
