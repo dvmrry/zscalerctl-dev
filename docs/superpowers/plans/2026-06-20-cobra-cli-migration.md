@@ -75,20 +75,11 @@ cases := []struct{ name string; args []string; env []string; wantCode int }{
 ## Phase 1 — Foundation + hybrid dispatch
 
 ### Task 1.1: Vendor a pinned Cobra
-- [ ] In the spike, pick a reviewed Cobra version `vX.Y.Z`; `go get github.com/spf13/cobra@vX.Y.Z && go mod tidy && go mod vendor`; record `vX.Y.Z` in this plan. `make verify-licenses && make vuln` → PASS. Commit.
+- [x] Pinned `github.com/spf13/cobra@v1.10.2` (latest stable as of 2026-06-20). Transitive deps: `github.com/spf13/pflag v1.0.9` (direct — used by globalflags.go), `github.com/inconshreveable/mousetrap v1.1.0` (indirect, Windows-only). No `go-md2man` in vendor (not imported at build time). `make verify-licenses && make vuln` → PASS.
 
 ### Task 1.2: Global-flag source-of-truth + Cobra mirror (§4a)
 **Files:** Create `internal/cli/globalflags.go`, `globalflags_test.go`.
-- [ ] **Step 1: Failing test** — the Cobra persistent-flag set equals the `parseGlobal` flag set:
-```go
-func TestCobraGlobalsMirrorParseGlobal(t *testing.T) {
-	root := newTestRoot()
-	got := flagNames(root.PersistentFlags())                 // sorted
-	want := []string{"color","config","fields","filter","format","log-level","no-cache","no-color","output","profile","redaction","search","timeout"}
-	if !reflect.DeepEqual(got, want) { t.Fatalf("globals drift: got %v want %v", got, want) }
-}
-```
-- [ ] **Step 2:** FAIL. **Step 3:** Define a single `var globalFlagSpecs = []globalFlagSpec{…}` (name,type,default,usage,completionValues) and register both the Cobra persistent flags (for help/completion) and keep `parseGlobal` reading the same names. Do NOT let Cobra parse them (App strips via `splitGlobalArgs`). **Step 4:** PASS. **Step 5:** Commit.
+- [x] **Steps 1–5 DONE.** `internal/cli/globalflags.go` defines `globalFlagDefs []globalFlagDef` (13 entries, alphabetical), `defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPointers` (called by `parseGlobal`), `registerGlobalPersistentFlags(fs *pflag.FlagSet)`, and `applyGlobalPersistentFlags(cmd *cobra.Command)`. `parseGlobal` now calls `defineGlobalFlags` rather than registering flags inline. `TestCobraGlobalsMirrorParseGlobal` cross-checks name, kind, and default across both sides by calling the actual functions; type for filter normalises `""` vs `"[]"` (stdlib repeatableFlag vs pflag StringArray empty default). All 115 existing `internal/cli` tests pass.
 
 ### Task 1.3: Cobra root + redacting writers + error mapping (§5, §5a, §8)
 **Files:** Create `internal/cli/root.go`, `root_test.go`.
