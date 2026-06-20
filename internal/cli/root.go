@@ -130,12 +130,24 @@ func newRootCmd(a *App) *cobra.Command {
 //	error ("unknown command X for Y"). That error is NOT a UsageError here —
 //	wrapping it into UsageError (exit 2) must happen at the App.Run call site
 //	(Task 1.4) by inspecting the returned error string after executeRoot returns.
-func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []string) error {
+func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []string) (err error) {
 	outW := redact.NewWriter(a.out, redact.ModeStandard)
 	errW := redact.NewWriter(a.err, redact.ModeStandard)
-	// Use defers so both writers flush even on panic.
-	defer func() { _ = outW.Close() }()
-	defer func() { _ = errW.Close() }()
+	// Deferred Close flushes both redactors even on panic. When ExecuteContext
+	// succeeds (err == nil), a non-nil Close error surfaces so a failed flush
+	// does not silently become exit 0. When ExecuteContext already returned an
+	// error, Close errors are suppressed — the execute error takes precedence.
+	defer func() {
+		cerrOut := outW.Close()
+		cerrErr := errW.Close()
+		if err == nil {
+			if cerrOut != nil {
+				err = cerrOut
+			} else if cerrErr != nil {
+				err = cerrErr
+			}
+		}
+	}()
 
 	root.SetOut(outW)
 	root.SetErr(errW)
@@ -157,11 +169,18 @@ func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []strin
 // redactor on stdout cannot leak secrets; it only prevents script corruption.
 // Stderr remains redacted because completion errors (if any) could in theory
 // echo back user-supplied tokens.
-func (a *App) executeRootCompletion(ctx context.Context, root *cobra.Command, args []string) error {
+func (a *App) executeRootCompletion(ctx context.Context, root *cobra.Command, args []string) (err error) {
 	// stdout: raw writer — the generated script bytes must be emitted exactly.
 	// stderr: still redacted — errors may echo user input.
 	errW := redact.NewWriter(a.err, redact.ModeStandard)
-	defer func() { _ = errW.Close() }()
+	// Deferred Close flushes the stderr redactor even on panic. Surface the
+	// Close error when ExecuteContext succeeded (same rationale as executeRoot).
+	defer func() {
+		cerrErr := errW.Close()
+		if err == nil && cerrErr != nil {
+			err = cerrErr
+		}
+	}()
 
 	root.SetOut(a.out)
 	root.SetErr(errW)

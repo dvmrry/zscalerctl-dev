@@ -357,6 +357,91 @@ func TestDoctorRedactionFollowsConfig(t *testing.T) {
 	}
 }
 
+// ── Finding 1: --help must precede global narrowing/format gates for migrated cmds ──
+//
+// Pre-fix bug: "--filter name=x version --help", "--fields id zia locations --help",
+// and "--format ndjson completion --help" returned exit 2 (gate fired before Cobra
+// help). After the fix all three must return nil/exit-0 and produce help output.
+//
+// The non-help variants ("--filter name=x version", "--format ndjson version") must
+// STILL return UsageError/exit-2 — the gates must not be bypassed for normal calls.
+
+// TestHelpPrecedesNarrowingGate_Filter confirms that "--filter name=x version --help"
+// returns nil (exit 0) and produces Cobra help, not the narrowing-flag UsageError.
+func TestHelpPrecedesNarrowingGate_Filter(t *testing.T) {
+	t.Parallel()
+
+	a, out, _ := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--filter", "name=x", "version", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(--filter name=x version --help) error = %v, want nil (help must precede narrowing gate)", err)
+	}
+	if !strings.Contains(out.String(), "zscalerctl version") {
+		t.Errorf("App.Run(--filter name=x version --help) stdout = %q, want Cobra help containing 'zscalerctl version'", out.String())
+	}
+}
+
+// TestNonHelpNarrowingGate_Filter confirms that "--filter name=x version" (no --help)
+// still returns UsageError (exit 2) — the narrowing gate must not be bypassed.
+func TestNonHelpNarrowingGate_Filter(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--filter", "name=x", "version"})
+	if err == nil {
+		t.Fatal("App.Run(--filter name=x version) error = nil, want UsageError (narrowing gate)")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(--filter name=x version) error = %v, want UsageError (exit 2)", err)
+	}
+}
+
+// TestHelpPrecedesNarrowingGate_Fields confirms that "--fields id zia locations --help"
+// returns nil (exit 0) and produces Cobra help, not the --fields UsageError.
+func TestHelpPrecedesNarrowingGate_Fields(t *testing.T) {
+	t.Parallel()
+
+	a, out, _ := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--fields", "id", "zia", "locations", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(--fields id zia locations --help) error = %v, want nil (help must precede fields gate)", err)
+	}
+	if out.Len() == 0 {
+		t.Error("App.Run(--fields id zia locations --help) stdout is empty; want help output")
+	}
+}
+
+// TestHelpPrecedesFormatGate_CompletionNDJSON confirms that
+// "--format ndjson completion --help" returns nil (exit 0) and produces Cobra
+// completion group help, not the ndjson format-rejection UsageError.
+func TestHelpPrecedesFormatGate_CompletionNDJSON(t *testing.T) {
+	t.Parallel()
+
+	a, out, _ := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--format", "ndjson", "completion", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(--format ndjson completion --help) error = %v, want nil (help must precede format gate)", err)
+	}
+	if !strings.Contains(out.String(), "completion") {
+		t.Errorf("App.Run(--format ndjson completion --help) stdout = %q, want help containing 'completion'", out.String())
+	}
+}
+
+// TestNonHelpFormatGate_CompletionNDJSON confirms that "--format ndjson completion bash"
+// (no --help) still returns UsageError (exit 2) — the format gate must not be bypassed.
+func TestNonHelpFormatGate_CompletionNDJSON(t *testing.T) {
+	t.Parallel()
+
+	a, _, _ := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--format", "ndjson", "completion", "bash"})
+	if err == nil {
+		t.Fatal("App.Run(--format ndjson completion bash) error = nil, want UsageError (format gate)")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(--format ndjson completion bash) error = %v, want UsageError (exit 2)", err)
+	}
+}
+
 // TestHybridRouting_AuthGoesViaCobra confirms that "auth" is now dispatched
 // through Cobra (Phase 4 migration) and produces its status output via runAuth.
 // With no credentials the config loads without error (no-creds is not an

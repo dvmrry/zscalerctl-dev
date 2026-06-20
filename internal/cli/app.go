@@ -226,13 +226,27 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if len(rest) > 0 && (rest[0] == "__complete" || rest[0] == "__completeNoDesc") {
 		return a.execCobra(ctx, opts, rest)
 	}
-	// Legacy help early-return: fire only when there is no migrated command to
-	// dispatch to. When rest[0] is a migrated command (e.g. "version --help"),
-	// opts.help is true but we let it fall through to execCobra below, which
-	// re-inserts "--help" so Cobra renders the subcommand's help instead.
-	if opts.help && (len(rest) == 0 || !isMigrated(rest[0])) {
-		a.writeHelp(a.out, rest)
-		return nil
+	// Help routing:
+	//   - No command (empty rest) or un-migrated command → legacy writeHelp.
+	//   - Migrated command with --help → route straight to execCobra BEFORE the
+	//     narrowing/format gates below. This matches the legacy short-circuit where
+	//     opts.help fired before any flag validation, so combinations such as
+	//     "--filter name=x version --help", "--fields id zia locations --help", and
+	//     "--format ndjson completion --help" all show help (exit 0) rather than
+	//     hitting the narrowing/format gates (exit 2).
+	//
+	// CRITICAL: only the opts.help branch is affected. The non-help variants
+	// ("--filter name=x version", "--format ndjson version") must still hit the
+	// gates below → exit 2.
+	if opts.help {
+		if len(rest) == 0 || !isMigrated(rest[0]) {
+			a.writeHelp(a.out, rest)
+			return nil
+		}
+		// A --help request on a migrated command is a meta-request: route it to
+		// Cobra's help before the narrowing/format gates, matching the legacy
+		// behaviour where opts.help short-circuited prior to flag validation.
+		return a.execCobra(ctx, opts, rest)
 	}
 	if len(rest) == 0 {
 		a.writeUsageForHumans(opts)
@@ -260,8 +274,8 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return rejectUnsupportedFormat("completion", opts.format)
 	}
 	// Hybrid dispatch: migrated commands go through Cobra; legacy commands continue
-	// through the switch below. isMigrated gates the early-return for --help above
-	// (version --help must reach Cobra) and routes here before the switch.
+	// through the switch below. Non-help invocations of migrated commands reach here
+	// after the narrowing/format gates above.
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
 	}
