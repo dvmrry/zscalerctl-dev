@@ -1,6 +1,6 @@
 package cli_test
 
-// cobra_product_test.go — Phase 2a: product command Cobra migration tests.
+// cobra_product_test.go -- Phase 2a: product command Cobra migration tests.
 //
 // Tests verify that zia/zpa/ztw/zcc/zidentity (all knownProducts) are correctly
 // wired through the Cobra path and produce behaviour identical to the legacy path.
@@ -8,11 +8,12 @@ package cli_test
 // Test layers:
 //  1. Data-path behaviour (fake reader): list/get/show produce correct projected
 //     output, including --format json and --format ndjson (ndjson IS allowed).
-//  2. Arity/error preservation: missing op → UsageError; missing id → UsageError;
-//     bogus resource → ResourceNotFoundError (exit 4 sentinel).
-//  3. No-creds path: missing reader → ErrMissingCredentials (exit 3 sentinel).
+//  2. Arity/error preservation: missing op -> UsageError; missing id -> UsageError;
+//     bogus resource -> ResourceNotFoundError (exit 4 sentinel).
+//  3. No-creds path: missing reader -> ErrMissingCredentials (exit 3 sentinel).
 //  4. url-lookup: zia url-lookup reaches runURLLookup via the Cobra path.
 //  5. isMigrated gate: product commands go through Cobra, not legacy path.
+//  6. Phase 2c: resource-specific --help (SetHelpFunc) and catalog completion.
 
 import (
 	"bytes"
@@ -27,7 +28,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// -- helpers ------------------------------------------------------------------
 
 // newProductApp returns an App wired to in-memory buffers with a given reader.
 // Pass nil reader to get the no-credentials path.
@@ -43,7 +44,7 @@ func newProductApp(t *testing.T, reader cli.ResourceReader) (*cli.App, *bytes.Bu
 	return a, &out, &errBuf
 }
 
-// ── Data-path: list ──────────────────────────────────────────────────────────
+// -- Data-path: list ----------------------------------------------------------
 
 // TestProductCmd_List_JSON verifies that "zia locations list --format json" via
 // the Cobra path produces projected, redacted JSON output identical to the legacy
@@ -126,7 +127,7 @@ func TestProductCmd_List_NDJSON(t *testing.T) {
 	}
 }
 
-// ── Data-path: get ───────────────────────────────────────────────────────────
+// -- Data-path: get -----------------------------------------------------------
 
 // TestProductCmd_Get_JSON verifies that "zia locations get <id> --format json"
 // via the Cobra path produces a single projected record (not an array).
@@ -180,7 +181,7 @@ func TestProductCmd_Get_NDJSON(t *testing.T) {
 	}
 }
 
-// ── Data-path: show ──────────────────────────────────────────────────────────
+// -- Data-path: show ----------------------------------------------------------
 
 // TestProductCmd_Show_JSON verifies that "zia advanced-settings show" via the
 // Cobra path produces a projected record. advanced-settings has only ShowOperation.
@@ -223,7 +224,7 @@ func TestProductCmd_Show_NDJSON(t *testing.T) {
 	}
 }
 
-// ── Arity / error preservation ────────────────────────────────────────────────
+// -- Arity / error preservation -----------------------------------------------
 
 // TestProductCmd_MissingOp_UsageError verifies that "zia locations" (no op)
 // returns a UsageError (exit 2) containing resource-specific usage.
@@ -277,7 +278,7 @@ func TestProductCmd_BogusResource_NotFound(t *testing.T) {
 	}
 }
 
-// ── No-creds path ────────────────────────────────────────────────────────────
+// -- No-creds path ------------------------------------------------------------
 
 // TestProductCmd_NoCreds verifies that "zia locations list" with no reader (no
 // credentials configured) returns the missing-credentials error (exit 3), not a
@@ -285,7 +286,7 @@ func TestProductCmd_BogusResource_NotFound(t *testing.T) {
 func TestProductCmd_NoCreds(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := newProductApp(t, nil) // nil reader → no credentials in env
+	a, _, _ := newProductApp(t, nil) // nil reader -> no credentials in env
 	err := a.Run(context.Background(), []string{"zia", "locations", "list"})
 	if err == nil {
 		t.Fatal("App.Run(zia locations list, no creds) error = nil, want credential error")
@@ -303,7 +304,7 @@ func TestProductCmd_NoCreds(t *testing.T) {
 	}
 }
 
-// ── url-lookup (Cobra subcommand — Phase 2b) ──────────────────────────────────
+// -- url-lookup (Cobra subcommand -- Phase 2b) ---------------------------------
 
 // TestProductCmd_URLLookup_ReachesRunURLLookup verifies that "zia url-lookup
 // example.com" via the Cobra subcommand path calls the URLLookupReader capability.
@@ -458,11 +459,11 @@ func TestProductCmd_ZIALocations_StillRoutesToProductRunE(t *testing.T) {
 	if err == nil {
 		t.Fatal("App.Run(zia locations list, no creds) error = nil, want credential error")
 	}
-	// Must NOT be a Cobra "unknown command" error — that would mean routing broke.
+	// Must NOT be a Cobra "unknown command" error -- that would mean routing broke.
 	if strings.HasPrefix(err.Error(), "unknown command") {
 		t.Errorf("zia locations list returned Cobra unknown-command %q; resource routing is broken", err.Error())
 	}
-	// Must NOT be a UsageError — that would mean url-lookup incorrectly captured it.
+	// Must NOT be a UsageError -- that would mean url-lookup incorrectly captured it.
 	if errors.Is(err, cli.ErrUsage) {
 		t.Errorf("zia locations list returned UsageError %q; should be credential error", err.Error())
 	}
@@ -472,17 +473,22 @@ func TestProductCmd_ZIALocations_StillRoutesToProductRunE(t *testing.T) {
 	}
 }
 
-// ── isMigrated gate / hybrid routing ─────────────────────────────────────────
+// -- isMigrated gate / hybrid routing -----------------------------------------
 
 // TestProductCmd_GoesViaCobra verifies that product commands are now routed
 // through Cobra (not the legacy path). The positive signal is that a credential
-// error is NOT a Cobra unknown-command error — confirming the Cobra root
+// error is NOT a Cobra unknown-command error -- confirming the Cobra root
 // registered the product command and attempted to execute it.
+//
+// Uses cli.KnownProductNames() (derived from the live catalog) so a future 6th
+// product is automatically covered without touching this test.
 func TestProductCmd_GoesViaCobra(t *testing.T) {
 	t.Parallel()
 
-	// Iterate all known products to ensure every product is migrated.
-	products := []string{"zia", "zpa", "ztw", "zcc", "zidentity"}
+	var out, errBuf bytes.Buffer
+	a := cli.New(&out, &errBuf, nil)
+	products := cli.KnownProductNames(a)
+
 	for _, product := range products {
 		product := product
 		t.Run(product, func(t *testing.T) {
@@ -491,7 +497,7 @@ func TestProductCmd_GoesViaCobra(t *testing.T) {
 			a, _, _ := newProductApp(t, nil)
 			err := a.Run(context.Background(), []string{product, "locations", "list"})
 
-			// With no credentials, the command SHOULD fail — but NOT with a Cobra
+			// With no credentials, the command SHOULD fail -- but NOT with a Cobra
 			// "unknown command" error. That would mean the product was not registered.
 			if err == nil {
 				t.Fatalf("App.Run(%s locations list, no creds) error = nil, want credential error", product)
@@ -534,6 +540,180 @@ func TestProductCmd_LegacyAuthStillWorks(t *testing.T) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "unknown command") {
 			t.Errorf("auth returned Cobra unknown-command %q; legacy path should handle it", err.Error())
+		}
+	}
+}
+
+// -- Phase 2c: resource-specific --help (SetHelpFunc) -------------------------
+
+// TestProductCmd_ResourceHelp_WithHelp verifies that "zia locations --help"
+// prints the resource-specific field/usage block (resourceUsage) rather than
+// the generic Cobra product help. The output must contain the resource name and
+// at least one field name from the locations spec.
+func TestProductCmd_ResourceHelp_WithHelp(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := newProductApp(t, nil)
+	err := a.Run(context.Background(), []string{"zia", "locations", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	// resourceUsage always includes the resource name in the usage line.
+	if !strings.Contains(got, "locations") {
+		t.Errorf("zia locations --help stdout = %q, want 'locations' in resource usage", got)
+	}
+	// resourceUsage includes the fields block; 'name' is a known locations field.
+	if !strings.Contains(got, "name") {
+		t.Errorf("zia locations --help stdout = %q, want 'name' field in resource usage", got)
+	}
+	// Must NOT be the generic Cobra product help (which shows "read zia resources").
+	if strings.Contains(got, "read zia resources") {
+		t.Errorf("zia locations --help stdout = %q, got generic product help instead of resource help", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("zia locations --help stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestProductCmd_ResourceHelp_WithOpAndHelp verifies that "zia locations list --help"
+// produces the same resource-specific help as "zia locations --help", restoring
+// the legacy behaviour where an explicit op before --help still shows the fields.
+func TestProductCmd_ResourceHelp_WithOpAndHelp(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := newProductApp(t, nil)
+	err := a.Run(context.Background(), []string{"zia", "locations", "list", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations list --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "locations") {
+		t.Errorf("zia locations list --help stdout = %q, want 'locations' in resource usage", got)
+	}
+	if !strings.Contains(got, "name") {
+		t.Errorf("zia locations list --help stdout = %q, want 'name' field in resource usage", got)
+	}
+	// Must NOT be the generic Cobra product help.
+	if strings.Contains(got, "read zia resources") {
+		t.Errorf("zia locations list --help stdout = %q, got generic product help instead of resource help", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("zia locations list --help stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestProductCmd_ProductHelp_NoResource verifies that "zia --help" (no resource
+// specified) falls back to Cobra's default product help, which includes the
+// product name, url-lookup subcommand, and the global flags.
+func TestProductCmd_ProductHelp_NoResource(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := newProductApp(t, nil)
+	err := a.Run(context.Background(), []string{"zia", "--help"})
+	if err != nil {
+		t.Fatalf("App.Run(zia --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	// The Cobra default product help shows "zscalerctl zia" in the Usage line.
+	if !strings.Contains(got, "zscalerctl zia") {
+		t.Errorf("zia --help stdout = %q, want 'zscalerctl zia'", got)
+	}
+	// The url-lookup subcommand must still be listed.
+	if !strings.Contains(got, "url-lookup") {
+		t.Errorf("zia --help stdout = %q, want 'url-lookup' listed in available commands", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("zia --help stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// -- Phase 2c: catalog ValidArgsFunction (tab completion) ---------------------
+
+// TestProductCmd_ValidArgsFunction_FirstArg verifies that the ValidArgsFunction
+// returns the product's catalog resource names as first-arg completions.
+// Uses the exported ProductCmdCompletions helper (export_test.go) which calls the
+// function directly, bypassing the hybrid App.Run dispatch layer.
+func TestProductCmd_ValidArgsFunction_FirstArg(t *testing.T) {
+	t.Parallel()
+
+	completions, directive := cli.ProductCmdCompletions(t, "zia", nil)
+	if directive != 4 { // cobra.ShellCompDirectiveNoFileComp = 4
+		t.Errorf("directive = %d, want 4 (NoFileComp)", directive)
+	}
+	// locations is a well-known ZIA resource and must appear.
+	found := false
+	for _, c := range completions {
+		if c == "locations" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("first-arg completions = %v, want 'locations' in list", completions)
+	}
+}
+
+// TestProductCmd_ValidArgsFunction_SecondArg verifies that the ValidArgsFunction
+// returns the supported read ops for a known resource as second-arg completions.
+func TestProductCmd_ValidArgsFunction_SecondArg(t *testing.T) {
+	t.Parallel()
+
+	completions, directive := cli.ProductCmdCompletions(t, "zia", []string{"locations"})
+	if directive != 4 { // cobra.ShellCompDirectiveNoFileComp = 4
+		t.Errorf("directive = %d, want 4 (NoFileComp)", directive)
+	}
+	// locations supports list and get.
+	hasList, hasGet := false, false
+	for _, c := range completions {
+		if c == "list" {
+			hasList = true
+		}
+		if c == "get" {
+			hasGet = true
+		}
+	}
+	if !hasList {
+		t.Errorf("second-arg completions for locations = %v, want 'list'", completions)
+	}
+	if !hasGet {
+		t.Errorf("second-arg completions for locations = %v, want 'get'", completions)
+	}
+}
+
+// TestProductCmd_ValidArgsFunction_NoNetwork verifies that the ValidArgsFunction
+// does NOT require a reader or config: calling it with no env and nil reader
+// returns catalog data without any credential error or panic.
+func TestProductCmd_ValidArgsFunction_NoNetwork(t *testing.T) {
+	t.Parallel()
+
+	// nil reader + no env = no credentials whatsoever.
+	// Must not panic, must not return a credential error.
+	completions, directive := cli.ProductCmdCompletions(t, "zia", nil)
+	if directive != 4 {
+		t.Errorf("directive = %d, want 4 (NoFileComp); got completions = %v", directive, completions)
+	}
+	// Must return catalog names -- not an empty list -- confirming no-network access.
+	if len(completions) == 0 {
+		t.Errorf("completions = empty, want catalog resource names (no credentials required)")
+	}
+}
+
+// TestProductCmd_ValidArgsFunction_UnknownResource verifies that an unknown
+// resource as the first arg yields no completions for the second arg
+// (not an error, not a panic).
+func TestProductCmd_ValidArgsFunction_UnknownResource(t *testing.T) {
+	t.Parallel()
+
+	completions, directive := cli.ProductCmdCompletions(t, "zia", []string{"bogusresource"})
+	// directive is still NoFileComp regardless.
+	if directive != 4 {
+		t.Errorf("directive = %d, want 4 (NoFileComp)", directive)
+	}
+	// No real ops should appear for an unknown resource.
+	for _, c := range completions {
+		if c == "list" || c == "get" || c == "show" {
+			t.Errorf("completions for unknown resource = %v, unexpected op %q", completions, c)
 		}
 	}
 }

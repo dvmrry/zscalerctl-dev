@@ -333,7 +333,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── resource help ─────────────────────────────────────────────────────────
+		// ── resource help (Phase 2c: SetHelpFunc restores legacy resource-specific help) ──
+		{
+			name:     "zia-locations-help",
+			args:     []string{"zia", "locations", "--help"},
+			wantCode: 0,
+			note:     "resource-help",
+		},
 		{
 			name:     "zia-locations-list-help",
 			args:     []string{"zia", "locations", "list", "--help"},

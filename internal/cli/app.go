@@ -747,7 +747,20 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 // no-credentials path (exit 3) is preserved for product commands: they load
 // config and then attempt to build a reader, which fails when credentials are
 // absent.
+//
+// Help (SetHelpFunc): when the first positional arg is a known catalog resource
+// for this product, the help func prints the resource-specific field/usage block
+// (resourceUsage) instead of Cobra's default product help. This restores the
+// legacy behaviour where `zia locations --help` and `zia locations list --help`
+// printed the resource's supported ops and renderable field names.
+//
+// Completion (ValidArgsFunction): the first positional completion returns
+// catalog resource names; the second returns the resource's supported read ops.
+// SECURITY: the ValidArgsFunction reads ONLY the static catalog — it never loads
+// config, resolves secrets, or dials the API.
 func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobra.Command {
+	catalog := a.resourceCatalog()
+
 	cmd := &cobra.Command{
 		Use:   string(product),
 		Short: "read " + string(product) + " resources",
@@ -762,7 +775,55 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 			applyOptions(&cfg, opts)
 			return a.runProduct(cmd.Context(), cfg, opts, string(product), args)
 		},
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			// SECURITY: reads only the static catalog — never loads config or dials API.
+			switch len(args) {
+			case 0:
+				// First positional: offer the product's resource names.
+				names := completionResourceNames(product)
+				completions := make([]cobra.Completion, len(names))
+				for i, n := range names {
+					completions[i] = cobra.Completion(n)
+				}
+				return completions, cobra.ShellCompDirectiveNoFileComp
+			case 1:
+				// Second positional: offer the ops that this resource supports.
+				spec, ok := catalog.FindSpec(product, args[0])
+				if !ok {
+					return nil, cobra.ShellCompDirectiveNoFileComp
+				}
+				ops := readOperationNames(spec)
+				completions := make([]cobra.Completion, len(ops))
+				for i, op := range ops {
+					completions[i] = cobra.Completion(op)
+				}
+				return completions, cobra.ShellCompDirectiveNoFileComp
+			default:
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+		},
 	}
+
+	// SetHelpFunc: intercept --help when the first positional is a known
+	// catalog resource and print resource-specific help instead of Cobra's
+	// default product help. Falls back to Cobra default for `zia --help`.
+	//
+	// Cobra's execute() parses flags before checking helpVal, so by the time
+	// the help func fires, cmd.Flags().Args() is populated: it contains the
+	// positional args (e.g. ["locations"] or ["locations", "list"]) stripped of
+	// any flags. We use it as the reliable source for the resource name.
+	defaultHelp := cmd.HelpFunc()
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		positionals := c.Flags().Args()
+		if len(positionals) >= 1 {
+			if spec, ok := catalog.FindSpec(product, positionals[0]); ok {
+				fmt.Fprintln(c.OutOrStdout(), resourceUsage(product, spec, 0))
+				return
+			}
+		}
+		defaultHelp(c, args)
+	})
+
 	// url-lookup is a ZIA-only diagnostic verb (not a catalog resource). Wire it
 	// as a Cobra subcommand so it owns its own help surface and uses
 	// DisableFlagParsing to preserve its strict no-flags error message.
@@ -2107,6 +2168,13 @@ func knownProducts() []resources.Product {
 		}
 	}
 	return products
+}
+
+// KnownProductNames returns the string names of all products registered in the
+// catalog. It is exported for use in external test packages that need to iterate
+// known products without hardcoding the list.
+func KnownProductNames(_ *App) []string {
+	return productNames(knownProducts())
 }
 
 func knownProductCommand(name string) bool {

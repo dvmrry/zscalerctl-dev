@@ -26,6 +26,8 @@ Column definitions:
 | `zia-locations-list-help` | Resource-specific field list + "usage: zscalerctl zia locations list\|get" + fields → then Cobra zia help (same as `zia-help`) | Same Cobra zia help but now also lists "Available Commands: url-lookup …" and footer | Cascade of Phase 2a (zia→Cobra) plus Phase 2b (url-lookup subcommand); `zia locations list --help` still intercepts at the zia level. Exit code stays 0. | `help-text` |
 | `zia-help` | "read zia resources" + Usage line + Flags + Global Flags (no subcommands listed) | Same but now includes "Available Commands: url-lookup …" and "Use … [command] --help" footer | url-lookup is now a real Cobra subcommand of zia (Phase 2b DisableFlagParsing); Cobra automatically lists it in zia's help. Exit code stays 0. | `help-text` |
 | `zia-url-lookup-help` | (none — new case) | Cobra help surface for the new url-lookup subcommand: short description + Usage line + Flags + Global Flags | url-lookup migrated to Cobra subcommand (Phase 2b); `--help` now shows Cobra-formatted help. | `new-surface` |
+| `zia-locations-list-help` | Cobra zia product help (same as `zia-help` case) | Resource-specific field list: "usage: zscalerctl zia locations list\|get" + fields block | Phase 2c SetHelpFunc restores legacy resource-specific help; `zia locations list --help` now shows the locations resource fields. Final state — reverts Phase 2a/2b re-bless. Exit code stays 0. | `help-text` |
+| `zia-locations-help` | (none — new case) | Resource-specific field list: "usage: zscalerctl zia locations list\|get" + fields block | Phase 2c: new golden freezes `zia locations --help` path (without explicit op). Identical output to `zia-locations-list-help`. Exit code 0. | `new-surface` |
 
 ---
 
