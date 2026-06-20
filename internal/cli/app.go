@@ -644,6 +644,30 @@ func isMigrated(cmd string) bool {
 	return knownProductCommand(cmd)
 }
 
+// buildCommandTree constructs the full Cobra command tree — root command plus all
+// subcommands — wired for the given opts. This is the SINGLE definition of the
+// tree: execCobra and BuildCommandTree both call it so the tree can never drift
+// between the live dispatch path and the generator / introspection path.
+func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
+	root := newRootCmd(a)
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts))
+	for _, p := range knownProducts() {
+		root.AddCommand(a.newProductCmd(p, opts))
+	}
+	return root
+}
+
+// BuildCommandTree is the exported entry point for the CLI-reference generator
+// (scripts/gen-cli-docs.go). It constructs the full Cobra command tree with
+// zero-value global options so the tree is config-free and introspectable
+// without credentials or a live config file. The caller must not execute the
+// tree — the RunE closures capture a real App; they are present for Cobra's
+// metadata (Use/Short/Long/Flags) only.
+func BuildCommandTree(a *App) *cobra.Command {
+	return a.buildCommandTree(globalOptions{})
+}
+
 // execCobra builds a transient Cobra root, adds the migrated subcommand(s), and
 // dispatches rest through it. It is only called when isMigrated(rest[0]) is true.
 //
@@ -662,12 +686,7 @@ func isMigrated(cmd string) bool {
 // the documented hook for when Cobra owns the full root and an unknown command
 // slips through.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
-	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
-		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts))
-	for _, p := range knownProducts() {
-		root.AddCommand(a.newProductCmd(p, opts))
-	}
+	root := a.buildCommandTree(opts)
 
 	args := rest
 	if opts.help {

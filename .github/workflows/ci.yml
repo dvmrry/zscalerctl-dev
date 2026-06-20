@@ -100,6 +100,7 @@ jobs:
       - run: bash scripts/verify-actions-pinned.sh
       - run: bash scripts/test-verify-actions-pinned.sh
       - run: bash scripts/verify-docs.sh
+      - run: bash scripts/verify-cli-docs.sh
       # These verifiers run in `make check` but were absent from PR CI, so a
       # break in release automation, artifacts, the catalog draft, the resource
       # scaffold, the SDK-surface inventory, or the script registry only

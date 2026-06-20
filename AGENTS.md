@@ -12,6 +12,13 @@ repo-local `.agents` content; do not edit it directly. Run
 `scripts/sync-agents-skill.sh` after changing the canonical skill, and
 `scripts/sync-agents-skill.sh --check` to verify drift.
 
+## CLI reference
+
+The authoritative command and flag list is at
+[docs/cli/zscalerctl.md](docs/cli/zscalerctl.md) — generated from the live
+Cobra command tree, committed, and drift-gated in CI. Use it to look up exact
+flag names, types, defaults, and subcommand signatures without running the CLI.
+
 ## Discover, don't guess
 
 Resource names are not guessable. Enumerate them first:
