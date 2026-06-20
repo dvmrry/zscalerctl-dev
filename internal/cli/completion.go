@@ -10,10 +10,10 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
+// completionFlags, completionDumpFlags, and completionDiffFlags are defined in
+// surface.go — the durable, drift-proof surface inventory for completion,
+// man-page, and agent-docs gates.
 var (
-	completionFlags     = []string{"--profile", "--config", "--format", "--output", "--timeout", "--redaction", "--color", "--no-color", "--no-cache", "--log-level", "--fields", "--filter", "--search"}
-	completionDumpFlags = []string{"--out", "--products", "--resources", "--continue-on-error", "--force"}
-	completionDiffFlags = []string{"--products", "--resources", "--ignore-operational", "--detail", "--allow-partial", "--fail-on-drift"}
 	completionFormats   = []string{"auto", "table", "json", "ndjson", "pretty"}
 	completionRedaction = []string{"standard", "share", "paranoid"}
 	completionColors    = []string{"auto", "always", "never"}
