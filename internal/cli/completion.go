@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"io"
 	"sort"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/spf13/cobra"
 )
 
 // completionFlags, completionDumpFlags, and completionDiffFlags are defined in
@@ -23,11 +25,25 @@ func completionShellNames() string {
 }
 
 // completionCommandNames returns the top-level command names for the man-page
-// drift gate and agent-docs drift gate. It must stay in sync with the actual
-// command tree.
+// drift gate and agent-docs drift gate. It derives the set from the live Cobra
+// tree so it cannot drift from the actual command surface.
 func completionCommandNames() []string {
-	commands := []string{"doctor", "auth", "config", "schema", "dump", "diff", "completion", "version", "help", "introspect"}
-	commands = append(commands, productNames(knownProducts())...)
+	a := New(io.Discard, io.Discard, nil)
+	root := BuildCommandTree(a)
+	root.InitDefaultCompletionCmd()
+
+	var commands []string
+	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		// Only top-level (depth-1) commands.
+		if strings.Contains(path, " ") {
+			return
+		}
+		if cmd.Hidden || strings.HasPrefix(cmd.Name(), "__complete") {
+			return
+		}
+		commands = append(commands, path)
+	})
+
 	sort.Strings(commands)
 	return commands
 }

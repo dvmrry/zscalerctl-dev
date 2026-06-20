@@ -9608,5 +9608,9 @@
       "retryable": false,
       "description": "drift check found differences between two snapshots"
     }
+  ],
+  "completion_protocol": [
+    "__complete",
+    "__completeNoDesc"
   ]
 }

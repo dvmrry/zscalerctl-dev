@@ -418,3 +418,57 @@ func introspectSetDiff(a, b []string) []string {
 	}
 	return out
 }
+
+// TestAcceptedTokensDiscoverable asserts that every real Cobra command path is
+// represented in the introspect `commands` list, and that the hidden shell-
+// completion protocol tokens (`__complete`, `__completeNoDesc`) are exposed in
+// the dedicated `completion_protocol` field. This keeps the live tree and the
+// machine-readable surface map in sync.
+func TestAcceptedTokensDiscoverable(t *testing.T) {
+	t.Parallel()
+
+	a := cli.New(io.Discard, io.Discard, nil)
+	doc := cli.IntrospectTree(a)
+
+	introspectPaths := make(map[string]bool)
+	for _, cmd := range doc.Commands {
+		introspectPaths[cmd.Path] = true
+	}
+
+	root := cli.BuildCommandTree(a)
+	root.InitDefaultCompletionCmd()
+
+	productSet := make(map[string]bool)
+	for _, spec := range resources.Catalog() {
+		productSet[string(spec.Product)] = true
+	}
+
+	var missing []string
+	cli.WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		if cmd.Hidden || strings.HasPrefix(cmd.Name(), "__complete") {
+			return
+		}
+		// IntrospectTree suppresses bare product-group nodes in favor of
+		// virtual {product} {resource} {op} entries from the catalog.
+		if !strings.Contains(path, " ") && productSet[path] {
+			return
+		}
+		if !introspectPaths[path] {
+			missing = append(missing, path)
+		}
+	})
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		t.Errorf("Cobra command paths missing from introspect commands:\n  %s", strings.Join(missing, "\n  "))
+	}
+
+	completionSet := make(map[string]bool)
+	for _, token := range doc.CompletionProtocol {
+		completionSet[token] = true
+	}
+	for _, token := range []string{"__complete", "__completeNoDesc"} {
+		if !completionSet[token] {
+			t.Errorf("completion protocol token %q missing from introspect completion_protocol", token)
+		}
+	}
+}

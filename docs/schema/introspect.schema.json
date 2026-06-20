@@ -42,6 +42,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/exitCodeDoc" },
       "description": "Exit-code table mapping integer codes to kind, retryability, and description."
+    },
+    "completion_protocol": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Hidden machine-protocol tokens accepted by App.Run for shell-completion dispatch (not Cobra commands)."
     }
   },
   "$defs": {

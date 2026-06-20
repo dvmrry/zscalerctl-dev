@@ -52,6 +52,10 @@ type IntrospectDoc struct {
 	Commands          []CommandDoc  `json:"commands"`
 	Catalog           CatalogDoc    `json:"catalog"`
 	ExitCodes         []ExitCodeDoc `json:"exit_codes"`
+	// CompletionProtocol lists the hidden machine-protocol tokens that App.Run
+	// accepts non-erroneously for shell-completion dispatch. These tokens are not
+	// Cobra commands and do not appear in the command tree.
+	CompletionProtocol []string `json:"completion_protocol"`
 }
 
 // OutputSafe implements output.SafeJSON. IntrospectDoc emits only static
@@ -153,10 +157,11 @@ func IntrospectTree(a *App) IntrospectDoc {
 		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant
 		// (read-only API). Local side effects (e.g. config init writing a
 		// local file) are flagged per-command via `mutating`.
-		ReadOnly:    true,
-		GlobalFlags: buildGlobalFlags(),
-		Catalog:     buildCatalog(),
-		ExitCodes:   buildExitCodes(),
+		ReadOnly:           true,
+		GlobalFlags:        buildGlobalFlags(),
+		Catalog:            buildCatalog(),
+		ExitCodes:          buildExitCodes(),
+		CompletionProtocol: []string{"__complete", "__completeNoDesc"},
 	}
 
 	// WalkCobraTree drives the real-command enumeration in depth-first,

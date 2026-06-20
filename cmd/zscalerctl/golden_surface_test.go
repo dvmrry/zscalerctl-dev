@@ -19,6 +19,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/spf13/cobra"
 )
 
 // updateGolden is set by -update to regenerate golden files instead of comparing.
@@ -877,23 +880,32 @@ func TestCommandTreeInventory(t *testing.T) {
 
 	// ── Top-level verbs ───────────────────────────────────────────────────────
 	b.WriteString("## top-level verbs\n")
-	topLevel := []string{
-		"help",
-		"version",
-		"doctor",
-		"auth status",
-		"config show",
-		"config init",
-		"introspect",
-		"schema list",
-		"dump",
-		"diff",
-		"completion bash",
-		"completion zsh",
-		"completion fish",
-		"completion powershell",
-		"zia url-lookup",
+	// Derive the list from the live Cobra tree so newly-added commands appear
+	// automatically. We include all non-hidden, non-__complete paths except bare
+	// product-group nodes (zia, zpa, ...); those are catalog resources and are
+	// documented in the next section.
+	productSet := make(map[string]struct{})
+	for _, spec := range catalog {
+		productSet[string(spec.Product)] = struct{}{}
 	}
+	root := cli.BuildCommandTree(cli.New(io.Discard, io.Discard, nil))
+	root.InitDefaultCompletionCmd()
+	var topLevel []string
+	cli.WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		if cmd.Hidden || strings.HasPrefix(cmd.Name(), "__complete") {
+			return
+		}
+		// Skip bare product-group nodes; catalog resources are listed separately.
+		if _, ok := productSet[path]; ok && !strings.Contains(path, " ") {
+			return
+		}
+		// Only leaf commands (commands with no subcommands) are user-facing verbs.
+		if len(cmd.Commands()) > 0 {
+			return
+		}
+		topLevel = append(topLevel, path)
+	})
+	sort.Strings(topLevel)
 	for _, verb := range topLevel {
 		fmt.Fprintf(&b, "  %s\n", verb)
 	}

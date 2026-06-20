@@ -3,12 +3,14 @@ usage: zscalerctl [global flags] <command> [args]
 products: zia, zpa, ztw, zcc, zidentity
 
 commands:
+  help [command]
   doctor
   auth status
   config show
   config init [--force]
   zia url-lookup <url> [url...]
   schema list
+  introspect
   dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]
   diff <old-dump-dir> <new-dump-dir> [--products names] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]
   completion bash|zsh|fish|powershell
