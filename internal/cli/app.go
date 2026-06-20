@@ -280,15 +280,11 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.runConfig(ctx, cfg, opts, rest[1:])
 	case "schema":
 		return a.runSchema(ctx, cfg, opts, rest[1:])
-	case "dump":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("dump", opts.format)
-		}
-		return a.runDump(ctx, cfg, opts, rest[1:])
 	default:
 		// Product commands are handled by isMigrated → execCobra above; they never
-		// reach this branch. This default remains for any un-migrated legacy command
-		// that passes isRunnableCommand but has no case above.
+		// reach this branch. "dump" is now migrated and also handled by execCobra.
+		// This default remains for any un-migrated legacy command that passes
+		// isRunnableCommand but has no case above.
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
@@ -691,7 +687,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor":
+	case "version", "doctor", "dump":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -716,7 +712,7 @@ func isMigrated(cmd string) bool {
 // slips through.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts))
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}
@@ -1117,32 +1113,33 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	return a.writeProjectedRecords(cfg, opts, spec, projected)
 }
 
-func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("dump", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	outDir := fs.String("out", "", "dump output directory")
-	productsFlag := fs.String("products", "", "comma-separated products: zia,zpa")
-	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
-	continueOnError := fs.Bool("continue-on-error", false, "write a partial dump when individual resources fail")
-	force := fs.Bool("force", false, "replace an existing zscalerctl dump directory")
-	if err := fs.Parse(args); err != nil {
-		return UsageError{Message: err.Error()}
-	}
-	if fs.NArg() != 0 {
+// dumpOptions holds the parsed local flags for the dump command.
+// The struct is populated either by the legacy flag.FlagSet (removed) or by
+// the Cobra RunE path reading cmd.Flags().
+type dumpOptions struct {
+	out             string
+	products        string
+	resources       string
+	continueOnError bool
+	force           bool
+}
+
+// runDumpWithOptions executes the dump logic after flags have been parsed into d.
+// All validation/collect/write/status/PartialDumpError behaviour is identical to
+// the former inline runDump; only flag parsing has moved to the Cobra RunE.
+func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts globalOptions, d dumpOptions) error {
+	if d.out == "" {
 		return UsageError{Message: dumpUsage()}
 	}
-	if *outDir == "" {
-		return UsageError{Message: dumpUsage()}
-	}
-	products, err := parseProducts(*productsFlag)
+	products, err := parseProducts(d.products)
 	if err != nil {
 		return err
 	}
-	selectedResources, err := parseDumpResources(*resourcesFlag, products, a.resourceCatalog())
+	selectedResources, err := parseDumpResources(d.resources, products, a.resourceCatalog())
 	if err != nil {
 		return err
 	}
-	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, *continueOnError)
+	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError)
 	if err != nil {
 		return err
 	}
@@ -1152,10 +1149,10 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	}
 	a.diagLogger().Info("dump complete",
 		"resources", len(result.Entries), "errors", len(result.Errors))
-	if err := prepareForcedDumpDir(*outDir, *force); err != nil {
+	if err := prepareForcedDumpDir(d.out, d.force); err != nil {
 		return err
 	}
-	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
+	if err := dump.Write(d.out, cfg.Defaults.Redaction, result); err != nil {
 		return err
 	}
 	// Dump emits no resource data on stdout (it writes files), so its status
@@ -1164,13 +1161,67 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if len(result.Errors) > 0 {
 		if err := a.renderer(cfg, opts).WriteText(
 			a.err,
-			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", *outDir, len(result.Errors))),
+			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", d.out, len(result.Errors))),
 		); err != nil {
 			return err
 		}
-		return PartialDumpError{Dir: *outDir, Errors: len(result.Errors)}
+		return PartialDumpError{Dir: d.out, Errors: len(result.Errors)}
 	}
-	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
+	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", d.out)))
+}
+
+// newDumpCmd returns the Cobra "dump" subcommand. Dump requires a loaded config,
+// so RunE loads it lazily — replicating the pattern used by newDoctorCmd and
+// newProductCmd. Local flags (--out, --products, --resources, --continue-on-error,
+// --force) are declared as Cobra local flags and read inside RunE after parsing.
+//
+// --format ndjson is rejected before LoadConfig (fast-path, same as the legacy path).
+// --out validation (non-empty) is enforced inside runDumpWithOptions.
+// MarkFlagRequired is NOT used for --out — the legacy UsageError must be returned.
+//
+// No cobra.Args validator is set: NArg() == 0 is checked in RunE so the exact
+// UsageError message ("usage: zscalerctl dump ...") is preserved.
+func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dump",
+		Short: "write a full or filtered resource dump to a directory",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject --format ndjson first, before any config work (mirrors legacy path).
+			if opts.format == output.FormatNDJSON {
+				return rejectUnsupportedFormat("dump", opts.format)
+			}
+			// Reject extra positional args before config load.
+			if cmd.Flags().NArg() != 0 {
+				return UsageError{Message: dumpUsage()}
+			}
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			outDir, _ := cmd.Flags().GetString("out")
+			productsFlag, _ := cmd.Flags().GetString("products")
+			resourcesFlag, _ := cmd.Flags().GetString("resources")
+			continueOnError, _ := cmd.Flags().GetBool("continue-on-error")
+			force, _ := cmd.Flags().GetBool("force")
+			return a.runDumpWithOptions(cmd.Context(), cfg, opts, dumpOptions{
+				out:             outDir,
+				products:        productsFlag,
+				resources:       resourcesFlag,
+				continueOnError: continueOnError,
+				force:           force,
+			})
+		},
+	}
+	cmd.Flags().String("out", "", "dump output directory")
+	cmd.Flags().String("products", "", "comma-separated products: zia,zpa")
+	cmd.Flags().String("resources", "", "comma-separated resources: locations or zia/locations")
+	cmd.Flags().Bool("continue-on-error", false, "write a partial dump when individual resources fail")
+	cmd.Flags().Bool("force", false, "replace an existing zscalerctl dump directory")
+	return cmd
 }
 
 func (a *App) runDiff(opts globalOptions, args []string) error {

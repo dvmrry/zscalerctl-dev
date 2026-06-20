@@ -425,7 +425,8 @@ func TestHelpFlagsReturnUsage(t *testing.T) {
 		{"--help"},
 		{"-h"},
 		{"schema", "list", "--help"},
-		{"dump", "--help"},
+		// "dump --help" is now a Cobra command; its help uses Cobra format ("Usage:\n  zscalerctl dump")
+		// and is covered by TestPerCommandHelpPrintsScopedSynopsis instead.
 	}
 	for _, args := range tests {
 		args := args
@@ -455,9 +456,10 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		args []string
-		want string
+		name            string
+		args            []string
+		want            string
+		skipGlobalCheck bool // set for Cobra commands whose flag descriptions may contain "products:"/"commands:"
 	}{
 		// doctor is now a Cobra command; --help renders Cobra-formatted help
 		// ("Usage:\n  zscalerctl doctor") rather than the legacy scoped synopsis.
@@ -466,7 +468,12 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		{name: "auth", args: []string{"auth", "--help"}, want: "usage: zscalerctl auth status"},
 		{name: "config", args: []string{"config", "--help"}, want: "usage: zscalerctl config show"},
 		{name: "schema", args: []string{"schema", "list", "--help"}, want: "usage: zscalerctl schema list"},
-		{name: "dump", args: []string{"dump", "--help"}, want: "usage: zscalerctl dump --out <dir>"},
+		// dump is now a Cobra command; --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl dump") rather than the legacy scoped synopsis.
+		// skipGlobalCheck is true because the --products flag description contains
+		// "products:" which would otherwise trigger the false-positive assertion.
+		// Re-blessed as an intentional surface change in the Cobra migration (Phase 3a).
+		{name: "dump", args: []string{"dump", "--help"}, want: "zscalerctl dump", skipGlobalCheck: true},
 		{name: "diff", args: []string{"diff", "--help"}, want: "usage: zscalerctl diff <old-dump-dir> <new-dump-dir>"},
 		{name: "completion", args: []string{"completion", "--help"}, want: "usage: zscalerctl completion bash|zsh|fish|powershell"},
 		// version is now a Cobra command; --help renders Cobra-formatted help
@@ -492,9 +499,11 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 			if !strings.Contains(got, tt.want) {
 				t.Errorf("App.Run(%v) stdout = %q, want %q", tt.args, got, tt.want)
 			}
-			for _, globalOnly := range []string{"commands:", "products:"} {
-				if strings.Contains(got, globalOnly) {
-					t.Errorf("App.Run(%v) stdout = %q, want scoped help without global section %q", tt.args, got, globalOnly)
+			if !tt.skipGlobalCheck {
+				for _, globalOnly := range []string{"commands:", "products:"} {
+					if strings.Contains(got, globalOnly) {
+						t.Errorf("App.Run(%v) stdout = %q, want scoped help without global section %q", tt.args, got, globalOnly)
+					}
 				}
 			}
 			if errOut.Len() != 0 {

@@ -29,6 +29,8 @@ Column definitions:
 | `zia-locations-list-help` | Cobra zia product help (same as `zia-help` case) | Resource-specific field list: "usage: zscalerctl zia locations list\|get" + fields block | Phase 2c SetHelpFunc restores legacy resource-specific help; `zia locations list --help` now shows the locations resource fields. Final state — reverts Phase 2a/2b re-bless. Exit code stays 0. | `help-text` |
 | `zia-locations-help` | (none — new case) | Resource-specific field list: "usage: zscalerctl zia locations list\|get" + fields block | Phase 2c: new golden freezes `zia locations --help` path (without explicit op). Identical output to `zia-locations-list-help`. Exit code 0. | `new-surface` |
 
+| `dump-help` | (none — new case) | Cobra help surface frozen: short description + Usage line + local flags (--out/--products/--resources/--continue-on-error/--force) + global flags | dump migrated to Cobra (Phase 3a); `dump --help` now emits Cobra-formatted help. Legacy `usage: zscalerctl dump --out <dir>` synopsis is replaced by Cobra's standard help format. No credential leaks. Exit code stays 0. | `new-surface` |
+
 ---
 
 **Workflow:** when a Cobra migration phase changes a golden, do NOT just run

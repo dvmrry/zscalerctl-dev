@@ -374,6 +374,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "shell-completion",
 		},
+		// ── dump --help (Cobra help surface; frozen after Phase 3a migration) ─────
+		{
+			name:     "dump-help",
+			args:     []string{"dump", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 	}
 
 	for _, tc := range cases {
@@ -542,6 +549,22 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			name:       "doctor-extra-arg",
 			args:       []string{"doctor", "extra"},
 			source:     "requireNoArgs-doctor",
+			alsoGolden: false,
+		},
+
+		// ── dump ndjson / no --out (Phase 3a — dump migrated to Cobra) ────────────
+		// Source: newDumpCmd RunE rejects ndjson before config load → UsageError → exit 2.
+		{
+			name:       "ndjson-dump",
+			args:       []string{"--format", "ndjson", "dump", "--out", "/tmp/zsc-ndjson-reject"},
+			source:     "rejectUnsupportedFormat-dump",
+			alsoGolden: false,
+		},
+		// Source: newDumpCmd RunE validates --out non-empty → UsageError → exit 2.
+		{
+			name:       "dump-no-out",
+			args:       []string{"dump"},
+			source:     "runDumpWithOptions-empty-out",
 			alsoGolden: false,
 		},
 	}
