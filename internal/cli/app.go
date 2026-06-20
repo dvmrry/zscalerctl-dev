@@ -645,7 +645,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -658,7 +658,7 @@ func isMigrated(cmd string) bool {
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
-		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts))
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}

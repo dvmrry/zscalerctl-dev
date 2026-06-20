@@ -19,11 +19,14 @@ package cli
 // config-free.
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -45,6 +48,11 @@ type IntrospectDoc struct {
 	Catalog           CatalogDoc    `json:"catalog"`
 	ExitCodes         []ExitCodeDoc `json:"exit_codes"`
 }
+
+// OutputSafe implements output.SafeJSON. IntrospectDoc emits only static
+// structure (command names, descriptions, catalog names, exit-code text) — no
+// tenant data, credentials, or runtime values.
+func (IntrospectDoc) OutputSafe() {}
 
 // CommandDoc describes a single CLI command for agent consumption.
 type CommandDoc struct {
@@ -435,4 +443,102 @@ func walkCobraSubtree(cmd *cobra.Command, parentPath string, fn func(*cobra.Comm
 		fn(sub, path)
 		walkCobraSubtree(sub, path, fn)
 	}
+}
+
+// newIntrospectCmd returns the Cobra "introspect" subcommand. It is config-free:
+// it does NOT call LoadConfig, build a reader, or touch the network. The output
+// is the static CLI surface map (commands, flags, catalog, exit codes) as JSON
+// by default, or as a human-readable indented tree with --format table/pretty.
+//
+// FormatAuto resolves to JSON here (machine-first by default). Only explicit
+// --format table/--format pretty produces the human tree renderer.
+// --format ndjson is rejected: introspect is a single document, not a stream.
+func (a *App) newIntrospectCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "introspect",
+		Short: "print a machine-readable map of all commands, flags, and resources (JSON)",
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := requireNoArgs("introspect", args); err != nil {
+				return err
+			}
+			if opts.format == output.FormatNDJSON {
+				return rejectUnsupportedFormat("introspect", opts.format)
+			}
+			doc := IntrospectTree(a)
+			doc.CLIVersion = version.Current().Version
+			if opts.format == output.FormatTable || opts.format == output.FormatPretty {
+				treeText := introspectTreeText(doc)
+				return output.NewRenderer(redact.New(redact.ModeStandard)).WriteText(a.out, output.NewSafeText(treeText))
+			}
+			// FormatJSON, FormatAuto, or empty → JSON (machine-first default).
+			return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, doc)
+		},
+	}
+}
+
+// introspectTreeText renders doc as a human-readable indented text tree.
+// It is a secondary convenience for humans; the primary output is JSON.
+// Content is static structure only (no tenant data).
+func introspectTreeText(doc IntrospectDoc) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "zscalerctl CLI surface map\n")
+	fmt.Fprintf(&b, "  version:   %s\n", doc.CLIVersion)
+	fmt.Fprintf(&b, "  read-only: %v\n", doc.ReadOnly)
+	fmt.Fprintf(&b, "  schema:    %s\n\n", doc.Schema)
+
+	// Global flags.
+	fmt.Fprintf(&b, "Global flags (%d):\n", len(doc.GlobalFlags))
+	for _, f := range doc.GlobalFlags {
+		if f.Default != "" {
+			fmt.Fprintf(&b, "  --%s (%s, default %q)  %s\n", f.Name, f.Type, f.Default, f.Usage)
+		} else {
+			fmt.Fprintf(&b, "  --%s (%s)  %s\n", f.Name, f.Type, f.Usage)
+		}
+	}
+	b.WriteString("\n")
+
+	// Commands.
+	fmt.Fprintf(&b, "Commands (%d):\n", len(doc.Commands))
+	for _, cmd := range doc.Commands {
+		hidden := ""
+		if cmd.Hidden {
+			hidden = " [hidden]"
+		}
+		fmt.Fprintf(&b, "  %-40s  %s%s\n", cmd.Path, cmd.Short, hidden)
+		for _, f := range cmd.Flags {
+			if f.Default != "" {
+				fmt.Fprintf(&b, "      --%s (%s, default %q)\n", f.Name, f.Type, f.Default)
+			} else {
+				fmt.Fprintf(&b, "      --%s (%s)\n", f.Name, f.Type)
+			}
+		}
+	}
+	b.WriteString("\n")
+
+	// Catalog summary.
+	fmt.Fprintf(&b, "Catalog: %d products, %d resources\n",
+		len(doc.Catalog.Products), len(doc.Catalog.Resources))
+	for _, p := range doc.Catalog.Products {
+		count := 0
+		for _, r := range doc.Catalog.Resources {
+			if r.Product == p {
+				count++
+			}
+		}
+		fmt.Fprintf(&b, "  %s: %d resource(s)\n", p, count)
+	}
+	b.WriteString("\n")
+
+	// Exit codes.
+	fmt.Fprintf(&b, "Exit codes (%d):\n", len(doc.ExitCodes))
+	for _, ec := range doc.ExitCodes {
+		retryable := ""
+		if ec.Retryable {
+			retryable = " [retryable]"
+		}
+		fmt.Fprintf(&b, "  %d  %-25s  %s%s\n", ec.Code, ec.Kind, ec.Description, retryable)
+	}
+
+	return b.String()
 }
