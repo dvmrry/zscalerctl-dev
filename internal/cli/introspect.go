@@ -458,22 +458,28 @@ func (a *App) newIntrospectCmd(opts globalOptions) *cobra.Command {
 		Use:   "introspect",
 		Short: "print a machine-readable map of all commands, flags, and resources (JSON)",
 		RunE: func(_ *cobra.Command, args []string) error {
-			if err := requireNoArgs("introspect", args); err != nil {
-				return err
-			}
-			if opts.format == output.FormatNDJSON {
-				return rejectUnsupportedFormat("introspect", opts.format)
-			}
-			doc := IntrospectTree(a)
-			doc.CLIVersion = version.Current().Version
-			if opts.format == output.FormatTable || opts.format == output.FormatPretty {
-				treeText := introspectTreeText(doc)
-				return output.NewRenderer(redact.New(redact.ModeStandard)).WriteText(a.out, output.NewSafeText(treeText))
-			}
-			// FormatJSON, FormatAuto, or empty → JSON (machine-first default).
-			return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, doc)
+			return a.runIntrospect(opts, args)
 		},
 	}
+}
+
+func (a *App) runIntrospect(opts globalOptions, args []string) error {
+	if err := requireNoArgs("introspect", args); err != nil {
+		return err
+	}
+	doc := IntrospectTree(a)
+	doc.CLIVersion = version.Current().Version
+	// JSON is the happy-path (machine-first default); auto resolves to JSON for
+	// non-TTY and to pretty for TTY via resolveFormat before RunE fires.
+	if opts.format == output.FormatJSON {
+		return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, doc)
+	}
+	if opts.format == output.FormatTable || opts.format == output.FormatPretty {
+		treeText := introspectTreeText(doc)
+		return output.NewRenderer(redact.New(redact.ModeStandard)).WriteText(a.out, output.NewSafeText(treeText))
+	}
+	// ndjson and any future unrecognised formats are rejected.
+	return rejectUnsupportedFormat("introspect", opts.format)
 }
 
 // introspectTreeText renders doc as a human-readable indented text tree.
@@ -519,14 +525,12 @@ func introspectTreeText(doc IntrospectDoc) string {
 	// Catalog summary.
 	fmt.Fprintf(&b, "Catalog: %d products, %d resources\n",
 		len(doc.Catalog.Products), len(doc.Catalog.Resources))
+	resourcesPerProduct := make(map[string]int, len(doc.Catalog.Products))
+	for _, r := range doc.Catalog.Resources {
+		resourcesPerProduct[r.Product]++
+	}
 	for _, p := range doc.Catalog.Products {
-		count := 0
-		for _, r := range doc.Catalog.Resources {
-			if r.Product == p {
-				count++
-			}
-		}
-		fmt.Fprintf(&b, "  %s: %d resource(s)\n", p, count)
+		fmt.Fprintf(&b, "  %s: %d resource(s)\n", p, resourcesPerProduct[p])
 	}
 	b.WriteString("\n")
 

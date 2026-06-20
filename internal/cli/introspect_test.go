@@ -143,9 +143,47 @@ func TestIntrospectCommand(t *testing.T) {
 	if !ok {
 		t.Fatal("introspect JSON missing key \"cli_version\"")
 	}
-	vStr, _ := v.(string)
+	vStr, isStr := v.(string)
+	if !isStr {
+		t.Fatalf("cli_version is not a string; got %T (%v)", v, v)
+	}
 	if strings.TrimSpace(vStr) == "" {
 		t.Errorf("cli_version is empty; the command must set it from version.Current()")
+	}
+}
+
+// TestIntrospectTableFormat exercises the human-readable tree path
+// (--format table and --format pretty). It asserts no error and verifies
+// stable structural landmarks emitted by introspectTreeText.
+func TestIntrospectTableFormat(t *testing.T) {
+	t.Parallel()
+
+	for _, format := range []string{"table", "pretty"} {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+
+			var out bytes.Buffer
+			a := cli.New(&out, io.Discard, nil)
+
+			err := a.Run(context.Background(), []string{"--format", format, "introspect"})
+			if err != nil {
+				t.Fatalf("App.Run(--format %s introspect) error = %v, want nil", format, err)
+			}
+
+			got := out.String()
+
+			// Header line — always the first line of introspectTreeText.
+			if !strings.Contains(got, "zscalerctl CLI surface map") {
+				t.Errorf("--format %s: output missing header \"zscalerctl CLI surface map\"; got:\n%s", format, got)
+			}
+			// Section labels that introspectTreeText always emits.
+			for _, landmark := range []string{"Global flags (", "Commands (", "Catalog:", "Exit codes ("} {
+				if !strings.Contains(got, landmark) {
+					t.Errorf("--format %s: output missing landmark %q; got:\n%s", format, landmark, got)
+				}
+			}
+		})
 	}
 }
 
