@@ -1181,7 +1181,13 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 	if err != nil {
 		return err
 	}
-	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError)
+	s := a.newSpinner(opts)
+	s.Start("dumping")
+	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError,
+		func(done, total int, p resources.Product, r string) {
+			s.Update(fmt.Sprintf("[%d/%d] %s/%s", done, total, p, r))
+		})
+	s.Stop()
 	if err != nil {
 		return err
 	}
@@ -1671,6 +1677,7 @@ func (a *App) collectDump(
 	products map[resources.Product]bool,
 	selectedResources map[dumpResourceKey]bool,
 	continueOnError bool,
+	progress func(done, total int, product resources.Product, resource string),
 ) (dump.Result, error) {
 	result := dump.Result{}
 	catalog := a.resourceCatalog()
@@ -1688,6 +1695,7 @@ func (a *App) collectDump(
 	a.diagLogger().Info("dump starting", "resources", selectedCount)
 
 	readers := make(map[resources.Product]ResourceReader)
+	done := 0
 	for _, spec := range catalog {
 		if !products[spec.Product] {
 			continue
@@ -1709,6 +1717,10 @@ func (a *App) collectDump(
 			readers[spec.Product] = reader
 			// Register cleanup once per product session, not once per resource.
 			defer cleanup()
+		}
+		done++
+		if progress != nil {
+			progress(done, selectedCount, spec.Product, spec.Name)
 		}
 		a.diagLogger().Info("dump reading resource", "product", spec.Product, "resource", spec.Name)
 		if spec.SupportsReadOperation("show") {
