@@ -719,7 +719,7 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 
 	args := rest
 	if opts.help {
-		args = append(rest, "--help")
+		args = append(rest[:len(rest):len(rest)], "--help")
 	}
 
 	err := a.executeRoot(ctx, root, args)

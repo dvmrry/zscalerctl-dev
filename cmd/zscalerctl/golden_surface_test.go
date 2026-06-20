@@ -305,6 +305,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "usage-error",
 		},
+		// ── version --help (Cobra help surface; frozen after Task 1.5 migration) ──
+		{
+			name:     "version-help",
+			args:     []string{"version", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 		// ── product help ──────────────────────────────────────────────────────────
 		{
 			name:     "zia-help",
