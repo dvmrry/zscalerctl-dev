@@ -138,7 +138,10 @@ var (
 	//   no-base-tag:   v0.0.0-20260620152824-f3a2eda1c513  (timestamp directly after semver)
 	//   with-base-tag: v0.68.1-0.20260620073434-79678e7c1f63 (pre=0, dot before timestamp)
 	// The alternation (?:0\.\d{14}|\d{14}) distinguishes the two forms.
-	rePseudoVersion = regexp.MustCompile(`v?\d+\.\d+\.\d+-(?:0\.\d{14}|\d{14})-[0-9a-f]{12}`)
+	// The trailing (?:\+[a-zA-Z0-9.]+)? optionally consumes the build-metadata
+	// suffix Go's VCS stamping appends from a dirty working tree (e.g. "+dirty",
+	// "+incompatible") so the whole token — not just the hash — scrubs to <VERSION>.
+	rePseudoVersion = regexp.MustCompile(`v?\d+\.\d+\.\d+-(?:0\.\d{14}|\d{14})-[0-9a-f]{12}(?:\+[a-zA-Z0-9.]+)?`)
 	// e.g. v1.2.3 or 1.2.3; \b prevents matching inside IP-like strings
 	reSemver = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 	// bare "dev" version in version output (value-only, not a substring)
@@ -992,6 +995,19 @@ func TestScrubPseudoVersion(t *testing.T) {
 		{
 			name:  "cli_version with-base-tag in json",
 			input: `"cli_version": "v0.68.1-0.20260620073434-79678e7c1f63"`,
+			want:  `"cli_version": "<VERSION>"`,
+		},
+		{
+			// Dirty working tree: Go's VCS stamping appends "+dirty" build metadata
+			// after the hash. The whole token — suffix included — must scrub to
+			// <VERSION>, else "<VERSION>+dirty" leaks into the golden comparison.
+			name:  "with-base-tag dirty suffix",
+			input: "Version   0.68.1-0.20260620073434-79678e7c1f63+dirty",
+			want:  "Version   <VERSION>",
+		},
+		{
+			name:  "cli_version dirty suffix in json",
+			input: `"cli_version": "0.68.1-0.20260620073434-79678e7c1f63+dirty"`,
 			want:  `"cli_version": "<VERSION>"`,
 		},
 		{
