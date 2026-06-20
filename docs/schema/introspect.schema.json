@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dvmrry/zscalerctl/blob/main/docs/schema/introspect.schema.json",
+  "title": "zscalerctl introspect output",
+  "description": "Schema for the JSON document emitted by `zscalerctl introspect`. The document describes the full CLI surface: commands, flags, resource catalog, and exit codes. It is static (config-free, no tenant data) and is the primary machine-readable contract for agents and tooling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "introspect_version", "read_only", "global_flags", "commands", "catalog", "exit_codes"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the JSON Schema that validates this document (this file). Floats on the main branch; the introspect_version field carries the contract version."
+    },
+    "introspect_version": {
+      "type": "string",
+      "description": "Contract version of the introspect output format (currently \"1\"). Increment when field semantics change."
+    },
+    "cli_version": {
+      "type": "string",
+      "description": "zscalerctl version string (e.g. \"v0.60.0\"). Empty when produced by IntrospectTree directly; filled in by the introspect command before serialisation."
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "True when every command in this CLI surface is read-only (no mutations). Currently always true."
+    },
+    "global_flags": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flagDoc" },
+      "description": "Flags inherited by every command (e.g. --format, --redaction, --profile)."
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/commandDoc" },
+      "description": "All commands in the CLI surface, including hidden and deprecated commands, and virtual {product} {resource} {op} entries derived from the resource catalog."
+    },
+    "catalog": {
+      "$ref": "#/$defs/catalogDoc",
+      "description": "Snapshot of the resource catalog: products, resources, their operations, and projected field names."
+    },
+    "exit_codes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exitCodeDoc" },
+      "description": "Exit-code table mapping integer codes to kind, retryability, and description."
+    }
+  },
+  "$defs": {
+    "commandDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "short", "aliases", "hidden", "mutating", "args", "flags", "inherited_flags"],
+      "description": "Description of a single CLI command for agent consumption.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Space-joined command path without the root program name (e.g. \"config init\", \"zia locations list\")."
+        },
+        "short": {
+          "type": "string",
+          "description": "One-line summary shown in --help output."
+        },
+        "long": {
+          "type": "string",
+          "description": "Extended description shown in the command's own --help page. Omitted when empty."
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Alternative names for the command (always present, may be empty array)."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Whether the command is hidden from --help listings."
+        },
+        "deprecated": {
+          "type": "string",
+          "description": "Deprecation message; omitted when the command is not deprecated."
+        },
+        "mutating": {
+          "type": "boolean",
+          "description": "Whether the command modifies state. Currently always false (CLI is read-only)."
+        },
+        "args": {
+          "$ref": "#/$defs/argsDoc",
+          "description": "Positional argument policy for this command."
+        },
+        "flags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/flagDoc" },
+          "description": "Local (non-inherited) flags for this command."
+        },
+        "inherited_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names of flags inherited from parent commands (without leading \"--\")."
+        },
+        "output_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Projected field names available for --fields / --filter on resource read commands. Omitted for non-resource commands."
+        }
+      }
+    },
+    "flagDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "usage"],
+      "description": "Description of a single CLI flag (global or local to a command).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Flag name without leading \"--\"."
+        },
+        "shorthand": {
+          "type": "string",
+          "description": "Single-character shorthand (without leading \"-\"). Omitted when not set."
+        },
+        "type": {
+          "type": "string",
+          "description": "Flag value type as reported by pflag (e.g. \"string\", \"bool\", \"int\", \"stringArray\")."
+        },
+        "default": {
+          "type": "string",
+          "description": "Default value as a string. Omitted when empty."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the flag is required. Currently always false; retained for forward compatibility."
+        },
+        "usage": {
+          "type": "string",
+          "description": "Usage string shown in --help output."
+        },
+        "enum": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed values when the flag accepts an enumerated set. Omitted when unconstrained."
+        }
+      }
+    },
+    "argsDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy"],
+      "description": "Positional argument policy for a command.",
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["none", "exact", "range", "arbitrary"],
+          "description": "Argument-count policy: none (no args), exact (exactly N), range (0–N), arbitrary (any number)."
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Expected argument count for \"exact\" or upper bound for \"range\". Omitted when zero."
+        },
+        "valid_values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed argument values (shell completion candidates). Omitted when unconstrained."
+        }
+      }
+    },
+    "catalogDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["products", "resources"],
+      "description": "Snapshot of the zscalerctl resource catalog.",
+      "properties": {
+        "products": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered, deduplicated list of product family names (e.g. [\"zia\", \"zpa\", \"ztw\", \"zcc\", \"zidentity\"])."
+        },
+        "resources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resourceDoc" },
+          "description": "All catalog resources with their operations and projected fields."
+        }
+      }
+    },
+    "resourceDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "name", "ops", "fields"],
+      "description": "A single resource entry in the catalog.",
+      "properties": {
+        "product": {
+          "type": "string",
+          "description": "Product family this resource belongs to (e.g. \"zia\", \"zpa\")."
+        },
+        "name": {
+          "type": "string",
+          "description": "Resource name (e.g. \"locations\", \"app-segments\")."
+        },
+        "ops": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Read operation names supported by this resource (e.g. [\"list\", \"get\"])."
+        },
+        "fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Projected field names available for --fields / --filter under standard redaction mode."
+        }
+      }
+    },
+    "exitCodeDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "kind", "retryable", "description"],
+      "description": "A single exit-code mapping.",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Numeric exit code returned by the process."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Coarse error category (e.g. \"ok\", \"internal\", \"usage\", \"not_found\", \"live_access_failed\")."
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "Whether a retry is reasonable for this exit code (true only for transient failures like live_access_failed)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of when this exit code is returned."
+        }
+      }
+    }
+  }
+}
