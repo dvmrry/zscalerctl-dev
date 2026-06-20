@@ -966,31 +966,53 @@ if ($errs -and $errs.Count -gt 0) { $errs | ForEach-Object { [Console]::Error.Wr
 // produce a shell completion script. With Cobra's built-in completion command,
 // unknown shells show the completion group help (exit 0) rather than an error,
 // but crucially they must NOT emit a script body that a shell could source.
+//
+// Surface delta: this is an intentional behavior change from the legacy
+// implementation. Legacy runCompletion returned UsageError (exit 2) for any
+// unknown shell name; Cobra's built-in completion command routes unknown
+// subcommands to the completion group help (exit 0). See
+// cmd/zscalerctl/testdata/surface/surface_changes.md:
+// "completion <unknown-shell> (e.g. elvish)".
 func TestCompletionRejectsUnknownShell(t *testing.T) {
 	t.Parallel()
 
 	var out, errOut bytes.Buffer
 	app := cli.New(&out, &errOut, nil)
 
-	// Cobra handles "completion elvish" by showing the completion group help
-	// (exit 0), which is more user-friendly than the legacy UsageError.
-	// The critical guarantee is that no completion script is emitted.
+	// Documented surface delta: Cobra shows the completion group help (exit 0)
+	// for unknown shell names. Legacy returned UsageError (exit 2).
+	// See surface_changes.md: "completion <unknown-shell> (e.g. elvish)".
 	err := app.Run(context.Background(), []string{"completion", "elvish"})
 	if err != nil {
-		t.Fatalf("App.Run(completion elvish) error = %v, want nil (Cobra shows help)", err)
+		t.Fatalf("App.Run(completion elvish) error = %v, want nil (Cobra shows group help, exit 0)", err)
 	}
+
 	got := out.String()
-	// A shell completion script would start with a shell-specific marker.
-	// Cobra shows group help instead; assert no script is present.
+
+	// Positive assertion: the completion group help must list the supported
+	// shells. If these are absent the command silently produced nothing useful.
+	for _, shellName := range []string{"bash", "fish", "powershell", "zsh"} {
+		if !strings.Contains(got, shellName) {
+			t.Errorf("App.Run(completion elvish) stdout missing %q — expected completion group help listing supported shells; got:\n%s", shellName, got)
+		}
+	}
+
+	// Negative assertion: no generated completion script must be present.
+	// A real script would contain shell-specific registration markers.
 	for _, scriptMarker := range []string{
-		"complete -o default -F __start_zscalerctl", // bash
-		"#compdef zscalerctl",                       // zsh
-		"complete -c zscalerctl",                    // fish
-		"Register-ArgumentCompleter",                // powershell
+		"__start_zscalerctl",         // bash V2 registration function
+		"#compdef zscalerctl",        // zsh
+		"complete -c zscalerctl",     // fish
+		"Register-ArgumentCompleter", // powershell
 	} {
 		if strings.Contains(got, scriptMarker) {
-			t.Errorf("App.Run(completion elvish) stdout = %q, want no script marker %q", got, scriptMarker)
+			t.Errorf("App.Run(completion elvish) stdout contains script marker %q — no completion script should be emitted; got:\n%s", scriptMarker, got)
 		}
+	}
+
+	// Stderr must be empty: Cobra group help goes to stdout.
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(completion elvish) stderr = %q, want empty", errOut.String())
 	}
 }
 

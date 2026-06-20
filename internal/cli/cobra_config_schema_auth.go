@@ -105,9 +105,9 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW i
 
 	// Machine-first: the path goes to stdout (out = a.out, raw writer) so it
 	// can be captured by scripts without redactor interference. The human
-	// next-steps hints go to errW (cmd.ErrOrStderr(), the Cobra-installed
-	// redacting writer) so any inadvertent credential-like text in the hints
-	// is caught before reaching the terminal.
+	// next-steps hints go to errW (a.err, the raw App writer) — config-init
+	// intentionally bypasses the Cobra-installed redacting writer for both
+	// streams (see the runConfigInitWithForce doc block above for rationale).
 	fmt.Fprintln(out, path)
 	fmt.Fprintf(errW, "Created owner-only config at %s\n", path)
 	fmt.Fprintln(errW, "Next: set a client secret — export ZSCALERCTL_CLIENT_SECRET, or uncomment a client_secret_ref in the file.")
