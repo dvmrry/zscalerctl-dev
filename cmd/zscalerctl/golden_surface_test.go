@@ -388,6 +388,176 @@ func TestGoldenSurface(t *testing.T) {
 	}
 }
 
+// TestParseErrorsExitTwo is a consolidated, table-driven boundary test that
+// asserts every parse-error CLASS maps to exit code 2 at the real binary boundary.
+// It does NOT snapshot stdout/stderr (those are covered by TestGoldenSurface where
+// relevant); it only asserts the exit code.
+//
+// Parse errors come from two sources:
+//  1. Global flag parsing (parseGlobal / splitGlobalArgs): bad/missing values for
+//     the 13 global flags → UsageError → exitCodeForError → exit 2.
+//  2. Migrated commands (version, doctor) via Cobra: unknown flags (SetFlagErrorFunc),
+//     ndjson format (rejectUnsupportedFormat), extra args (requireNoArgs) → exit 2.
+//
+// Cases already covered in TestGoldenSurface are noted with "also-golden" so a
+// reader can see the overlap. They are repeated here because the two tests have
+// different purposes: golden files freeze output shape; this test contracts the
+// exit code only.
+//
+// If any case returns an exit code other than 2, the test fails loudly — that
+// signals a real gap in the exit-2 contract.
+func TestParseErrorsExitTwo(t *testing.T) {
+	if goldenBinary == "" {
+		t.Fatal("goldenBinary not set — TestMain did not run")
+	}
+
+	type exitCase struct {
+		name     string   // sub-test name
+		args     []string // CLI args passed to the binary
+		source   string   // which parse layer this exercises
+		alsoGolden bool   // true when TestGoldenSurface already covers this case
+	}
+
+	cases := []exitCase{
+		// ── Unknown command ───────────────────────────────────────────────────────
+		// Source: runParsed legacy switch → UsageError → exit 2.
+		{
+			name:       "unknown-command",
+			args:       []string{"frobnicate"},
+			source:     "legacy-dispatch",
+			alsoGolden: true, // covered by TestGoldenSurface/unknown-command
+		},
+
+		// ── Unknown flag on migrated commands (Cobra SetFlagErrorFunc) ────────────
+		// Source: Cobra SetFlagErrorFunc wraps the error in UsageError → exit 2.
+		{
+			name:       "version-unknown-flag",
+			args:       []string{"version", "--nope"},
+			source:     "cobra-SetFlagErrorFunc",
+			alsoGolden: true, // covered by TestGoldenSurface/version-unknown-flag
+		},
+		{
+			name:       "doctor-unknown-flag",
+			args:       []string{"doctor", "--nope"},
+			source:     "cobra-SetFlagErrorFunc",
+			alsoGolden: false, // NOT in TestGoldenSurface
+		},
+
+		// ── Bad global flag values (parseGlobal) ──────────────────────────────────
+		// Source: parseGlobal calls output.ParseFormat, redact.ParseMode,
+		// output.ParseColorMode, newDiagLogger, and checks timeout > 0.
+		{
+			name:       "bad-timeout-value",
+			args:       []string{"--timeout", "notaduration", "version"},
+			source:     "parseGlobal-fs.Parse",
+			alsoGolden: false,
+		},
+		{
+			name:       "bad-format-value",
+			args:       []string{"--format", "bogus", "version"},
+			source:     "parseGlobal-output.ParseFormat",
+			alsoGolden: false,
+		},
+		{
+			name:       "bad-color-value",
+			args:       []string{"--color", "bogus", "version"},
+			source:     "parseGlobal-output.ParseColorMode",
+			alsoGolden: false,
+		},
+		{
+			name:       "bad-redaction-value",
+			args:       []string{"--redaction", "bogus", "version"},
+			source:     "parseGlobal-redact.ParseMode",
+			alsoGolden: false,
+		},
+		{
+			name:       "bad-log-level-value",
+			args:       []string{"--log-level", "bogus", "version"},
+			source:     "parseGlobal-newDiagLogger",
+			alsoGolden: false,
+		},
+
+		// ── Missing global flag value (splitGlobalArgs trailing value-expecting flag) ─
+		// Source: splitGlobalArgs detects i+1 >= len(args) → UsageError → exit 2.
+		{
+			name:       "trailing-timeout-no-value",
+			args:       []string{"--timeout"},
+			source:     "splitGlobalArgs-trailing-value",
+			alsoGolden: false,
+		},
+		{
+			name:       "trailing-timeout-no-value-with-subcmd",
+			args:       []string{"version", "--timeout"},
+			source:     "splitGlobalArgs-trailing-value",
+			alsoGolden: false,
+		},
+
+		// ── Negative / zero timeout (parseGlobal explicit guard) ──────────────────
+		// Source: parseGlobal checks *timeout <= 0 → UsageError → exit 2.
+		{
+			name:       "zero-timeout",
+			args:       []string{"--timeout", "0", "version"},
+			source:     "parseGlobal-timeout-positive",
+			alsoGolden: false,
+		},
+
+		// ── ndjson on migrated commands (rejectUnsupportedFormat) ─────────────────
+		// Source: runVersion / runDoctor check opts.format == output.FormatNDJSON →
+		// rejectUnsupportedFormat → UsageError → exit 2.
+		{
+			name:       "ndjson-version",
+			args:       []string{"--format", "ndjson", "version"},
+			source:     "rejectUnsupportedFormat-version",
+			alsoGolden: true, // covered by TestGoldenSurface/version-ndjson-rejected
+		},
+		{
+			name:       "ndjson-doctor",
+			args:       []string{"--format", "ndjson", "doctor"},
+			source:     "rejectUnsupportedFormat-doctor",
+			alsoGolden: false,
+		},
+
+		// ── Extra args on no-arg commands (requireNoArgs) ─────────────────────────
+		// Source: requireNoArgs checks len(args) != 0 → UsageError → exit 2.
+		{
+			name:       "version-extra-arg",
+			args:       []string{"version", "extra"},
+			source:     "requireNoArgs-version",
+			alsoGolden: false,
+		},
+		{
+			name:       "doctor-extra-arg",
+			args:       []string{"doctor", "extra"},
+			source:     "requireNoArgs-doctor",
+			alsoGolden: false,
+		},
+	}
+
+	baseHome := t.TempDir()
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			caseHome := filepath.Join(baseHome, "parse-error-"+tc.name)
+			if err := os.MkdirAll(caseHome, 0o755); err != nil {
+				t.Fatalf("mkdir case home: %v", err)
+			}
+
+			_, stderr, code := runCase(t, caseHome, tc.args, nil)
+
+			if code != 2 {
+				t.Errorf(
+					"FAIL: parse-error class %q (source: %s) returned exit %d, want 2\n"+
+						"args: %v\nstderr: %s\n"+
+						"This signals a real exit-2 contract gap — do NOT change wantCode here; fix the gap.",
+					tc.name, tc.source, code, tc.args, stderr,
+				)
+			}
+		})
+	}
+}
+
 // TestCommandTreeInventory generates a deterministic text inventory of the full
 // CLI surface — top-level verbs plus every catalog resource — and compares it to
 // a committed golden file. This is the durable add/remove/rename gate: any change
