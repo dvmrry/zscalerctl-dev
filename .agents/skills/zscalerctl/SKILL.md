@@ -14,8 +14,10 @@ can modify tenant state.
 1. **CLI missing?** If `zscalerctl` is not on `PATH`, ask the operator to
    install it — do not fall back to raw Zscaler APIs or SDK environment
    variables.
-2. **Never guess resource names.** Enumerate first:
-   `zscalerctl --format json schema list` (full catalog: products, resources,
+2. **Never guess resource names.** Learn the whole surface first:
+   `zscalerctl introspect` (one-call map of every command, flag, output_fields,
+   exit codes, and the full catalog; JSON when piped). For catalog-only
+   enumeration: `zscalerctl --format json schema list` (products, resources,
    operations, fields) or `zscalerctl <product> --help` (one product's list).
 3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
    Profiles and secret providers (`env:`, `file:`, `keyring:`, `cmd:`) are

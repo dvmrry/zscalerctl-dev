@@ -21,12 +21,20 @@ flag names, types, defaults, and subcommand signatures without running the CLI.
 
 ## Discover, don't guess
 
-Resource names are not guessable. Enumerate them first:
+Resource names are not guessable. Start with `introspect` for a full surface
+map, then narrow with `schema list` if you only need the catalog:
 
 ```sh
-zscalerctl --format json schema list   # every product, resource, operation, and field
+zscalerctl introspect                  # complete map: commands, flags, args, output_fields,
+                                       # exit codes, and the resource catalog — in one call
+                                       # (JSON when piped; human tree on a TTY)
+zscalerctl --format json schema list   # catalog-focused view: products, resources, ops, fields
 zscalerctl zia --help                  # one product's resources, human-readable
 ```
+
+`introspect` carries `read_only: true` at the top level, confirming no command
+mutates tenant state. Run it first when discovering the full CLI surface;
+use `schema list` when you only need catalog enumeration.
 
 Then read with `list`, `get <id>`, or `show` (singletons):
 
