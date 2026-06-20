@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 				return UsageError{Message: "usage: zscalerctl config init [--force]"}
 			}
 			force, _ := cmd.Flags().GetBool("force")
-			return a.runConfigInitWithForce(opts, force)
+			return a.runConfigInitWithForce(opts, force, a.out, a.err)
 		},
 	}
 	cmd.Flags().Bool("force", false, "overwrite an existing config file")
@@ -64,8 +65,17 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 
 // runConfigInitWithForce extracts the post-flag-parse logic from runConfigInit
 // so it can be called from the Cobra RunE with an already-resolved force value.
-// The legacy runConfigInit (flag.FlagSet path) is left intact for now.
-func (a *App) runConfigInitWithForce(opts globalOptions, force bool) error {
+//
+// Both out and errW are the raw App writers (a.out / a.err). config-init is
+// intentionally exempt from the Cobra-installed redacting writer for its path
+// output: filesystem paths appear on both stdout (the machine-parseable path)
+// and in the stderr hint ("Created owner-only config at …"), and the
+// high-entropy redactor false-positives on entropy-heavy OS temp directories,
+// producing "<REDACTED:SECRET>" instead of the real path. The config path is
+// never a credential, so bypassing the redactor here is safe. If this function
+// ever outputs anything credential-like it must be added to the redact package's
+// test corpus instead.
+func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW io.Writer) error {
 	path, _ := config.ResolveConfigPath(a.env, config.LoadOptions{
 		Profile:    opts.profile,
 		ConfigPath: opts.configPath,
@@ -93,22 +103,23 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool) error {
 		return fmt.Errorf("write config %s: %w", path, err)
 	}
 
-	// Machine-first: the path goes to stdout so it can be captured; the human
-	// next-steps hint goes to stderr so it never pollutes that path.
-	fmt.Fprintln(a.out, path)
-	fmt.Fprintf(a.err, "Created owner-only config at %s\n", path)
-	fmt.Fprintln(a.err, "Next: set a client secret — export ZSCALERCTL_CLIENT_SECRET, or uncomment a client_secret_ref in the file.")
-	fmt.Fprintln(a.err, "Then run: zscalerctl doctor")
+	// Machine-first: the path goes to stdout (out = a.out, raw writer) so it
+	// can be captured by scripts without redactor interference. The human
+	// next-steps hints go to errW (cmd.ErrOrStderr(), the Cobra-installed
+	// redacting writer) so any inadvertent credential-like text in the hints
+	// is caught before reaching the terminal.
+	fmt.Fprintln(out, path)
+	fmt.Fprintf(errW, "Created owner-only config at %s\n", path)
+	fmt.Fprintln(errW, "Next: set a client secret — export ZSCALERCTL_CLIENT_SECRET, or uncomment a client_secret_ref in the file.")
+	fmt.Fprintln(errW, "Then run: zscalerctl doctor")
 	return nil
 }
 
 // newConfigShowCmd returns the "config show" subcommand (config-LAZY).
 //
-// runConfig already enforces args==["show"] on the legacy path. Now that "show"
-// is a structural Cobra subcommand, the positional constraint is guaranteed by
-// routing, so we call runConfig with an empty args slice. The runner's arg check
-// is adapted: passing args directly from the cobra RunE (which will be empty for
-// "zscalerctl config show") preserves identical behaviour.
+// Cobra routing guarantees the "show" verb was matched; we pass args directly
+// (normally empty for "zscalerctl config show") so runConfig receives only the
+// post-verb positional args and can enforce len(args)==0 cleanly.
 func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
@@ -122,10 +133,7 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 				return err
 			}
 			applyOptions(&cfg, opts)
-			// Pass args from the subcommand (normally empty). runConfig's
-			// legacy args[0]=="show" guard is no longer structurally needed,
-			// but we satisfy it by prepending "show" so the runner is unchanged.
-			return a.runConfig(cmd.Context(), cfg, opts, append([]string{"show"}, args...))
+			return a.runConfig(cmd.Context(), cfg, opts, args)
 		},
 	}
 }
@@ -149,8 +157,8 @@ func (a *App) newSchemaCmd(opts globalOptions) *cobra.Command {
 
 // newSchemaListCmd returns the "schema list" subcommand (config-LAZY).
 //
-// runSchema already enforces args==["list"]. We satisfy the legacy check by
-// prepending "list" so the runner body is unchanged.
+// Cobra routing guarantees the "list" verb was matched; we pass args directly
+// (normally empty) so runSchema receives only the post-verb positional args.
 func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -164,7 +172,7 @@ func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
 				return err
 			}
 			applyOptions(&cfg, opts)
-			return a.runSchema(cmd.Context(), cfg, opts, append([]string{"list"}, args...))
+			return a.runSchema(cmd.Context(), cfg, opts, args)
 		},
 	}
 }
@@ -188,8 +196,8 @@ func (a *App) newAuthCmd(opts globalOptions) *cobra.Command {
 
 // newAuthStatusCmd returns the "auth status" subcommand (config-LAZY).
 //
-// runAuth already enforces args==["status"]. We satisfy the legacy check by
-// prepending "status" so the runner body is unchanged.
+// Cobra routing guarantees the "status" verb was matched; we pass args directly
+// (normally empty) so runAuth receives only the post-verb positional args.
 func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -203,7 +211,7 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 				return err
 			}
 			applyOptions(&cfg, opts)
-			return a.runAuth(cmd.Context(), cfg, opts, append([]string{"status"}, args...))
+			return a.runAuth(cmd.Context(), cfg, opts, args)
 		},
 	}
 }

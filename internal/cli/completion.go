@@ -54,17 +54,18 @@ var completionDiagnosticVerbs = map[resources.Product][]string{}
 
 // completionResourceNames returns the completion candidates for a product's
 // second positional word: its catalog resources plus any diagnostic verbs that
-// live outside the catalog.
-func completionResourceNames(product resources.Product) []string {
-	names := resourceNames(product)
+// live outside the catalog. It is a method on App so the test-injected catalog
+// (set via NewWithOptions) is respected consistently (N-2).
+func (a *App) completionResourceNames(product resources.Product) []string {
+	names := a.resourceNames(product)
 	names = append(names, completionDiagnosticVerbs[product]...)
 	sort.Strings(names)
 	return names
 }
 
-func resourceNames(product resources.Product) []string {
+func (a *App) resourceNames(product resources.Product) []string {
 	var names []string
-	for _, spec := range resources.Catalog() {
+	for _, spec := range a.resourceCatalog() {
 		if spec.Product == product {
 			names = append(names, spec.Name)
 		}

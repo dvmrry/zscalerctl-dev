@@ -265,20 +265,13 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
 	}
-	switch {
-	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
+	// "help" without a migrated command: show global usage. Any other unknown
+	// token produces an error. All runnable commands are now migrated (isMigrated
+	// above) so there is no reachable fallthrough path.
+	if rest[0] == "help" {
 		a.writeUsage(a.out)
 		return nil
-	case isRunnableCommand(rest[0]):
-	default:
-		a.writeUsageForHumans(opts)
-		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
-
-	// All previously-dispatched legacy commands (auth, config, schema, completion)
-	// are now migrated to Cobra and handled by isMigrated → execCobra above. The
-	// second switch only remains as a fallback for any future un-migrated command
-	// that passes isRunnableCommand but has no isMigrated case.
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0])}
 }
@@ -689,7 +682,9 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 	root := a.buildCommandTree(opts)
 
 	args := rest
-	if opts.help {
+	// Re-insert --help only for non-completion args: injecting --help into the
+	// __complete stream would corrupt the completion output (L-15).
+	if opts.help && !isCompletionArgs(rest) {
 		args = append(rest[:len(rest):len(rest)], "--help")
 	}
 
@@ -775,7 +770,7 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 			switch len(args) {
 			case 0:
 				// First positional: offer the product's resource names.
-				names := completionResourceNames(product)
+				names := a.completionResourceNames(product)
 				completions := make([]cobra.Completion, len(names))
 				for i, n := range names {
 					completions[i] = cobra.Completion(n)
@@ -954,7 +949,9 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 }
 
 func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "status" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "status" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl auth status"}
 	}
 	status := newAuthStatus(cfg)
@@ -969,7 +966,9 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 }
 
 func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "show" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "show" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl config show"}
 	}
 	if opts.format == output.FormatJSON {
@@ -1001,7 +1000,9 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 }
 
 func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "list" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "list" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl schema list"}
 	}
 	catalog := a.resourceCatalog()
@@ -1935,54 +1936,11 @@ func safeJSONRecords(records resources.ProjectedRecords) []output.SafeJSON {
 	return out
 }
 
-// writeHelp prints help scoped to what the user asked for: a known resource's
-// operations and renderable fields for `<product> <resource> --help`, the
-// product's resources for `<product> --help`, or the global usage otherwise.
+// writeHelp prints the global usage. It is only reachable when rest is empty
+// (all migrated commands, including products, are intercepted by the
+// isMigrated guard in runParsed before writeHelp is called). The per-command
+// and per-product cases that previously lived here were dead code.
 func (a *App) writeHelp(w io.Writer, rest []string) {
-	if len(rest) >= 1 {
-		switch rest[0] {
-		case "doctor":
-			fmt.Fprintln(w, "usage: zscalerctl doctor")
-			return
-		case "auth":
-			fmt.Fprintln(w, "usage: zscalerctl auth status")
-			return
-		case "config":
-			fmt.Fprintln(w, "usage: zscalerctl config show")
-			fmt.Fprintln(w, "       zscalerctl config init [--force]")
-			return
-		case "schema":
-			fmt.Fprintln(w, "usage: zscalerctl schema list")
-			return
-		case "dump":
-			fmt.Fprintln(w, dumpUsage())
-			return
-		case "diff":
-			fmt.Fprintln(w, diffUsage())
-			return
-		case "completion":
-			fmt.Fprintf(w, "usage: zscalerctl completion %s\n", completionShellNames())
-			return
-		case "version":
-			fmt.Fprintln(w, "usage: zscalerctl version")
-			return
-		}
-	}
-	if len(rest) >= 1 && knownProductCommand(rest[0]) {
-		product := resources.Product(rest[0])
-		if len(rest) >= 2 {
-			if product == resources.ProductZIA && rest[1] == urlLookupCommandName {
-				fmt.Fprintln(w, urlLookupUsageMessage)
-				return
-			}
-			if spec, ok := a.resourceCatalog().FindSpec(product, rest[1]); ok {
-				fmt.Fprintln(w, resourceUsage(product, spec, output.TerminalWidth(w)))
-				return
-			}
-		}
-		fmt.Fprintln(w, productCommandUsage(product, output.TerminalWidth(w)))
-		return
-	}
 	a.writeUsage(w)
 }
 
@@ -2297,7 +2255,7 @@ func isRunnableCommand(name string) bool {
 // instead of the generic --fields usage error.
 func isKnownCommand(name string) bool {
 	switch name {
-	case "help", "-h", "--help", "version", "completion":
+	case "help", "version", "completion":
 		return true
 	}
 	return isRunnableCommand(name)
