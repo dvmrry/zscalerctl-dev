@@ -17,6 +17,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
+	"github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
@@ -301,6 +302,62 @@ func TestExitCodeForPartialDump(t *testing.T) {
 	err := cli.PartialDumpError{Dir: "/tmp/dump", Errors: 2}
 	if got := exitCodeForError(err); got != exitPartialDump {
 		t.Fatalf("exitCodeForError(PartialDumpError) = %d, want %d", got, exitPartialDump)
+	}
+}
+
+// writeDumpDirForMain creates a minimal valid dump directory for integration tests
+// in the main package. It mirrors the writeDiffDump helper in cobra_diff_test.go
+// (internal/cli package) using only exported dump package types.
+func writeDumpDirForMain(t *testing.T, product, resource, payload string) string {
+	t.Helper()
+	dir := t.TempDir()
+	relPath := filepath.ToSlash(filepath.Join("resources", product, resource+".json"))
+	path := filepath.Join(dir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%s) error = %v", path, err)
+	}
+	m := dump.Manifest{
+		Schema:      dump.ManifestSchemaID,
+		CollectedAt: "2026-01-01T00:00:00Z",
+		ToolVersion: "test",
+		Redaction:   "standard",
+		Warning:     "test fixture",
+		Status:      "complete",
+		Resources: []dump.ManifestResource{
+			{Product: product, Name: resource, Shape: "list", Status: "ok", Path: relPath, Records: 1},
+		},
+	}
+	body, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(manifest) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(manifest) error = %v", err)
+	}
+	return dir
+}
+
+// TestRunDiffFailOnDriftExitsSeven is an end-to-end integration test verifying
+// that run() returns exitDriftDetected (7) when diff detects a difference
+// between two dump directories and --fail-on-drift is set. This closes L-2 from
+// the adversarial review: exit-7 had no test through the cmd/zscalerctl boundary.
+func TestRunDiffFailOnDriftExitsSeven(t *testing.T) {
+	t.Parallel()
+
+	// Build two minimal dump dirs with a synthetic difference (name field changed).
+	oldDir := writeDumpDirForMain(t, "zia", "locations", `[{"id":"1","name":"old"}]`)
+	newDir := writeDumpDirForMain(t, "zia", "locations", `[{"id":"1","name":"new"}]`)
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(),
+		[]string{"--format", "json", "diff", "--fail-on-drift", oldDir, newDir},
+		&stdout, &stderr, nil)
+	if code != exitDriftDetected {
+		t.Fatalf("run(diff --fail-on-drift, drift present) exit code = %d, want %d (exitDriftDetected)\nstdout: %s\nstderr: %s",
+			code, exitDriftDetected, stdout.String(), stderr.String())
 	}
 }
 

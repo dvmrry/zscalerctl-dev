@@ -41,6 +41,143 @@ show authentication status for the active profile
 zscalerctl auth status
 ```
 
+### completion
+
+Generate the autocompletion script for the specified shell
+
+```
+zscalerctl completion
+```
+
+Generate the autocompletion script for zscalerctl for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+
+#### completion bash
+
+Generate the autocompletion script for bash
+
+```
+zscalerctl completion bash
+```
+
+Generate the autocompletion script for the bash shell.
+
+This script depends on the 'bash-completion' package.
+If it is not installed already, you can install it via your OS's package manager.
+
+To load completions in your current shell session:
+
+	source <(zscalerctl completion bash)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	zscalerctl completion bash > /etc/bash_completion.d/zscalerctl
+
+#### macOS:
+
+	zscalerctl completion bash > $(brew --prefix)/etc/bash_completion.d/zscalerctl
+
+You will need to start a new shell for this setup to take effect.
+
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--no-descriptions` | `bool` | `false` | disable completion descriptions |
+
+#### completion fish
+
+Generate the autocompletion script for fish
+
+```
+zscalerctl completion fish
+```
+
+Generate the autocompletion script for the fish shell.
+
+To load completions in your current shell session:
+
+	zscalerctl completion fish | source
+
+To load completions for every new session, execute once:
+
+	zscalerctl completion fish > ~/.config/fish/completions/zscalerctl.fish
+
+You will need to start a new shell for this setup to take effect.
+
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--no-descriptions` | `bool` | `false` | disable completion descriptions |
+
+#### completion powershell
+
+Generate the autocompletion script for powershell
+
+```
+zscalerctl completion powershell
+```
+
+Generate the autocompletion script for powershell.
+
+To load completions in your current shell session:
+
+	zscalerctl completion powershell | Out-String | Invoke-Expression
+
+To load completions for every new session, add the output of the above command
+to your powershell profile.
+
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--no-descriptions` | `bool` | `false` | disable completion descriptions |
+
+#### completion zsh
+
+Generate the autocompletion script for zsh
+
+```
+zscalerctl completion zsh
+```
+
+Generate the autocompletion script for the zsh shell.
+
+If shell completion is not already enabled in your environment you will need
+to enable it.  You can execute the following once:
+
+	echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+To load completions in your current shell session:
+
+	source <(zscalerctl completion zsh)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	zscalerctl completion zsh > "${fpath[1]}/_zscalerctl"
+
+#### macOS:
+
+	zscalerctl completion zsh > $(brew --prefix)/share/zsh/site-functions/_zscalerctl
+
+You will need to start a new shell for this setup to take effect.
+
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--no-descriptions` | `bool` | `false` | disable completion descriptions |
+
 ### config
 
 manage zscalerctl configuration

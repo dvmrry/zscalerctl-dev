@@ -55,11 +55,12 @@ func TestHybridRouting_VersionGoesViaCobra(t *testing.T) {
 	}
 }
 
-// TestHybridRouting_UnmigratedCommandStillWorksLegacy confirms that a command
-// that is NOT in isMigrated still routes through the legacy path. We use
-// "zia locations list" with no credentials — it must fail with the credential
-// sentinel (exit 3 path), NOT with any Cobra-related error.
-func TestHybridRouting_UnmigratedCommandStillWorksLegacy(t *testing.T) {
+// TestHybridRouting_ZiaGoesViaCobra confirms that "zia" IS migrated (Phase 2a)
+// and routes through Cobra. "zia locations list" with no credentials must fail
+// with the missing-credentials sentinel (exit 3 path), NOT with any
+// Cobra unknown-command error, which would indicate the product was not
+// registered in the Cobra tree.
+func TestHybridRouting_ZiaGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
 	a, _, _ := testVersionApp(t)
@@ -68,13 +69,13 @@ func TestHybridRouting_UnmigratedCommandStillWorksLegacy(t *testing.T) {
 		t.Fatal("App.Run(zia locations list, no creds) error = nil, want credential error")
 	}
 	// The error must carry the missing-credentials sentinel, not a Cobra unknown-command error.
-	// This confirms the legacy dispatch path fired.
+	// A Cobra unknown-command error here would mean zia is NOT registered in the tree.
 	if errors.Is(err, cli.ErrUsage) {
-		t.Errorf("App.Run(zia locations list, no creds) returned UsageError %q; want credential error (legacy path)", err)
+		t.Errorf("App.Run(zia locations list, no creds) returned UsageError %q; want credential error (Cobra path)", err)
 	}
 	errMsg := err.Error()
 	if strings.HasPrefix(errMsg, "unknown command") {
-		t.Errorf("App.Run(zia locations list, no creds) returned Cobra unknown-command error %q; legacy path should have handled it", errMsg)
+		t.Errorf("App.Run(zia locations list, no creds) returned Cobra unknown-command error %q; zia must be registered in the Cobra tree", errMsg)
 	}
 }
 

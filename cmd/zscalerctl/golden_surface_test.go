@@ -374,6 +374,14 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "shell-completion",
 		},
+		// ── completion --help (exercises isCompletionArgs redactor-bypass for the
+		//    help path; static help text only — no credential data) ──────────────
+		{
+			name:     "completion-help",
+			args:     []string{"completion", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 		// ── dump --help (Cobra help surface; frozen after Phase 3a migration) ─────
 		{
 			name:     "dump-help",
@@ -718,6 +726,43 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			name:       "auth-bogus",
 			args:       []string{"auth", "bogus"},
 			source:     "cobra-unknown-subcommand-auth",
+			alsoGolden: false,
+		},
+
+		// ── L-4: diff arity errors ─────────────────────────────────────────────
+		// diff with 0 positionals → exit 2 (requires exactly 2 dirs).
+		{
+			name:       "diff-no-args",
+			args:       []string{"diff"},
+			source:     "runDiff-arity-0-positionals",
+			alsoGolden: false,
+		},
+		// diff with 1 positional → exit 2 (requires exactly 2 dirs).
+		{
+			name:       "diff-one-arg",
+			args:       []string{"diff", "/tmp/some-dir"},
+			source:     "runDiff-arity-1-positional",
+			alsoGolden: false,
+		},
+
+		// ── L-5/N-3: --format ndjson completion bash → exit 2 ─────────────────
+		// completion bash does not accept ndjson (shell script, not JSON).
+		{
+			name:       "ndjson-completion-bash",
+			args:       []string{"--format", "ndjson", "completion", "bash"},
+			source:     "rejectUnsupportedFormat-completion-bash",
+			alsoGolden: false,
+		},
+
+		// ── N-1: unknown-resource coverage in product commands ────────────────
+		// "zia bogus-resource bogus-op" reaches the product RunE which does not
+		// recognise the resource and emits a UsageError (the resource list) →
+		// exit 2. (An unknown *resource* resolved before the operation is checked,
+		// producing a usage error rather than a not-found error.)
+		{
+			name:       "zia-bogus-resource-bogus-op",
+			args:       []string{"zia", "bogus-resource", "bogus-op"},
+			source:     "runProduct-unknown-resource-UsageError",
 			alsoGolden: false,
 		},
 	}

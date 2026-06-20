@@ -16,7 +16,7 @@ tmpfile="$(mktemp)"
 cleanup() { rm -f "$tmpfile"; }
 trap cleanup EXIT
 
-if ! go run -mod=vendor ./scripts/gen-cli-docs.go --out "$tmpfile" 2>/dev/null; then
+if ! go run -mod=vendor ./scripts/gen-cli-docs.go --out "$tmpfile"; then
   echo "verify-cli-docs: generator failed" >&2
   exit 1
 fi

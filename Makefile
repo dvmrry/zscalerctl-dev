@@ -49,6 +49,7 @@ gen-cli-docs:
 # Fails if the committed file is stale — fix with: make gen-cli-docs
 docs-cli-check:
 	bash scripts/verify-cli-docs.sh
+	bash scripts/test-verify-cli-docs.sh
 
 semgrep-check:
 	SEMGREP_VERSION=$(SEMGREP_VERSION) bash scripts/verify-semgrep.sh

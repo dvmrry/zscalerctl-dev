@@ -41,6 +41,11 @@ func main() {
 
 	app := cli.New(io.Discard, io.Discard, nil)
 	root := cli.BuildCommandTree(app)
+	// InitDefaultCompletionCmd adds the Cobra-generated "completion" subcommand
+	// (bash/zsh/fish/powershell). Without this call the completion command is
+	// absent from the docs because Cobra adds it lazily on Execute, which we
+	// never call from the generator.
+	root.InitDefaultCompletionCmd()
 
 	var sb strings.Builder
 	writeDoc(&sb, root)

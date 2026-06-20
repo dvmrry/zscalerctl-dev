@@ -28,6 +28,39 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
+// -- recordingResourceReader --------------------------------------------------
+
+// recordCall records a single List, Get, or Show invocation.
+type recordCall struct {
+	op       string // "list", "get", or "show"
+	product  resources.Product
+	resource string
+}
+
+// recordingResourceReader wraps fakeResourceReader and records each call so
+// tests can assert that the Cobra product routing passed the correct
+// (product, resource) pair. Follows the fakeURLLookupReader recording pattern.
+type recordingResourceReader struct {
+	fakeResourceReader
+	calls []recordCall
+}
+
+func (r *recordingResourceReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	r.calls = append(r.calls, recordCall{op: "list", product: product, resource: resource})
+	return r.fakeResourceReader.list, nil
+}
+
+func (r *recordingResourceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
+	r.calls = append(r.calls, recordCall{op: "get", product: product, resource: resource})
+	_ = id
+	return r.fakeResourceReader.get, nil
+}
+
+func (r *recordingResourceReader) Show(_ context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
+	r.calls = append(r.calls, recordCall{op: "show", product: product, resource: resource})
+	return r.fakeResourceReader.show, nil
+}
+
 // -- helpers ------------------------------------------------------------------
 
 // newProductApp returns an App wired to in-memory buffers with a given reader.
@@ -49,22 +82,25 @@ func newProductApp(t *testing.T, reader cli.ResourceReader) (*cli.App, *bytes.Bu
 // TestProductCmd_List_JSON verifies that "zia locations list --format json" via
 // the Cobra path produces projected, redacted JSON output identical to the legacy
 // path: secret fields dropped, unknown fields stripped, array wrapper.
+// Also asserts M-5: the reader receives the correct (product, resource) routing.
 func TestProductCmd_List_JSON(t *testing.T) {
 	t.Parallel()
 
 	const psk = "product-list-psk-canary"
-	reader := fakeResourceReader{
-		list: []resources.SourceRecord{
-			resources.NewSourceRecord(map[string]any{
-				"id":           "1",
-				"name":         "HQ",
-				"ipAddresses":  []any{"192.0.2.1"},
-				"preSharedKey": psk,
-			}),
-			resources.NewSourceRecord(map[string]any{
-				"id":   "2",
-				"name": "Branch",
-			}),
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			list: []resources.SourceRecord{
+				resources.NewSourceRecord(map[string]any{
+					"id":           "1",
+					"name":         "HQ",
+					"ipAddresses":  []any{"192.0.2.1"},
+					"preSharedKey": psk,
+				}),
+				resources.NewSourceRecord(map[string]any{
+					"id":   "2",
+					"name": "Branch",
+				}),
+			},
 		},
 	}
 	a, out, errBuf := newProductApp(t, reader)
@@ -90,6 +126,13 @@ func TestProductCmd_List_JSON(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+	// M-5: assert routing correctness — reader must have received (zia, locations).
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	if reader.calls[0].op != "list" || reader.calls[0].product != resources.ProductZIA || reader.calls[0].resource != "locations" {
+		t.Errorf("reader call = %+v, want {list, zia, locations}", reader.calls[0])
 	}
 }
 
@@ -131,15 +174,18 @@ func TestProductCmd_List_NDJSON(t *testing.T) {
 
 // TestProductCmd_Get_JSON verifies that "zia locations get <id> --format json"
 // via the Cobra path produces a single projected record (not an array).
+// Also asserts M-5: the reader receives the correct (product, resource) routing.
 func TestProductCmd_Get_JSON(t *testing.T) {
 	t.Parallel()
 
-	reader := fakeResourceReader{
-		get: resources.NewSourceRecord(map[string]any{
-			"id":          "42",
-			"name":        "GetResult",
-			"ipAddresses": []any{"10.0.0.1"},
-		}),
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			get: resources.NewSourceRecord(map[string]any{
+				"id":          "42",
+				"name":        "GetResult",
+				"ipAddresses": []any{"10.0.0.1"},
+			}),
+		},
 	}
 	a, out, errBuf := newProductApp(t, reader)
 	err := a.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
@@ -155,6 +201,13 @@ func TestProductCmd_Get_JSON(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+	// M-5: assert routing correctness — reader must have received (zia, locations).
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	if reader.calls[0].op != "get" || reader.calls[0].product != resources.ProductZIA || reader.calls[0].resource != "locations" {
+		t.Errorf("reader call = %+v, want {get, zia, locations}", reader.calls[0])
 	}
 }
 
@@ -185,13 +238,16 @@ func TestProductCmd_Get_NDJSON(t *testing.T) {
 
 // TestProductCmd_Show_JSON verifies that "zia advanced-settings show" via the
 // Cobra path produces a projected record. advanced-settings has only ShowOperation.
+// Also asserts M-5: the reader receives the correct (product, resource) routing.
 func TestProductCmd_Show_JSON(t *testing.T) {
 	t.Parallel()
 
-	reader := fakeResourceReader{
-		show: resources.NewSourceRecord(map[string]any{
-			"advancedSettingField": "value",
-		}),
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			show: resources.NewSourceRecord(map[string]any{
+				"advancedSettingField": "value",
+			}),
+		},
 	}
 	a, out, errBuf := newProductApp(t, reader)
 	err := a.Run(context.Background(), []string{"--format", "json", "zia", "advanced-settings", "show"})
@@ -204,6 +260,13 @@ func TestProductCmd_Show_JSON(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+	// M-5: assert routing correctness — reader must have received (zia, advanced-settings).
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	if reader.calls[0].op != "show" || reader.calls[0].product != resources.ProductZIA || reader.calls[0].resource != "advanced-settings" {
+		t.Errorf("reader call = %+v, want {show, zia, advanced-settings}", reader.calls[0])
 	}
 }
 
@@ -528,19 +591,24 @@ func TestProductCmd_Help_Cobra(t *testing.T) {
 	}
 }
 
-// TestProductCmd_LegacyAuthStillWorks verifies that auth (un-migrated command)
-// is still handled by the legacy path: it must NOT produce a Cobra unknown-command
-// error when it reaches the un-migrated switch.
-func TestProductCmd_LegacyAuthStillWorks(t *testing.T) {
+// TestProductCmd_AuthGoesViaCobra verifies that "auth status" is now handled by
+// the Cobra path (Phase 4 migration). With no credentials the command succeeds
+// (auth status does not require live creds) and the output contains the
+// "credentials" field emitted by runAuth / newAuthStatus.
+func TestProductCmd_AuthGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := newProductApp(t, nil)
-	err := a.Run(context.Background(), []string{"auth", "status"})
-	// auth with no creds will error, but it must NOT be a Cobra unknown-command.
+	a, out, errBuf := newProductApp(t, nil)
+	err := a.Run(context.Background(), []string{"--format", "json", "auth", "status"})
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "unknown command") {
-			t.Errorf("auth returned Cobra unknown-command %q; legacy path should handle it", err.Error())
-		}
+		t.Errorf("App.Run(auth status) error = %v, want nil", err)
+	}
+	// runAuth / newAuthStatus always emits the "credentials" field.
+	if !strings.Contains(out.String(), `"credentials"`) {
+		t.Errorf("auth status output = %q, want JSON with 'credentials' field", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("auth status stderr = %q, want empty", errBuf.String())
 	}
 }
 
