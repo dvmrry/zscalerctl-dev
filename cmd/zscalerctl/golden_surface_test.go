@@ -116,9 +116,9 @@ func scrub(s, homeDir, binPath string) string {
 	// Safe because reGoVersion already handled "go<version>" above.
 	s = reSemver.ReplaceAllString(s, "<VERSION>")
 	// "dev" version string (the fallback when built without ldflags)
-	s = reDevVersion.ReplaceAllString(s, "<VERSION>")
+	s = reDevVersion.ReplaceAllString(s, "${1}${2}<VERSION>${3}")
 	// Git commit SHA (7-40 hex chars)
-	s = reCommit.ReplaceAllString(s, "<COMMIT>")
+	s = reCommit.ReplaceAllString(s, "${1}<COMMIT>")
 	// Build date (ISO-8601 or RFC3339 timestamps)
 	s = reDate.ReplaceAllString(s, "<DATE>")
 	// OS/arch combinations that vary by machine:
@@ -142,8 +142,15 @@ var (
 	// e.g. v1.2.3 or 1.2.3; \b prevents matching inside IP-like strings
 	reSemver = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 	// bare "dev" version in version output (value-only, not a substring)
-	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("version":\s*)"dev"`)
-	// Git commit SHA: 7-40 hex digits following "Commit" label or "commit" JSON key
+	// arm1: (\bVersion\s+)dev\b captures the "Version   " label prefix (group 1).
+	// arm2: ("(?:cli_)?version":\s*")dev(") captures the JSON key+open-quote
+	//        (group 2) and closing quote (group 3) so both are preserved in the
+	//        replacement. Handles both "version" (version --format json) and
+	//        "cli_version" (introspect output).
+	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("(?:cli_)?version":\s*")dev(")`)
+	// Git commit SHA: 7-40 hex digits following "Commit" label or "commit" JSON key.
+	// Group 1 captures the label/key prefix (e.g. "Commit    " or `"commit": "`);
+	// group 2 is consumed (the hex SHA). Replacement restores group 1.
 	reCommit = regexp.MustCompile(`(?i)(commit["\s:]+)([0-9a-f]{7,40})\b`)
 	// ISO-8601 / RFC3339 date or datetime
 	reDate = regexp.MustCompile(`\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?)?`)
@@ -991,6 +998,286 @@ func TestScrubPseudoVersion(t *testing.T) {
 			name:  "plain semver unchanged by pseudo-version pass",
 			input: "Version   v1.2.3",
 			want:  "Version   <VERSION>",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubDevVersion verifies that the "dev" version scrubber preserves the
+// surrounding label/key context (the bug was that it dropped the label, producing
+// structurally wrong output).  Because no-ldflags builds yield version="dev" only
+// when debug.ReadBuildInfo returns "(devel)" or fails, this trigger is invisible in
+// normal 'go test' runs — the unit test provides the deterministic class-closer.
+func TestScrubDevVersion(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			// Table output: label + whitespace must be preserved.
+			name:  "table form",
+			input: "Version   dev",
+			want:  "Version   <VERSION>",
+		},
+		{
+			// JSON version output key must be preserved.
+			name:  "json version key",
+			input: `"version": "dev"`,
+			want:  `"version": "<VERSION>"`,
+		},
+		{
+			// introspect uses "cli_version" as the JSON key — must also be covered.
+			name:  "json cli_version key",
+			input: `"cli_version": "dev"`,
+			want:  `"cli_version": "<VERSION>"`,
+		},
+		{
+			// Multi-line: both arms in one string, label whitespace preserved.
+			name:  "multiline table and json",
+			input: "Version   dev\n\"version\": \"dev\"\n\"cli_version\": \"dev\"",
+			want:  "Version   <VERSION>\n\"version\": \"<VERSION>\"\n\"cli_version\": \"<VERSION>\"",
+		},
+		{
+			// Negative: "developer" must not be truncated.
+			name:  "not a prefix of longer word",
+			input: "Version   developer",
+			want:  "Version   developer",
+		},
+		{
+			// Negative: a real pseudo-version should not be double-touched here
+			// (rePseudoVersion fires first and converts it; reDevVersion would not
+			// match the already-replaced "<VERSION>").
+			name:  "already-replaced placeholder untouched",
+			input: `"version": "<VERSION>"`,
+			want:  `"version": "<VERSION>"`,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubCommit verifies that the commit scrubber preserves the surrounding
+// label/key context (the bug was that it dropped the label, producing
+// structurally wrong output).  In practice, no-ldflags builds set commit="unknown"
+// which is not hex and never fires the regex — the unit test is the deterministic
+// class-closer.
+func TestScrubCommit(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			// Table output (7-char short SHA): label + whitespace preserved.
+			name:  "table form short sha",
+			input: "Commit    79678e7",
+			want:  "Commit    <COMMIT>",
+		},
+		{
+			// Table output (full 40-char SHA): label + whitespace preserved.
+			name:  "table form full sha",
+			input: "Commit    79678e7c1f6300000000000000000000000000",
+			want:  "Commit    <COMMIT>",
+		},
+		{
+			// JSON version output: key + open-quote preserved; closing quote preserved
+			// because group 1 captures through the opening quote of the value.
+			name:  "json commit key",
+			input: `"commit": "79678e7c1f63"`,
+			want:  `"commit": "<COMMIT>"`,
+		},
+		{
+			// Mixed-case "Commit" in JSON (the (?i) flag).
+			name:  "json commit key mixed case",
+			input: `"Commit": "79678e7c1f63"`,
+			want:  `"Commit": "<COMMIT>"`,
+		},
+		{
+			// Negative: "unknown" is not hex and must not be replaced.
+			name:  "unknown commit not replaced table",
+			input: "Commit    unknown",
+			want:  "Commit    unknown",
+		},
+		{
+			// Negative: "unknown" in JSON must not be replaced.
+			name:  "unknown commit not replaced json",
+			input: `"commit": "unknown"`,
+			want:  `"commit": "unknown"`,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubDate verifies that ISO-8601 / RFC3339 date and datetime strings are
+// replaced with <DATE> and that no capture group is dropped (reDate has no groups).
+func TestScrubDate(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "plain date", input: "2026-06-20", want: "<DATE>"},
+		{name: "datetime UTC", input: "2026-06-20T14:30:00Z", want: "<DATE>"},
+		{name: "datetime offset", input: "2026-06-20T14:30:00+05:30", want: "<DATE>"},
+		{name: "datetime negative offset", input: "2026-06-20T14:30:00-08:00", want: "<DATE>"},
+		{
+			name:  "json date field preserved",
+			input: `"date": "2026-06-20T14:30:00Z"`,
+			want:  `"date": "<DATE>"`,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubGoVersion verifies that Go runtime version strings are replaced with
+// "go<GOVERSION>" and that reSemver does not corrupt them (reGoVersion fires first).
+func TestScrubGoVersion(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "three-part go version", input: "go1.22.3", want: "go<GOVERSION>"},
+		{name: "two-part go version", input: "go1.22", want: "go<GOVERSION>"},
+		{
+			name:  "json go field",
+			input: `"go": "go1.24.2"`,
+			want:  `"go": "go<GOVERSION>"`,
+		},
+		{
+			name:  "table Go field",
+			input: "Go        go1.24.2",
+			want:  "Go        go<GOVERSION>",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubOSArch verifies that OS/arch combinations (table Platform field) are
+// replaced with <PLATFORM> (whole match replaced — intentional, no prefix to
+// preserve) and that separate JSON os/arch fields use their own scrubbers.
+func TestScrubOSArch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "darwin arm64", input: "darwin/arm64", want: "<PLATFORM>"},
+		{name: "linux amd64", input: "linux/amd64", want: "<PLATFORM>"},
+		{name: "windows amd64", input: "windows/amd64", want: "<PLATFORM>"},
+		{
+			name:  "table Platform field",
+			input: "Platform  darwin/arm64",
+			want:  "Platform  <PLATFORM>",
+		},
+		{
+			name:  "json os field",
+			input: `"os": "darwin"`,
+			want:  `"os": "<OS>"`,
+		},
+		{
+			name:  "json arch field",
+			input: `"arch": "arm64"`,
+			want:  `"arch": "<ARCH>"`,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScrubTimeToken verifies that structured-log time= tokens are replaced with
+// "time=<TIME>" (reTimeToken has no capture groups — no prefix to preserve).
+func TestScrubTimeToken(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "iso timestamp token",
+			input: "time=2026-06-20T14:30:00Z",
+			want:  "time=<TIME>",
+		},
+		{
+			name:  "quoted timestamp token",
+			input: `time="2026-06-20T14:30:00Z"`,
+			want:  "time=<TIME>",
+		},
+		{
+			name:  "token in log line",
+			input: `time=2026-06-20T14:30:00Z level=DEBUG msg="loading config"`,
+			want:  `time=<TIME> level=DEBUG msg="loading config"`,
 		},
 	}
 
