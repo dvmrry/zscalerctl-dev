@@ -107,7 +107,13 @@ func scrub(s, homeDir, binPath string) string {
 
 	// Pseudo-version: v0.68.1-0.20260620073434-79678e7c1f63
 	s = rePseudoVersion.ReplaceAllString(s, "<VERSION>")
-	// Plain semver: v1.2.3 or 1.2.3
+	// Go runtime version: go1.22.3 — must run BEFORE reSemver so "go1.26.4" is
+	// consumed as a unit (→ go<GOVERSION>) and reSemver does not strip the digits
+	// first (which would yield the wrong "go<VERSION>" placeholder).
+	s = reGoVersion.ReplaceAllString(s, "go<GOVERSION>")
+	// Plain semver: v1.2.3 or 1.2.3 — backstop for standalone version strings.
+	// Word boundaries prevent silent corruption of IP-like strings (e.g. 192.168.1.1).
+	// Safe because reGoVersion already handled "go<version>" above.
 	s = reSemver.ReplaceAllString(s, "<VERSION>")
 	// "dev" version string (the fallback when built without ldflags)
 	s = reDevVersion.ReplaceAllString(s, "<VERSION>")
@@ -115,8 +121,6 @@ func scrub(s, homeDir, binPath string) string {
 	s = reCommit.ReplaceAllString(s, "<COMMIT>")
 	// Build date (ISO-8601 or RFC3339 timestamps)
 	s = reDate.ReplaceAllString(s, "<DATE>")
-	// Go runtime version: go1.22.3
-	s = reGoVersion.ReplaceAllString(s, "<GOVERSION>")
 	// OS/arch combinations that vary by machine:
 	//   combined form (table "Platform" field): darwin/arm64 → <PLATFORM>
 	s = reOSArch.ReplaceAllString(s, "<PLATFORM>")
@@ -132,15 +136,15 @@ func scrub(s, homeDir, binPath string) string {
 var (
 	// e.g. 0.68.1-0.20260620073434-79678e7c1f63 or v0.68.1-0.20260620073434-79678e7c1f63
 	rePseudoVersion = regexp.MustCompile(`v?\d+\.\d+\.\d+-0\.\d{14}-[0-9a-f]{12}`)
-	// e.g. v1.2.3 or 1.2.3
-	reSemver = regexp.MustCompile(`v?\d+\.\d+\.\d+`)
+	// e.g. v1.2.3 or 1.2.3; \b prevents matching inside IP-like strings
+	reSemver = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 	// bare "dev" version in version output (value-only, not a substring)
 	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("version":\s*)"dev"`)
 	// Git commit SHA: 7-40 hex digits following "Commit" label or "commit" JSON key
 	reCommit = regexp.MustCompile(`(?i)(commit["\s:]+)([0-9a-f]{7,40})\b`)
 	// ISO-8601 / RFC3339 date or datetime
 	reDate = regexp.MustCompile(`\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?)?`)
-	// Go runtime version: go1.22.3 or go1.22
+	// Go runtime version: go1.22.3 or go1.22 — applied first in scrub() as "go<GOVERSION>"
 	reGoVersion = regexp.MustCompile(`go\d+\.\d+(?:\.\d+)?`)
 	// OS/arch combined form: darwin/arm64, linux/amd64, etc. (table Platform field)
 	reOSArch = regexp.MustCompile(`(darwin|linux|windows|freebsd|openbsd|netbsd)/(amd64|arm64|386|arm|s390x|ppc64le)`)
@@ -231,6 +235,11 @@ type surfaceCase struct {
 // Exit codes are asserted directly in Go; golden files capture the human/machine
 // readable output shape. During the Cobra migration, each intentional change that
 // causes a golden diff must be recorded in testdata/surface/surface_changes.md.
+//
+// NOTE: testdata/surface/surface_changes.md is a human-maintained convention —
+// the test suite does NOT enforce that it is updated when goldens change.
+// A maintainer who updates goldens without updating surface_changes.md will
+// not see a test failure; the manifest is an audit trail, not a machine gate.
 func TestGoldenSurface(t *testing.T) {
 	if goldenBinary == "" {
 		t.Fatal("goldenBinary not set — TestMain did not run")
@@ -341,10 +350,10 @@ func TestGoldenSurface(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// Give each case its own empty home so a case writing config cannot
-			// affect any other case even if cases run in parallel later.
+			// affect any other case even if cases run in parallel.
 			caseHome := filepath.Join(baseHome, tc.name)
 			if err := os.MkdirAll(caseHome, 0o755); err != nil {
 				t.Fatalf("mkdir case home: %v", err)

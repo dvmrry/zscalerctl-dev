@@ -1,5 +1,5 @@
 Version   <VERSION>
 Commit    unknown
 Date      unknown
-Go        go<VERSION>
+Go        go<GOVERSION>
 Platform  <PLATFORM>
