@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -554,6 +555,9 @@ func TestUsageListsKnownProducts(t *testing.T) {
 
 func TestGlobalOutputWritesSuccessfulCommandToOwnerOnlyFile(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file-mode perms; Windows enforces owner-only via DACL, covered by internal/fileperm")
+	}
 
 	const clientSecret = "client-secret-value"
 	var out, errOut bytes.Buffer
@@ -585,6 +589,9 @@ func TestGlobalOutputWritesSuccessfulCommandToOwnerOnlyFile(t *testing.T) {
 
 func TestGlobalOutputOverwritesAtomicallyWithoutTempLeftovers(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file-mode perms; Windows enforces owner-only via DACL, covered by internal/fileperm")
+	}
 
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "config.json")
@@ -1668,6 +1675,9 @@ func TestResourceListRuleLabelsUsesCatalogProjection(t *testing.T) {
 
 func TestDumpWritesRestrictedFilesAndReportsWithoutCanaries(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file-mode perms; Windows enforces owner-only via DACL, covered by internal/fileperm")
+	}
 
 	const (
 		topLevelPSK       = "top-level-psk-canary"
@@ -2154,6 +2164,9 @@ func TestDumpAbortsWithoutWritingOnResourceErrorByDefault(t *testing.T) {
 
 func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file-mode perms; Windows enforces owner-only via DACL, covered by internal/fileperm")
+	}
 
 	const leakedErrorText = "client_secret=raw-error-value"
 	reader := selectiveErrorResourceReader{

@@ -134,8 +134,11 @@ func scrub(s, homeDir, binPath string) string {
 }
 
 var (
-	// e.g. 0.68.1-0.20260620073434-79678e7c1f63 or v0.68.1-0.20260620073434-79678e7c1f63
-	rePseudoVersion = regexp.MustCompile(`v?\d+\.\d+\.\d+-0\.\d{14}-[0-9a-f]{12}`)
+	// Go pseudo-version: covers both forms produced by go mod:
+	//   no-base-tag:   v0.0.0-20260620152824-f3a2eda1c513  (timestamp directly after semver)
+	//   with-base-tag: v0.68.1-0.20260620073434-79678e7c1f63 (pre=0, dot before timestamp)
+	// The alternation (?:0\.\d{14}|\d{14}) distinguishes the two forms.
+	rePseudoVersion = regexp.MustCompile(`v?\d+\.\d+\.\d+-(?:0\.\d{14}|\d{14})-[0-9a-f]{12}`)
 	// e.g. v1.2.3 or 1.2.3; \b prevents matching inside IP-like strings
 	reSemver = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 	// bare "dev" version in version output (value-only, not a substring)
@@ -892,5 +895,51 @@ func TestCommandTreeInventory(t *testing.T) {
 	}
 	if string(want) != actual {
 		t.Errorf("command tree inventory changed:\nwant:\n%s\ngot:\n%s", want, actual)
+	}
+}
+
+// TestScrubPseudoVersion verifies that scrub() fully replaces both forms of
+// Go pseudo-version to <VERSION>, regardless of whether the module has a base
+// tag. This prevents CI failures on runners (Linux) where modules with no
+// version tags produce the no-base-tag form v0.0.0-<timestamp>-<hash>.
+func TestScrubPseudoVersion(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "no-base-tag form",
+			input: "Version   v0.0.0-20260620152824-f3a2eda1c513",
+			want:  "Version   <VERSION>",
+		},
+		{
+			name:  "with-base-tag form",
+			input: "Version   v0.68.1-0.20260620073434-79678e7c1f63",
+			want:  "Version   <VERSION>",
+		},
+		{
+			name:  "no-base-tag in json",
+			input: `"version": "v0.0.0-20260620152824-f3a2eda1c513"`,
+			want:  `"version": "<VERSION>"`,
+		},
+		{
+			name:  "plain semver unchanged by pseudo-version pass",
+			input: "Version   v1.2.3",
+			want:  "Version   <VERSION>",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scrub(tc.input, "", "")
+			if got != tc.want {
+				t.Errorf("scrub(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
 	}
 }

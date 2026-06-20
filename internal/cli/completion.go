@@ -32,15 +32,6 @@ func completionCommandNames() []string {
 	return commands
 }
 
-func completionProductValues() []string {
-	products := productNames(knownProducts())
-	values := append([]string(nil), products...)
-	if len(products) > 1 {
-		values = append(values, strings.Join(products, ","))
-	}
-	return values
-}
-
 // completionDiagnosticVerbs lists per-product diagnostic verbs that are
 // dispatched directly in app.go rather than registered as catalog resources, so
 // resourceNames (which reads the catalog) omits them. They still need shell
@@ -85,53 +76,4 @@ func allResourceNames() []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-func dumpResourceNames() []string {
-	seen := map[string]struct{}{}
-	for _, spec := range resources.Catalog() {
-		if !resourceSupportsDump(spec) {
-			continue
-		}
-		seen[spec.Name] = struct{}{}
-		seen[string(spec.Product)+"/"+spec.Name] = struct{}{}
-	}
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func operationNames() []string {
-	seen := map[string]struct{}{}
-	var names []string
-	for _, spec := range resources.Catalog() {
-		for _, op := range spec.Operations {
-			if op.Capability == resources.CapabilityRead {
-				if _, ok := seen[op.Name]; ok {
-					continue
-				}
-				seen[op.Name] = struct{}{}
-				names = append(names, op.Name)
-			}
-		}
-	}
-	return names
-}
-
-func words(values []string) string {
-	return strings.Join(values, " ")
-}
-
-func powershellArray(values []string) string {
-	if len(values) == 0 {
-		return "@()"
-	}
-	quoted := make([]string, len(values))
-	for i, value := range values {
-		quoted[i] = "'" + strings.ReplaceAll(value, "'", "''") + "'"
-	}
-	return "@(" + strings.Join(quoted, ", ") + ")"
 }
