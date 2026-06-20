@@ -326,6 +326,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "product-help",
 		},
+		// ── url-lookup help (Phase 2b: DisableFlagParsing subcommand) ────────────
+		{
+			name:     "zia-url-lookup-help",
+			args:     []string{"zia", "url-lookup", "--help"},
+			wantCode: 0,
+			note:     "cobra-help-surface",
+		},
 		// ── resource help ─────────────────────────────────────────────────────────
 		{
 			name:     "zia-locations-list-help",

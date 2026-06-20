@@ -748,7 +748,7 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 // config and then attempt to build a reader, which fails when credentials are
 // absent.
 func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   string(product),
 		Short: "read " + string(product) + " resources",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -763,6 +763,13 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 			return a.runProduct(cmd.Context(), cfg, opts, string(product), args)
 		},
 	}
+	// url-lookup is a ZIA-only diagnostic verb (not a catalog resource). Wire it
+	// as a Cobra subcommand so it owns its own help surface and uses
+	// DisableFlagParsing to preserve its strict no-flags error message.
+	if product == resources.ProductZIA {
+		cmd.AddCommand(a.newURLLookupCmd(opts))
+	}
+	return cmd
 }
 
 // newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
@@ -799,6 +806,43 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 			}
 			applyOptions(&cfg, opts)
 			return a.runDoctor(cmd.Context(), cfg, opts, args)
+		},
+	}
+}
+
+// newURLLookupCmd returns the "url-lookup" subcommand of the "zia" product
+// command. DisableFlagParsing is set so that all trailing tokens — including
+// anything that looks like a flag — are forwarded raw to RunE and then to
+// runURLLookup, which enforces its own strict rejection of args starting with
+// "-". Without this, Cobra would intercept an unknown flag such as "--bogus"
+// and emit a generic "unknown flag" error before RunE fires, losing the
+// url-lookup-specific message.
+//
+// Help handling: with DisableFlagParsing, Cobra cannot intercept "-h"/"--help"
+// automatically. RunE detects any help token in args and calls cmd.Help() so
+// the user still gets the help text rather than the flag-rejection message.
+func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:                urlLookupCommandName + " <url> [url...]",
+		Short:              "look up URL categories for one or more URLs",
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// DisableFlagParsing means --help arrives as a raw arg; handle it
+			// before runURLLookup's "-" check fires and rejects it.
+			for _, arg := range args {
+				if arg == "-h" || arg == "--help" {
+					return cmd.Help()
+				}
+			}
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runURLLookup(cmd.Context(), cfg, opts, args)
 		},
 	}
 }
@@ -932,6 +976,11 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	}
 	// zia url-lookup is a diagnostic verb, not a catalog resource; dispatch it
 	// before resource lookup so it never collides with the list/get/show model.
+	//
+	// Defensive fallback: via the Cobra path this branch is unreachable because
+	// "zia url-lookup" now routes to newURLLookupCmd (Phase 2b). It remains here
+	// for callers that invoke runProduct directly (e.g. tests or future non-Cobra
+	// paths) and as protection against any future routing changes.
 	if product == resources.ProductZIA && resource == urlLookupCommandName {
 		return a.runURLLookup(ctx, cfg, opts, args[1:])
 	}

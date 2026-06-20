@@ -2,6 +2,10 @@ read zia resources
 
 Usage:
   zscalerctl zia [flags]
+  zscalerctl zia [command]
+
+Available Commands:
+  url-lookup  look up URL categories for one or more URLs
 
 Flags:
   -h, --help   help for zia
@@ -20,3 +24,5 @@ Global Flags:
       --redaction string     redaction mode: standard, share, paranoid
       --search string        narrow list results to records whose rendered values contain term (case-insensitive)
       --timeout duration     request timeout (default 30s)
+
+Use "zscalerctl zia [command] --help" for more information about a command.
