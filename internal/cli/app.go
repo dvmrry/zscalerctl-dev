@@ -24,6 +24,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
+	"github.com/spf13/cobra"
 )
 
 var ErrUsage = errors.New("usage error")
@@ -177,6 +178,15 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// __complete / __completeNoDesc: Cobra's shell-completion protocol. These tokens
+	// must bypass parseGlobal entirely so that global flags appearing AFTER
+	// __complete (e.g. "__complete --log-level ''") are not consumed by the
+	// global-flag scanner. Cobra's completion engine owns the arg stream from here.
+	// Security: execCobra never calls LoadConfig; the Cobra completion path
+	// short-circuits RunE and never reaches any credential-loading code.
+	if len(args) > 0 && (args[0] == "__complete" || args[0] == "__completeNoDesc") {
+		return a.execCobra(ctx, globalOptions{}, args)
+	}
 	opts, rest, err := parseGlobal(args)
 	if err != nil {
 		return err
@@ -206,9 +216,37 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if logger, err := newDiagLogger(a.err, opts.logLevel); err == nil {
 		a.logger = logger
 	}
+	// __complete / __completeNoDesc: Cobra's internal shell-completion protocol.
+	// Route them straight to execCobra BEFORE any narrowing-flag validation or
+	// help-gating. This is SECURITY-CRITICAL: the config-free path must not call
+	// LoadConfig or construct a reader. execCobra itself never calls LoadConfig;
+	// LoadConfig only runs inside individual RunE callbacks (newProductCmd,
+	// newDoctorCmd, etc.) — shell completion short-circuits RunE and never reaches
+	// those callbacks, so no credentials are ever loaded during completion.
+	if len(rest) > 0 && (rest[0] == "__complete" || rest[0] == "__completeNoDesc") {
+		return a.execCobra(ctx, opts, rest)
+	}
+	// Help routing:
+	//   - No command (empty rest) or un-migrated command → legacy writeHelp.
+	//   - Migrated command with --help → route straight to execCobra BEFORE the
+	//     narrowing/format gates below. This matches the legacy short-circuit where
+	//     opts.help fired before any flag validation, so combinations such as
+	//     "--filter name=x version --help", "--fields id zia locations --help", and
+	//     "--format ndjson completion --help" all show help (exit 0) rather than
+	//     hitting the narrowing/format gates (exit 2).
+	//
+	// CRITICAL: only the opts.help branch is affected. The non-help variants
+	// ("--filter name=x version", "--format ndjson version") must still hit the
+	// gates below → exit 2.
 	if opts.help {
-		a.writeHelp(a.out, rest)
-		return nil
+		if len(rest) == 0 || !isMigrated(rest[0]) {
+			a.writeHelp(a.out, rest)
+			return nil
+		}
+		// A --help request on a migrated command is a meta-request: route it to
+		// Cobra's help before the narrowing/format gates, matching the legacy
+		// behaviour where opts.help short-circuited prior to flag validation.
+		return a.execCobra(ctx, opts, rest)
 	}
 	if len(rest) == 0 {
 		a.writeUsageForHumans(opts)
@@ -228,63 +266,28 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if len(opts.fields) > 0 && isKnownCommand(rest[0]) && !isResourceReadInvocation(rest) {
 		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
 	}
-	switch {
-	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
+	// completion does not produce a record stream, so --format ndjson is rejected
+	// here, before execCobra, just as the legacy path did. This check must come
+	// BEFORE the isMigrated dispatch so the format gate fires even when Cobra
+	// owns the completion command.
+	if rest[0] == "completion" && opts.format == output.FormatNDJSON {
+		return rejectUnsupportedFormat("completion", opts.format)
+	}
+	// Hybrid dispatch: migrated commands go through Cobra; legacy commands continue
+	// through the switch below. Non-help invocations of migrated commands reach here
+	// after the narrowing/format gates above.
+	if isMigrated(rest[0]) {
+		return a.execCobra(ctx, opts, rest)
+	}
+	// "help" without a migrated command: show global usage. Any other unknown
+	// token produces an error. All runnable commands are now migrated (isMigrated
+	// above) so there is no reachable fallthrough path.
+	if rest[0] == "help" {
 		a.writeUsage(a.out)
 		return nil
-	case rest[0] == "version":
-		return a.runVersion(opts, rest[1:])
-	case rest[0] == "completion":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("completion", opts.format)
-		}
-		return a.runCompletion(rest[1:])
-	case rest[0] == "diff":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("diff", opts.format)
-		}
-		return a.runDiff(opts, rest[1:])
-	case rest[0] == "config" && len(rest) >= 2 && rest[1] == "init":
-		// config init writes the starter config and must run before LoadConfig:
-		// the target file is expected not to exist yet, and with an explicit
-		// --config a missing file is otherwise a hard ErrInvalidConfig.
-		return a.runConfigInit(opts, rest[2:])
-	case isRunnableCommand(rest[0]):
-	default:
-		a.writeUsageForHumans(opts)
-		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
-
-	cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-		Profile:    opts.profile,
-		ConfigPath: opts.configPath,
-	})
-	if err != nil {
-		return err
-	}
-	applyOptions(&cfg, opts)
-
-	switch rest[0] {
-	case "doctor":
-		return a.runDoctor(ctx, cfg, opts, rest[1:])
-	case "auth":
-		return a.runAuth(ctx, cfg, opts, rest[1:])
-	case "config":
-		return a.runConfig(ctx, cfg, opts, rest[1:])
-	case "schema":
-		return a.runSchema(ctx, cfg, opts, rest[1:])
-	case "dump":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("dump", opts.format)
-		}
-		return a.runDump(ctx, cfg, opts, rest[1:])
-	default:
-		if knownProductCommand(rest[0]) {
-			return a.runProduct(ctx, cfg, opts, rest[0], rest[1:])
-		}
-		a.writeUsageForHumans(opts)
-		return UsageError{Message: unknownCommandMessage(rest[0])}
-	}
+	a.writeUsageForHumans(opts)
+	return UsageError{Message: unknownCommandMessage(rest[0])}
 }
 
 // writeUsageForHumans writes the usage block to stderr only when the
@@ -412,20 +415,24 @@ func (authStatus) OutputSafe() {}
 func parseGlobal(args []string) (globalOptions, []string, error) {
 	fs := flag.NewFlagSet("zscalerctl", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	profile := fs.String("profile", "", "profile name")
-	configPath := fs.String("config", "", "config file path")
-	format := fs.String("format", string(output.FormatAuto), "output format: auto, table, json, ndjson, pretty")
-	outputPath := fs.String("output", "", "output path")
-	timeout := fs.Duration("timeout", 30*time.Second, "request timeout")
-	redactionFlag := fs.String("redaction", "", "redaction mode: standard, share, paranoid")
-	noCache := fs.Bool("no-cache", false, "bypass API cache where supported")
-	colorFlag := fs.String("color", string(output.ColorAuto), "color output: auto, always, never")
-	noColor := fs.Bool("no-color", false, "disable color output")
-	logLevel := fs.String("log-level", "off", "diagnostic logging to stderr: off, error, warn, info, debug")
-	fieldsFlag := fs.String("fields", "", "comma-separated output fields to keep (narrows the sanitized output)")
+	// All 13 global flags are registered via defineGlobalFlags (globalflags.go),
+	// which derives from globalFlagDefs — the single source of truth. The drift
+	// test calls defineGlobalFlags on a fresh flag.FlagSet to enumerate canonical
+	// names/types; any flag added here must be added to globalFlagDefs first.
 	var filterFlags repeatableFlag
-	fs.Var(&filterFlags, "filter", "narrow list results: key=value (exact) or key~value (substring); repeatable, all must match")
-	searchFlag := fs.String("search", "", "narrow list results to records whose rendered values contain term (case-insensitive)")
+	gp := defineGlobalFlags(fs, &filterFlags)
+	profile := gp.profile
+	configPath := gp.configPath
+	format := gp.format
+	outputPath := gp.outputPath
+	timeout := gp.timeout
+	redactionFlag := gp.redaction
+	noCache := gp.noCache
+	colorFlag := gp.colorFlag
+	noColor := gp.noColor
+	logLevel := gp.logLevel
+	fieldsFlag := gp.fieldsFlag
+	searchFlag := gp.searchFlag
 	globalArgs, rest, help, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
@@ -584,48 +591,6 @@ func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
 	return global, rest, help, nil
 }
 
-func splitDiffArgs(args []string) ([]string, []string, error) {
-	boolFlags := map[string]bool{
-		"ignore-operational": true,
-		"detail":             true,
-		"allow-partial":      true,
-		"fail-on-drift":      true,
-	}
-	valueFlags := map[string]bool{
-		"products":  true,
-		"resources": true,
-	}
-	var flags []string
-	var positionals []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			positionals = append(positionals, args[i+1:]...)
-			break
-		}
-		name, hasValue := flagName(arg)
-		if name == "" {
-			positionals = append(positionals, arg)
-			continue
-		}
-		flags = append(flags, arg)
-		if hasValue || boolFlags[name] {
-			continue
-		}
-		if !valueFlags[name] {
-			// Let flag.FlagSet produce the canonical "flag provided but not
-			// defined" error for unknown flags.
-			continue
-		}
-		if i+1 >= len(args) {
-			return nil, nil, UsageError{Message: fmt.Sprintf("flag needs an argument: -%s", name)}
-		}
-		i++
-		flags = append(flags, args[i])
-	}
-	return flags, positionals, nil
-}
-
 func flagName(arg string) (string, bool) {
 	var name string
 	switch {
@@ -652,16 +617,11 @@ func flagName(arg string) (string, bool) {
 }
 
 func isGlobalFlag(name string) bool {
-	switch name {
-	case "profile", "config", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level", "fields", "filter", "search":
-		return true
-	default:
-		return false
-	}
+	return globalFlagNameSet[name]
 }
 
 func isGlobalBoolFlag(name string) bool {
-	return name == "no-cache" || name == "no-color"
+	return globalBoolFlagNameSet[name]
 }
 
 func applyOptions(cfg *config.Config, opts globalOptions) {
@@ -678,6 +638,278 @@ func applyOptions(cfg *config.Config, opts globalOptions) {
 // only non-table/non-pretty formats reach here.
 func rejectUnsupportedFormat(command string, format output.Format) error {
 	return UsageError{Message: fmt.Sprintf("%s does not support %s output yet", command, format)}
+}
+
+// isMigrated reports whether cmd has been migrated to Cobra dispatch. Only
+// commands in this list are routed through execCobra; all others continue
+// through the legacy switch in runParsed. Grows one command per phase.
+func isMigrated(cmd string) bool {
+	switch cmd {
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion":
+		return true
+	}
+	return knownProductCommand(cmd)
+}
+
+// buildCommandTree constructs the full Cobra command tree — root command plus all
+// subcommands — wired for the given opts. This is the SINGLE definition of the
+// tree: execCobra and BuildCommandTree both call it so the tree can never drift
+// between the live dispatch path and the generator / introspection path.
+func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
+	root := newRootCmd(a)
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts))
+	for _, p := range knownProducts() {
+		root.AddCommand(a.newProductCmd(p, opts))
+	}
+	return root
+}
+
+// BuildCommandTree is the exported entry point for the CLI-reference generator
+// (scripts/gen-cli-docs.go). It constructs the full Cobra command tree with
+// zero-value global options so the tree is config-free and introspectable
+// without credentials or a live config file. The caller must not execute the
+// tree — the RunE closures capture a real App; they are present for Cobra's
+// metadata (Use/Short/Long/Flags) only.
+func BuildCommandTree(a *App) *cobra.Command {
+	return a.buildCommandTree(globalOptions{})
+}
+
+// execCobra builds a transient Cobra root, adds the migrated subcommand(s), and
+// dispatches rest through it. It is only called when isMigrated(rest[0]) is true.
+//
+// --help re-insertion (v2.1 fix): parseGlobal strips --help into opts.help.
+// If the caller had "version --help", rest is ["version"] and opts.help is true.
+// We re-append "--help" so Cobra renders the subcommand help rather than running
+// the command.
+//
+// For product commands the positional args (resource, op, id) are passed through
+// to runProduct; "--" separator preservation is not needed because products do
+// not accept flags of their own (all flags are global and are stripped before
+// this point by splitGlobalArgs).
+//
+// Unknown-command wrap (defensive): during the hybrid phase this can't fire
+// because isMigrated gates dispatch to known-migrated commands only. The wrap is
+// the documented hook for when Cobra owns the full root and an unknown command
+// slips through.
+func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
+	root := a.buildCommandTree(opts)
+
+	args := rest
+	// Re-insert --help only for non-completion args: injecting --help into the
+	// __complete stream would corrupt the completion output (L-15).
+	if opts.help && !isCompletionArgs(rest) {
+		args = append(rest[:len(rest):len(rest)], "--help")
+	}
+
+	// Completion paths (static script generation and the __complete runtime
+	// protocol) must bypass the stdout redactor: the redactor's high-entropy
+	// heuristic false-positives on shell variable assignments such as
+	// "local shellCompDirectiveFilterFileExt=8", corrupting the script.
+	// stderr remains redacted — errors may echo user-supplied tokens.
+	// Safety proof: TestCompletionScriptsDoNotReadCredentialFilesOrUseReader
+	// demonstrates that completion never resolves credentials, so bypassing the
+	// redactor on stdout cannot leak anything.
+	var err error
+	if isCompletionArgs(args) {
+		err = a.executeRootCompletion(ctx, root, args)
+	} else {
+		err = a.executeRoot(ctx, root, args)
+	}
+	if err != nil && strings.HasPrefix(err.Error(), "unknown command") {
+		// During the hybrid this can't fire (isMigrated gates to known commands),
+		// but this is the documented hook for when Cobra owns the root.
+		return UsageError{Message: err.Error()}
+	}
+	return err
+}
+
+// isCompletionArgs reports whether args represents a completion invocation:
+// the static script generators ("completion bash|zsh|fish|powershell") or
+// Cobra's dynamic completion protocol ("__complete", "__completeNoDesc").
+// These paths require executeRootCompletion (raw stdout, no redactor).
+func isCompletionArgs(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+	return false
+}
+
+// newProductCmd returns a Cobra subcommand for the given product (e.g. "zia",
+// "zpa", "ztw", "zcc"). All resource/op/id positional arguments are forwarded
+// to runProduct, which enforces arity and produces the canonical usage messages.
+//
+// No restrictive cobra.Args validator is set: runProduct's own arity checks
+// produce the exact UsageError messages that the legacy path emitted; a Cobra
+// validator would fire first and change those messages.
+//
+// Config is loaded lazily inside RunE (same pattern as newDoctorCmd) so the
+// no-credentials path (exit 3) is preserved for product commands: they load
+// config and then attempt to build a reader, which fails when credentials are
+// absent.
+//
+// Help (SetHelpFunc): when the first positional arg is a known catalog resource
+// for this product, the help func prints the resource-specific field/usage block
+// (resourceUsage) instead of Cobra's default product help. This restores the
+// legacy behaviour where `zia locations --help` and `zia locations list --help`
+// printed the resource's supported ops and renderable field names.
+//
+// Completion (ValidArgsFunction): the first positional completion returns
+// catalog resource names; the second returns the resource's supported read ops.
+// SECURITY: the ValidArgsFunction reads ONLY the static catalog — it never loads
+// config, resolves secrets, or dials the API.
+func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobra.Command {
+	catalog := a.resourceCatalog()
+
+	cmd := &cobra.Command{
+		Use:   string(product),
+		Short: "read " + string(product) + " resources",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runProduct(cmd.Context(), cfg, opts, string(product), args)
+		},
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			// SECURITY: reads only the static catalog — never loads config or dials API.
+			switch len(args) {
+			case 0:
+				// First positional: offer the product's resource names.
+				names := a.completionResourceNames(product)
+				completions := make([]cobra.Completion, len(names))
+				for i, n := range names {
+					completions[i] = cobra.Completion(n)
+				}
+				return completions, cobra.ShellCompDirectiveNoFileComp
+			case 1:
+				// Second positional: offer the ops that this resource supports.
+				spec, ok := catalog.FindSpec(product, args[0])
+				if !ok {
+					return nil, cobra.ShellCompDirectiveNoFileComp
+				}
+				ops := readOperationNames(spec)
+				completions := make([]cobra.Completion, len(ops))
+				for i, op := range ops {
+					completions[i] = cobra.Completion(op)
+				}
+				return completions, cobra.ShellCompDirectiveNoFileComp
+			default:
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+		},
+	}
+
+	// SetHelpFunc: intercept --help when the first positional is a known
+	// catalog resource and print resource-specific help instead of Cobra's
+	// default product help. Falls back to Cobra default for `zia --help`.
+	//
+	// Cobra's execute() parses flags before checking helpVal, so by the time
+	// the help func fires, cmd.Flags().Args() is populated: it contains the
+	// positional args (e.g. ["locations"] or ["locations", "list"]) stripped of
+	// any flags. We use it as the reliable source for the resource name.
+	defaultHelp := cmd.HelpFunc()
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		positionals := c.Flags().Args()
+		if len(positionals) >= 1 {
+			if spec, ok := catalog.FindSpec(product, positionals[0]); ok {
+				fmt.Fprintln(c.OutOrStdout(), resourceUsage(product, spec, 0))
+				return
+			}
+		}
+		defaultHelp(c, args)
+	})
+
+	// url-lookup is a ZIA-only diagnostic verb (not a catalog resource). Wire it
+	// as a Cobra subcommand so it owns its own help surface and uses
+	// DisableFlagParsing to preserve its strict no-flags error message.
+	if product == resources.ProductZIA {
+		cmd.AddCommand(a.newURLLookupCmd(opts))
+	}
+	return cmd
+}
+
+// newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
+// runVersion so all format/arity/redaction behaviour is identical to the legacy
+// path. No restrictive Args validator is set here — runVersion's requireNoArgs
+// produces the same UsageError message as before, preserving the surface.
+func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "print version, commit, build date, and runtime info",
+		RunE: func(_ *cobra.Command, args []string) error {
+			return a.runVersion(opts, args)
+		},
+	}
+}
+
+// newDoctorCmd returns the Cobra "doctor" subcommand. Doctor requires a loaded
+// config, so RunE loads it lazily — replicating the legacy path's LoadConfig +
+// applyOptions calls that normally run in the second-switch shared header.
+//
+// No restrictive Args validator is set here — runDoctor's requireNoArgs produces
+// the same UsageError message as before, preserving the surface.
+func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "check configuration, credentials, and connectivity",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runDoctor(cmd.Context(), cfg, opts, args)
+		},
+	}
+}
+
+// newURLLookupCmd returns the "url-lookup" subcommand of the "zia" product
+// command. DisableFlagParsing is set so that all trailing tokens — including
+// anything that looks like a flag — are forwarded raw to RunE and then to
+// runURLLookup, which enforces its own strict rejection of args starting with
+// "-". Without this, Cobra would intercept an unknown flag such as "--bogus"
+// and emit a generic "unknown flag" error before RunE fires, losing the
+// url-lookup-specific message.
+//
+// Help handling: with DisableFlagParsing, Cobra cannot intercept "-h"/"--help"
+// automatically. RunE detects any help token in args and calls cmd.Help() so
+// the user still gets the help text rather than the flag-rejection message.
+func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:                urlLookupCommandName + " <url> [url...]",
+		Short:              "look up URL categories for one or more URLs",
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// DisableFlagParsing means --help arrives as a raw arg; handle it
+			// before runURLLookup's "-" check fires and rejects it.
+			for _, arg := range args {
+				if arg == "-h" || arg == "--help" {
+					return cmd.Help()
+				}
+			}
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			return a.runURLLookup(cmd.Context(), cfg, opts, args)
+		},
+	}
 }
 
 func (a *App) runVersion(opts globalOptions, args []string) error {
@@ -731,7 +963,9 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 }
 
 func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "status" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "status" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl auth status"}
 	}
 	status := newAuthStatus(cfg)
@@ -746,7 +980,9 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 }
 
 func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "show" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "show" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl config show"}
 	}
 	if opts.format == output.FormatJSON {
@@ -778,7 +1014,9 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 }
 
 func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if len(args) != 1 || args[0] != "list" {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "list" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl schema list"}
 	}
 	catalog := a.resourceCatalog()
@@ -809,6 +1047,11 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	}
 	// zia url-lookup is a diagnostic verb, not a catalog resource; dispatch it
 	// before resource lookup so it never collides with the list/get/show model.
+	//
+	// Defensive fallback: via the Cobra path this branch is unreachable because
+	// "zia url-lookup" now routes to newURLLookupCmd (Phase 2b). It remains here
+	// for callers that invoke runProduct directly (e.g. tests or future non-Cobra
+	// paths) and as protection against any future routing changes.
 	if product == resources.ProductZIA && resource == urlLookupCommandName {
 		return a.runURLLookup(ctx, cfg, opts, args[1:])
 	}
@@ -884,32 +1127,33 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	return a.writeProjectedRecords(cfg, opts, spec, projected)
 }
 
-func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("dump", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	outDir := fs.String("out", "", "dump output directory")
-	productsFlag := fs.String("products", "", "comma-separated products: zia,zpa")
-	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
-	continueOnError := fs.Bool("continue-on-error", false, "write a partial dump when individual resources fail")
-	force := fs.Bool("force", false, "replace an existing zscalerctl dump directory")
-	if err := fs.Parse(args); err != nil {
-		return UsageError{Message: err.Error()}
-	}
-	if fs.NArg() != 0 {
+// dumpOptions holds the parsed local flags for the dump command.
+// The struct is populated either by the legacy flag.FlagSet (removed) or by
+// the Cobra RunE path reading cmd.Flags().
+type dumpOptions struct {
+	out             string
+	products        string
+	resources       string
+	continueOnError bool
+	force           bool
+}
+
+// runDumpWithOptions executes the dump logic after flags have been parsed into d.
+// All validation/collect/write/status/PartialDumpError behaviour is identical to
+// the former inline runDump; only flag parsing has moved to the Cobra RunE.
+func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts globalOptions, d dumpOptions) error {
+	if d.out == "" {
 		return UsageError{Message: dumpUsage()}
 	}
-	if *outDir == "" {
-		return UsageError{Message: dumpUsage()}
-	}
-	products, err := parseProducts(*productsFlag)
+	products, err := parseProducts(d.products)
 	if err != nil {
 		return err
 	}
-	selectedResources, err := parseDumpResources(*resourcesFlag, products, a.resourceCatalog())
+	selectedResources, err := parseDumpResources(d.resources, products, a.resourceCatalog())
 	if err != nil {
 		return err
 	}
-	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, *continueOnError)
+	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError)
 	if err != nil {
 		return err
 	}
@@ -919,10 +1163,10 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	}
 	a.diagLogger().Info("dump complete",
 		"resources", len(result.Entries), "errors", len(result.Errors))
-	if err := prepareForcedDumpDir(*outDir, *force); err != nil {
+	if err := prepareForcedDumpDir(d.out, d.force); err != nil {
 		return err
 	}
-	if err := dump.Write(*outDir, cfg.Defaults.Redaction, result); err != nil {
+	if err := dump.Write(d.out, cfg.Defaults.Redaction, result); err != nil {
 		return err
 	}
 	// Dump emits no resource data on stdout (it writes files), so its status
@@ -931,49 +1175,101 @@ func (a *App) runDump(ctx context.Context, cfg config.Config, opts globalOptions
 	if len(result.Errors) > 0 {
 		if err := a.renderer(cfg, opts).WriteText(
 			a.err,
-			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", *outDir, len(result.Errors))),
+			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", d.out, len(result.Errors))),
 		); err != nil {
 			return err
 		}
-		return PartialDumpError{Dir: *outDir, Errors: len(result.Errors)}
+		return PartialDumpError{Dir: d.out, Errors: len(result.Errors)}
 	}
-	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", *outDir)))
+	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", d.out)))
 }
 
-func (a *App) runDiff(opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	productsFlag := fs.String("products", "", "comma-separated products")
-	resourcesFlag := fs.String("resources", "", "comma-separated resources: locations or zia/locations")
-	ignoreOperational := fs.Bool("ignore-operational", false, "ignore operational metadata on keyed and singleton resources")
-	detail := fs.Bool("detail", false, "include record-level table details")
-	allowPartial := fs.Bool("allow-partial", false, "compare partial dumps instead of rejecting them")
-	failOnDrift := fs.Bool("fail-on-drift", false, "exit 7 when drift is detected")
-	flagArgs, positionalArgs, err := splitDiffArgs(args)
-	if err != nil {
-		return err
+// newDumpCmd returns the Cobra "dump" subcommand. Dump requires a loaded config,
+// so RunE loads it lazily — replicating the pattern used by newDoctorCmd and
+// newProductCmd. Local flags (--out, --products, --resources, --continue-on-error,
+// --force) are declared as Cobra local flags and read inside RunE after parsing.
+//
+// --format ndjson is rejected before LoadConfig (fast-path, same as the legacy path).
+// --out validation (non-empty) is enforced inside runDumpWithOptions.
+// MarkFlagRequired is NOT used for --out — the legacy UsageError must be returned.
+//
+// No cobra.Args validator is set: NArg() == 0 is checked in RunE so the exact
+// UsageError message ("usage: zscalerctl dump ...") is preserved.
+func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dump",
+		Short: "write a full or filtered resource dump to a directory",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject --format ndjson first, before any config work (mirrors legacy path).
+			if opts.format == output.FormatNDJSON {
+				return rejectUnsupportedFormat("dump", opts.format)
+			}
+			// Reject extra positional args before config load.
+			if cmd.Flags().NArg() != 0 {
+				return UsageError{Message: dumpUsage()}
+			}
+			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+				Profile:    opts.profile,
+				ConfigPath: opts.configPath,
+			})
+			if err != nil {
+				return err
+			}
+			applyOptions(&cfg, opts)
+			outDir, _ := cmd.Flags().GetString("out")
+			productsFlag, _ := cmd.Flags().GetString("products")
+			resourcesFlag, _ := cmd.Flags().GetString("resources")
+			continueOnError, _ := cmd.Flags().GetBool("continue-on-error")
+			force, _ := cmd.Flags().GetBool("force")
+			return a.runDumpWithOptions(cmd.Context(), cfg, opts, dumpOptions{
+				out:             outDir,
+				products:        productsFlag,
+				resources:       resourcesFlag,
+				continueOnError: continueOnError,
+				force:           force,
+			})
+		},
 	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return UsageError{Message: err.Error()}
-	}
-	if len(positionalArgs) != 2 {
-		return UsageError{Message: diffUsage()}
-	}
+	cmd.Flags().String("out", "", "dump output directory")
+	cmd.Flags().String("products", "", "comma-separated products: zia,zpa")
+	cmd.Flags().String("resources", "", "comma-separated resources: locations or zia/locations")
+	cmd.Flags().Bool("continue-on-error", false, "write a partial dump when individual resources fail")
+	cmd.Flags().Bool("force", false, "replace an existing zscalerctl dump directory")
+	return cmd
+}
+
+// diffOptions holds the parsed local flags for the diff command.
+// The struct is populated by the Cobra RunE path reading cmd.Flags().
+type diffOptions struct {
+	products          string
+	resources         string
+	ignoreOperational bool
+	detail            bool
+	allowPartial      bool
+	failOnDrift       bool
+}
+
+// runDiffWithOptions executes the diff logic after flags have been parsed into d.
+// All Compare/error-mapping/ModeStandard render/DriftDetectedError behaviour is
+// identical to the former inline runDiff; only flag parsing has moved to the
+// Cobra RunE. Config-FREE: diff compares two local dump dirs and never needs
+// LoadConfig.
+func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newDir string) error {
 	catalog := a.resourceCatalog()
-	products, err := parseProducts(*productsFlag)
+	products, err := parseProducts(d.products)
 	if err != nil {
 		return err
 	}
-	selectedResources, err := parseDumpResources(*resourcesFlag, products, catalog)
+	selectedResources, err := parseDumpResources(d.resources, products, catalog)
 	if err != nil {
 		return err
 	}
-	report, err := dumpdiff.Compare(positionalArgs[0], positionalArgs[1], dumpdiff.Options{
+	report, err := dumpdiff.Compare(oldDir, newDir, dumpdiff.Options{
 		Catalog:           catalog,
 		Products:          products,
 		Resources:         diffResourceSelection(selectedResources),
-		IgnoreOperational: *ignoreOperational,
-		AllowPartial:      *allowPartial,
+		IgnoreOperational: d.ignoreOperational,
+		AllowPartial:      d.allowPartial,
 	})
 	if err != nil {
 		if errors.Is(err, dumpdiff.ErrInvalidDump) ||
@@ -983,6 +1279,8 @@ func (a *App) runDiff(opts globalOptions, args []string) error {
 		}
 		return err
 	}
+	// ModeStandard is always used for diff — independent of any configured
+	// redaction mode (diff compares local dump dirs, not live API data).
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
 	switch opts.format {
 	case output.FormatJSON:
@@ -990,16 +1288,68 @@ func (a *App) runDiff(opts globalOptions, args []string) error {
 			return err
 		}
 	case output.FormatTable, output.FormatPretty:
-		if err := renderer.WriteText(a.out, renderDiffTable(report, *detail, a.style(opts))); err != nil {
+		if err := renderer.WriteText(a.out, renderDiffTable(report, d.detail, a.style(opts))); err != nil {
 			return err
 		}
 	default:
 		return rejectUnsupportedFormat("diff", opts.format)
 	}
-	if *failOnDrift && report.HasDrift() {
+	if d.failOnDrift && report.HasDrift() {
 		return DriftDetectedError{}
 	}
 	return nil
+}
+
+// newDiffCmd returns the Cobra "diff" subcommand. Diff is config-FREE — it
+// compares two local dump directories and never calls LoadConfig.
+//
+// Local flags (--products, --resources, --ignore-operational, --detail,
+// --allow-partial, --fail-on-drift) are declared as Cobra local flags and
+// read inside RunE after parsing.
+//
+// --format ndjson is rejected before any Compare work (fast-path, mirrors the
+// legacy path). The two positional dirs are read from cmd.Flags().Args() and
+// exactly 2 are required (len != 2 → UsageError{diffUsage()}).
+//
+// MarkFlagRequired is NOT used — the legacy UsageError must be returned.
+// cobra.ExactArgs is NOT used — plain error → wrong exit code.
+func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "diff <old-dump-dir> <new-dump-dir>",
+		Short: "compare two dump directories and report configuration drift",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject --format ndjson first (mirrors legacy path, before any work).
+			if opts.format == output.FormatNDJSON {
+				return rejectUnsupportedFormat("diff", opts.format)
+			}
+			// Cobra passes non-flag args here; require exactly 2 dir positionals.
+			positionals := cmd.Flags().Args()
+			if len(positionals) != 2 {
+				return UsageError{Message: diffUsage()}
+			}
+			products, _ := cmd.Flags().GetString("products")
+			resources, _ := cmd.Flags().GetString("resources")
+			ignoreOperational, _ := cmd.Flags().GetBool("ignore-operational")
+			detail, _ := cmd.Flags().GetBool("detail")
+			allowPartial, _ := cmd.Flags().GetBool("allow-partial")
+			failOnDrift, _ := cmd.Flags().GetBool("fail-on-drift")
+			return a.runDiffWithOptions(opts, diffOptions{
+				products:          products,
+				resources:         resources,
+				ignoreOperational: ignoreOperational,
+				detail:            detail,
+				allowPartial:      allowPartial,
+				failOnDrift:       failOnDrift,
+			}, positionals[0], positionals[1])
+		},
+	}
+	cmd.Flags().String("products", "", "comma-separated products: zia,zpa")
+	cmd.Flags().String("resources", "", "comma-separated resources: locations or zia/locations")
+	cmd.Flags().Bool("ignore-operational", false, "ignore operational metadata on keyed and singleton resources")
+	cmd.Flags().Bool("detail", false, "include record-level table details")
+	cmd.Flags().Bool("allow-partial", false, "compare partial dumps instead of rejecting them")
+	cmd.Flags().Bool("fail-on-drift", false, "exit 7 when drift is detected")
+	return cmd
 }
 
 func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) output.SafeText {
@@ -1600,54 +1950,11 @@ func safeJSONRecords(records resources.ProjectedRecords) []output.SafeJSON {
 	return out
 }
 
-// writeHelp prints help scoped to what the user asked for: a known resource's
-// operations and renderable fields for `<product> <resource> --help`, the
-// product's resources for `<product> --help`, or the global usage otherwise.
+// writeHelp prints the global usage. It is only reachable when rest is empty
+// (all migrated commands, including products, are intercepted by the
+// isMigrated guard in runParsed before writeHelp is called). The per-command
+// and per-product cases that previously lived here were dead code.
 func (a *App) writeHelp(w io.Writer, rest []string) {
-	if len(rest) >= 1 {
-		switch rest[0] {
-		case "doctor":
-			fmt.Fprintln(w, "usage: zscalerctl doctor")
-			return
-		case "auth":
-			fmt.Fprintln(w, "usage: zscalerctl auth status")
-			return
-		case "config":
-			fmt.Fprintln(w, "usage: zscalerctl config show")
-			fmt.Fprintln(w, "       zscalerctl config init [--force]")
-			return
-		case "schema":
-			fmt.Fprintln(w, "usage: zscalerctl schema list")
-			return
-		case "dump":
-			fmt.Fprintln(w, dumpUsage())
-			return
-		case "diff":
-			fmt.Fprintln(w, diffUsage())
-			return
-		case "completion":
-			fmt.Fprintf(w, "usage: zscalerctl completion %s\n", completionShellNames())
-			return
-		case "version":
-			fmt.Fprintln(w, "usage: zscalerctl version")
-			return
-		}
-	}
-	if len(rest) >= 1 && knownProductCommand(rest[0]) {
-		product := resources.Product(rest[0])
-		if len(rest) >= 2 {
-			if product == resources.ProductZIA && rest[1] == urlLookupCommandName {
-				fmt.Fprintln(w, urlLookupUsageMessage)
-				return
-			}
-			if spec, ok := a.resourceCatalog().FindSpec(product, rest[1]); ok {
-				fmt.Fprintln(w, resourceUsage(product, spec, output.TerminalWidth(w)))
-				return
-			}
-		}
-		fmt.Fprintln(w, productCommandUsage(product, output.TerminalWidth(w)))
-		return
-	}
 	a.writeUsage(w)
 }
 
@@ -1962,7 +2269,7 @@ func isRunnableCommand(name string) bool {
 // instead of the generic --fields usage error.
 func isKnownCommand(name string) bool {
 	switch name {
-	case "help", "-h", "--help", "version", "completion":
+	case "help", "version", "completion":
 		return true
 	}
 	return isRunnableCommand(name)

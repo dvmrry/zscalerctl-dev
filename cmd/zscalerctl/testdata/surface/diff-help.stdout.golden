@@ -1,0 +1,28 @@
+compare two dump directories and report configuration drift
+
+Usage:
+  zscalerctl diff <old-dump-dir> <new-dump-dir> [flags]
+
+Flags:
+      --allow-partial        compare partial dumps instead of rejecting them
+      --detail               include record-level table details
+      --fail-on-drift        exit 7 when drift is detected
+  -h, --help                 help for diff
+      --ignore-operational   ignore operational metadata on keyed and singleton resources
+      --products string      comma-separated products: zia,zpa
+      --resources string     comma-separated resources: locations or zia/locations
+
+Global Flags:
+      --color string         color output: auto, always, never (default "auto")
+      --config string        config file path
+      --fields string        comma-separated output fields to keep (narrows the sanitized output)
+      --filter stringArray   narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
+      --format string        output format: auto, table, json, ndjson, pretty (default "auto")
+      --log-level string     diagnostic logging to stderr: off, error, warn, info, debug (default "off")
+      --no-cache             bypass API cache where supported
+      --no-color             disable color output
+      --output string        output path
+      --profile string       profile name
+      --redaction string     redaction mode: standard, share, paranoid
+      --search string        narrow list results to records whose rendered values contain term (case-insensitive)
+      --timeout duration     request timeout (default 30s)

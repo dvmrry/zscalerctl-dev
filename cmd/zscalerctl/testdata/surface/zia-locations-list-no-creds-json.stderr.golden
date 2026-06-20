@@ -1,0 +1,11 @@
+{
+  "error": {
+    "kind": "missing_credentials",
+    "message": "missing zscaler API credentials: ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, ZSCALERCTL_VANITY_DOMAIN required",
+    "missing": [
+      "ZSCALERCTL_CLIENT_ID",
+      "ZSCALERCTL_CLIENT_SECRET",
+      "ZSCALERCTL_VANITY_DOMAIN"
+    ]
+  }
+}

@@ -100,6 +100,8 @@ jobs:
       - run: bash scripts/verify-actions-pinned.sh
       - run: bash scripts/test-verify-actions-pinned.sh
       - run: bash scripts/verify-docs.sh
+      - run: bash scripts/verify-cli-docs.sh
+      - run: bash scripts/test-verify-cli-docs.sh
       # These verifiers run in `make check` but were absent from PR CI, so a
       # break in release automation, artifacts, the catalog draft, the resource
       # scaffold, the SDK-surface inventory, or the script registry only
@@ -122,6 +124,14 @@ jobs:
           go-version: '1.26.4'
           cache: true
       - run: go test -mod=vendor ./internal/fileperm ./internal/secretref
+      # Cobra migration (§9): the windows-config gate must exercise the CLI core,
+      # not just fileperm/secretref/keyring. `go build ./...` proves the Windows
+      # build (cobra + mousetrap); the internal/cli + internal/redact tests cover
+      # the Cobra dispatch and the redacting writer on Windows. The cmd/zscalerctl
+      # golden harness stays Linux/macOS-only — its path scrubbing assumes POSIX
+      # paths, so running it on Windows would need separate scrub handling.
+      - run: go build -mod=vendor ./...
+      - run: go test -count=1 -mod=vendor ./internal/cli ./internal/redact
       - run: go test -count=1 -mod=vendor ./internal/keyring -run TestWindowsGetLive -v
         env:
           ZSCALERCTL_KEYRING_LIVE: '1'

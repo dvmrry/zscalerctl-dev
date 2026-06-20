@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln staticcheck docs-check semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
@@ -39,6 +39,17 @@ staticcheck:
 
 docs-check:
 	bash scripts/verify-docs.sh
+
+# Regenerate the CLI reference from the live Cobra command tree.
+# Commit the result after any command/flag change.
+gen-cli-docs:
+	go run -mod=vendor ./scripts/gen-cli-docs.go
+
+# Verify that docs/cli/zscalerctl.md matches the current command tree.
+# Fails if the committed file is stale — fix with: make gen-cli-docs
+docs-cli-check:
+	bash scripts/verify-cli-docs.sh
+	bash scripts/test-verify-cli-docs.sh
 
 semgrep-check:
 	SEMGREP_VERSION=$(SEMGREP_VERSION) bash scripts/verify-semgrep.sh
@@ -116,6 +127,6 @@ fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzScanRenderedStringRedactsBareHighEntropyCanary -fuzztime=$(FUZZTIME)
 	go test -mod=vendor ./internal/resources -run '^$$' -fuzz FuzzProjectRecordSubsetAndCanaryRedaction -fuzztime=$(FUZZTIME)
 
-check: fmt-check test race vet vuln staticcheck verify-licenses docs-check semgrep-check secret-scan verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
+check: fmt-check test race vet vuln staticcheck verify-licenses docs-check docs-cli-check semgrep-check secret-scan verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
 
 release-check: verify-vendor check

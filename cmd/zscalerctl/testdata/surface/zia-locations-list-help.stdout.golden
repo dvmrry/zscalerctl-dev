@@ -1,0 +1,29 @@
+usage: zscalerctl zia locations list|get
+fields:
+  id                                   cautionEnabled
+  name                                 aupBlockInternetUntilAccepted
+  ipAddresses                          aupForceSslInspection
+  description                          aupTimeoutInDays
+  parentId                             iotDiscoveryEnabled
+  country                              iotEnforcePolicySet
+  state                                cookiesAndProxy
+  tz                                   geoOverride
+  language                             ipv6Enabled
+  profile                              defaultExtranetTsPool
+  upBandwidth                          defaultExtranetDns
+  dnBandwidth                          ipv6Dns64Prefix
+  ports                                extranet
+  authRequired                         extranetIpPool
+  basicAuthEnabled                     extranetDns
+  digestAuthEnabled                    subLocScopeEnabled
+  kerberosAuth                         subLocScope
+  sslScanEnabled                       subLocScopeValues
+  zappSSLScanEnabled                   subLocAccIds
+  xffForwardEnabled                    otherSubLocation
+  surrogateIP                          other6SubLocation
+  surrogateIPEnforcedForKnownBrowsers  ecLocation
+  idleTimeInMinutes                    dynamiclocationGroups
+  surrogateRefreshTimeInMinutes        staticLocationGroups
+  ofwEnabled                           virtualZenClusters
+  ipsControl                           virtualZens
+  aupEnabled

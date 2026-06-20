@@ -27,7 +27,12 @@ check_pattern() {
   local out grep_rc=0
   out="$(mktemp)"
 
-  git grep -n -E -i -e "$pattern" -- "${paths[@]}" >"$out" || grep_rc=$?
+  # docs/superpowers/ holds internal design + planning docs (specs/plans), not
+  # user-facing examples. They legitimately quote redaction test vectors — the
+  # very patterns below are what the redactor must catch — so exempt them from
+  # this forbidden-EXAMPLE-pattern scan. Real secrets anywhere in the repo are
+  # still caught by the separate `make secret-scan`.
+  git grep -n -E -i -e "$pattern" -- "${paths[@]}" ':(exclude)docs/superpowers' >"$out" || grep_rc=$?
   if (( grep_rc == 0 )); then
     echo "docs/examples contain forbidden $label pattern:" >&2
     cat "$out" >&2

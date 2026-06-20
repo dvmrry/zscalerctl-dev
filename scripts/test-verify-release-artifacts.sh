@@ -45,6 +45,7 @@ jobs:
           mkdir -p "dist/$name/docs" "dist/$name/man" "dist/$name/skills"
           cp LICENSE README.md AGENTS.md "dist/$name/"
           cp docs/INSTALL.md "dist/$name/docs/"
+          cp -R docs/cli "dist/$name/docs/cli"
           cp man/zscalerctl.1 "dist/$name/man/"
           cp -R skills/zscalerctl "dist/$name/skills/"
           (cd dist && shasum -a 256 *.tar.gz *.sbom.cdx.json > SHA256SUMS)

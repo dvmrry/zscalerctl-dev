@@ -1,0 +1,3 @@
+Created owner-only config at <TMPDIR>/zscalerctl/config.yaml
+Next: set a client secret — export ZSCALERCTL_CLIENT_SECRET, or uncomment a client_secret_ref in the file.
+Then run: zscalerctl doctor

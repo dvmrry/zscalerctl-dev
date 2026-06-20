@@ -1,0 +1,6 @@
+# Churn-history fingerprints — these commits exist in the PR history but are
+# superseded at HEAD. The allowlisted form is used in current HEAD.
+#
+# f7c579274d63e3421c646cab788836c65e8b3f1d: original dummyfake PEM fixture in
+# internal/redact/writer_test.go (replaced by key-material allowlisted form).
+f7c579274d63e3421c646cab788836c65e8b3f1d:internal/redact/writer_test.go:private-key:48

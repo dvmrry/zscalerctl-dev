@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "usage: zscalerctl config \u003cinit|show\u003e"
+  }
+}

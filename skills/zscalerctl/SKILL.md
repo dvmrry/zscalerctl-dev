@@ -76,3 +76,6 @@ semantics) if it is installed.
 
 Full guide: `AGENTS.md` in the repo checkout, or
 https://github.com/dvmrry/zscalerctl/blob/main/AGENTS.md.
+CLI reference (commands, flags, defaults):
+`docs/cli/zscalerctl.md` in the repo checkout, or
+https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/zscalerctl.md.

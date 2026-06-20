@@ -1,0 +1,28 @@
+read zia resources
+
+Usage:
+  zscalerctl zia [flags]
+  zscalerctl zia [command]
+
+Available Commands:
+  url-lookup  look up URL categories for one or more URLs
+
+Flags:
+  -h, --help   help for zia
+
+Global Flags:
+      --color string         color output: auto, always, never (default "auto")
+      --config string        config file path
+      --fields string        comma-separated output fields to keep (narrows the sanitized output)
+      --filter stringArray   narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
+      --format string        output format: auto, table, json, ndjson, pretty (default "auto")
+      --log-level string     diagnostic logging to stderr: off, error, warn, info, debug (default "off")
+      --no-cache             bypass API cache where supported
+      --no-color             disable color output
+      --output string        output path
+      --profile string       profile name
+      --redaction string     redaction mode: standard, share, paranoid
+      --search string        narrow list results to records whose rendered values contain term (case-insensitive)
+      --timeout duration     request timeout (default 30s)
+
+Use "zscalerctl zia [command] --help" for more information about a command.
