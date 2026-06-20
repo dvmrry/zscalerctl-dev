@@ -2170,13 +2170,6 @@ func knownProducts() []resources.Product {
 	return products
 }
 
-// KnownProductNames returns the string names of all products registered in the
-// catalog. It is exported for use in external test packages that need to iterate
-// known products without hardcoding the list.
-func KnownProductNames(_ *App) []string {
-	return productNames(knownProducts())
-}
-
 func knownProductCommand(name string) bool {
 	for _, product := range knownProducts() {
 		if name == string(product) {
