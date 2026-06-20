@@ -44,6 +44,8 @@ Column definitions:
 | `auth-bare` | Legacy UsageError "usage: zscalerctl auth status" (exit 2) | UsageError "usage: zscalerctl auth status" (exit 2); JSON error envelope on stderr. | Behavior preserved; now routed through Cobra parent RunE. Exit code stays 2. | `error-wording` |
 | `auth-status-help` | (none — new case) | Cobra subcommand help: "show authentication status for the active profile" + global flags. | auth status migrated to Cobra (Phase 4). | `new-surface` |
 
+| `completion-bash.stdout` | Hand-written 32-line bash script using `_zscalerctl()` + `complete -F _zscalerctl zscalerctl` | Cobra-generated 426-line bash V2 completion using `__start_zscalerctl` + `complete -F __start_zscalerctl zscalerctl`; full `__complete`-protocol integration; per-flag enum completion for `--log-level`, `--format`, `--color`, `--redaction` | completion migrated to Cobra (Phase 5b); `completion bash` now uses `cmd.GenBashCompletionV2`; hidden `__complete`/`__completeNoDesc` commands are Cobra built-ins | `output-shape` |
+
 ---
 
 **Workflow:** when a Cobra migration phase changes a golden, do NOT just run

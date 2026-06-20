@@ -178,6 +178,15 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// __complete / __completeNoDesc: Cobra's shell-completion protocol. These tokens
+	// must bypass parseGlobal entirely so that global flags appearing AFTER
+	// __complete (e.g. "__complete --log-level ''") are not consumed by the
+	// global-flag scanner. Cobra's completion engine owns the arg stream from here.
+	// Security: execCobra never calls LoadConfig; the Cobra completion path
+	// short-circuits RunE and never reaches any credential-loading code.
+	if len(args) > 0 && (args[0] == "__complete" || args[0] == "__completeNoDesc") {
+		return a.execCobra(ctx, globalOptions{}, args)
+	}
 	opts, rest, err := parseGlobal(args)
 	if err != nil {
 		return err
@@ -207,6 +216,16 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if logger, err := newDiagLogger(a.err, opts.logLevel); err == nil {
 		a.logger = logger
 	}
+	// __complete / __completeNoDesc: Cobra's internal shell-completion protocol.
+	// Route them straight to execCobra BEFORE any narrowing-flag validation or
+	// help-gating. This is SECURITY-CRITICAL: the config-free path must not call
+	// LoadConfig or construct a reader. execCobra itself never calls LoadConfig;
+	// LoadConfig only runs inside individual RunE callbacks (newProductCmd,
+	// newDoctorCmd, etc.) — shell completion short-circuits RunE and never reaches
+	// those callbacks, so no credentials are ever loaded during completion.
+	if len(rest) > 0 && (rest[0] == "__complete" || rest[0] == "__completeNoDesc") {
+		return a.execCobra(ctx, opts, rest)
+	}
 	// Legacy help early-return: fire only when there is no migrated command to
 	// dispatch to. When rest[0] is a migrated command (e.g. "version --help"),
 	// opts.help is true but we let it fall through to execCobra below, which
@@ -233,6 +252,13 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if len(opts.fields) > 0 && isKnownCommand(rest[0]) && !isResourceReadInvocation(rest) {
 		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
 	}
+	// completion does not produce a record stream, so --format ndjson is rejected
+	// here, before execCobra, just as the legacy path did. This check must come
+	// BEFORE the isMigrated dispatch so the format gate fires even when Cobra
+	// owns the completion command.
+	if rest[0] == "completion" && opts.format == output.FormatNDJSON {
+		return rejectUnsupportedFormat("completion", opts.format)
+	}
 	// Hybrid dispatch: migrated commands go through Cobra; legacy commands continue
 	// through the switch below. isMigrated gates the early-return for --help above
 	// (version --help must reach Cobra) and routes here before the switch.
@@ -243,21 +269,16 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	case rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help":
 		a.writeUsage(a.out)
 		return nil
-	case rest[0] == "completion":
-		if opts.format == output.FormatNDJSON {
-			return rejectUnsupportedFormat("completion", opts.format)
-		}
-		return a.runCompletion(rest[1:])
 	case isRunnableCommand(rest[0]):
 	default:
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: unknownCommandMessage(rest[0])}
 	}
 
-	// All previously-dispatched legacy commands (auth, config, schema) are now
-	// migrated to Cobra and handled by isMigrated → execCobra above. The second
-	// switch only remains as a fallback for any future un-migrated command that
-	// passes isRunnableCommand but has no isMigrated case.
+	// All previously-dispatched legacy commands (auth, config, schema, completion)
+	// are now migrated to Cobra and handled by isMigrated → execCobra above. The
+	// second switch only remains as a fallback for any future un-migrated command
+	// that passes isRunnableCommand but has no isMigrated case.
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0])}
 }
@@ -617,7 +638,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff", "config", "schema", "auth":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion":
 		return true
 	}
 	return knownProductCommand(cmd)

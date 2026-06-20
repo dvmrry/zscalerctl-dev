@@ -231,10 +231,38 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 }
 
 // applyGlobalPersistentFlags registers all 13 global flags as persistent flags
-// on cmd. This is the entry point the Cobra root uses to register the mirrored
-// persistent flags into the Cobra command tree.
+// on cmd and wires flag-value completion so Cobra's __complete protocol offers
+// the correct enum choices (e.g. --log-level <TAB> → off|error|warn|info|debug).
+// Completion functions are registered AFTER flag registration so the flag already
+// exists in the pflag set (RegisterFlagCompletionFunc looks up by name).
 func applyGlobalPersistentFlags(cmd *cobra.Command) {
 	registerGlobalPersistentFlags(cmd.PersistentFlags())
+	registerGlobalFlagCompletions(cmd)
+}
+
+// registerGlobalFlagCompletions wires Cobra's flag-value completion for the
+// enum-valued global flags. The completion values exactly mirror the hand-written
+// completion scripts so __complete and the generated scripts agree.
+func registerGlobalFlagCompletions(cmd *cobra.Command) {
+	enumFlags := []struct {
+		name   string
+		values []string
+	}{
+		{"format", completionFormats},
+		{"redaction", completionRedaction},
+		{"color", completionColors},
+		{"log-level", completionLogLevels},
+	}
+	for _, f := range enumFlags {
+		values := append([]string(nil), f.values...)
+		_ = cmd.RegisterFlagCompletionFunc(f.name, func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			completions := make([]cobra.Completion, len(values))
+			for i, v := range values {
+				completions[i] = cobra.Completion(v)
+			}
+			return completions, cobra.ShellCompDirectiveNoFileComp
+		})
+	}
 }
 
 // registerGlobalPersistentFlags registers mirror pflag persistent flags on fs.

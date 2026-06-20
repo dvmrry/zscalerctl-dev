@@ -61,12 +61,6 @@ func newRootCmd(a *App) *cobra.Command {
 		// SuggestionsMinimumDistance: levenshtein distance for "did you mean X?"
 		// suggestions. 2 is the cobra default (set here explicitly for clarity).
 		SuggestionsMinimumDistance: 2,
-
-		// CompletionOptions: we own completion (Phase 5); disable Cobra's auto-
-		// generated "completion" command so it does not collide with our own.
-		CompletionOptions: cobra.CompletionOptions{
-			DisableDefaultCmd: true,
-		},
 	}
 
 	// SetFlagErrorFunc maps pflag parse errors to UsageError so they exit 2 via

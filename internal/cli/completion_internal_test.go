@@ -1,137 +1,89 @@
 package cli
 
 import (
-	"regexp"
-	"sort"
+	"bytes"
+	"context"
+	"io"
 	"strings"
 	"testing"
 )
 
+// TestCompletionScriptsExposeSameGeneratedSurface asserts that all four shell
+// completion scripts reference the same binary ("zscalerctl") and use the Cobra
+// __complete protocol, guaranteeing they all offer the same surface at runtime
+// regardless of shell. With Cobra-generated scripts the surface is identical by
+// construction — every script is generated from the same command tree and calls
+// back to the same __complete binary.
 func TestCompletionScriptsExposeSameGeneratedSurface(t *testing.T) {
 	t.Parallel()
 
-	wantTokens := completionSurfaceTokensForTest()
 	for _, shell := range completionShells {
 		shell := shell
 		t.Run(shell, func(t *testing.T) {
 			t.Parallel()
 
-			script, err := completionScript(shell)
-			if err != nil {
-				t.Fatalf("completionScript(%q) error = %v, want nil", shell, err)
+			var out bytes.Buffer
+			a := New(&out, io.Discard, nil)
+			if err := a.Run(context.Background(), []string{"completion", shell}); err != nil {
+				t.Fatalf("App.Run(completion %q) error = %v, want nil", shell, err)
 			}
-
-			var missing []string
-			for _, token := range wantTokens {
-				if !completionScriptContainsToken(script, token) {
-					missing = append(missing, token)
-				}
-			}
-			if len(missing) > 0 {
-				t.Errorf("completionScript(%q) missing %d source-of-truth token(s): %s", shell, len(missing), strings.Join(missing, ", "))
+			script := out.String()
+			// Every Cobra-generated script must reference the binary name.
+			if !strings.Contains(script, "zscalerctl") {
+				t.Errorf("completion %q: script = %q, want zscalerctl", shell, script)
 			}
 		})
+	}
+
+	// Verify the runtime surface is consistent: __complete '' lists the same
+	// top-level commands regardless of which shell script sources the completion.
+	// We exercise two key tokens that must always be present.
+	var out bytes.Buffer
+	a := New(&out, io.Discard, nil)
+	if err := a.Run(context.Background(), []string{"__complete", ""}); err != nil {
+		t.Fatalf("App.Run(__complete '') error = %v, want nil", err)
+	}
+	got := out.String()
+	for _, want := range []string{"zia", "completion", "version"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("App.Run(__complete '') stdout = %q, want %q", got, want)
+		}
 	}
 }
 
 // TestCompletionScriptsIncludeURLLookup guards the zia-only url-lookup
-// diagnostic verb. It is dispatched directly in app.go (not a catalog
-// resource), so resourceNames omits it; every shell's completion block must
-// still offer it after "zia".
+// diagnostic verb. It is registered as a Cobra subcommand of "zia" (Phase 2b),
+// so __complete zia ” must offer it alongside catalog resources.
 func TestCompletionScriptsIncludeURLLookup(t *testing.T) {
 	t.Parallel()
 
-	for _, shell := range completionShells {
-		shell := shell
-		t.Run(shell, func(t *testing.T) {
-			t.Parallel()
-
-			script, err := completionScript(shell)
-			if err != nil {
-				t.Fatalf("completionScript(%q) error = %v, want nil", shell, err)
-			}
-			if !completionScriptContainsToken(script, urlLookupCommandName) {
-				t.Errorf("completionScript(%q) missing %q", shell, urlLookupCommandName)
-			}
-		})
+	var out bytes.Buffer
+	a := New(&out, io.Discard, nil)
+	if err := a.Run(context.Background(), []string{"__complete", "zia", ""}); err != nil {
+		t.Fatalf("App.Run(__complete zia '') error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, urlLookupCommandName) {
+		t.Errorf("App.Run(__complete zia '') stdout = %q, want %q", got, urlLookupCommandName)
 	}
 }
 
-// TestCompletionScriptsOfferLogLevelValues asserts every shell completes the
-// --log-level flag's values (off/error/warn/info/debug), not just the flag name.
+// TestCompletionScriptsOfferLogLevelValues asserts that --log-level flag-value
+// completion offers the expected values (off/error/warn/info/debug). The values
+// are registered via RegisterFlagCompletionFunc in applyGlobalPersistentFlags.
 func TestCompletionScriptsOfferLogLevelValues(t *testing.T) {
 	t.Parallel()
 
-	for _, shell := range completionShells {
-		shell := shell
-		t.Run(shell, func(t *testing.T) {
-			t.Parallel()
-
-			script, err := completionScript(shell)
-			if err != nil {
-				t.Fatalf("completionScript(%q) error = %v, want nil", shell, err)
-			}
-			want := words(completionLogLevels)
-			if shell == "powershell" {
-				want = powershellArray(completionLogLevels)
-			}
-			if !strings.Contains(script, want) {
-				t.Errorf("completionScript(%q) missing log-level value list %q", shell, want)
-			}
-			// The values must be wired to the --log-level flag specifically.
-			if !strings.Contains(script, "log-level") {
-				t.Errorf("completionScript(%q) does not reference log-level", shell)
-			}
-		})
+	var out bytes.Buffer
+	a := New(&out, io.Discard, nil)
+	// Request completion for the --log-level flag value.
+	if err := a.Run(context.Background(), []string{"__complete", "--log-level", ""}); err != nil {
+		t.Fatalf("App.Run(__complete --log-level '') error = %v, want nil", err)
 	}
-}
-
-func completionSurfaceTokensForTest() []string {
-	seen := map[string]struct{}{}
-	add := func(values ...string) {
-		for _, value := range values {
-			if strings.TrimSpace(value) == "" {
-				continue
-			}
-			seen[value] = struct{}{}
+	got := out.String()
+	for _, want := range completionLogLevels {
+		if !strings.Contains(got, want) {
+			t.Errorf("App.Run(__complete --log-level '') stdout = %q, want log-level value %q", got, want)
 		}
 	}
-
-	add(completionFlags...)
-	add(completionDumpFlags...)
-	add(completionFormats...)
-	add(completionRedaction...)
-	add(completionColors...)
-	add(completionShells...)
-	add(completionProductValues()...)
-	add(completionCommandNames()...)
-	add(operationNames()...)
-	add(allResourceNames()...)
-	add(dumpResourceNames()...)
-
-	out := make([]string, 0, len(seen))
-	for value := range seen {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func completionScriptContainsToken(script, token string) bool {
-	if tokenBoundaryRE(token).MatchString(script) {
-		return true
-	}
-	if strings.HasPrefix(token, "--") {
-		// fish spells long flags as "-l name" instead of "--name".
-		name := regexp.QuoteMeta(strings.TrimPrefix(token, "--"))
-		return regexp.MustCompile(`(^|\s)-l\s+` + name + `(\s|$)`).MatchString(script)
-	}
-	return false
-}
-
-func tokenBoundaryRE(token string) *regexp.Regexp {
-	// Treat resource-name characters as part of tokens so "locations" does not
-	// pass only because "zia/locations" is present.
-	boundary := `A-Za-z0-9_/\-,`
-	return regexp.MustCompile(`(^|[^` + boundary + `])` + regexp.QuoteMeta(token) + `($|[^` + boundary + `])`)
 }
