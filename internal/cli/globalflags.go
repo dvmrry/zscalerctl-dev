@@ -24,6 +24,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -47,7 +48,7 @@ var globalFlagDefs = []globalFlagDef{
 	{
 		name:       "color",
 		kind:       "string",
-		defaultVal: "auto",
+		defaultVal: string(output.ColorAuto),
 		usage:      "color output: auto, always, never",
 	},
 	{
@@ -76,7 +77,7 @@ var globalFlagDefs = []globalFlagDef{
 	{
 		name:       "format",
 		kind:       "string",
-		defaultVal: "auto",
+		defaultVal: string(output.FormatAuto),
 		usage:      "output format: auto, table, json, ndjson, pretty",
 	},
 	{
@@ -127,6 +128,25 @@ var globalFlagDefs = []globalFlagDef{
 		defaultVal: "30s",
 		usage:      "request timeout",
 	},
+}
+
+// globalFlagNameSet and globalBoolFlagNameSet are derived once from globalFlagDefs
+// so splitGlobalArgs (isGlobalFlag / isGlobalBoolFlag) never has its own hardcoded
+// list. Any flag added to globalFlagDefs is automatically recognised by the parser.
+var (
+	globalFlagNameSet     map[string]bool
+	globalBoolFlagNameSet map[string]bool
+)
+
+func init() {
+	globalFlagNameSet = make(map[string]bool, len(globalFlagDefs))
+	globalBoolFlagNameSet = make(map[string]bool)
+	for _, d := range globalFlagDefs {
+		globalFlagNameSet[d.name] = true
+		if d.kind == "bool" {
+			globalBoolFlagNameSet[d.name] = true
+		}
+	}
 }
 
 // globalFlagPointers holds the typed pointers returned by defineGlobalFlags.
@@ -203,9 +223,18 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 			// collect every --filter occurrence without comma-splitting.
 			fs.Var(filterVar, d.name, d.usage)
 			p.filterFlags = filterVar
+		default:
+			panic("globalFlagDef: unknown kind " + d.kind + " for flag --" + d.name)
 		}
 	}
 	return p
+}
+
+// applyGlobalPersistentFlags registers all 13 global flags as persistent flags
+// on cmd. This is the entry point the Cobra root uses to register the mirrored
+// persistent flags into the Cobra command tree.
+func applyGlobalPersistentFlags(cmd *cobra.Command) {
+	registerGlobalPersistentFlags(cmd.PersistentFlags())
 }
 
 // registerGlobalPersistentFlags registers mirror pflag persistent flags on fs.
@@ -214,13 +243,6 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 //
 // For "filter" (repeatable in parseGlobal), we use pflag.StringArray so the help
 // text shows the flag as repeatable. The empty default prints as "[]" in pflag.
-// applyGlobalPersistentFlags registers all 13 global flags as persistent flags
-// on cmd. This is the entry point used by Task 1.3's newRootCmd to wire the
-// global-flag mirror into the Cobra command tree.
-func applyGlobalPersistentFlags(cmd *cobra.Command) {
-	registerGlobalPersistentFlags(cmd.PersistentFlags())
-}
-
 func registerGlobalPersistentFlags(fs *pflag.FlagSet) {
 	for _, d := range globalFlagDefs {
 		switch d.kind {
@@ -236,6 +258,8 @@ func registerGlobalPersistentFlags(fs *pflag.FlagSet) {
 			fs.Duration(d.name, dur, d.usage)
 		case "stringArray":
 			fs.StringArray(d.name, nil, d.usage)
+		default:
+			panic("globalFlagDef: unknown kind " + d.kind + " for flag --" + d.name)
 		}
 	}
 }

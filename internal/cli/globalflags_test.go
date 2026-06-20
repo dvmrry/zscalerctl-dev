@@ -171,3 +171,46 @@ func TestCobraGlobalsMirrorParseGlobal(t *testing.T) {
 		t.Errorf("total global flag count: got %d, want %d; flags seen: %v", got, wantCount, allNames)
 	}
 }
+
+// TestSplitGlobalArgsBoolFlag guards the isGlobalBoolFlag derivation: a known
+// global bool flag must be extracted as a global arg (consuming no next token),
+// while an unrecognised flag must pass through to rest.
+func TestSplitGlobalArgsBoolFlag(t *testing.T) {
+	t.Parallel()
+
+	t.Run("global bool flag is extracted", func(t *testing.T) {
+		t.Parallel()
+		// --no-cache is a bool flag: it needs no following value.
+		globalArgs, rest, help, err := splitGlobalArgs([]string{"--no-cache", "version"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if help {
+			t.Error("help should be false")
+		}
+		if len(globalArgs) != 1 || globalArgs[0] != "--no-cache" {
+			t.Errorf("globalArgs: got %v, want [--no-cache]", globalArgs)
+		}
+		if len(rest) != 1 || rest[0] != "version" {
+			t.Errorf("rest: got %v, want [version]", rest)
+		}
+	})
+
+	t.Run("unknown flag passes through to rest", func(t *testing.T) {
+		t.Parallel()
+		// --nope is not a global flag; it should be left for the subcommand.
+		globalArgs, rest, help, err := splitGlobalArgs([]string{"--nope", "version"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if help {
+			t.Error("help should be false")
+		}
+		if len(globalArgs) != 0 {
+			t.Errorf("globalArgs: got %v, want []", globalArgs)
+		}
+		if len(rest) != 2 || rest[0] != "--nope" || rest[1] != "version" {
+			t.Errorf("rest: got %v, want [--nope version]", rest)
+		}
+	})
+}

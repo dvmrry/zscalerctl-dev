@@ -656,16 +656,11 @@ func flagName(arg string) (string, bool) {
 }
 
 func isGlobalFlag(name string) bool {
-	switch name {
-	case "profile", "config", "format", "output", "timeout", "redaction", "no-cache", "color", "no-color", "log-level", "fields", "filter", "search":
-		return true
-	default:
-		return false
-	}
+	return globalFlagNameSet[name]
 }
 
 func isGlobalBoolFlag(name string) bool {
-	return name == "no-cache" || name == "no-color"
+	return globalBoolFlagNameSet[name]
 }
 
 func applyOptions(cfg *config.Config, opts globalOptions) {
