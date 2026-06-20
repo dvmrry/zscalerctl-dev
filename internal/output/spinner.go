@@ -49,6 +49,9 @@ func NewSpinner(w io.Writer, active bool) *Spinner {
 }
 
 // Start begins the spinner animation, displaying text next to the frame.
+// It writes the current frame immediately (synchronously, under the mutex)
+// before launching the ticker goroutine, so the text is always visible
+// without waiting for the first tick interval.
 // Calling Start on an already-started or inactive spinner is a no-op.
 func (s *Spinner) Start(text string) {
 	if !s.active {
@@ -63,22 +66,30 @@ func (s *Spinner) Start(text string) {
 	s.started = true
 	s.mu.Unlock()
 
+	// Write the first frame synchronously so the text appears immediately.
+	s.redraw()
+
 	s.wg.Add(1)
 	go s.run()
 }
 
-// Update swaps the text displayed beside the spinning frame. Safe to call
-// concurrently. No-op when the spinner is inactive or already stopped.
+// Update swaps the text displayed beside the spinning frame and immediately
+// redraws to make the new text visible without waiting for the next tick.
+// Safe to call concurrently. No-op when the spinner is inactive or already stopped.
 func (s *Spinner) Update(text string) {
 	if !s.active {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.stopped {
+		s.mu.Unlock()
 		return
 	}
 	s.text = text
+	s.mu.Unlock()
+
+	// Redraw immediately so the new text appears without waiting for the next tick.
+	s.redraw()
 }
 
 // Stop signals the spinner goroutine to exit and waits for it to finish, then
@@ -127,19 +138,18 @@ func (s *Spinner) run() {
 	}
 }
 
-// redraw writes a single spinner frame to the writer. It is called from the
-// goroutine only, but reads shared state under the mutex.
+// redraw writes a single spinner frame to the writer under the mutex, so it is
+// safe to call from both the ticker goroutine and the caller of Start/Update.
+// The entire read-compute-write sequence is protected to prevent interleaved
+// output when Update triggers an immediate redraw while the goroutine is ticking.
 func (s *Spinner) redraw() {
 	s.mu.Lock()
 	frame := brailleFrames[s.frame%len(brailleFrames)]
 	text := s.text
 	s.frame++
-	s.mu.Unlock()
-
 	line := fmt.Sprintf("%c %s", frame, text)
-	s.mu.Lock()
 	s.lastWidth = len([]rune(line))
-	s.mu.Unlock()
-
+	// Write to w while holding the mutex so concurrent redraws cannot interleave.
 	fmt.Fprintf(s.w, "\r%s", line)
+	s.mu.Unlock()
 }
