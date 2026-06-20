@@ -178,15 +178,22 @@ func (a *App) resourceCatalog() resources.ResourceCatalog {
 	return append(resources.ResourceCatalog(nil), a.catalog...)
 }
 
-// spinnerActive reports whether a progress spinner should render: stderr must
-// be an interactive TTY, no diagnostic logging may be active (log lines share
-// stderr and would clash with the \r-redrawn spinner line), and color must not
-// be disabled. ShouldColor folds in --color never/always, NO_COLOR=1, and
-// TERM=dumb — all of which signal plain output where \r overwriting is unsafe
-// or unwanted. The stderrTTY flag is passed as the isTTY argument so the same
-// env-based suppression applies to stderr (the spinner's stream).
+// spinnerActive reports whether a progress spinner should render. Three
+// conditions must all be true:
+//
+//  1. stderr is an interactive TTY (a.stderrTTY). This is an EXPLICIT gate:
+//     even if --color always is set, we never write braille bytes to a
+//     non-TTY stderr (e.g. piped to a file). ColorAlways overrides the isTTY
+//     arg inside ShouldColor, so without this explicit check --color always
+//     would activate the spinner on non-TTY stderr.
+//  2. No diagnostic logging is active (logLevel "" or "off"). Log lines share
+//     stderr and would clash with the \r-redrawn spinner line.
+//  3. ShouldColor returns true. This folds in --color never/always, NO_COLOR=1,
+//     and TERM=dumb — all of which signal plain output where \r overwriting is
+//     unsafe or unwanted on a real TTY.
 func (a *App) spinnerActive(opts globalOptions) bool {
-	return (opts.logLevel == "" || opts.logLevel == "off") &&
+	return a.stderrTTY &&
+		(opts.logLevel == "" || opts.logLevel == "off") &&
 		output.ShouldColor(opts.colorMode, a.env, a.stderrTTY)
 }
 
@@ -200,12 +207,16 @@ func (a *App) newSpinner(opts globalOptions) *output.Spinner {
 // stderr (gated by spinnerActive), clearing it before fn's result is used.
 // Stop is called synchronously before returning so the caller can safely check
 // the error and render to stdout without racing with a live spinner on stderr.
+//
+// defer s.Stop() is registered immediately after Start so that a panic inside
+// fn does not orphan the spinner goroutine (which would otherwise keep writing
+// to stderr until process exit). Stop is idempotent, so the deferred call is
+// a safe no-op if fn returns normally and Stop has already been called.
 func callWithSpinner[T any](a *App, opts globalOptions, msg string, fn func() (T, error)) (T, error) {
 	s := a.newSpinner(opts)
 	s.Start(msg)
-	v, err := fn()
-	s.Stop()
-	return v, err
+	defer s.Stop()
+	return fn()
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
@@ -1203,6 +1214,12 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 	}
 	s := a.newSpinner(opts)
 	s.Start("dumping")
+	// defer s.Stop() covers a panic inside collectDump: without it, the spinner
+	// goroutine would stay live and keep writing to stderr after main.run
+	// recovers the panic. The explicit s.Stop() below still runs on the normal
+	// path (and is a no-op for the deferred call) to preserve Stop-before-render
+	// ordering: the status notice that follows must not race with a live spinner.
+	defer s.Stop()
 	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError,
 		func(done, total int, p resources.Product, r string) {
 			s.Update(fmt.Sprintf("[%d/%d] %s/%s", done, total, p, r))

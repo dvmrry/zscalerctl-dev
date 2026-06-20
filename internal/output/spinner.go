@@ -55,6 +55,14 @@ func NewSpinner(w io.Writer, active bool) *Spinner {
 // before launching the ticker goroutine, so the text is always visible
 // without waiting for the first tick interval.
 // Calling Start on an already-started or inactive spinner is a no-op.
+//
+// wg.Add(1) is called UNDER the mutex, before the lock is released. This
+// preserves the Stop-joins-goroutine invariant: any Stop that observes
+// started==true (under the same lock) is guaranteed the counter is already 1,
+// so its wg.Wait() will block until run() exits. If Add were called after
+// Unlock, a concurrent Stop could see started==true, call wg.Wait() on a zero
+// counter, return immediately, and then Start would do wg.Add(1) after Wait —
+// which is a sync.WaitGroup misuse that produces an orphan goroutine.
 func (s *Spinner) Start(text string) {
 	if !s.active {
 		return
@@ -66,12 +74,12 @@ func (s *Spinner) Start(text string) {
 	}
 	s.text = text
 	s.started = true
+	s.wg.Add(1) // register BEFORE releasing the lock that guards `started`
 	s.mu.Unlock()
 
 	// Write the first frame synchronously so the text appears immediately.
 	s.redraw()
 
-	s.wg.Add(1)
 	go s.run()
 }
 

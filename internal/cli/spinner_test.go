@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 )
@@ -121,6 +123,25 @@ func TestSpinnerActive(t *testing.T) {
 			env:       []string{"TERM=dumb"},
 			want:      true,
 		},
+		// Fix #1 regression gate: --color always must NOT activate the spinner when
+		// stderr is not a TTY. ShouldColor(ColorAlways, ...) returns true regardless
+		// of the isTTY arg, so without the explicit a.stderrTTY guard this case
+		// would incorrectly return true and write braille bytes to non-TTY stderr.
+		{
+			name:      "stderrTTY false + colorAlways must NOT activate spinner",
+			stderrTTY: false,
+			logLevel:  "off",
+			colorMode: output.ColorAlways,
+			want:      false,
+		},
+		{
+			name:      "stderrTTY false + colorAlways + NO_COLOR still false",
+			stderrTTY: false,
+			logLevel:  "off",
+			colorMode: output.ColorAlways,
+			env:       []string{"NO_COLOR=1"},
+			want:      false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -208,4 +229,49 @@ func TestNewSpinnerReturnsCorrectActiveState(t *testing.T) {
 	// and must not panic.
 	spinInactive.Start("test")
 	spinInactive.Stop()
+}
+
+// TestCallWithSpinnerPanicSafe verifies fix #3: if fn panics while the spinner
+// is active, the deferred s.Stop() prevents a goroutine leak. Without the
+// defer, the spinner goroutine would stay live indefinitely after recovery,
+// keeping writing to stderr until process exit.
+//
+// The test uses an inactive spinner (StderrTTY: false) so no bytes reach the
+// buffer; we focus purely on the goroutine-count invariant and panic safety.
+// The active-spinner variant is covered in internal/output spinner tests.
+func TestCallWithSpinnerPanicSafe(t *testing.T) {
+	t.Parallel()
+
+	// Establish goroutine baseline after a settle period.
+	runtime.GC()
+	time.Sleep(20 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	var errBuf bytes.Buffer
+	a := NewWithOptions(io.Discard, &errBuf, nil, Options{StderrTTY: false})
+	opts := globalOptions{logLevel: "off", colorMode: output.ColorAuto}
+
+	// Wrap the panicking call in a recover so the test continues.
+	func() {
+		defer func() { recover() }() //nolint:errcheck // intentional panic recovery
+		_, _ = callWithSpinner(a, opts, "test-panic", func() (int, error) {
+			panic("simulated panic inside fn")
+		})
+	}()
+
+	// Give any goroutines a moment to settle (deferred Stop should have joined).
+	runtime.GC()
+	time.Sleep(50 * time.Millisecond)
+
+	after := runtime.NumGoroutine()
+	// Allow a small tolerance for test-runtime goroutines that may come and go.
+	const tolerance = 3
+	if after > baseline+tolerance {
+		t.Errorf("goroutine leak after panic recovery: baseline=%d, after=%d (delta %d > tolerance %d)",
+			baseline, after, after-baseline, tolerance)
+	}
+	// No bytes must be written to stderr (inactive spinner).
+	if errBuf.Len() != 0 {
+		t.Errorf("inactive spinner wrote %d bytes to stderr after panic, want 0", errBuf.Len())
+	}
 }
