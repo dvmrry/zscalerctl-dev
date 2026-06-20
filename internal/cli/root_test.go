@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +41,7 @@ func TestExecuteRoot_HelpRedaction(t *testing.T) {
 	const fakeSecret = "FAKE-TEST-SECRET-DO-NOT-USE"
 	const fakeAssignment = "password=" + fakeSecret
 
-	root := newRootCmd(a, globalOptions{})
+	root := newRootCmd(a)
 	dummy := &cobra.Command{
 		Use:    "dummycmd",
 		Short:  "dummy command for testing",
@@ -82,7 +81,7 @@ func TestExecuteRoot_HelpRedaction(t *testing.T) {
 func TestExecuteRoot_FlagError_MapsToUsageError(t *testing.T) {
 	a, _, _ := testApp(t)
 
-	root := newRootCmd(a, globalOptions{})
+	root := newRootCmd(a)
 	dummy := &cobra.Command{
 		Use:    "dummycmd",
 		Hidden: true,
@@ -108,7 +107,7 @@ func TestExecuteRoot_FlagError_MapsToUsageError(t *testing.T) {
 func TestExactArgs_MapsToUsageError(t *testing.T) {
 	a, _, _ := testApp(t)
 
-	root := newRootCmd(a, globalOptions{})
+	root := newRootCmd(a)
 	dummy := &cobra.Command{
 		Use:    "dummycmd <arg>",
 		Hidden: true,
@@ -133,7 +132,7 @@ func TestExactArgs_MapsToUsageError(t *testing.T) {
 func TestRangeArgs_MapsToUsageError(t *testing.T) {
 	a, _, _ := testApp(t)
 
-	root := newRootCmd(a, globalOptions{})
+	root := newRootCmd(a)
 	dummy := &cobra.Command{
 		Use:    "dummycmd",
 		Hidden: true,
@@ -154,54 +153,101 @@ func TestRangeArgs_MapsToUsageError(t *testing.T) {
 	}
 }
 
-// TestPrefixMatchingOff verifies that cobra.EnablePrefixMatching is false after
-// newRootCmd is called, and that a prefix abbreviation does not resolve when
-// the root uses Find (TraverseChildren=false) so the full cobra.Find path is
-// exercised.
-//
-// Note: the root built by newRootCmd uses TraverseChildren=true, which routes
-// command lookup through cobra.Traverse rather than cobra.Find. Traverse returns
-// the root (not an error) when no child matches, so the behavioural check must
-// use a separate minimal root with TraverseChildren=false where Find is used and
-// EnablePrefixMatching is the decisive gating variable.
-func TestPrefixMatchingOff(t *testing.T) {
+// TestPrefixMatchingOff_PackageVarSet asserts that cobra.EnablePrefixMatching is
+// false after newRootCmd is called. This is the package-level variable guard: if
+// a future dependency flips it to true, newRootCmd resets it.
+func TestPrefixMatchingOff_PackageVarSet(t *testing.T) {
 	a, _, _ := testApp(t)
 
-	_ = newRootCmd(a, globalOptions{})
+	_ = newRootCmd(a)
 
-	// Package-level var must be false after newRootCmd.
 	if cobra.EnablePrefixMatching {
 		t.Error("cobra.EnablePrefixMatching should be false after newRootCmd; 'doc' must not alias 'doctor'")
 	}
+}
 
-	// Behavioural check using a minimal root with TraverseChildren=false so that
-	// cobra uses Find (which gates on EnablePrefixMatching) not Traverse.
-	var outBuf, errBuf bytes.Buffer
-	a2 := NewWithOptions(&outBuf, &errBuf, nil, Options{})
+// TestPrefixMatchingOff_PrefixDoesNotResolve is the behavioural proxy confirming
+// that prefix abbreviations do not resolve commands.
+//
+// The real root (newRootCmd) sets TraverseChildren=true, which routes lookup
+// through cobra.Traverse rather than cobra.Find. Traverse returns the root when
+// no child matches (not an error), so the decisive gate — EnablePrefixMatching —
+// cannot be exercised via the real root's Execute path. This test therefore uses
+// a minimal proxy root with TraverseChildren=false (the default) so that cobra
+// routes through Find/findNext, where EnablePrefixMatching is the actual gate.
+// We confirm the var is false (set by newRootCmd above) and that "dummy" does
+// NOT silently resolve to "dummycmd". Execution is routed through executeRoot so
+// that a future refactor of executeRoot is also exercised.
+func TestPrefixMatchingOff_PrefixDoesNotResolve(t *testing.T) {
+	a, _, errBuf := testApp(t)
 
-	root2 := &cobra.Command{
-		Use:          "root",
+	// Call newRootCmd to ensure EnablePrefixMatching is set to false (the guard).
+	_ = newRootCmd(a)
+
+	// Build a proxy root with TraverseChildren=false so Find is used.
+	a2, _, _ := testApp(t)
+	proxy := &cobra.Command{
+		Use:           "root",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		// TraverseChildren intentionally NOT set (false) so Find is used.
+		// TraverseChildren intentionally NOT set (false) so cobra uses Find.
 	}
-	root2.AddCommand(&cobra.Command{
-		Use:   "dummycmd",
-		RunE:  func(_ *cobra.Command, _ []string) error { return nil },
+	proxy.AddCommand(&cobra.Command{
+		Use:  "dummycmd",
+		RunE: func(_ *cobra.Command, _ []string) error { return nil },
 	})
 
-	outW := redact.NewWriter(a2.out, redact.ModeStandard)
-	errW := redact.NewWriter(a2.err, redact.ModeStandard)
-	defer func() { _ = outW.Close() }()
-	defer func() { _ = errW.Close() }()
-	root2.SetOut(outW)
-	root2.SetErr(errW)
-	root2.SetArgs([]string{"dummy"})
-
 	ctx := context.Background()
-	err := root2.ExecuteContext(ctx)
+	err := a2.executeRoot(ctx, proxy, []string{"dummy"})
 	if err == nil {
 		t.Error("prefix match: 'dummy' should not resolve to 'dummycmd' when EnablePrefixMatching=false (TraverseChildren=false path)")
+	}
+
+	// errBuf from the first testApp is unused in this path; suppress the linter.
+	_ = errBuf
+}
+
+// TestExecuteRoot_StderrRedaction verifies that executeRoot wraps a.err in a
+// redact.NewWriter and that the stderr path is scanned before output reaches the
+// real buffer. A dummy subcommand writes a fake high-entropy token to
+// cmd.ErrOrStderr(); after executeRoot returns the captured err buffer must NOT
+// contain the raw token (it was redacted) AND must be non-empty (Close flushed).
+func TestExecuteRoot_StderrRedaction(t *testing.T) {
+	a, _, errBuf := testApp(t)
+
+	// A fake secret that matches the redactor's secret_assignment rule.
+	const fakeSecret = "FAKE-TEST-SECRET-DO-NOT-USE"
+	const fakeAssignment = "password=" + fakeSecret
+
+	root := newRootCmd(a)
+	dummy := &cobra.Command{
+		Use:    "dummycmd",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Write the fake assignment to the command's stderr writer. This goes
+			// through the errW redact.NewWriter installed by executeRoot.
+			_, _ = cmd.ErrOrStderr().Write([]byte(fakeAssignment + "\n"))
+			return nil
+		},
+	}
+	root.AddCommand(dummy)
+
+	ctx := context.Background()
+	err := a.executeRoot(ctx, root, []string{"dummycmd"})
+	if err != nil {
+		t.Fatalf("executeRoot returned unexpected error: %v", err)
+	}
+
+	got := errBuf.String()
+
+	// (a) The err buffer must be non-empty — Close flushed the redactor.
+	if got == "" {
+		t.Fatal("err buffer is empty after writing to stderr: redact.NewWriter Close was not flushed, or SetErr was not called")
+	}
+
+	// (b) The raw fake token must be absent — the redactor replaced it.
+	if strings.Contains(got, fakeSecret) {
+		t.Errorf("raw fake token %q found in err buffer: stderr redactor did not run or did not flush\ngot:\n%s", fakeSecret, got)
 	}
 }
 
@@ -210,7 +256,7 @@ func TestPrefixMatchingOff(t *testing.T) {
 // "version" subcommand is the correct path).
 func TestExecuteRoot_NoVersionFlag(t *testing.T) {
 	a, _, _ := testApp(t)
-	root := newRootCmd(a, globalOptions{})
+	root := newRootCmd(a)
 
 	if f := root.Flags().Lookup("version"); f != nil {
 		t.Error("root command must not register a --version flag; use the 'version' subcommand instead")

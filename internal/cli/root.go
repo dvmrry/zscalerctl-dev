@@ -27,12 +27,16 @@ import (
 // newRootCmd constructs the Cobra root command with the §8 settings required by
 // the migration spec. It does not add any product subcommands; those are added
 // by later phases.
-func newRootCmd(a *App, opts globalOptions) *cobra.Command {
+func newRootCmd(a *App) *cobra.Command {
 	// EnablePrefixMatching is a cobra package-level variable (not a Command field).
-	// We intentionally set it to false: the legacy CLI uses exact command matching,
-	// and allowing prefix abbreviations would let "doc" silently alias to "doctor",
-	// changing observable behaviour. This is process-global; tests that care about
-	// the value must set it themselves if they need a different state.
+	// Cobra's own package default is already false, so this assignment is an
+	// idempotent belt-and-suspenders guard: if a future dependency ever flips it
+	// to true, we reset it here rather than relying on the package default staying
+	// stable. We intentionally do NOT set it in an init() — init() runs before any
+	// test can arrange state, whereas placing the reset here keeps it scoped to the
+	// command-construction path and clearly tied to the no-prefix-match contract.
+	// Allowing prefix abbreviations would let "doc" silently alias to "doctor",
+	// changing observable behaviour. This is process-global.
 	cobra.EnablePrefixMatching = false
 
 	root := &cobra.Command{
