@@ -6,8 +6,9 @@ package cli
 // # Architecture note
 //
 // execCobra in app.go is the wire point that routes dispatch to Cobra.
-// newRootCmd builds the full command tree; executeRoot / executeRootCompletion
-// wrap both writers through the redactor and drive ExecuteContext.
+// newRootCmd builds the root command; buildCommandTree (app.go) assembles the
+// full tree from it. executeRoot / executeRootCompletion wrap both writers
+// through the redactor and drive ExecuteContext.
 //
 // # No-leak contract
 //
