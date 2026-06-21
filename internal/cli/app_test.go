@@ -727,6 +727,9 @@ func TestEnvRedactionIsNotDowngradedByAbsentFlag(t *testing.T) {
 			if !strings.Contains(out.String(), "Redaction") || !strings.Contains(out.String(), mode) {
 				t.Errorf("App.Run(doctor) output = %q, want redaction mode %q", out.String(), mode)
 			}
+			if errOut.Len() != 0 {
+				t.Errorf("App.Run(doctor, redaction=%s) stderr = %q, want empty", mode, errOut.String())
+			}
 		})
 	}
 }

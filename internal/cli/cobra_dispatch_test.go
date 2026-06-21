@@ -177,20 +177,12 @@ func TestVersionExtraArg_UsageError(t *testing.T) {
 
 // ── doctor Cobra dispatch tests (Task 1.5.2) ────────────────────────────────
 
-// testDoctorApp returns an App with no env (hermetic: no credentials, no config file).
-func testDoctorApp(t *testing.T) (*cli.App, *bytes.Buffer, *bytes.Buffer) {
-	t.Helper()
-	var out, errBuf bytes.Buffer
-	a := cli.New(&out, &errBuf, nil)
-	return a, &out, &errBuf
-}
-
 // TestHybridRouting_DoctorGoesViaCobra confirms that "doctor" is dispatched
 // through Cobra and produces output identical to the legacy path (same key rows).
 func TestHybridRouting_DoctorGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
-	a, out, errBuf := testDoctorApp(t)
+	a, out, errBuf := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"--format", "table", "doctor"})
 	if err != nil {
 		t.Fatalf("App.Run(doctor) error = %v, want nil", err)
@@ -213,7 +205,7 @@ func TestHybridRouting_DoctorGoesViaCobra(t *testing.T) {
 func TestDoctorHelp_CobraRenderedHelp(t *testing.T) {
 	t.Parallel()
 
-	a, out, errBuf := testDoctorApp(t)
+	a, out, errBuf := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"doctor", "--help"})
 	if err != nil {
 		t.Fatalf("App.Run(doctor --help) error = %v, want nil", err)
@@ -239,7 +231,7 @@ func TestDoctorOutputFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	outFile := filepath.Join(tmpDir, "doctor-out.txt")
 
-	a, out, errBuf := testDoctorApp(t)
+	a, out, errBuf := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"--format", "table", "--output", outFile, "doctor"})
 	if err != nil {
 		t.Fatalf("App.Run(doctor --output) error = %v, want nil", err)
@@ -269,7 +261,7 @@ func TestDoctorOutputFile(t *testing.T) {
 func TestDoctorUnknownFlag_UsageError(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := testDoctorApp(t)
+	a, _, _ := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"doctor", "--nope"})
 	if err == nil {
 		t.Fatal("App.Run(doctor --nope) error = nil, want UsageError")
@@ -284,7 +276,7 @@ func TestDoctorUnknownFlag_UsageError(t *testing.T) {
 func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := testDoctorApp(t)
+	a, _, _ := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"--format", "ndjson", "doctor"})
 	if err == nil {
 		t.Fatal("App.Run(--format ndjson doctor) error = nil, want UsageError")
@@ -300,7 +292,7 @@ func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
 func TestDoctorExtraArg_UsageError(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := testDoctorApp(t)
+	a, _, _ := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"doctor", "somearg"})
 	if err == nil {
 		t.Fatal("App.Run(doctor somearg) error = nil, want UsageError")
@@ -319,41 +311,13 @@ func TestDoctorExtraArg_UsageError(t *testing.T) {
 func TestDoctorConfigError_NonexistentPath(t *testing.T) {
 	t.Parallel()
 
-	a, _, _ := testDoctorApp(t)
+	a, _, _ := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"--config", "/nonexistent/path/zscalerctl.yaml", "doctor"})
 	if err == nil {
 		t.Fatal("App.Run(doctor --config /nonexistent) error = nil, want config load error")
 	}
 	if !errors.Is(err, config.ErrInvalidConfig) {
 		t.Errorf("App.Run(doctor --config /nonexistent) error = %v, want ErrInvalidConfig", err)
-	}
-}
-
-// TestDoctorRedactionFollowsConfig confirms that the migrated doctor uses
-// a.renderer(cfg, opts) — which reads cfg.Defaults.Redaction — rather than
-// hardcoding ModeStandard. Setting a non-standard redaction mode via env must be
-// reflected in the doctor output.
-func TestDoctorRedactionFollowsConfig(t *testing.T) {
-	t.Parallel()
-
-	for _, mode := range []string{"share", "paranoid"} {
-		mode := mode
-		t.Run(mode, func(t *testing.T) {
-			t.Parallel()
-
-			var out, errBuf bytes.Buffer
-			a := cli.New(&out, &errBuf, []string{config.EnvRedaction + "=" + mode})
-			err := a.Run(context.Background(), []string{"--format", "table", "doctor"})
-			if err != nil {
-				t.Fatalf("App.Run(doctor, redaction=%s) error = %v, want nil", mode, err)
-			}
-			if !strings.Contains(out.String(), "Redaction") || !strings.Contains(out.String(), mode) {
-				t.Errorf("App.Run(doctor) output = %q, want redaction mode %q", out.String(), mode)
-			}
-			if errBuf.Len() != 0 {
-				t.Errorf("App.Run(doctor, redaction=%s) stderr = %q, want empty", mode, errBuf.String())
-			}
-		})
 	}
 }
 
@@ -449,7 +413,7 @@ func TestNonHelpFormatGate_CompletionNDJSON(t *testing.T) {
 func TestHybridRouting_AuthGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
-	a, out, errBuf := testDoctorApp(t)
+	a, out, errBuf := testVersionApp(t)
 	err := a.Run(context.Background(), []string{"--format", "table", "auth", "status"})
 	if err != nil {
 		t.Fatalf("App.Run(auth status) error = %v, want nil", err)
