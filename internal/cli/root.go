@@ -73,7 +73,7 @@ func newRootCmd(a *App) *cobra.Command {
 		// reaches Cobra. Unknown commands exit 2 via the legacy isKnownCommand path.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return nil
+				return cmd.Help()
 			}
 			return UsageError{Message: unknownCommandMessage(args[0])}
 		},
@@ -89,17 +89,6 @@ func newRootCmd(a *App) *cobra.Command {
 	// RunE/PreRunE and return UsageError explicitly.
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return UsageError{Message: err.Error()}
-	})
-
-	// Disable the auto-generated "help" subcommand. We install a hidden no-op in
-	// its place so Cobra's internal AddCommand("help") guard does not re-add one.
-	// This avoids a conflict with the legacy "help" token handling in App.Run.
-	// The --help FLAG is NOT affected by this; Cobra adds it separately and it
-	// remains fully functional.
-	root.SetHelpCommand(&cobra.Command{
-		Use:    "no-op-help",
-		Hidden: true,
-		Run:    func(*cobra.Command, []string) {},
 	})
 
 	// Register the mirrored global persistent flags so --help output and shell

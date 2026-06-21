@@ -154,11 +154,13 @@ type Options struct {
 
 func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 	envCopy := append([]string(nil), env...)
-	// Resolve the catalog once at construction: use the caller-supplied override
-	// when provided (test injection), otherwise build from the full static catalog.
+	// Resolve the catalog once at construction: use the caller-supplied
+	// catalog when explicitly provided (even if empty — a non-nil slice is an
+	// intentional injection, e.g. an empty catalog for the empty-catalog
+	// schema-list test path); otherwise build from the full static catalog.
 	// All later calls to resourceCatalog() return a cheap copy of this slice.
 	var catalog resources.ResourceCatalog
-	if len(opts.Catalog) > 0 {
+	if opts.Catalog != nil {
 		catalog = append(resources.ResourceCatalog(nil), opts.Catalog...)
 	} else {
 		catalog = resources.Catalog()
@@ -175,7 +177,13 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 }
 
 func (a *App) resourceCatalog() resources.ResourceCatalog {
-	return append(resources.ResourceCatalog(nil), a.catalog...)
+	catalog := append(resources.ResourceCatalog(nil), a.catalog...)
+	// Guarantee a non-nil slice so an empty catalog serialises to JSON as
+	// "[]" rather than "null" (e.g. the empty-catalog schema-list path).
+	if catalog == nil {
+		return resources.ResourceCatalog{}
+	}
+	return catalog
 }
 
 // spinnerActive reports whether a progress spinner should render. Three
@@ -284,7 +292,12 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// ("--filter name=x version", "--format ndjson version") must still hit the
 	// gates below → exit 2.
 	if opts.help {
-		if len(rest) == 0 || !isMigrated(rest[0]) {
+		if len(rest) == 0 {
+			// Bare --help: let Cobra render the root help.
+			return a.execCobra(ctx, opts, []string{"--help"})
+		}
+		if !isMigrated(rest[0]) {
+			// Un-migrated command: keep the legacy usage hint.
 			a.writeHelp(a.out, rest)
 			return nil
 		}
@@ -294,6 +307,23 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.execCobra(ctx, opts, rest)
 	}
 	if len(rest) == 0 {
+		// Scoped flags require a command even when none is given; raise the usage
+		// error (exit 2) BEFORE the bare-help fallback, so "--filter x" /
+		// "--search x" / "--fields x" with no command is rejected rather than
+		// silently turned into a help display.
+		if name := opts.narrowingFlag(); name != "" {
+			return UsageError{Message: fmt.Sprintf("%s applies to list operations only; use it with \"<product> <resource> list\"", name)}
+		}
+		if len(opts.fields) > 0 {
+			return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
+		}
+		// Bare invocation: an interactive terminal gets Cobra's root help; a
+		// machine/piped context treats a missing command as an error rendered
+		// through the configured format (e.g. a JSON envelope), per the
+		// machine-first contract.
+		if a.stdoutTTY {
+			return a.execCobra(ctx, opts, []string{"--help"})
+		}
 		a.writeUsageForHumans(opts)
 		return UsageError{Message: "missing command"}
 	}
@@ -323,13 +353,6 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// after the narrowing/format gates above.
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
-	}
-	// "help" without a migrated command: show global usage. Any other unknown
-	// token produces an error. All runnable commands are now migrated (isMigrated
-	// above) so there is no reachable fallthrough path.
-	if rest[0] == "help" {
-		a.writeUsage(a.out)
-		return nil
 	}
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0])}
@@ -690,7 +713,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // through the legacy switch in runParsed. Grows one command per phase.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect", "help":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -706,6 +729,13 @@ func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
+	}
+	root.InitDefaultHelpCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "help" {
+			c.Annotations = map[string]string{"introspect/args-policy": "arbitrary"}
+			break
+		}
 	}
 	return root
 }
@@ -2046,12 +2076,14 @@ func (a *App) writeUsage(w io.Writer) {
 	fmt.Fprintf(w, "products: %s\n", strings.Join(productNames(knownProducts()), ", "))
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "commands:")
+	fmt.Fprintln(w, "  help [command]")
 	fmt.Fprintln(w, "  doctor")
 	fmt.Fprintln(w, "  auth status")
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  config init [--force]")
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
+	fmt.Fprintln(w, "  introspect")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]")
 	fmt.Fprintln(w, "  diff <old-dump-dir> <new-dump-dir> [--products names] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]")
 	fmt.Fprintf(w, "  completion %s\n", completionShellNames())

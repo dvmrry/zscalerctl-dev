@@ -32,10 +32,37 @@ func TestIntrospectTree(t *testing.T) {
 		t.Errorf("CLIVersion = %q, want empty (set by command, not introspectTree)", doc.CLIVersion)
 	}
 
-	// Every command must be non-mutating (all ops are read-only today).
-	for _, cmd := range doc.Commands {
-		if cmd.Mutating {
-			t.Errorf("command %q has Mutating=true but CLI is read-only", cmd.Path)
+	// Per-command `mutating` is the de-tautologized contract:
+	//   - config init writes a LOCAL config file → Mutating must be true.
+	//   - read-only commands (version, a product read like zia locations list)
+	//     → Mutating must be false.
+	// The CLI-wide read_only guarantee is tenant-scoped; `mutating` flags
+	// local side effects, not tenant mutation.
+	findByPath := func(path string) *cli.CommandDoc {
+		for i := range doc.Commands {
+			if doc.Commands[i].Path == path {
+				return &doc.Commands[i]
+			}
+		}
+		return nil
+	}
+
+	configInit := findByPath("config init")
+	if configInit == nil {
+		t.Fatal("command \"config init\" not found in doc.Commands")
+	}
+	if !configInit.Mutating {
+		t.Errorf("config init: Mutating = false, want true (writes a local config file)")
+	}
+
+	for _, path := range []string{"version", "zia locations list"} {
+		c := findByPath(path)
+		if c == nil {
+			t.Errorf("command %q not found in doc.Commands", path)
+			continue
+		}
+		if c.Mutating {
+			t.Errorf("command %q: Mutating = true, want false (read-only)", path)
 		}
 	}
 
@@ -111,6 +138,34 @@ func TestIntrospectTree(t *testing.T) {
 	}
 	if len(doc.Catalog.Resources) == 0 {
 		t.Error("Catalog.Resources is empty")
+	}
+}
+
+// TestIntrospectHelpArgsPolicyArbitrary asserts that the Cobra `help` command
+// is documented as accepting an arbitrary number of positional arguments (e.g.
+// `zscalerctl help config init`), not the range(N) fallback that the "[command]"
+// Use suffix would otherwise produce.
+func TestIntrospectHelpArgsPolicyArbitrary(t *testing.T) {
+	t.Parallel()
+
+	a := cli.New(io.Discard, io.Discard, nil)
+	doc := cli.IntrospectTree(a)
+
+	var helpCmd *cli.CommandDoc
+	for i := range doc.Commands {
+		if doc.Commands[i].Path == "help" {
+			helpCmd = &doc.Commands[i]
+			break
+		}
+	}
+	if helpCmd == nil {
+		t.Fatal("command \"help\" not found in introspect doc.Commands")
+	}
+	if helpCmd.Args.Policy != "arbitrary" {
+		t.Errorf("help command args policy = %q, want %q", helpCmd.Args.Policy, "arbitrary")
+	}
+	if helpCmd.Args.N != 0 {
+		t.Errorf("help command args N = %d, want 0 (omitted for arbitrary)", helpCmd.Args.N)
 	}
 }
 

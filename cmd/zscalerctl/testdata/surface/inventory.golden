@@ -4,20 +4,20 @@
 # Every change here must be recorded in testdata/surface/surface_changes.md.
 
 ## top-level verbs
-  help
-  version
-  doctor
   auth status
-  config show
-  config init
-  introspect
-  schema list
-  dump
-  diff
   completion bash
-  completion zsh
   completion fish
   completion powershell
+  completion zsh
+  config init
+  config show
+  diff
+  doctor
+  dump
+  help
+  introspect
+  schema list
+  version
   zia url-lookup
 
 ## catalog resources

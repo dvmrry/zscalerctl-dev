@@ -342,7 +342,7 @@
       "short": "write a starter config file with owner-only permissions",
       "aliases": [],
       "hidden": false,
-      "mutating": false,
+      "mutating": true,
       "args": {
         "policy": "none"
       },
@@ -522,6 +522,33 @@
           "usage": "comma-separated resources: locations or zia/locations"
         }
       ],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
+      "path": "help",
+      "short": "Help about any command",
+      "long": "Help provides help for any command in the application.\nSimply type zscalerctl help [path to command] for full details.",
+      "aliases": [],
+      "hidden": false,
+      "mutating": false,
+      "args": {
+        "policy": "arbitrary"
+      },
+      "flags": [],
       "inherited_flags": [
         "color",
         "config",
@@ -9580,5 +9607,9 @@
       "retryable": false,
       "description": "drift check found differences between two snapshots"
     }
+  ],
+  "completion_protocol": [
+    "__complete",
+    "__completeNoDesc"
   ]
 }

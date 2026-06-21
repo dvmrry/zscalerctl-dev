@@ -38,6 +38,11 @@ import (
 const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json"
 
 // IntrospectDoc is the top-level document returned by IntrospectTree.
+//
+// ReadOnly is tenant-scoped: `read_only: true` means the CLI never mutates
+// the Zscaler TENANT (read-only API); individual commands may still have
+// LOCAL side effects (e.g. `config init` writes a local config file — see
+// per-command `mutating`).
 type IntrospectDoc struct {
 	Schema            string        `json:"$schema"`
 	IntrospectVersion string        `json:"introspect_version"`
@@ -47,6 +52,10 @@ type IntrospectDoc struct {
 	Commands          []CommandDoc  `json:"commands"`
 	Catalog           CatalogDoc    `json:"catalog"`
 	ExitCodes         []ExitCodeDoc `json:"exit_codes"`
+	// CompletionProtocol lists the hidden machine-protocol tokens that App.Run
+	// accepts non-erroneously for shell-completion dispatch. These tokens are not
+	// Cobra commands and do not appear in the command tree.
+	CompletionProtocol []string `json:"completion_protocol"`
 }
 
 // OutputSafe implements output.SafeJSON. IntrospectDoc emits only static
@@ -145,10 +154,14 @@ func IntrospectTree(a *App) IntrospectDoc {
 		Schema:            schemaURL,
 		IntrospectVersion: "1",
 		CLIVersion:        "",
-		ReadOnly:          true,
-		GlobalFlags:       buildGlobalFlags(),
-		Catalog:           buildCatalog(),
-		ExitCodes:         buildExitCodes(),
+		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant
+		// (read-only API). Local side effects (e.g. config init writing a
+		// local file) are flagged per-command via `mutating`.
+		ReadOnly:           true,
+		GlobalFlags:        buildGlobalFlags(),
+		Catalog:            buildCatalog(),
+		ExitCodes:          buildExitCodes(),
+		CompletionProtocol: []string{"__complete", "__completeNoDesc"},
 	}
 
 	// WalkCobraTree drives the real-command enumeration in depth-first,
@@ -385,9 +398,16 @@ func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 }
 
 // parseArgsPolicyAnnotation parses an "introspect/args-policy" annotation value
-// of the form "exact:N" or "at_least:N" into an ArgsDoc. Returns (doc, true) on
-// success, (ArgsDoc{}, false) if the annotation is not in a recognised format.
+// into an ArgsDoc. Recognised formats:
+//   - "arbitrary" (any number of arguments)
+//   - "exact:N" or "at_least:N" (positional count policy)
+//
+// Returns (doc, true) on success, (ArgsDoc{}, false) if the annotation is not in
+// a recognised format.
 func parseArgsPolicyAnnotation(ann string) (ArgsDoc, bool) {
+	if ann == "arbitrary" {
+		return ArgsDoc{Policy: "arbitrary"}, true
+	}
 	idx := strings.LastIndex(ann, ":")
 	if idx < 0 {
 		return ArgsDoc{}, false

@@ -2,11 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/spf13/cobra"
 )
 
 func TestParseDumpResourcesSupportsCatalogDerivedQualifiedProducts(t *testing.T) {
@@ -143,4 +145,64 @@ func TestColumnize(t *testing.T) {
 	if got := columnize(nil, 80); got != "" {
 		t.Errorf("columnize(nil) = %q, want empty", got)
 	}
+}
+
+// TestWriteUsageCoversAllCobraCommands asserts that every non-hidden,
+// non-__complete, depth-1 utility command (i.e. not a product group node) is
+// mentioned somewhere in the global usage text. This is the durability gate
+// that caught the missing `introspect` line.
+func TestWriteUsageCoversAllCobraCommands(t *testing.T) {
+	t.Parallel()
+
+	a := New(io.Discard, io.Discard, nil)
+	root := BuildCommandTree(a)
+	root.InitDefaultCompletionCmd()
+
+	productSet := make(map[string]struct{})
+	for _, product := range knownProducts() {
+		productSet[string(product)] = struct{}{}
+	}
+
+	var want []string
+	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
+		// Only depth-1 commands.
+		if strings.Contains(path, " ") {
+			return
+		}
+		if cmd.Hidden || strings.HasPrefix(cmd.Name(), "__complete") {
+			return
+		}
+		// Product group nodes are handled separately in the usage text.
+		if _, ok := productSet[path]; ok {
+			return
+		}
+		want = append(want, path)
+	})
+
+	var b bytes.Buffer
+	a.writeUsage(&b)
+	usage := b.String()
+
+	containsCommand := func(usage, name string) bool {
+		for _, line := range strings.Split(usage, "\n") {
+			trimmed := strings.TrimLeft(line, " \t")
+			if trimmed == name || strings.HasPrefix(trimmed, name+" ") || strings.HasPrefix(trimmed, name+"\t") {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, name := range want {
+		if !containsCommand(usage, name) {
+			t.Errorf("writeUsage output missing top-level command %q as a standalone entry", name)
+		}
+	}
+
+	// Negative check: a fake top-level command must not be spuriously matched.
+	t.Run("fake command not matched", func(t *testing.T) {
+		if containsCommand(usage, "auth-status") {
+			t.Errorf("coverage check spuriously accepted fake command %q", "auth-status")
+		}
+	})
 }

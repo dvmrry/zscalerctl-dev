@@ -212,9 +212,7 @@ func TestUsageErrorsKeepStderrCleanForJSONConsumers(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"json no command", []string{"--format", "json"}},
 		{"json unknown command", []string{"--format", "json", "frobnicate"}},
-		{"auto off-tty no command", nil},
 		{"auto off-tty unknown command", []string{"frobnicate"}},
 	}
 	for _, tc := range cases {
@@ -238,11 +236,11 @@ func TestUsageErrorsStillShowUsageBlockOnTTY(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 	app := cli.NewWithOptions(&out, &errOut, []string{"TERM=xterm-256color"}, cli.Options{StdoutTTY: true})
-	if err := app.Run(context.Background(), nil); err == nil {
-		t.Fatal("App.Run(no args) error = nil, want usage error")
+	if err := app.Run(context.Background(), []string{"frobnicate"}); err == nil {
+		t.Fatal("App.Run(unknown command, TTY) error = nil, want usage error")
 	}
 	if !strings.Contains(errOut.String(), "usage: zscalerctl") {
-		t.Errorf("App.Run(no args, TTY) stderr = %q, want usage block", errOut.String())
+		t.Errorf("App.Run(unknown command, TTY) stderr = %q, want usage block", errOut.String())
 	}
 }
 
@@ -316,7 +314,8 @@ func TestHelpRoutesToResourceAndProductScope(t *testing.T) {
 		{"resource help", []string{"zia", "locations", "--help"}, []string{"zscalerctl zia"}, []string{}},
 		// Product help: Cobra-formatted help with the product name in Usage.
 		{"product help", []string{"zia", "--help"}, []string{"zscalerctl zia"}, []string{"fields:"}},
-		{"global help", []string{"--help"}, []string{"usage: zscalerctl [global flags]"}, nil},
+		// Global help: now rendered by Cobra rather than the legacy usage block.
+		{"global help", []string{"--help"}, []string{"Usage:", "zscalerctl [command]"}, nil},
 	}
 	for _, tc := range cases {
 		tc := tc

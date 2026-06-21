@@ -5,7 +5,7 @@
   "description": "Schema for the JSON document emitted by `zscalerctl introspect`. The document describes the full CLI surface: commands, flags, resource catalog, and exit codes. It is static (config-free, no tenant data) and is the primary machine-readable contract for agents and tooling.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "introspect_version", "read_only", "global_flags", "commands", "catalog", "exit_codes"],
+  "required": ["$schema", "introspect_version", "read_only", "global_flags", "commands", "catalog", "exit_codes", "completion_protocol"],
   "properties": {
     "$schema": {
       "type": "string",
@@ -22,7 +22,7 @@
     },
     "read_only": {
       "type": "boolean",
-      "description": "True when every command in this CLI surface is read-only (no mutations). Currently always true."
+      "description": "Tenant-scoped guarantee: true means the CLI never mutates the Zscaler tenant (read-only API). Individual commands may still have LOCAL side effects (e.g. config init writes a local config file); see per-command `mutating`. Currently always true."
     },
     "global_flags": {
       "type": "array",
@@ -42,6 +42,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/exitCodeDoc" },
       "description": "Exit-code table mapping integer codes to kind, retryability, and description."
+    },
+    "completion_protocol": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Hidden machine-protocol tokens accepted by App.Run for shell-completion dispatch (not Cobra commands)."
     }
   },
   "$defs": {
@@ -78,7 +83,7 @@
         },
         "mutating": {
           "type": "boolean",
-          "description": "Whether the command modifies state. Currently always false (CLI is read-only)."
+          "description": "Whether the command has any side effects. Most commands are non-mutating (read-only tenant access). A command with LOCAL side effects (e.g. config init writes a local config file) is marked true; this never implies tenant mutation — the CLI-wide read_only guarantee is tenant-scoped."
         },
         "args": {
           "$ref": "#/$defs/argsDoc",

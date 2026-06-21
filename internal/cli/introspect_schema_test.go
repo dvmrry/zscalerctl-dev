@@ -13,7 +13,9 @@ package cli_test
 // virtual, and that the catalog section equals resources.Catalog().
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -417,4 +419,77 @@ func introspectSetDiff(a, b []string) []string {
 		}
 	}
 	return out
+}
+
+// TestAcceptedTokensDiscoverable asserts that every top-level token the runtime
+// accepts is also discoverable in the introspect output. The acceptance oracle
+// is App.Run itself (not a second tree walk), and the completion protocol tokens
+// are checked against the dedicated completion_protocol field.
+func TestAcceptedTokensDiscoverable(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	a := cli.New(io.Discard, io.Discard, nil)
+
+	doc := cli.IntrospectTree(a)
+
+	// Candidate tokens come from an INDEPENDENT source — the stable set of
+	// top-level command verbs plus the two hidden completion-protocol tokens —
+	// NOT from doc.Commands. Seeding from introspect's own output would make the
+	// discoverability check circular (it could only test commands introspect
+	// already emits). New top-level commands are caught by the golden drift gates
+	// (TestCommandTreeInventory, the introspect golden); this test guards that
+	// every known accepted token IS discoverable in introspect.
+	tokens := []string{
+		"version", "doctor", "dump", "diff", "config", "schema", "auth",
+		"completion", "introspect", "help",
+		"__complete", "__completeNoDesc",
+	}
+
+	for _, token := range tokens {
+		token := token
+		t.Run(token, func(t *testing.T) {
+			t.Parallel()
+
+			// Each subtest uses its OWN App: App.Run is not safe for concurrent
+			// use, so sharing one across t.Parallel() subtests data-races.
+			a := cli.New(io.Discard, io.Discard, nil)
+			// Oracle 1: App.Run actually accepts the token (not a UsageError).
+			err := a.Run(ctx, []string{token, "--help"})
+			if err != nil {
+				var ue *cli.UsageError
+				if errors.As(err, &ue) {
+					t.Errorf("token %q returned UsageError (not accepted by runtime): %v", token, err)
+				}
+				// Non-UsageError (e.g. missing credentials) is fine for the
+				// acceptance oracle; the important thing is that Cobra routing
+				// accepted the token rather than rejecting it as unknown.
+			}
+
+			// Oracle 2: discoverable in introspect.
+			if token == "__complete" || token == "__completeNoDesc" {
+				found := false
+				for _, p := range doc.CompletionProtocol {
+					if p == token {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("completion protocol token %q not found in doc.CompletionProtocol", token)
+				}
+			} else {
+				found := false
+				for _, cmd := range doc.Commands {
+					if cmd.Path == token {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("token %q not found in introspect doc.Commands", token)
+				}
+			}
+		})
+	}
 }

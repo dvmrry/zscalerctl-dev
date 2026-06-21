@@ -445,8 +445,8 @@ func TestHelpFlagsReturnUsage(t *testing.T) {
 			if err != nil {
 				t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 			}
-			if !strings.Contains(out.String(), "usage: zscalerctl") {
-				t.Errorf("App.Run(%v) stdout = %q, want usage text", args, out.String())
+			if !strings.Contains(out.String(), "Usage:") {
+				t.Errorf("App.Run(%v) stdout = %q, want Cobra help text", args, out.String())
 			}
 			if errOut.Len() != 0 {
 				t.Errorf("App.Run(%v) stderr = %q, want empty", args, errOut.String())
@@ -544,8 +544,12 @@ func TestUsageListsKnownProducts(t *testing.T) {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
 	for _, want := range []string{
-		"products: zia",
-		"zia <resource> list|get|show",
+		"Available Commands",
+		"zia",
+		"zpa",
+		"ztw",
+		"zcc",
+		"zidentity",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
@@ -1109,6 +1113,77 @@ func TestSchemaListJSONIncludesGetKeyForGetResources(t *testing.T) {
 	}
 }
 
+// noopReader is a ResourceReader stub whose methods return empty results and
+// nil errors. It is injected into an App with an empty catalog to prove the
+// schema-list empty-catalog branch never reaches the reader.
+type noopReader struct{}
+
+func (noopReader) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	return nil, nil
+}
+func (noopReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, nil
+}
+func (noopReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, nil
+}
+
+// TestSchemaListEmptyCatalog covers the empty-catalog branch of runSchema, a
+// known coverage gap: an explicit empty (non-nil) ResourceCatalog is injected
+// via NewWithOptions so resourceCatalog() returns zero entries.
+//
+//   - --format table: the sentinel "no resources enabled yet" text is emitted.
+//   - --format json: an empty array "[]" is emitted.
+//
+// Neither path must error or touch the reader.
+func TestSchemaListEmptyCatalog(t *testing.T) {
+	t.Parallel()
+
+	t.Run("table", func(t *testing.T) {
+		t.Parallel()
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+			Catalog: resources.ResourceCatalog{},
+			Reader:  noopReader{},
+		})
+		if err := app.Run(context.Background(), []string{"--format", "table", "schema", "list"}); err != nil {
+			t.Fatalf("App.Run(schema list table) empty-catalog error = %v, want nil", err)
+		}
+		if got := out.String(); !strings.Contains(got, "no resources enabled yet") {
+			t.Errorf("schema list table empty-catalog stdout = %q, want sentinel \"no resources enabled yet\"", got)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("schema list table empty-catalog stderr = %q, want empty", errOut.String())
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+			Catalog: resources.ResourceCatalog{},
+			Reader:  noopReader{},
+		})
+		if err := app.Run(context.Background(), []string{"--format", "json", "schema", "list"}); err != nil {
+			t.Fatalf("App.Run(schema list json) empty-catalog error = %v, want nil", err)
+		}
+		var specs []json.RawMessage
+		if err := json.Unmarshal(out.Bytes(), &specs); err != nil {
+			t.Fatalf("json.Unmarshal(schema list json) error = %v\noutput: %s", err, out.String())
+		}
+		if len(specs) != 0 {
+			t.Errorf("schema list json empty-catalog: got %d entries, want 0 (output: %s)", len(specs), out.String())
+		}
+		// The renderer must emit a literal empty array, not "null".
+		if got := strings.TrimSpace(out.String()); got != "[]" {
+			t.Errorf("schema list json empty-catalog stdout = %q, want \"[]\"", got)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("schema list json empty-catalog stderr = %q, want empty", errOut.String())
+		}
+	})
+}
+
 func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	t.Parallel()
 
@@ -1121,8 +1196,14 @@ func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
-	if !strings.Contains(out.String(), "completion bash|zsh|fish|powershell") {
-		t.Errorf("App.Run(help) stdout = %q, want completion usage", out.String())
+	for _, want := range []string{"Available Commands", "completion"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
+		}
+	}
+	forbidden := "/path/that/must/not-be-read"
+	if strings.Contains(out.String(), forbidden) {
+		t.Errorf("App.Run(help) stdout = %q, must not contain %q", out.String(), forbidden)
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(help) stderr = %q, want empty", errOut.String())

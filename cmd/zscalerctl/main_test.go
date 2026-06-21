@@ -100,8 +100,8 @@ func TestRunHelpFlagReturnsSuccess(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run(--help) exit code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "usage: zscalerctl") {
-		t.Errorf("run(--help) stdout = %q, want usage text", stdout.String())
+	if !strings.Contains(stdout.String(), "Usage:") {
+		t.Errorf("run(--help) stdout = %q, want Cobra help text", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("run(--help) stderr = %q, want empty", stderr.String())
@@ -149,10 +149,11 @@ func TestRunNoCommandJSONStderrIsPureEnvelope(t *testing.T) {
 
 	// The whole stderr stream must be a single parseable JSON document — no
 	// plain-text usage block prepended (the double-output bug from the
-	// pre-1.0 sweep).
+	// pre-1.0 sweep). Covers both a MISSING command and an UNKNOWN command in
+	// machine (non-TTY) context; each must be a pure usage envelope (exit 2).
 	for _, args := range [][]string{
-		{"--format", "json"},
-		{"--format", "json", "frobnicate"},
+		{"--format", "json"},               // no command (machine context → missing-command)
+		{"--format", "json", "frobnicate"}, // unknown command
 	} {
 		args := args
 		var stdout, stderr bytes.Buffer
