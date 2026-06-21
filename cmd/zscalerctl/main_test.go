@@ -144,14 +144,16 @@ func TestRunJSONUsageErrorEnvelope(t *testing.T) {
 	}
 }
 
-func TestRunUnknownCommandJSONStderrIsPureEnvelope(t *testing.T) {
+func TestRunNoCommandJSONStderrIsPureEnvelope(t *testing.T) {
 	t.Parallel()
 
 	// The whole stderr stream must be a single parseable JSON document — no
 	// plain-text usage block prepended (the double-output bug from the
-	// pre-1.0 sweep).
+	// pre-1.0 sweep). Covers both a MISSING command and an UNKNOWN command in
+	// machine (non-TTY) context; each must be a pure usage envelope (exit 2).
 	for _, args := range [][]string{
-		{"--format", "json", "frobnicate"},
+		{"--format", "json"},               // no command (machine context → missing-command)
+		{"--format", "json", "frobnicate"}, // unknown command
 	} {
 		args := args
 		var stdout, stderr bytes.Buffer

@@ -433,23 +433,27 @@ func TestAcceptedTokensDiscoverable(t *testing.T) {
 
 	doc := cli.IntrospectTree(a)
 
-	// Collect candidate tokens: top-level command paths from doc.Commands
-	// (product group nodes are intentionally suppressed) plus the two hidden
-	// completion protocol tokens.
-	var tokens []string
-	for _, cmd := range doc.Commands {
-		parts := strings.Split(cmd.Path, " ")
-		if len(parts) == 1 {
-			tokens = append(tokens, parts[0])
-		}
+	// Candidate tokens come from an INDEPENDENT source — the stable set of
+	// top-level command verbs plus the two hidden completion-protocol tokens —
+	// NOT from doc.Commands. Seeding from introspect's own output would make the
+	// discoverability check circular (it could only test commands introspect
+	// already emits). New top-level commands are caught by the golden drift gates
+	// (TestCommandTreeInventory, the introspect golden); this test guards that
+	// every known accepted token IS discoverable in introspect.
+	tokens := []string{
+		"version", "doctor", "dump", "diff", "config", "schema", "auth",
+		"completion", "introspect", "help",
+		"__complete", "__completeNoDesc",
 	}
-	tokens = append(tokens, "__complete", "__completeNoDesc")
 
 	for _, token := range tokens {
 		token := token
 		t.Run(token, func(t *testing.T) {
 			t.Parallel()
 
+			// Each subtest uses its OWN App: App.Run is not safe for concurrent
+			// use, so sharing one across t.Parallel() subtests data-races.
+			a := cli.New(io.Discard, io.Discard, nil)
 			// Oracle 1: App.Run actually accepts the token (not a UsageError).
 			err := a.Run(ctx, []string{token, "--help"})
 			if err != nil {

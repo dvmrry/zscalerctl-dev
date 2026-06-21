@@ -295,8 +295,8 @@ func TestGoldenSurface(t *testing.T) {
 		{
 			name:     "no-args",
 			args:     []string{},
-			wantCode: 0,
-			note:     "cobra-root-help",
+			wantCode: 2,
+			note:     "machine context (non-TTY): missing-command usage error; interactive TTY gets Cobra root help",
 		},
 		// ── version ──────────────────────────────────────────────────────────────
 		{

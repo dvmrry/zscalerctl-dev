@@ -307,8 +307,25 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.execCobra(ctx, opts, rest)
 	}
 	if len(rest) == 0 {
-		// Bare invocation: let Cobra render the root help.
-		return a.execCobra(ctx, opts, []string{"--help"})
+		// Scoped flags require a command even when none is given; raise the usage
+		// error (exit 2) BEFORE the bare-help fallback, so "--filter x" /
+		// "--search x" / "--fields x" with no command is rejected rather than
+		// silently turned into a help display.
+		if name := opts.narrowingFlag(); name != "" {
+			return UsageError{Message: fmt.Sprintf("%s applies to list operations only; use it with \"<product> <resource> list\"", name)}
+		}
+		if len(opts.fields) > 0 {
+			return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
+		}
+		// Bare invocation: an interactive terminal gets Cobra's root help; a
+		// machine/piped context treats a missing command as an error rendered
+		// through the configured format (e.g. a JSON envelope), per the
+		// machine-first contract.
+		if a.stdoutTTY {
+			return a.execCobra(ctx, opts, []string{"--help"})
+		}
+		a.writeUsageForHumans(opts)
+		return UsageError{Message: "missing command"}
 	}
 	// --filter/--search narrow list results only. Reject every other invocation
 	// up front — get/show/dump and non-resource commands alike — so the usage
