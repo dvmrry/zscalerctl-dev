@@ -534,6 +534,16 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "format-allowlist",
 		},
+		// ── --help with an unknown command ────────────────────────────────────────
+		// --help precedes dispatch so an unrecognised positional token still gets
+		// the global usage block (exit 0). Frozen here so any future hybrid-collapse
+		// change that alters this output is visible as a golden diff.
+		{
+			name:     "help-unknown-cmd",
+			args:     []string{"--help", "boguscommand"},
+			wantCode: 0,
+			note:     "help-precedes-dispatch-for-unknown-cmd",
+		},
 	}
 
 	for _, tc := range cases {
