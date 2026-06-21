@@ -1113,21 +1113,6 @@ func TestSchemaListJSONIncludesGetKeyForGetResources(t *testing.T) {
 	}
 }
 
-// noopReader is a ResourceReader stub whose methods return empty results and
-// nil errors. It is injected into an App with an empty catalog to prove the
-// schema-list empty-catalog branch never reaches the reader.
-type noopReader struct{}
-
-func (noopReader) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
-	return nil, nil
-}
-func (noopReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
-	return resources.SourceRecord{}, nil
-}
-func (noopReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
-	return resources.SourceRecord{}, nil
-}
-
 // TestSchemaListEmptyCatalog covers the empty-catalog branch of runSchema, a
 // known coverage gap: an explicit empty (non-nil) ResourceCatalog is injected
 // via NewWithOptions so resourceCatalog() returns zero entries.
@@ -1144,7 +1129,7 @@ func TestSchemaListEmptyCatalog(t *testing.T) {
 		var out, errOut bytes.Buffer
 		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
 			Catalog: resources.ResourceCatalog{},
-			Reader:  noopReader{},
+			Reader:  failingResourceReader{},
 		})
 		if err := app.Run(context.Background(), []string{"--format", "table", "schema", "list"}); err != nil {
 			t.Fatalf("App.Run(schema list table) empty-catalog error = %v, want nil", err)
@@ -1162,7 +1147,7 @@ func TestSchemaListEmptyCatalog(t *testing.T) {
 		var out, errOut bytes.Buffer
 		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
 			Catalog: resources.ResourceCatalog{},
-			Reader:  noopReader{},
+			Reader:  failingResourceReader{},
 		})
 		if err := app.Run(context.Background(), []string{"--format", "json", "schema", "list"}); err != nil {
 			t.Fatalf("App.Run(schema list json) empty-catalog error = %v, want nil", err)

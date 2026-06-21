@@ -602,31 +602,6 @@ func RequestedFormatRaw(args []string) output.Format {
 	return output.FormatAuto
 }
 
-func RequestedFormat(args []string) output.Format {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			return output.FormatTable
-		}
-		name, hasValue := flagName(arg)
-		if name != "format" {
-			continue
-		}
-		value := ""
-		if hasValue {
-			_, after, _ := strings.Cut(arg, "=")
-			value = after
-		} else if i+1 < len(args) {
-			value = args[i+1]
-		}
-		if output.Format(strings.ToLower(strings.TrimSpace(value))) == output.FormatJSON {
-			return output.FormatJSON
-		}
-		return output.FormatTable
-	}
-	return output.FormatTable
-}
-
 func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
 	var global []string
 	var rest []string

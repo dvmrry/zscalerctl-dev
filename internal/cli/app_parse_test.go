@@ -34,28 +34,6 @@ func TestFlagNameAcceptsSingleAndDoubleDash(t *testing.T) {
 	}
 }
 
-func TestRequestedFormatHandlesDashStylesAndBoundary(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want output.Format
-	}{
-		{"double dash space", []string{"zia", "locations", "list", "--format", "json"}, output.FormatJSON},
-		{"single dash space", []string{"zia", "locations", "list", "-format", "json"}, output.FormatJSON},
-		{"double dash equals", []string{"--format=json", "schema", "list"}, output.FormatJSON},
-		{"single dash equals", []string{"-format=json", "schema", "list"}, output.FormatJSON},
-		{"explicit table", []string{"--format", "table", "schema", "list"}, output.FormatTable},
-		{"no format flag", []string{"schema", "list"}, output.FormatTable},
-		{"terminator stops scan", []string{"--", "--format", "json"}, output.FormatTable},
-		{"format after positionals", []string{"schema", "list", "-format", "json"}, output.FormatJSON},
-	}
-	for _, tc := range cases {
-		if got := RequestedFormat(tc.args); got != tc.want {
-			t.Errorf("%s: RequestedFormat(%v) = %q, want %q", tc.name, tc.args, got, tc.want)
-		}
-	}
-}
-
 func TestRequestedFormatRawPreservesAutoAndPretty(t *testing.T) {
 	cases := []struct {
 		name string
