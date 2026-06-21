@@ -2,7 +2,14 @@ Usage:
   zscalerctl [flags]
   zscalerctl [command]
 
-Available Commands:
+Resources:
+  zcc         read zcc resources
+  zia         read zia resources
+  zidentity   read zidentity resources
+  zpa         read zpa resources
+  ztw         read ztw resources
+
+Utilities:
   auth        inspect authentication configuration
   completion  Generate the autocompletion script for the specified shell
   config      manage zscalerctl configuration
@@ -13,11 +20,6 @@ Available Commands:
   introspect  print a machine-readable map of all commands, flags, and resources (JSON)
   schema      inspect the resource catalog schema
   version     print version, commit, build date, and runtime info
-  zcc         read zcc resources
-  zia         read zia resources
-  zidentity   read zidentity resources
-  zpa         read zpa resources
-  ztw         read ztw resources
 
 Flags:
       --color string         color output: auto, always, never (default "auto")

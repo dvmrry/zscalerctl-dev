@@ -134,7 +134,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [
@@ -377,7 +377,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [
@@ -465,7 +465,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [
@@ -572,7 +572,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [
@@ -624,7 +624,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [
@@ -650,7 +650,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "none"
+        "policy": "exact"
       },
       "flags": [],
       "inherited_flags": [

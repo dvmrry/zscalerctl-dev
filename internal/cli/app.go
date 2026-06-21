@@ -725,15 +725,36 @@ func isMigrated(cmd string) bool {
 // between the live dispatch path and the generator / introspection path.
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
-		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
+
+	root.AddGroup(
+		&cobra.Group{ID: "resources", Title: "Resources:"},
+		&cobra.Group{ID: "utilities", Title: "Utilities:"},
+	)
+
 	for _, p := range knownProducts() {
-		root.AddCommand(a.newProductCmd(p, opts))
+		cmd := a.newProductCmd(p, opts)
+		cmd.GroupID = "resources"
+		root.AddCommand(cmd)
 	}
+
+	for _, cmd := range []*cobra.Command{
+		a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
+	} {
+		cmd.GroupID = "utilities"
+		root.AddCommand(cmd)
+	}
+
 	root.InitDefaultHelpCmd()
+	root.SetHelpCommandGroupID("utilities")
+	root.SetCompletionCommandGroupID("utilities")
+
 	for _, c := range root.Commands() {
 		if c.Name() == "help" {
-			c.Annotations = map[string]string{"introspect/args-policy": "arbitrary"}
+			if c.Annotations == nil {
+				c.Annotations = map[string]string{}
+			}
+			c.Annotations["introspect/args-policy"] = "arbitrary"
 			break
 		}
 	}
