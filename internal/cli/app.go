@@ -1978,7 +1978,9 @@ func (a *App) writeProjectedRecords(
 	if err != nil {
 		return err
 	}
-	warnUnknownFilterKeys(a.err, spec, opts.filters)
+	ew := redact.NewWriter(a.err, redact.ModeStandard)
+	warnUnknownFilterKeys(ew, spec, opts.filters)
+	ew.Close() //nolint:errcheck // warning-only path; a write error here does not affect data output
 	// Narrow rows before --fields narrows columns, so a filter may reference
 	// any projected field even when it is not selected for display. An empty
 	// match is success: every format renders its empty form and exits 0.

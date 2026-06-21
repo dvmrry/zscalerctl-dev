@@ -1354,6 +1354,71 @@ func TestResourceListWarnsUnknownFilterKeyButKeepsStdoutClean(t *testing.T) {
 	}
 }
 
+// TestResourceListUnknownFilterKeyWarningIsRedacted verifies the no-leak
+// guarantee for the --filter warning path: if a user passes a secret-shaped
+// string as the key position of --filter, the warning emitted to stderr must
+// be routed through the redactor before reaching the caller.
+//
+// The key used is a credential URL ("https://user:secret@host.example.com/path"),
+// which triggers the credential_url rule in the base redaction rule set.  The
+// filter expression "https://user:secret@host.example.com/path=something" is
+// parsed so that the URL is the key (everything before the first '='), and
+// "something" is the value; the key is unknown to the catalog so the warning
+// path fires.
+//
+// Assertions:
+//  1. The raw credential fragment ("secret") is absent from stderr.
+//  2. The redaction placeholder (<REDACTED:SECRET>) is present in stderr.
+//  3. The warning line is still present (just with the secret replaced).
+func TestResourceListUnknownFilterKeyWarningIsRedacted(t *testing.T) {
+	t.Parallel()
+
+	// A credential URL in the key position. The credential_url rule in
+	// redact.ModeStandard redacts "user:secret@" → "<REDACTED:SECRET>@".
+	// Note: gitleaks allowlist (.gitleaks.toml) treats this as a fake test
+	// fixture — it matches no real credential format.
+	const credKey = "https://user:FAKE-TEST-CRED-DO-NOT-USE@host.example.invalid/path"
+	const filterArg = credKey + "=something"
+
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{
+			resources.NewSourceRecord(map[string]any{"id": "1", "name": "HQ"}),
+		},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Reader:  reader,
+		Catalog: filterWarningCatalog(),
+	})
+
+	err := app.Run(context.Background(), []string{
+		"--format", "json",
+		"zia", "locations", "list",
+		"--filter", filterArg,
+	})
+	if err != nil {
+		t.Fatalf("App.Run(list --filter cred-url key) error = %v, want nil", err)
+	}
+
+	got := errOut.String()
+
+	// (a) The raw credential must not appear in stderr.
+	const rawCred = "FAKE-TEST-CRED-DO-NOT-USE"
+	if strings.Contains(got, rawCred) {
+		t.Errorf("raw credential %q leaked to stderr via --filter key warning; stderr:\n%s", rawCred, got)
+	}
+
+	// (b) The redaction placeholder must be present — the writer ran and flushed.
+	if !strings.Contains(got, "<REDACTED:SECRET>") {
+		t.Errorf("stderr does not contain <REDACTED:SECRET>; redactor may not have run or writer was not closed:\n%s", got)
+	}
+
+	// (c) The warning line is still present (with the redacted key).
+	if !strings.Contains(got, "warning: --filter key") {
+		t.Errorf("warning line absent from stderr; expected redacted warning:\n%s", got)
+	}
+}
+
 func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
 	t.Parallel()
 
