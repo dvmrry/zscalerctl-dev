@@ -6,7 +6,7 @@ package cli_test
 //  1. diff <old> <new> with fixture dumps renders a report; exit 0 (no --fail-on-drift).
 //  2. --fail-on-drift with drifted fixtures → DriftDetectedError (errors.Is ErrDriftDetected, exit 7).
 //  3. --detail includes record-level detail strings in table output.
-//  4. 1 positional → UsageError{diffUsage()}; 3 positionals → UsageError.
+//  4. 1 positional → UsageError (cobra arity message); 3 positionals → UsageError.
 //  5. --format ndjson diff a b → exit-2 (rejectUnsupportedFormat).
 //  6. Invalid dump dir → UsageError (ErrInvalidDump mapping preserved).
 //  7. --allow-partial changes partial-dump rejection behaviour.
@@ -200,7 +200,8 @@ func TestCobraDiff_Detail(t *testing.T) {
 }
 
 // TestCobraDiff_OnePositional confirms that exactly 1 positional arg returns a
-// UsageError containing the diffUsage string.
+// UsageError. With setExactArgs(cmd, 2), cobra rejects before RunE fires and
+// the error message comes from cobra.ExactArgs (e.g. "accepts 2 arg(s), received 1").
 func TestCobraDiff_OnePositional(t *testing.T) {
 	t.Parallel()
 
@@ -212,8 +213,8 @@ func TestCobraDiff_OnePositional(t *testing.T) {
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("App.Run(diff onlyonedir) error = %v, want ErrUsage (exit 2)", err)
 	}
-	if !strings.Contains(err.Error(), "usage: zscalerctl diff") {
-		t.Errorf("App.Run(diff onlyonedir) error = %q, want diffUsage message", err.Error())
+	if !strings.Contains(err.Error(), "accepts 2 arg(s)") {
+		t.Errorf("App.Run(diff onlyonedir) error = %q, want cobra arity message", err.Error())
 	}
 }
 

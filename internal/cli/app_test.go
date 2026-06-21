@@ -544,7 +544,7 @@ func TestUsageListsKnownProducts(t *testing.T) {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
 	for _, want := range []string{
-		"Available Commands",
+		"Resources:",
 		"zia",
 		"zpa",
 		"ztw",
@@ -1196,7 +1196,7 @@ func TestHelpDoesNotReadCredentialFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(help) error = %v, want nil", err)
 	}
-	for _, want := range []string{"Available Commands", "completion"} {
+	for _, want := range []string{"Utilities:", "completion"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("App.Run(help) stdout = %q, want %q", out.String(), want)
 		}

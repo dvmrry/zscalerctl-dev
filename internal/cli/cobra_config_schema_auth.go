@@ -131,14 +131,10 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 		Use:   "show",
 		Short: "show the active configuration (redacted)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runConfig(cmd.Context(), cfg, opts, args)
 		},
 	}
@@ -173,14 +169,10 @@ func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
 		Use:   "list",
 		Short: "list all catalog resources and their supported operations",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runSchema(cmd.Context(), cfg, opts, args)
 		},
 	}
@@ -215,14 +207,10 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 		Use:   "status",
 		Short: "show authentication status for the active profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runAuth(cmd.Context(), cfg, opts, args)
 		},
 	}

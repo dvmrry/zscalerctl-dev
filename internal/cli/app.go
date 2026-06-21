@@ -701,6 +701,22 @@ func applyOptions(cfg *config.Config, opts globalOptions) {
 	}
 }
 
+// loadCfg loads the config for the given opts and applies flag overrides.
+// It is the standard preamble for all config-lazy RunE closures; config-free
+// commands (version, introspect, diff, completion, config-init) call
+// config.LoadConfig directly or skip it entirely.
+func (a *App) loadCfg(opts globalOptions) (config.Config, error) {
+	cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+		Profile:    opts.profile,
+		ConfigPath: opts.configPath,
+	})
+	if err != nil {
+		return config.Config{}, err
+	}
+	applyOptions(&cfg, opts)
+	return cfg, nil
+}
+
 // rejectUnsupportedFormat returns an error when command does not support the
 // given format. JSON is handled separately (fast-path) before this guard, so
 // only non-table/non-pretty formats reach here.
@@ -865,14 +881,10 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 		Use:   string(product),
 		Short: "read " + string(product) + " resources",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runProduct(cmd.Context(), cfg, opts, string(product), args)
 		},
 		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -960,14 +972,10 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 		Use:   "doctor",
 		Short: "check configuration, credentials, and connectivity",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runDoctor(cmd.Context(), cfg, opts, args)
 		},
 	}
@@ -1007,14 +1015,10 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 					return cmd.Help()
 				}
 			}
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			return a.runURLLookup(cmd.Context(), cfg, opts, args)
 		},
 	}
@@ -1328,14 +1332,10 @@ func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
 			if cmd.Flags().NArg() != 0 {
 				return UsageError{Message: dumpUsage()}
 			}
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
+			cfg, err := a.loadCfg(opts)
 			if err != nil {
 				return err
 			}
-			applyOptions(&cfg, opts)
 			outDir, _ := cmd.Flags().GetString("out")
 			productsFlag, _ := cmd.Flags().GetString("products")
 			resourcesFlag, _ := cmd.Flags().GetString("resources")
@@ -2334,13 +2334,6 @@ func dumpUsage() string {
 	return fmt.Sprintf(
 		"usage: zscalerctl dump --out <dir> [--products %s] [--resources names] [--continue-on-error] [--force]\n"+
 			"tip: add --log-level info to see start, per-resource, and completion progress on stderr during a long dump",
-		strings.Join(productNames(knownProducts()), ","),
-	)
-}
-
-func diffUsage() string {
-	return fmt.Sprintf(
-		"usage: zscalerctl diff <old-dump-dir> <new-dump-dir> [--products %s] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]",
 		strings.Join(productNames(knownProducts()), ","),
 	)
 }
