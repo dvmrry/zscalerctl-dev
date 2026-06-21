@@ -348,9 +348,8 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if rest[0] == "completion" && opts.format == output.FormatNDJSON {
 		return rejectUnsupportedFormat("completion", opts.format)
 	}
-	// Hybrid dispatch: migrated commands go through Cobra; legacy commands continue
-	// through the switch below. Non-help invocations of migrated commands reach here
-	// after the narrowing/format gates above.
+	// All commands are Cobra-dispatched. isMigrated gates known commands; an
+	// unrecognised token falls through to the unknown-command usage error below.
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
 	}
@@ -359,13 +358,14 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 }
 
 // writeUsageForHumans writes the usage block to stderr only when the
-// command-boundary error will be rendered as plain text. With an explicit
-// --format json — or the auto default off a terminal — main emits a JSON
-// envelope on the same stderr, and a prepended text block would make the
-// stream unparseable for the automation consumers the envelope exists for.
+// command-boundary error will be rendered as plain text. With --format json or
+// ndjson, main emits a JSON envelope on the same stderr; a prepended text block
+// would make the stream unparseable for automation consumers.
+// resolveFormat (called in Run before runParsed) converts FormatAuto to a
+// concrete format, so opts.format is never FormatAuto here.
 // Mirrors main's errorFormat decision.
 func (a *App) writeUsageForHumans(opts globalOptions) {
-	if opts.format == output.FormatJSON || opts.format == output.FormatNDJSON || (opts.format == output.FormatAuto && !a.stdoutTTY) {
+	if opts.format == output.FormatJSON || opts.format == output.FormatNDJSON {
 		return
 	}
 	a.writeUsage(a.err)
@@ -699,9 +699,9 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 	return UsageError{Message: fmt.Sprintf("%s does not support %s output yet", command, format)}
 }
 
-// isMigrated reports whether cmd has been migrated to Cobra dispatch. Only
-// commands in this list are routed through execCobra; all others continue
-// through the legacy switch in runParsed. Grows one command per phase.
+// isMigrated reports whether cmd is in the Cobra dispatch allowlist. Every
+// top-level command is now migrated; this function is the single gate that
+// routes to execCobra and must be updated whenever a new command is added.
 func isMigrated(cmd string) bool {
 	switch cmd {
 	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect", "help":
@@ -1044,11 +1044,7 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 }
 
 func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	// args contains only the post-verb positional args; Cobra routing already
-	// ensured the "status" verb was present. Reject any unexpected extra args.
-	if len(args) != 0 {
-		return UsageError{Message: "usage: zscalerctl auth status"}
-	}
+	// Cobra enforces zero positional args via setExactArgs(cmd, 0) before RunE.
 	status := newAuthStatus(cfg)
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
@@ -1061,11 +1057,7 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 }
 
 func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	// args contains only the post-verb positional args; Cobra routing already
-	// ensured the "show" verb was present. Reject any unexpected extra args.
-	if len(args) != 0 {
-		return UsageError{Message: "usage: zscalerctl config show"}
-	}
+	// Cobra enforces zero positional args via setExactArgs(cmd, 0) before RunE.
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, cfg.Safe())
 	}
@@ -1095,11 +1087,7 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 }
 
 func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	// args contains only the post-verb positional args; Cobra routing already
-	// ensured the "list" verb was present. Reject any unexpected extra args.
-	if len(args) != 0 {
-		return UsageError{Message: "usage: zscalerctl schema list"}
-	}
+	// Cobra enforces zero positional args via setExactArgs(cmd, 0) before RunE.
 	catalog := a.resourceCatalog()
 	if err := resources.AssertReadOnly(catalog...); err != nil {
 		return err
@@ -1215,8 +1203,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 }
 
 // dumpOptions holds the parsed local flags for the dump command.
-// The struct is populated either by the legacy flag.FlagSet (removed) or by
-// the Cobra RunE path reading cmd.Flags().
+// The struct is populated by the Cobra RunE path reading cmd.Flags().
 type dumpOptions struct {
 	out             string
 	products        string
@@ -2046,10 +2033,9 @@ func safeJSONRecords(records resources.ProjectedRecords) []output.SafeJSON {
 	return out
 }
 
-// writeHelp prints the global usage. It is only reachable when rest is empty
-// (all migrated commands, including products, are intercepted by the
-// isMigrated guard in runParsed before writeHelp is called). The per-command
-// and per-product cases that previously lived here were dead code.
+// writeHelp prints the global usage. It is called when --help is passed with
+// an unrecognized command (i.e. !isMigrated(rest[0])). rest is available for
+// future per-command help hints but the current body emits the global usage.
 func (a *App) writeHelp(w io.Writer, rest []string) {
 	a.writeUsage(w)
 }
@@ -2337,15 +2323,6 @@ func knownProductCommand(name string) bool {
 	return false
 }
 
-func isRunnableCommand(name string) bool {
-	switch name {
-	case "doctor", "auth", "config", "schema", "dump", "diff":
-		return true
-	default:
-		return knownProductCommand(name)
-	}
-}
-
 // isKnownCommand reports whether name is one of the top-level commands the
 // dispatch switch in runParsed recognizes. The --fields guard uses it so that
 // an unrecognized token — for example a product name a value-taking flag
@@ -2353,10 +2330,11 @@ func isRunnableCommand(name string) bool {
 // instead of the generic --fields usage error.
 func isKnownCommand(name string) bool {
 	switch name {
-	case "help", "version", "completion", "introspect":
+	case "help", "version", "completion", "introspect",
+		"doctor", "auth", "config", "schema", "dump", "diff":
 		return true
 	}
-	return isRunnableCommand(name)
+	return knownProductCommand(name)
 }
 
 func productNames(products []resources.Product) []string {

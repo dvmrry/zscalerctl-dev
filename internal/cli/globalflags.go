@@ -210,11 +210,7 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 				p.noColor = ptr
 			}
 		case "duration":
-			dur, err := time.ParseDuration(d.defaultVal)
-			if err != nil {
-				panic("globalFlagDef: bad duration default for " + d.name + ": " + err.Error())
-			}
-			ptr := fs.Duration(d.name, dur, d.usage)
+			ptr := fs.Duration(d.name, parseDurationDefault(d), d.usage)
 			if d.name == "timeout" {
 				p.timeout = ptr
 			}
@@ -279,15 +275,22 @@ func registerGlobalPersistentFlags(fs *pflag.FlagSet) {
 		case "bool":
 			fs.Bool(d.name, d.defaultVal == "true", d.usage)
 		case "duration":
-			dur, err := time.ParseDuration(d.defaultVal)
-			if err != nil {
-				panic("globalFlagDef: bad duration default for " + d.name + ": " + err.Error())
-			}
-			fs.Duration(d.name, dur, d.usage)
+			fs.Duration(d.name, parseDurationDefault(d), d.usage)
 		case "stringArray":
 			fs.StringArray(d.name, nil, d.usage)
 		default:
 			panic("globalFlagDef: unknown kind " + d.kind + " for flag --" + d.name)
 		}
 	}
+}
+
+// parseDurationDefault parses the duration default value for d and panics with
+// a descriptive message if the value is malformed. Shared by defineGlobalFlags
+// and registerGlobalPersistentFlags so both sites stay in sync.
+func parseDurationDefault(d globalFlagDef) time.Duration {
+	dur, err := time.ParseDuration(d.defaultVal)
+	if err != nil {
+		panic("globalFlagDef: bad duration default for " + d.name + ": " + err.Error())
+	}
+	return dur
 }

@@ -1,14 +1,13 @@
 package cli
 
 // root.go — Cobra root command, redacting execute helper, and error-mapping
-// utilities for the phased Cobra migration.
+// utilities for the Cobra migration.
 //
 // # Architecture note
 //
-// This file does NOT wire the root command into App.Run. That is Task 1.4.
-// Today, App.Run still delegates entirely to the legacy flag-based dispatch.
-// newRootCmd + executeRoot exist so the root can be constructed and tested in
-// isolation before the App.Run plumbing lands.
+// execCobra in app.go is the wire point that routes dispatch to Cobra.
+// newRootCmd builds the full command tree; executeRoot / executeRootCompletion
+// wrap both writers through the redactor and drive ExecuteContext.
 //
 // # No-leak contract
 //
@@ -118,8 +117,8 @@ func newRootCmd(a *App) *cobra.Command {
 //
 //	When Cobra cannot find a subcommand, ExecuteContext returns a plain string
 //	error ("unknown command X for Y"). That error is NOT a UsageError here —
-//	wrapping it into UsageError (exit 2) must happen at the App.Run call site
-//	(Task 1.4) by inspecting the returned error string after executeRoot returns.
+//	wrapping it into UsageError (exit 2) happens in execCobra (app.go) by
+//	inspecting the returned error string after executeRoot returns.
 func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []string) (err error) {
 	outW := redact.NewWriter(a.out, redact.ModeStandard)
 	errW := redact.NewWriter(a.err, redact.ModeStandard)
