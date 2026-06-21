@@ -579,7 +579,7 @@ func TestGoldenSurface(t *testing.T) {
 //  1. Global flag parsing (parseGlobal / splitGlobalArgs): bad/missing values for
 //     the 13 global flags → UsageError → exitCodeForError → exit 2.
 //  2. Migrated commands (version, doctor) via Cobra: unknown flags (SetFlagErrorFunc),
-//     ndjson format (rejectUnsupportedFormat), extra args (requireNoArgs) → exit 2.
+//     ndjson format (rejectUnsupportedFormat), extra args (setExactArgs/cobra.Args) → exit 2.
 //
 // Cases already covered in TestGoldenSurface are noted with "also-golden" so a
 // reader can see the overlap. They are repeated here because the two tests have
@@ -699,18 +699,18 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			alsoGolden: false,
 		},
 
-		// ── Extra args on no-arg commands (requireNoArgs) ─────────────────────────
-		// Source: requireNoArgs checks len(args) != 0 → UsageError → exit 2.
+		// ── Extra args on no-arg commands (setExactArgs/cobra.Args) ──────────────
+		// Source: setExactArgs wires exactArgs(0) → cobra validates before RunE → UsageError → exit 2.
 		{
 			name:       "version-extra-arg",
 			args:       []string{"version", "extra"},
-			source:     "requireNoArgs-version",
+			source:     "setExactArgs-cobra.Args-version",
 			alsoGolden: false,
 		},
 		{
 			name:       "doctor-extra-arg",
 			args:       []string{"doctor", "extra"},
-			source:     "requireNoArgs-doctor",
+			source:     "setExactArgs-cobra.Args-doctor",
 			alsoGolden: false,
 		},
 

@@ -19,6 +19,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/spf13/cobra"
@@ -205,4 +206,15 @@ func rangeArgs(min, max int) cobra.PositionalArgs {
 		}
 		return UsageError{Message: cobra.RangeArgs(min, max)(cmd, args).Error()}
 	}
+}
+
+// setExactArgs wires exactArgs(n) as cmd.Args validator and sets the
+// "introspect/args-policy" annotation to "exact:N" in one call so they
+// cannot drift apart.
+func setExactArgs(cmd *cobra.Command, n int) {
+	cmd.Args = exactArgs(n)
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["introspect/args-policy"] = fmt.Sprintf("exact:%d", n)
 }

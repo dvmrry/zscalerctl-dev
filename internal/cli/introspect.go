@@ -518,20 +518,21 @@ func walkCobraSubtree(cmd *cobra.Command, parentPath string, fn func(*cobra.Comm
 // FormatAuto resolves to JSON here (machine-first by default). Only explicit
 // --format table/--format pretty produces the human tree renderer.
 // --format ndjson is rejected: introspect is a single document, not a stream.
+// setExactArgs(cmd, 0) enforces zero positionals at the Cobra layer and keeps
+// the introspect/args-policy annotation in sync.
 func (a *App) newIntrospectCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "introspect",
 		Short: "print a machine-readable map of all commands, flags, and resources (JSON)",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return a.runIntrospect(opts, args)
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return a.runIntrospect(opts)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
 
-func (a *App) runIntrospect(opts globalOptions, args []string) error {
-	if err := requireNoArgs("introspect", args); err != nil {
-		return err
-	}
+func (a *App) runIntrospect(opts globalOptions) error {
 	doc := IntrospectTree(a)
 	doc.CLIVersion = version.Current().Version
 	// JSON is the happy-path (machine-first default); auto resolves to JSON for

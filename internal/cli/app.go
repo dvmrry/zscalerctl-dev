@@ -914,26 +914,28 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 
 // newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
 // runVersion so all format/arity/redaction behaviour is identical to the legacy
-// path. No restrictive Args validator is set here — runVersion's requireNoArgs
-// produces the same UsageError message as before, preserving the surface.
+// path. setExactArgs(cmd, 0) enforces zero positionals at the Cobra layer and
+// keeps the introspect/args-policy annotation in sync.
 func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "print version, commit, build date, and runtime info",
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.runVersion(opts, args)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
 
 // newDoctorCmd returns the Cobra "doctor" subcommand. Doctor requires a loaded
 // config, so RunE loads it lazily — replicating the legacy path's LoadConfig +
 // applyOptions calls that normally run in the second-switch shared header.
 //
-// No restrictive Args validator is set here — runDoctor's requireNoArgs produces
-// the same UsageError message as before, preserving the surface.
+// setExactArgs(cmd, 0) enforces zero positionals at the Cobra layer and keeps
+// the introspect/args-policy annotation in sync.
 func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "check configuration, credentials, and connectivity",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -948,6 +950,8 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 			return a.runDoctor(cmd.Context(), cfg, opts, args)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
 
 // newURLLookupCmd returns the "url-lookup" subcommand of the "zia" product
@@ -996,9 +1000,6 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 }
 
 func (a *App) runVersion(opts globalOptions, args []string) error {
-	if err := requireNoArgs("version", args); err != nil {
-		return err
-	}
 	info := version.Current()
 	if opts.format == output.FormatJSON {
 		return output.NewRenderer(redact.New(redact.ModeStandard)).WriteJSON(a.out, info)
@@ -1017,9 +1018,6 @@ func (a *App) runVersion(opts globalOptions, args []string) error {
 }
 
 func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
-	if err := requireNoArgs("doctor", args); err != nil {
-		return err
-	}
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
@@ -1409,30 +1407,19 @@ func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newD
 // read inside RunE after parsing.
 //
 // --format ndjson is rejected before any Compare work (fast-path, mirrors the
-// legacy path). The two positional dirs are read from cmd.Flags().Args() and
-// exactly 2 are required (len != 2 → UsageError{diffUsage()}).
-//
-// MarkFlagRequired is NOT used — the legacy UsageError must be returned.
-// cobra.ExactArgs is NOT used — plain error → wrong exit code.
+// legacy path). setExactArgs(cmd, 2) enforces exactly 2 positional args at the
+// Cobra layer and keeps the introspect/args-policy annotation in sync; RunE
+// can safely use args[0] and args[1] directly (cobra has already validated).
 func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <old-dump-dir> <new-dump-dir>",
 		Short: "compare two dump directories and report configuration drift",
-		Annotations: map[string]string{
-			// Exactly 2 positionals required; Use suffix alone is not enough for
-			// buildArgsDoc to infer this — the annotation makes it explicit.
-			"introspect/args-policy": "exact:2",
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject --format ndjson first (mirrors legacy path, before any work).
 			if opts.format == output.FormatNDJSON {
 				return rejectUnsupportedFormat("diff", opts.format)
 			}
-			// Cobra passes non-flag args here; require exactly 2 dir positionals.
-			positionals := cmd.Flags().Args()
-			if len(positionals) != 2 {
-				return UsageError{Message: diffUsage()}
-			}
+			// Cobra has already enforced exactly 2 positionals via setExactArgs.
 			products, _ := cmd.Flags().GetString("products")
 			resources, _ := cmd.Flags().GetString("resources")
 			ignoreOperational, _ := cmd.Flags().GetBool("ignore-operational")
@@ -1446,9 +1433,10 @@ func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 				detail:            detail,
 				allowPartial:      allowPartial,
 				failOnDrift:       failOnDrift,
-			}, positionals[0], positionals[1])
+			}, args[0], args[1])
 		},
 	}
+	setExactArgs(cmd, 2)
 	cmd.Flags().String("products", "", "comma-separated products: zia,zpa")
 	cmd.Flags().String("resources", "", "comma-separated resources: locations or zia/locations")
 	cmd.Flags().Bool("ignore-operational", false, "ignore operational metadata on keyed and singleton resources")
@@ -2319,13 +2307,6 @@ func (a *App) style(opts globalOptions) output.Style {
 		style.Width = output.TerminalWidth(a.out)
 	}
 	return style
-}
-
-func requireNoArgs(command string, args []string) error {
-	if len(args) != 0 {
-		return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s", command)}
-	}
-	return nil
 }
 
 func dumpUsage() string {

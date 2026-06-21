@@ -157,8 +157,8 @@ func TestVersionFormatNDJSON_Rejected(t *testing.T) {
 }
 
 // TestVersionExtraArg_UsageError confirms that extra positional args to the
-// migrated version command still return UsageError (exit 2) via requireNoArgs.
-// The error message must match the legacy "usage: zscalerctl version" shape.
+// migrated version command return UsageError (exit 2) via setExactArgs/cobra.Args.
+// The error message comes from cobra.ExactArgs (e.g. "accepts 0 arg(s), received 1").
 func TestVersionExtraArg_UsageError(t *testing.T) {
 	t.Parallel()
 
@@ -170,8 +170,8 @@ func TestVersionExtraArg_UsageError(t *testing.T) {
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("App.Run(version somearg) error = %v, want UsageError (exit 2)", err)
 	}
-	if !strings.Contains(err.Error(), "usage: zscalerctl version") {
-		t.Errorf("App.Run(version somearg) error = %q, want 'usage: zscalerctl version' message", err)
+	if !strings.Contains(err.Error(), "accepts 0 arg(s)") {
+		t.Errorf("App.Run(version somearg) error = %q, want cobra arity message", err)
 	}
 }
 
@@ -295,8 +295,8 @@ func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
 }
 
 // TestDoctorExtraArg_UsageError confirms that extra positional args to the
-// migrated doctor command return UsageError (exit 2) via requireNoArgs.
-// The error message must match the legacy "usage: zscalerctl doctor" shape.
+// migrated doctor command return UsageError (exit 2) via setExactArgs/cobra.Args.
+// The error message comes from cobra.ExactArgs (e.g. "accepts 0 arg(s), received 1").
 func TestDoctorExtraArg_UsageError(t *testing.T) {
 	t.Parallel()
 
@@ -308,8 +308,8 @@ func TestDoctorExtraArg_UsageError(t *testing.T) {
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("App.Run(doctor somearg) error = %v, want UsageError (exit 2)", err)
 	}
-	if !strings.Contains(err.Error(), "usage: zscalerctl doctor") {
-		t.Errorf("App.Run(doctor somearg) error = %q, want 'usage: zscalerctl doctor' message", err)
+	if !strings.Contains(err.Error(), "accepts 0 arg(s)") {
+		t.Errorf("App.Run(doctor somearg) error = %q, want cobra arity message", err)
 	}
 }
 

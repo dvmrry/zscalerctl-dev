@@ -123,11 +123,11 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW i
 
 // newConfigShowCmd returns the "config show" subcommand (config-LAZY).
 //
-// Cobra routing guarantees the "show" verb was matched; we pass args directly
-// (normally empty for "zscalerctl config show") so runConfig receives only the
-// post-verb positional args and can enforce len(args)==0 cleanly.
+// Cobra routing guarantees the "show" verb was matched; setExactArgs(cmd, 0)
+// enforces zero positionals at the Cobra layer and keeps the
+// introspect/args-policy annotation in sync.
 func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "show the active configuration (redacted)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -142,6 +142,8 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 			return a.runConfig(cmd.Context(), cfg, opts, args)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
 
 // newSchemaCmd returns the Cobra "schema" parent command with one subcommand:
@@ -163,10 +165,11 @@ func (a *App) newSchemaCmd(opts globalOptions) *cobra.Command {
 
 // newSchemaListCmd returns the "schema list" subcommand (config-LAZY).
 //
-// Cobra routing guarantees the "list" verb was matched; we pass args directly
-// (normally empty) so runSchema receives only the post-verb positional args.
+// Cobra routing guarantees the "list" verb was matched; setExactArgs(cmd, 0)
+// enforces zero positionals at the Cobra layer and keeps the
+// introspect/args-policy annotation in sync.
 func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "list all catalog resources and their supported operations",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -181,6 +184,8 @@ func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
 			return a.runSchema(cmd.Context(), cfg, opts, args)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
 
 // newAuthCmd returns the Cobra "auth" parent command with one subcommand:
@@ -202,10 +207,11 @@ func (a *App) newAuthCmd(opts globalOptions) *cobra.Command {
 
 // newAuthStatusCmd returns the "auth status" subcommand (config-LAZY).
 //
-// Cobra routing guarantees the "status" verb was matched; we pass args directly
-// (normally empty) so runAuth receives only the post-verb positional args.
+// Cobra routing guarantees the "status" verb was matched; setExactArgs(cmd, 0)
+// enforces zero positionals at the Cobra layer and keeps the
+// introspect/args-policy annotation in sync.
 func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "show authentication status for the active profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -220,4 +226,6 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 			return a.runAuth(cmd.Context(), cfg, opts, args)
 		},
 	}
+	setExactArgs(cmd, 0)
+	return cmd
 }
