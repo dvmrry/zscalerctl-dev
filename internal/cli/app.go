@@ -292,7 +292,12 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// ("--filter name=x version", "--format ndjson version") must still hit the
 	// gates below → exit 2.
 	if opts.help {
-		if len(rest) == 0 || !isMigrated(rest[0]) {
+		if len(rest) == 0 {
+			// Bare --help: let Cobra render the root help.
+			return a.execCobra(ctx, opts, []string{"--help"})
+		}
+		if !isMigrated(rest[0]) {
+			// Un-migrated command: keep the legacy usage hint.
 			a.writeHelp(a.out, rest)
 			return nil
 		}
@@ -302,8 +307,8 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.execCobra(ctx, opts, rest)
 	}
 	if len(rest) == 0 {
-		a.writeUsageForHumans(opts)
-		return UsageError{Message: "missing command"}
+		// Bare invocation: let Cobra render the root help.
+		return a.execCobra(ctx, opts, []string{"--help"})
 	}
 	// --filter/--search narrow list results only. Reject every other invocation
 	// up front — get/show/dump and non-resource commands alike — so the usage
@@ -709,6 +714,12 @@ func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 		root.AddCommand(a.newProductCmd(p, opts))
 	}
 	root.InitDefaultHelpCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "help" {
+			c.Annotations = map[string]string{"introspect/args-policy": "arbitrary"}
+			break
+		}
+	}
 	return root
 }
 

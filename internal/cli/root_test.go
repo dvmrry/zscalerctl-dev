@@ -251,6 +251,27 @@ func TestExecuteRoot_StderrRedaction(t *testing.T) {
 	}
 }
 
+// TestHelpCommandMultiToken asserts that the Cobra `help` command accepts a
+// multi-token path (e.g. `zscalerctl help config init`) and renders the
+// target subcommand's help without loading credentials or config.
+func TestHelpCommandMultiToken(t *testing.T) {
+	a, out, _ := testApp(t)
+
+	ctx := context.Background()
+	err := a.Run(ctx, []string{"help", "config", "init"})
+	if err != nil {
+		t.Fatalf("App.Run(help config init) error = %v, want nil", err)
+	}
+
+	got := out.String()
+	if got == "" {
+		t.Fatal("help config init produced no output")
+	}
+	if !strings.Contains(got, "config init") {
+		t.Errorf("help config init output does not contain %q; got:\n%s", "config init", got)
+	}
+}
+
 // TestExecuteRoot_NoVersionFlag confirms that no --version flag is registered on
 // the root (setting root.Version would add one, which is a surface change; the
 // "version" subcommand is the correct path).

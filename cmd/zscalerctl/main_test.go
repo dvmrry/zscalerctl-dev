@@ -100,8 +100,8 @@ func TestRunHelpFlagReturnsSuccess(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run(--help) exit code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "usage: zscalerctl") {
-		t.Errorf("run(--help) stdout = %q, want usage text", stdout.String())
+	if !strings.Contains(stdout.String(), "Usage:") {
+		t.Errorf("run(--help) stdout = %q, want Cobra help text", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("run(--help) stderr = %q, want empty", stderr.String())
@@ -144,14 +144,13 @@ func TestRunJSONUsageErrorEnvelope(t *testing.T) {
 	}
 }
 
-func TestRunNoCommandJSONStderrIsPureEnvelope(t *testing.T) {
+func TestRunUnknownCommandJSONStderrIsPureEnvelope(t *testing.T) {
 	t.Parallel()
 
 	// The whole stderr stream must be a single parseable JSON document — no
 	// plain-text usage block prepended (the double-output bug from the
 	// pre-1.0 sweep).
 	for _, args := range [][]string{
-		{"--format", "json"},
 		{"--format", "json", "frobnicate"},
 	} {
 		args := args

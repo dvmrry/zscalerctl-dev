@@ -5,7 +5,7 @@
   "description": "Schema for the JSON document emitted by `zscalerctl introspect`. The document describes the full CLI surface: commands, flags, resource catalog, and exit codes. It is static (config-free, no tenant data) and is the primary machine-readable contract for agents and tooling.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "introspect_version", "read_only", "global_flags", "commands", "catalog", "exit_codes"],
+  "required": ["$schema", "introspect_version", "read_only", "global_flags", "commands", "catalog", "exit_codes", "completion_protocol"],
   "properties": {
     "$schema": {
       "type": "string",

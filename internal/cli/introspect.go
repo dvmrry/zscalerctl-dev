@@ -398,9 +398,16 @@ func buildArgsDoc(cmd *cobra.Command) ArgsDoc {
 }
 
 // parseArgsPolicyAnnotation parses an "introspect/args-policy" annotation value
-// of the form "exact:N" or "at_least:N" into an ArgsDoc. Returns (doc, true) on
-// success, (ArgsDoc{}, false) if the annotation is not in a recognised format.
+// into an ArgsDoc. Recognised formats:
+//   - "arbitrary" (any number of arguments)
+//   - "exact:N" or "at_least:N" (positional count policy)
+//
+// Returns (doc, true) on success, (ArgsDoc{}, false) if the annotation is not in
+// a recognised format.
 func parseArgsPolicyAnnotation(ann string) (ArgsDoc, bool) {
+	if ann == "arbitrary" {
+		return ArgsDoc{Policy: "arbitrary"}, true
+	}
 	idx := strings.LastIndex(ann, ":")
 	if idx < 0 {
 		return ArgsDoc{}, false

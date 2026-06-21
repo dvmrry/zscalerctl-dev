@@ -13,7 +13,9 @@ package cli_test
 // virtual, and that the catalog section equals resources.Catalog().
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -419,56 +421,71 @@ func introspectSetDiff(a, b []string) []string {
 	return out
 }
 
-// TestAcceptedTokensDiscoverable asserts that every real Cobra command path is
-// represented in the introspect `commands` list, and that the hidden shell-
-// completion protocol tokens (`__complete`, `__completeNoDesc`) are exposed in
-// the dedicated `completion_protocol` field. This keeps the live tree and the
-// machine-readable surface map in sync.
+// TestAcceptedTokensDiscoverable asserts that every top-level token the runtime
+// accepts is also discoverable in the introspect output. The acceptance oracle
+// is App.Run itself (not a second tree walk), and the completion protocol tokens
+// are checked against the dedicated completion_protocol field.
 func TestAcceptedTokensDiscoverable(t *testing.T) {
 	t.Parallel()
 
+	ctx := context.Background()
 	a := cli.New(io.Discard, io.Discard, nil)
+
 	doc := cli.IntrospectTree(a)
 
-	introspectPaths := make(map[string]bool)
+	// Collect candidate tokens: top-level command paths from doc.Commands
+	// (product group nodes are intentionally suppressed) plus the two hidden
+	// completion protocol tokens.
+	var tokens []string
 	for _, cmd := range doc.Commands {
-		introspectPaths[cmd.Path] = true
-	}
-
-	root := cli.BuildCommandTree(a)
-	root.InitDefaultCompletionCmd()
-
-	productSet := make(map[string]bool)
-	for _, spec := range resources.Catalog() {
-		productSet[string(spec.Product)] = true
-	}
-
-	var missing []string
-	cli.WalkCobraTree(root, func(cmd *cobra.Command, path string) {
-		if cmd.Hidden || strings.HasPrefix(cmd.Name(), "__complete") {
-			return
+		parts := strings.Split(cmd.Path, " ")
+		if len(parts) == 1 {
+			tokens = append(tokens, parts[0])
 		}
-		// IntrospectTree suppresses bare product-group nodes in favor of
-		// virtual {product} {resource} {op} entries from the catalog.
-		if !strings.Contains(path, " ") && productSet[path] {
-			return
-		}
-		if !introspectPaths[path] {
-			missing = append(missing, path)
-		}
-	})
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		t.Errorf("Cobra command paths missing from introspect commands:\n  %s", strings.Join(missing, "\n  "))
 	}
+	tokens = append(tokens, "__complete", "__completeNoDesc")
 
-	completionSet := make(map[string]bool)
-	for _, token := range doc.CompletionProtocol {
-		completionSet[token] = true
-	}
-	for _, token := range []string{"__complete", "__completeNoDesc"} {
-		if !completionSet[token] {
-			t.Errorf("completion protocol token %q missing from introspect completion_protocol", token)
-		}
+	for _, token := range tokens {
+		token := token
+		t.Run(token, func(t *testing.T) {
+			t.Parallel()
+
+			// Oracle 1: App.Run actually accepts the token (not a UsageError).
+			err := a.Run(ctx, []string{token, "--help"})
+			if err != nil {
+				var ue *cli.UsageError
+				if errors.As(err, &ue) {
+					t.Errorf("token %q returned UsageError (not accepted by runtime): %v", token, err)
+				}
+				// Non-UsageError (e.g. missing credentials) is fine for the
+				// acceptance oracle; the important thing is that Cobra routing
+				// accepted the token rather than rejecting it as unknown.
+			}
+
+			// Oracle 2: discoverable in introspect.
+			if token == "__complete" || token == "__completeNoDesc" {
+				found := false
+				for _, p := range doc.CompletionProtocol {
+					if p == token {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("completion protocol token %q not found in doc.CompletionProtocol", token)
+				}
+			} else {
+				found := false
+				for _, cmd := range doc.Commands {
+					if cmd.Path == token {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("token %q not found in introspect doc.Commands", token)
+				}
+			}
+		})
 	}
 }

@@ -295,8 +295,8 @@ func TestGoldenSurface(t *testing.T) {
 		{
 			name:     "no-args",
 			args:     []string{},
-			wantCode: 2,
-			note:     "usage-error",
+			wantCode: 0,
+			note:     "cobra-root-help",
 		},
 		// ── version ──────────────────────────────────────────────────────────────
 		{

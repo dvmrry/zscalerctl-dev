@@ -183,9 +183,26 @@ func TestWriteUsageCoversAllCobraCommands(t *testing.T) {
 	a.writeUsage(&b)
 	usage := b.String()
 
+	containsCommand := func(usage, name string) bool {
+		for _, line := range strings.Split(usage, "\n") {
+			trimmed := strings.TrimLeft(line, " \t")
+			if trimmed == name || strings.HasPrefix(trimmed, name+" ") || strings.HasPrefix(trimmed, name+"\t") {
+				return true
+			}
+		}
+		return false
+	}
+
 	for _, name := range want {
-		if !strings.Contains(usage, name) {
-			t.Errorf("writeUsage output missing command %q; output:\n%s", name, usage)
+		if !containsCommand(usage, name) {
+			t.Errorf("writeUsage output missing top-level command %q as a standalone entry", name)
 		}
 	}
+
+	// Negative check: a fake top-level command must not be spuriously matched.
+	t.Run("fake command not matched", func(t *testing.T) {
+		if containsCommand(usage, "auth-status") {
+			t.Errorf("coverage check spuriously accepted fake command %q", "auth-status")
+		}
+	})
 }

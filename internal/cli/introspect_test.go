@@ -141,6 +141,34 @@ func TestIntrospectTree(t *testing.T) {
 	}
 }
 
+// TestIntrospectHelpArgsPolicyArbitrary asserts that the Cobra `help` command
+// is documented as accepting an arbitrary number of positional arguments (e.g.
+// `zscalerctl help config init`), not the range(N) fallback that the "[command]"
+// Use suffix would otherwise produce.
+func TestIntrospectHelpArgsPolicyArbitrary(t *testing.T) {
+	t.Parallel()
+
+	a := cli.New(io.Discard, io.Discard, nil)
+	doc := cli.IntrospectTree(a)
+
+	var helpCmd *cli.CommandDoc
+	for i := range doc.Commands {
+		if doc.Commands[i].Path == "help" {
+			helpCmd = &doc.Commands[i]
+			break
+		}
+	}
+	if helpCmd == nil {
+		t.Fatal("command \"help\" not found in introspect doc.Commands")
+	}
+	if helpCmd.Args.Policy != "arbitrary" {
+		t.Errorf("help command args policy = %q, want %q", helpCmd.Args.Policy, "arbitrary")
+	}
+	if helpCmd.Args.N != 0 {
+		t.Errorf("help command args N = %d, want 0 (omitted for arbitrary)", helpCmd.Args.N)
+	}
+}
+
 // TestIntrospectCommand runs `introspect` via App.Run and verifies the JSON output.
 func TestIntrospectCommand(t *testing.T) {
 	t.Parallel()

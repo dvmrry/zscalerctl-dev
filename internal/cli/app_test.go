@@ -445,8 +445,8 @@ func TestHelpFlagsReturnUsage(t *testing.T) {
 			if err != nil {
 				t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 			}
-			if !strings.Contains(out.String(), "usage: zscalerctl") {
-				t.Errorf("App.Run(%v) stdout = %q, want usage text", args, out.String())
+			if !strings.Contains(out.String(), "Usage:") {
+				t.Errorf("App.Run(%v) stdout = %q, want Cobra help text", args, out.String())
 			}
 			if errOut.Len() != 0 {
 				t.Errorf("App.Run(%v) stderr = %q, want empty", args, errOut.String())

@@ -546,8 +546,7 @@
       "hidden": false,
       "mutating": false,
       "args": {
-        "policy": "range",
-        "n": 1
+        "policy": "arbitrary"
       },
       "flags": [],
       "inherited_flags": [

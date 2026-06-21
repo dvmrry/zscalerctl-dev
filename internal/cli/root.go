@@ -73,7 +73,7 @@ func newRootCmd(a *App) *cobra.Command {
 		// reaches Cobra. Unknown commands exit 2 via the legacy isKnownCommand path.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return nil
+				return cmd.Help()
 			}
 			return UsageError{Message: unknownCommandMessage(args[0])}
 		},
