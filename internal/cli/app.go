@@ -285,7 +285,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// gates below → exit 2.
 	if opts.help {
 		if len(rest) == 0 || !isMigrated(rest[0]) {
-			a.writeHelp(a.out, rest)
+			a.writeHelp(a.out)
 			return nil
 		}
 		// A --help request on a migrated command is a meta-request: route it to
@@ -323,13 +323,6 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// after the narrowing/format gates above.
 	if isMigrated(rest[0]) {
 		return a.execCobra(ctx, opts, rest)
-	}
-	// "help" without a migrated command: show global usage. Any other unknown
-	// token produces an error. All runnable commands are now migrated (isMigrated
-	// above) so there is no reachable fallthrough path.
-	if rest[0] == "help" {
-		a.writeUsage(a.out)
-		return nil
 	}
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0])}
@@ -377,6 +370,11 @@ type globalOptions struct {
 	filters      []recordFilter
 	search       string
 	help         bool
+	// argTerminatorIndex is the index in rest where the user typed "--" after
+	// global flags were stripped, or -1 when no terminator was present. A
+	// terminator at index 0 is intentionally not reinserted before Cobra dispatch
+	// so "zscalerctl -- version" keeps behaving like "zscalerctl version".
+	argTerminatorIndex int
 }
 
 // narrowingFlag names the first result-narrowing flag in use (--filter or
@@ -478,7 +476,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	logLevel := gp.logLevel
 	fieldsFlag := gp.fieldsFlag
 	searchFlag := gp.searchFlag
-	globalArgs, rest, help, err := splitGlobalArgs(args)
+	globalArgs, rest, help, argTerminatorIndex, err := splitGlobalArgs(args)
 	if err != nil {
 		return globalOptions{}, nil, err
 	}
@@ -520,20 +518,21 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		filters = append(filters, filter)
 	}
 	return globalOptions{
-		profile:      *profile,
-		configPath:   *configPath,
-		format:       parsedFormat,
-		output:       *outputPath,
-		timeout:      *timeout,
-		redaction:    parsedRedaction,
-		redactionSet: redactionSet,
-		noCache:      *noCache,
-		colorMode:    colorMode,
-		logLevel:     *logLevel,
-		fields:       parseFieldsList(*fieldsFlag),
-		filters:      filters,
-		search:       *searchFlag,
-		help:         help,
+		profile:            *profile,
+		configPath:         *configPath,
+		format:             parsedFormat,
+		output:             *outputPath,
+		timeout:            *timeout,
+		redaction:          parsedRedaction,
+		redactionSet:       redactionSet,
+		noCache:            *noCache,
+		colorMode:          colorMode,
+		logLevel:           *logLevel,
+		fields:             parseFieldsList(*fieldsFlag),
+		filters:            filters,
+		search:             *searchFlag,
+		help:               help,
+		argTerminatorIndex: argTerminatorIndex,
 	}, rest, nil
 }
 
@@ -579,38 +578,15 @@ func RequestedFormatRaw(args []string) output.Format {
 	return output.FormatAuto
 }
 
-func RequestedFormat(args []string) output.Format {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			return output.FormatTable
-		}
-		name, hasValue := flagName(arg)
-		if name != "format" {
-			continue
-		}
-		value := ""
-		if hasValue {
-			_, after, _ := strings.Cut(arg, "=")
-			value = after
-		} else if i+1 < len(args) {
-			value = args[i+1]
-		}
-		if output.Format(strings.ToLower(strings.TrimSpace(value))) == output.FormatJSON {
-			return output.FormatJSON
-		}
-		return output.FormatTable
-	}
-	return output.FormatTable
-}
-
-func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
+func splitGlobalArgs(args []string) ([]string, []string, bool, int, error) {
 	var global []string
 	var rest []string
 	help := false
+	argTerminatorIndex := -1
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
+			argTerminatorIndex = len(rest)
 			rest = append(rest, args[i+1:]...)
 			break
 		}
@@ -628,12 +604,12 @@ func splitGlobalArgs(args []string) ([]string, []string, bool, error) {
 			continue
 		}
 		if i+1 >= len(args) {
-			return nil, nil, false, UsageError{Message: fmt.Sprintf("flag needs an argument: -%s", name)}
+			return nil, nil, false, -1, UsageError{Message: fmt.Sprintf("flag needs an argument: -%s", name)}
 		}
 		i++
 		global = append(global, args[i])
 	}
-	return global, rest, help, nil
+	return global, rest, help, argTerminatorIndex, nil
 }
 
 func flagName(arg string) (string, bool) {
@@ -685,12 +661,10 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 	return UsageError{Message: fmt.Sprintf("%s does not support %s output yet", command, format)}
 }
 
-// isMigrated reports whether cmd has been migrated to Cobra dispatch. Only
-// commands in this list are routed through execCobra; all others continue
-// through the legacy switch in runParsed. Grows one command per phase.
+// isMigrated reports whether cmd is dispatched through the Cobra command tree.
 func isMigrated(cmd string) bool {
 	switch cmd {
-	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect":
+	case "version", "doctor", "dump", "diff", "config", "schema", "auth", "completion", "introspect", "help":
 		return true
 	}
 	return knownProductCommand(cmd)
@@ -702,7 +676,7 @@ func isMigrated(cmd string) bool {
 // between the live dispatch path and the generator / introspection path.
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
-	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
+	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts), a.newHelpCmd(),
 		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
 	for _, p := range knownProducts() {
 		root.AddCommand(a.newProductCmd(p, opts))
@@ -728,10 +702,9 @@ func BuildCommandTree(a *App) *cobra.Command {
 // We re-append "--help" so Cobra renders the subcommand help rather than running
 // the command.
 //
-// For product commands the positional args (resource, op, id) are passed through
-// to runProduct; "--" separator preservation is not needed because products do
-// not accept flags of their own (all flags are global and are stripped before
-// this point by splitGlobalArgs).
+// -- separator re-insertion: splitGlobalArgs records where "--" appeared while
+// stripping globals. If it came after at least one command word, reinsert it so
+// Cobra does not parse dash-prefixed positionals as flags.
 //
 // Unknown-command wrap (defensive): during the hybrid phase this can't fire
 // because isMigrated gates dispatch to known-migrated commands only. The wrap is
@@ -741,22 +714,34 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 	root := a.buildCommandTree(opts)
 
 	args := rest
-	// Re-insert --help only for non-completion args: injecting --help into the
-	// __complete stream would corrupt the completion output (L-15).
-	if opts.help && !isCompletionArgs(rest) {
-		args = append(rest[:len(rest):len(rest)], "--help")
+	dynamicCompletion := isDynamicCompletionArgs(rest)
+	if opts.help && !dynamicCompletion {
+		insertAt := len(args)
+		if opts.argTerminatorIndex > 0 && opts.argTerminatorIndex <= len(args) {
+			insertAt = opts.argTerminatorIndex
+		}
+		args = append(args[:insertAt:insertAt], append([]string{"--help"}, args[insertAt:]...)...)
+	}
+	if opts.argTerminatorIndex > 0 && opts.argTerminatorIndex <= len(args) && !dynamicCompletion {
+		insertAt := opts.argTerminatorIndex
+		if opts.help {
+			insertAt++
+		}
+		args = append(args[:insertAt:insertAt], append([]string{"--"}, args[insertAt:]...)...)
 	}
 
-	// Completion paths (static script generation and the __complete runtime
-	// protocol) must bypass the stdout redactor: the redactor's high-entropy
-	// heuristic false-positives on shell variable assignments such as
-	// "local shellCompDirectiveFilterFileExt=8", corrupting the script.
-	// stderr remains redacted — errors may echo user-supplied tokens.
+	// Completion script generation and the __complete runtime protocol must
+	// bypass the stdout redactor: the redactor's high-entropy heuristic
+	// false-positives on shell variable assignments such as
+	// "local shellCompDirectiveFilterFileExt=8", corrupting scripts. Help for
+	// completion commands is ordinary help text, so it takes the normal redacted
+	// executeRoot path once --help has been reinserted above.
+	// Stderr remains redacted — errors may echo user-supplied tokens.
 	// Safety proof: TestCompletionScriptsDoNotReadCredentialFilesOrUseReader
 	// demonstrates that completion never resolves credentials, so bypassing the
 	// redactor on stdout cannot leak anything.
 	var err error
-	if isCompletionArgs(args) {
+	if isRawCompletionArgs(args) {
 		err = a.executeRootCompletion(ctx, root, args)
 	} else {
 		err = a.executeRoot(ctx, root, args)
@@ -769,17 +754,31 @@ func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) 
 	return err
 }
 
-// isCompletionArgs reports whether args represents a completion invocation:
-// the static script generators ("completion bash|zsh|fish|powershell") or
-// Cobra's dynamic completion protocol ("__complete", "__completeNoDesc").
-// These paths require executeRootCompletion (raw stdout, no redactor).
-func isCompletionArgs(args []string) bool {
+// isRawCompletionArgs reports whether args represents completion output that
+// must be emitted exactly: a static shell script or Cobra's dynamic completion
+// protocol.
+func isRawCompletionArgs(args []string) bool {
+	if isDynamicCompletionArgs(args) {
+		return true
+	}
 	if len(args) == 0 {
 		return false
 	}
-	switch args[0] {
-	case "completion", "__complete", "__completeNoDesc":
-		return true
+	return args[0] == "completion" && !hasHelpArg(args)
+}
+
+func isDynamicCompletionArgs(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return args[0] == "__complete" || args[0] == "__completeNoDesc"
+}
+
+func hasHelpArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
 	}
 	return false
 }
@@ -918,6 +917,50 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 			return a.runDoctor(cmd.Context(), cfg, opts, args)
 		},
 	}
+}
+
+// newHelpCmd returns the explicit Cobra "help" command.
+//
+// Bare "zscalerctl help" preserves the historical top-level usage text. When a
+// command path is supplied, real Cobra commands delegate to their HelpFunc, and
+// catalog resource pseudo-commands such as "help zia locations" render the same
+// resource-specific help as "zia locations --help".
+func (a *App) newHelpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "help [command]",
+		Short: "show help for a command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				a.writeUsage(cmd.OutOrStdout())
+				return nil
+			}
+			if a.writeResourceHelp(cmd.OutOrStdout(), args) {
+				return nil
+			}
+
+			target, remaining, err := cmd.Root().Find(args)
+			if err != nil || len(remaining) != 0 || target == cmd.Root() {
+				return UsageError{Message: fmt.Sprintf("unknown help topic %q", strings.Join(args, " "))}
+			}
+			return target.Help()
+		},
+	}
+}
+
+func (a *App) writeResourceHelp(w io.Writer, args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	product := resources.Product(args[0])
+	if !knownProductCommand(args[0]) {
+		return false
+	}
+	spec, ok := a.resourceCatalog().FindSpec(product, args[1])
+	if !ok {
+		return false
+	}
+	fmt.Fprintln(w, resourceUsage(product, spec, 0))
+	return true
 }
 
 // newURLLookupCmd returns the "url-lookup" subcommand of the "zia" product
@@ -2032,11 +2075,9 @@ func safeJSONRecords(records resources.ProjectedRecords) []output.SafeJSON {
 	return out
 }
 
-// writeHelp prints the global usage. It is only reachable when rest is empty
-// (all migrated commands, including products, are intercepted by the
-// isMigrated guard in runParsed before writeHelp is called). The per-command
-// and per-product cases that previously lived here were dead code.
-func (a *App) writeHelp(w io.Writer, rest []string) {
+// writeHelp prints the global usage for bare help and for help requested on an
+// unknown command.
+func (a *App) writeHelp(w io.Writer) {
 	a.writeUsage(w)
 }
 

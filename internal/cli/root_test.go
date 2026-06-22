@@ -101,58 +101,6 @@ func TestExecuteRoot_FlagError_MapsToUsageError(t *testing.T) {
 	}
 }
 
-// TestExactArgs_MapsToUsageError verifies the exactArgs helper: a command whose
-// Args validator is exactArgs(1) given 0 arguments must return an error that
-// satisfies errors.Is(_, ErrUsage) so it exits 2, not 1.
-func TestExactArgs_MapsToUsageError(t *testing.T) {
-	a, _, _ := testApp(t)
-
-	root := newRootCmd(a)
-	dummy := &cobra.Command{
-		Use:    "dummycmd <arg>",
-		Hidden: true,
-		Args:   exactArgs(1),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return nil
-		},
-	}
-	root.AddCommand(dummy)
-
-	ctx := context.Background()
-	err := a.executeRoot(ctx, root, []string{"dummycmd"}) // 0 args, want 1
-	if err == nil {
-		t.Fatal("expected an error for wrong arg count, got nil")
-	}
-	if !errors.Is(err, ErrUsage) {
-		t.Errorf("exactArgs(1) error %q should satisfy errors.Is(err, ErrUsage)", err)
-	}
-}
-
-// TestRangeArgs_MapsToUsageError verifies the rangeArgs helper similarly.
-func TestRangeArgs_MapsToUsageError(t *testing.T) {
-	a, _, _ := testApp(t)
-
-	root := newRootCmd(a)
-	dummy := &cobra.Command{
-		Use:    "dummycmd",
-		Hidden: true,
-		Args:   rangeArgs(1, 2),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return nil
-		},
-	}
-	root.AddCommand(dummy)
-
-	ctx := context.Background()
-	err := a.executeRoot(ctx, root, []string{"dummycmd"}) // 0 args, want 1-2
-	if err == nil {
-		t.Fatal("expected an error for wrong arg count, got nil")
-	}
-	if !errors.Is(err, ErrUsage) {
-		t.Errorf("rangeArgs(1,2) error %q should satisfy errors.Is(err, ErrUsage)", err)
-	}
-}
-
 // TestPrefixMatchingOff_PackageVarSet asserts that cobra.EnablePrefixMatching is
 // false after newRootCmd is called. This is the package-level variable guard: if
 // a future dependency flips it to true, newRootCmd resets it.

@@ -170,6 +170,39 @@ func TestRedactorRemovesZscalerCredentialFields(t *testing.T) {
 	}
 }
 
+func TestRedactorRemovesSessionIDAssignments(t *testing.T) {
+	t.Parallel()
+
+	input := strings.Join([]string{
+		`sessionId=camel-session-id-value`,
+		`session_id=snake-session-id-value`,
+		`session-id=dash-session-id-value`,
+		`sessionid=flat-session-id-value`,
+	}, "\n")
+
+	got := redact.New(redact.ModeStandard).String(input)
+	for _, forbidden := range []string{
+		"camel-session-id-value",
+		"snake-session-id-value",
+		"dash-session-id-value",
+		"flat-session-id-value",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("Redactor.String(%q) = %q, want no %q", input, got, forbidden)
+		}
+	}
+}
+
+func TestRedactorPreservesBareSessionHeadings(t *testing.T) {
+	t.Parallel()
+
+	input := "To load completions in your current shell session:\n\n\tsource <(zscalerctl completion bash)\n"
+	got := redact.New(redact.ModeStandard).String(input)
+	if got != input {
+		t.Errorf("Redactor.String(%q) = %q, want unchanged help prose", input, got)
+	}
+}
+
 func TestRedactorPreservesJSONSyntaxForSecretAssignments(t *testing.T) {
 	t.Parallel()
 

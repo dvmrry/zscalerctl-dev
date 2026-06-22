@@ -115,8 +115,8 @@ func scrub(s, homeDir, binPath string) string {
 	// Word boundaries prevent silent corruption of IP-like strings (e.g. 192.168.1.1).
 	// Safe because reGoVersion already handled "go<version>" above.
 	s = reSemver.ReplaceAllString(s, "<VERSION>")
-	// "dev" version string (the fallback when built without ldflags)
-	s = reDevVersion.ReplaceAllString(s, "<VERSION>")
+	// "dev" version string (the fallback when built without ldflags).
+	s = reDevVersion.ReplaceAllString(s, "${1}${2}<VERSION>${3}")
 	// Git commit SHA (7-40 hex chars)
 	s = reCommit.ReplaceAllString(s, "<COMMIT>")
 	// Build date (ISO-8601 or RFC3339 timestamps)
@@ -142,7 +142,7 @@ var (
 	// e.g. v1.2.3 or 1.2.3; \b prevents matching inside IP-like strings
 	reSemver = regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
 	// bare "dev" version in version output (value-only, not a substring)
-	reDevVersion = regexp.MustCompile(`(?m)(\bVersion\s+)dev\b|("version":\s*)"dev"`)
+	reDevVersion = regexp.MustCompile(`(?m)(\b[Vv]ersion(?:\s+|:\s*))dev\b|("(?:cli_)?version":\s*")dev(")`)
 	// Git commit SHA: 7-40 hex digits following "Commit" label or "commit" JSON key
 	reCommit = regexp.MustCompile(`(?i)(commit["\s:]+)([0-9a-f]{7,40})\b`)
 	// ISO-8601 / RFC3339 date or datetime
@@ -991,6 +991,26 @@ func TestScrubPseudoVersion(t *testing.T) {
 			name:  "plain semver unchanged by pseudo-version pass",
 			input: "Version   v1.2.3",
 			want:  "Version   <VERSION>",
+		},
+		{
+			name:  "dev version table",
+			input: "Version   dev",
+			want:  "Version   <VERSION>",
+		},
+		{
+			name:  "dev version json",
+			input: `"version": "dev"`,
+			want:  `"version": "<VERSION>"`,
+		},
+		{
+			name:  "dev cli_version json",
+			input: `"cli_version": "dev"`,
+			want:  `"cli_version": "<VERSION>"`,
+		},
+		{
+			name:  "dev introspect pretty",
+			input: "  version:   dev",
+			want:  "  version:   <VERSION>",
 		},
 	}
 

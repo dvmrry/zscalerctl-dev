@@ -25,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,7 +182,7 @@ func TestSplitGlobalArgsBoolFlag(t *testing.T) {
 	t.Run("global bool flag is extracted", func(t *testing.T) {
 		t.Parallel()
 		// --no-cache is a bool flag: it needs no following value.
-		globalArgs, rest, help, err := splitGlobalArgs([]string{"--no-cache", "version"})
+		globalArgs, rest, help, _, err := splitGlobalArgs([]string{"--no-cache", "version"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -199,7 +200,7 @@ func TestSplitGlobalArgsBoolFlag(t *testing.T) {
 	t.Run("unknown flag passes through to rest", func(t *testing.T) {
 		t.Parallel()
 		// --nope is not a global flag; it should be left for the subcommand.
-		globalArgs, rest, help, err := splitGlobalArgs([]string{"--nope", "version"})
+		globalArgs, rest, help, _, err := splitGlobalArgs([]string{"--nope", "version"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -211,6 +212,30 @@ func TestSplitGlobalArgsBoolFlag(t *testing.T) {
 		}
 		if len(rest) != 2 || rest[0] != "--nope" || rest[1] != "version" {
 			t.Errorf("rest: got %v, want [--nope version]", rest)
+		}
+	})
+
+	t.Run("terminator index is recorded", func(t *testing.T) {
+		t.Parallel()
+		globalArgs, rest, help, terminatorIndex, err := splitGlobalArgs([]string{
+			"--format", "json",
+			"zia", "locations", "get",
+			"--", "--dash-id",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if help {
+			t.Error("help should be false")
+		}
+		if got, want := strings.Join(globalArgs, " "), "--format json"; got != want {
+			t.Errorf("globalArgs: got %q, want %q", got, want)
+		}
+		if got, want := strings.Join(rest, " "), "zia locations get --dash-id"; got != want {
+			t.Errorf("rest: got %q, want %q", got, want)
+		}
+		if terminatorIndex != 3 {
+			t.Errorf("terminatorIndex = %d, want 3", terminatorIndex)
 		}
 	})
 }

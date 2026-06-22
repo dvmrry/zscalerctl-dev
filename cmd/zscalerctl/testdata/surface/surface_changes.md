@@ -55,6 +55,7 @@ Column definitions:
 | `introspect` | (none — new case) | JSON surface map: `$schema`, `introspect_version`, `cli_version` (`<VERSION>` after scrub), `read_only`, `global_flags`, `commands`, `catalog`, `exit_codes`. FormatAuto resolves to JSON in hermetic (non-TTY) env. Config-free: no credentials loaded. Exit code 0. | introspect command frozen (Task 1.4); `cli_version` is scrubbed by `rePseudoVersion` (verified by `TestScrubPseudoVersion`). | `new-surface` |
 | `introspect-pretty` | (none — new case) | Human-readable tree: `zscalerctl CLI surface map` header + global-flags block + commands block + catalog summary + exit-codes block. `version: <VERSION>` scrubbed. Exit code 0. | `--format pretty` path of introspect frozen (Task 1.4). | `new-surface` |
 | `introspect-ndjson-rejected` | (none — new case) | `{"error":{"kind":"usage","message":"introspect does not support ndjson output yet"}}` on stderr; stdout empty. Exit code 2. | Mirrors `version-ndjson-rejected`; introspect is a single document, not a record stream. | `new-surface` |
+| `introspect`, `introspect-pretty` | Command tree omitted the explicit `help` command; pretty count was 289. | Command tree includes `help` (`show help for a command`); pretty count is 290; generated CLI docs include a `help` section. | `help` is now routed through Cobra so `help <command>` shares the live command tree and resource help behavior. | `command-added` |
 
 ---
 

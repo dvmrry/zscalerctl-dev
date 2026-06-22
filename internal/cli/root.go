@@ -1,14 +1,14 @@
 package cli
 
 // root.go — Cobra root command, redacting execute helper, and error-mapping
-// utilities for the phased Cobra migration.
+// utilities.
 //
 // # Architecture note
 //
-// This file does NOT wire the root command into App.Run. That is Task 1.4.
-// Today, App.Run still delegates entirely to the legacy flag-based dispatch.
-// newRootCmd + executeRoot exist so the root can be constructed and tested in
-// isolation before the App.Run plumbing lands.
+// App.Run still strips global flags and gates a few legacy-format errors before
+// dispatching migrated commands through Cobra. newRootCmd builds only the root;
+// App.buildCommandTree adds concrete subcommands for live execution, docs, and
+// introspection.
 //
 // # No-leak contract
 //
@@ -34,9 +34,8 @@ func init() {
 	cobra.EnablePrefixMatching = false
 }
 
-// newRootCmd constructs the Cobra root command with the §8 settings required by
-// the migration spec. It does not add any product subcommands; those are added
-// by later phases.
+// newRootCmd constructs the Cobra root command with the settings required by the
+// migration spec. It does not add subcommands; App.buildCommandTree adds those.
 func newRootCmd(a *App) *cobra.Command {
 	root := &cobra.Command{
 		// Use is intentionally empty — the root is never invoked directly.
@@ -91,11 +90,11 @@ func newRootCmd(a *App) *cobra.Command {
 		return UsageError{Message: err.Error()}
 	})
 
-	// Disable the auto-generated "help" subcommand. We install a hidden no-op in
-	// its place so Cobra's internal AddCommand("help") guard does not re-add one.
-	// This avoids a conflict with the legacy "help" token handling in App.Run.
-	// The --help FLAG is NOT affected by this; Cobra adds it separately and it
-	// remains fully functional.
+	// Disable Cobra's auto-generated help command. The live tree registers an
+	// explicit help command in App.buildCommandTree, but keeping Cobra's internal
+	// helpCommand pointed at this hidden placeholder prevents default help command
+	// injection on ad hoc test roots. The --help flag is separate and remains
+	// fully functional.
 	root.SetHelpCommand(&cobra.Command{
 		Use:    "no-op-help",
 		Hidden: true,
@@ -187,33 +186,4 @@ func (a *App) executeRootCompletion(ctx context.Context, root *cobra.Command, ar
 	root.SetArgs(args)
 
 	return root.ExecuteContext(ctx)
-}
-
-// exactArgs returns a cobra.PositionalArgs validator that requires exactly n
-// positional arguments. Failures are wrapped in UsageError so exitCodeForError
-// maps them to exit 2, not exit 1.
-//
-// Use this instead of cobra.ExactArgs: the built-in helper returns a plain
-// error, which exitCodeForError maps to exit 1.
-func exactArgs(n int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) == n {
-			return nil
-		}
-		return UsageError{Message: cobra.ExactArgs(n)(cmd, args).Error()}
-	}
-}
-
-// rangeArgs returns a cobra.PositionalArgs validator that requires between min
-// and max positional arguments (inclusive). Failures are wrapped in UsageError
-// so exitCodeForError maps them to exit 2.
-//
-// Use this instead of cobra.RangeArgs for the same reason as exactArgs.
-func rangeArgs(min, max int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) >= min && len(args) <= max {
-			return nil
-		}
-		return UsageError{Message: cobra.RangeArgs(min, max)(cmd, args).Error()}
-	}
 }

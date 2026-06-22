@@ -539,6 +539,33 @@
       ]
     },
     {
+      "path": "help",
+      "short": "show help for a command",
+      "aliases": [],
+      "hidden": false,
+      "mutating": false,
+      "args": {
+        "policy": "range",
+        "n": 1
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
       "path": "introspect",
       "short": "print a machine-readable map of all commands, flags, and resources (JSON)",
       "aliases": [],

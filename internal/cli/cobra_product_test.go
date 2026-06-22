@@ -35,6 +35,7 @@ type recordCall struct {
 	op       string // "list", "get", or "show"
 	product  resources.Product
 	resource string
+	id       string
 }
 
 // recordingResourceReader wraps fakeResourceReader and records each call so
@@ -51,8 +52,7 @@ func (r *recordingResourceReader) List(_ context.Context, product resources.Prod
 }
 
 func (r *recordingResourceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
-	r.calls = append(r.calls, recordCall{op: "get", product: product, resource: resource})
-	_ = id
+	r.calls = append(r.calls, recordCall{op: "get", product: product, resource: resource, id: id})
 	return r.fakeResourceReader.get, nil
 }
 
@@ -208,6 +208,39 @@ func TestProductCmd_Get_JSON(t *testing.T) {
 	}
 	if reader.calls[0].op != "get" || reader.calls[0].product != resources.ProductZIA || reader.calls[0].resource != "locations" {
 		t.Errorf("reader call = %+v, want {get, zia, locations}", reader.calls[0])
+	}
+}
+
+// TestProductCmd_Get_DashPrefixedIDAfterTerminator verifies that the global
+// parser preserves "--" when dispatching into Cobra, so a dash-prefixed ID is
+// passed to runProduct instead of being parsed as an unknown flag.
+func TestProductCmd_Get_DashPrefixedIDAfterTerminator(t *testing.T) {
+	t.Parallel()
+
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			get: resources.NewSourceRecord(map[string]any{
+				"id":   "--dash-id",
+				"name": "DashID",
+			}),
+		},
+	}
+	a, out, errBuf := newProductApp(t, reader)
+	err := a.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "--", "--dash-id"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations get -- --dash-id) error = %v, want nil", err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("stdout is empty, want projected record")
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	if reader.calls[0].id != "--dash-id" {
+		t.Errorf("reader id = %q, want --dash-id", reader.calls[0].id)
 	}
 }
 
@@ -668,6 +701,32 @@ func TestProductCmd_ResourceHelp_WithOpAndHelp(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("zia locations list --help stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestProductCmd_HelpCommand_ResourceHelp verifies that the explicit
+// "help <product> <resource>" command renders the same catalog-backed resource
+// help as the --help flag path.
+func TestProductCmd_HelpCommand_ResourceHelp(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := newProductApp(t, nil)
+	err := a.Run(context.Background(), []string{"help", "zia", "locations"})
+	if err != nil {
+		t.Fatalf("App.Run(help zia locations) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "locations") {
+		t.Errorf("help zia locations stdout = %q, want 'locations' in resource usage", got)
+	}
+	if !strings.Contains(got, "name") {
+		t.Errorf("help zia locations stdout = %q, want 'name' field in resource usage", got)
+	}
+	if strings.Contains(got, "products: zia") {
+		t.Errorf("help zia locations stdout = %q, got top-level usage instead of resource help", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("help zia locations stderr = %q, want empty", errBuf.String())
 	}
 }
 

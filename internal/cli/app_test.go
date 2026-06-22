@@ -1056,6 +1056,51 @@ func TestCompletionScriptBashNotRedacted(t *testing.T) {
 	}
 }
 
+func TestCompletionSubcommandHelpNotRedacted(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	if err := app.Run(context.Background(), []string{"help", "completion", "bash"}); err != nil {
+		t.Fatalf("App.Run(help completion bash) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "source <(zscalerctl completion bash)") {
+		t.Errorf("App.Run(help completion bash) stdout = %q, want source command preserved", got)
+	}
+	if strings.Contains(got, "<REDACTED") {
+		t.Errorf("App.Run(help completion bash) stdout contains redaction marker: %q", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(help completion bash) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestCompletionSubcommandHelpFlagShowsHelp(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	if err := app.Run(context.Background(), []string{"completion", "bash", "--help"}); err != nil {
+		t.Fatalf("App.Run(completion bash --help) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Generate the autocompletion script for the bash shell") {
+		t.Errorf("App.Run(completion bash --help) stdout = %q, want bash completion help", got)
+	}
+	if strings.Contains(got, "__start_zscalerctl") {
+		t.Errorf("App.Run(completion bash --help) stdout contains bash script marker, want help text:\n%s", got)
+	}
+	if strings.Contains(got, "<REDACTED") {
+		t.Errorf("App.Run(completion bash --help) stdout contains redaction marker: %q", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(completion bash --help) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestSchemaListTableIncludesReadOperations(t *testing.T) {
 	t.Parallel()
 
