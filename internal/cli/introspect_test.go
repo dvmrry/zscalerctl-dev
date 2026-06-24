@@ -27,7 +27,7 @@ func TestIntrospectTree(t *testing.T) {
 		t.Error("ReadOnly = false, want true")
 	}
 
-	// CLIVersion is left empty by IntrospectTree; the command fills it (Task 1.2).
+	// CLIVersion is left empty by IntrospectTree; the command fills it.
 	if doc.CLIVersion != "" {
 		t.Errorf("CLIVersion = %q, want empty (set by command, not introspectTree)", doc.CLIVersion)
 	}

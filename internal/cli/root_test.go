@@ -1,6 +1,6 @@
 package cli
 
-// root_test.go — in-process tests for the Cobra root command (Task 1.3).
+// root_test.go - In-process tests for the Cobra root command.
 //
 // All tests use fake / dummy secrets. No real credentials appear anywhere in
 // this file. The "password=FAKE-TEST-SECRET-DO-NOT-USE" string below is

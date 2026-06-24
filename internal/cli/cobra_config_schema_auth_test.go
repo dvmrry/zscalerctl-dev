@@ -1,7 +1,7 @@
 package cli_test
 
-// cobra_config_schema_auth_test.go — Tests for the Phase 4 Cobra migration of
-// the config, schema, and auth command groups.
+// cobra_config_schema_auth_test.go - Tests for the Cobra config, schema, and
+// auth command groups.
 //
 // Tests verify:
 //  1. config init — creates file, path on stdout, hints on stderr, exit 0.

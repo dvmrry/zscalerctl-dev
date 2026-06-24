@@ -426,9 +426,9 @@ func TestHelpFlagsReturnUsage(t *testing.T) {
 	tests := [][]string{
 		{"--help"},
 		{"-h"},
-		// "schema list --help" is now a Cobra command; its help uses Cobra format ("Usage:\n  zscalerctl schema list")
+		// "schema list --help" uses Cobra format ("Usage:\n  zscalerctl schema list")
 		// and is covered by TestPerCommandHelpPrintsScopedSynopsis instead.
-		// "dump --help" is now a Cobra command; its help uses Cobra format ("Usage:\n  zscalerctl dump")
+		// "dump --help" uses Cobra format ("Usage:\n  zscalerctl dump")
 		// and is covered by TestPerCommandHelpPrintsScopedSynopsis instead.
 	}
 	for _, args := range tests {
@@ -464,41 +464,41 @@ func TestPerCommandHelpPrintsScopedSynopsis(t *testing.T) {
 		want            string
 		skipGlobalCheck bool // set for Cobra commands whose flag descriptions may contain "products:"/"commands:"
 	}{
-		// doctor is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl doctor") rather than the legacy scoped synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Task 1.5.2).
+		// doctor --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl doctor") rather than the previous scoped synopsis.
+		// Frozen as an intentional Cobra help surface.
 		{name: "doctor", args: []string{"doctor", "--help"}, want: "zscalerctl doctor"},
-		// auth is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl auth") rather than the legacy scoped synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		// auth --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl auth") rather than the previous scoped synopsis.
+		// Frozen as an intentional Cobra help surface.
 		{name: "auth", args: []string{"auth", "--help"}, want: "zscalerctl auth", skipGlobalCheck: true},
-		// config is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl config") rather than the legacy scoped synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		// config --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl config") rather than the previous scoped synopsis.
+		// Frozen as an intentional Cobra help surface.
 		{name: "config", args: []string{"config", "--help"}, want: "zscalerctl config", skipGlobalCheck: true},
-		// schema list is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl schema list") rather than the legacy scoped synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 4).
+		// schema list --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl schema list") rather than the previous scoped synopsis.
+		// Frozen as an intentional Cobra help surface.
 		{name: "schema", args: []string{"schema", "list", "--help"}, want: "zscalerctl schema list"},
-		// dump is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl dump") rather than the legacy scoped synopsis.
+		// dump --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl dump") rather than the previous scoped synopsis.
 		// skipGlobalCheck is true because the --products flag description contains
 		// "products:" which would otherwise trigger the false-positive assertion.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 3a).
+		// Frozen as an intentional Cobra help surface.
 		{name: "dump", args: []string{"dump", "--help"}, want: "zscalerctl dump", skipGlobalCheck: true},
-		// diff is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl diff") rather than the legacy scoped synopsis.
+		// diff --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl diff") rather than the previous scoped synopsis.
 		// skipGlobalCheck is true because the --products flag description contains
 		// "products:" which would otherwise trigger the false-positive assertion.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 3b).
+		// Frozen as an intentional Cobra help surface.
 		{name: "diff", args: []string{"diff", "--help"}, want: "zscalerctl diff", skipGlobalCheck: true},
-		// completion is now a Cobra command group; --help renders Cobra-formatted help
+		// completion --help renders Cobra-formatted help
 		// ("Usage:\n  zscalerctl completion [command]") rather than the legacy synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Phase 5b).
+		// Frozen as an intentional Cobra help surface.
 		{name: "completion", args: []string{"completion", "--help"}, want: "zscalerctl completion", skipGlobalCheck: true},
-		// version is now a Cobra command; --help renders Cobra-formatted help
-		// ("Usage:\n  zscalerctl version") rather than the legacy scoped synopsis.
-		// Re-blessed as an intentional surface change in the Cobra migration (Task 1.5).
+		// version --help renders Cobra-formatted help
+		// ("Usage:\n  zscalerctl version") rather than the previous scoped synopsis.
+		// Frozen as an intentional Cobra help surface.
 		{name: "version", args: []string{"version", "--help"}, want: "zscalerctl version"},
 	}
 	for _, tt := range tests {
@@ -3236,8 +3236,8 @@ func TestDumpLogsPerResourceProgressAtInfo(t *testing.T) {
 func TestProductHelpListsItsResources(t *testing.T) {
 	t.Parallel()
 
-	// After the Cobra migration, `zscalerctl zia --help` shows Cobra-formatted
-	// help (short description + global flags) rather than the legacy resource-list.
+	// `zscalerctl zia --help` shows Cobra-formatted help (short description +
+	// global flags) rather than the old resource-list.
 	// The primary discoverability path is now the error message from an unknown
 	// resource (ResourceNotFoundError) and `schema list`. This test verifies the
 	// Cobra help emits the product name and that the error-path discoverability

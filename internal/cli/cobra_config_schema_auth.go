@@ -19,13 +19,13 @@ import (
 //
 // The parent RunE returns UsageError (exit 2) for bare "config" or unknown
 // subcommands ("config bogus"), listing the real subcommands in the message.
-// This preserves the legacy exit-2 contract for bare/invalid config invocations.
+// This preserves the exit-2 contract for bare/invalid config invocations.
 func (a *App) newConfigCmd(opts globalOptions) *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "config",
 		Short: "manage zscalerctl configuration",
 		// RunE fires for bare "config" or any unrecognised subcommand.
-		// Return UsageError so exitCodeForError → exit 2 (same as legacy path).
+		// Return UsageError so exitCodeForError -> exit 2.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return UsageError{Message: "usage: zscalerctl config <init|show>"}
 		},

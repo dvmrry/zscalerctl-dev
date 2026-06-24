@@ -1,6 +1,6 @@
 package cli_test
 
-// cobra_diff_test.go — Tests for the Cobra-migrated diff command (Phase 3b).
+// cobra_diff_test.go - Tests for the Cobra diff command.
 //
 // Tests here verify:
 //  1. diff <old> <new> with fixture dumps renders a report; exit 0 (no --fail-on-drift).

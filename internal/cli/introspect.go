@@ -4,7 +4,7 @@ package cli
 // tree, the resource catalog, and the global-flag definitions.
 //
 // IntrospectTree is the single exported entry point. It is consumed by:
-//   - internal/cli (introspect command, Task 1.2): calls IntrospectTree, sets
+//   - internal/cli (introspect command): calls IntrospectTree, sets
 //     CLIVersion, and serialises to JSON.
 //
 // The tree enumeration is driven by WalkCobraTree (see its doc comment), which
@@ -143,7 +143,7 @@ var globalFlagEnums = map[string][]string{
 // single source of truth for resources.
 //
 // CLIVersion is intentionally left empty. The caller (e.g. newIntrospectCmd in
-// Task 1.2) is responsible for setting it from version.Current().
+// The introspect command is responsible for setting it from version.Current().
 func IntrospectTree(a *App) IntrospectDoc {
 	root := BuildCommandTree(a)
 	// InitDefaultCompletionCmd mirrors what gen-cli-docs does so the completion

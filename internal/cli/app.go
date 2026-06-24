@@ -280,8 +280,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return a.execCobra(ctx, opts, rest)
 	}
 	// Help routing:
-	//   - No command (empty rest) or un-migrated command → legacy writeHelp.
-	//   - Migrated command with --help → route straight to execCobra BEFORE the
+	//   - No command (empty rest) renders root help or the machine error path.
+	//   - Unknown command with --help keeps the resource-aware usage hint.
+	//   - Recognized command with --help routes straight to execCobra BEFORE the
 	//     narrowing/format gates below. This matches the legacy short-circuit where
 	//     opts.help fired before any flag validation, so combinations such as
 	//     "--filter name=x version --help", "--fields id zia locations --help", and
@@ -297,7 +298,7 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 			return a.execCobra(ctx, opts, []string{"--help"})
 		}
 		if !isKnownCommand(rest[0], a.resourceCatalog()) {
-			// Unknown command: keep the legacy usage hint.
+			// Unknown command: keep the resource-aware usage hint.
 			a.writeHelp(a.out, rest)
 			return nil
 		}
@@ -342,14 +343,14 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
 	}
 	// completion does not produce a record stream, so --format ndjson is rejected
-	// here, before execCobra, just as the legacy path did. This check must come
+	// here, before execCobra. This check must come
 	// before the Cobra dispatch so the format gate fires even when Cobra owns the
 	// completion command.
 	if rest[0] == "completion" && opts.format == output.FormatNDJSON {
 		return rejectUnsupportedFormat("completion", opts.format)
 	}
 	// Cobra dispatch: all recognized commands go through the unified Cobra tree.
-	// Unknown commands fall through to the legacy-style unknownCommandMessage so
+	// Unknown commands fall through to unknownCommandMessage so
 	// the CLI continues to give product/resource hints rather than Cobra's generic
 	// "unknown command" output.
 	if isKnownCommand(rest[0], a.resourceCatalog()) {
@@ -741,7 +742,7 @@ func BuildCommandTree(a *App) *cobra.Command {
 // unknown flag).
 //
 // Unknown-command wrap (defensive): runParsed already filters unknown commands
-// to the legacy unknownCommandMessage path, but this hook remains a safety net
+// to the resource-aware unknownCommandMessage path, but this hook remains a safety net
 // if a command ever reaches Cobra without passing through that filter.
 func (a *App) execCobra(ctx context.Context, opts globalOptions, rest []string) error {
 	root := a.buildCommandTree(opts)
@@ -851,8 +852,8 @@ func isCompletionArgs(args []string) bool {
 // to runProduct, which enforces arity and produces the canonical usage messages.
 //
 // No restrictive cobra.Args validator is set: runProduct's own arity checks
-// produce the exact UsageError messages that the legacy path emitted; a Cobra
-// validator would fire first and change those messages.
+// produce the canonical UsageError messages; a Cobra validator would fire first
+// and change those messages.
 //
 // Config is loaded lazily inside RunE (same pattern as newDoctorCmd) so the
 // no-credentials path (exit 3) is preserved for product commands: they load
@@ -861,9 +862,9 @@ func isCompletionArgs(args []string) bool {
 //
 // Help (SetHelpFunc): when the first positional arg is a known catalog resource
 // for this product, the help func prints the resource-specific field/usage block
-// (resourceUsage) instead of Cobra's default product help. This restores the
-// legacy behaviour where `zia locations --help` and `zia locations list --help`
-// printed the resource's supported ops and renderable field names.
+// (resourceUsage) instead of Cobra's default product help. This preserves the
+// contract where `zia locations --help` and `zia locations list --help`
+// print the resource's supported ops and renderable field names.
 //
 // Completion (ValidArgsFunction): the first positional completion returns
 // catalog resource names; the second returns the resource's supported read ops.
@@ -945,8 +946,8 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 }
 
 // newVersionCmd returns the Cobra "version" subcommand. It delegates directly to
-// runVersion so all format/arity/redaction behaviour is identical to the legacy
-// path. No restrictive Args validator is set here — runVersion's requireNoArgs
+// runVersion so all format/arity/redaction behaviour goes through one code path.
+// No restrictive Args validator is set here — runVersion's requireNoArgs
 // produces the same UsageError message as before, preserving the surface.
 func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
@@ -959,8 +960,7 @@ func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
 }
 
 // newDoctorCmd returns the Cobra "doctor" subcommand. Doctor requires a loaded
-// config, so RunE loads it lazily — replicating the legacy path's LoadConfig +
-// applyOptions calls that normally run in the second-switch shared header.
+// config, so RunE loads it lazily and then applies the parsed global options.
 //
 // No restrictive Args validator is set here — runDoctor's requireNoArgs produces
 // the same UsageError message as before, preserving the surface.
@@ -1163,10 +1163,10 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	// zia url-lookup is a diagnostic verb, not a catalog resource; dispatch it
 	// before resource lookup so it never collides with the list/get/show model.
 	//
-	// Defensive fallback: via the Cobra path this branch is unreachable because
-	// "zia url-lookup" now routes to newURLLookupCmd (Phase 2b). It remains here
-	// for callers that invoke runProduct directly (e.g. tests or future non-Cobra
-	// paths) and as protection against any future routing changes.
+	// Defensive fallback: via normal dispatch this branch is unreachable because
+	// "zia url-lookup" routes to newURLLookupCmd. It remains here for callers
+	// that invoke runProduct directly (e.g. tests) and as protection against any
+	// future routing changes.
 	if product == resources.ProductZIA && resource == urlLookupCommandName {
 		return a.runURLLookup(ctx, cfg, opts, args[1:])
 	}
@@ -1249,9 +1249,8 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	return a.writeProjectedRecords(cfg, opts, spec, projected)
 }
 
-// dumpOptions holds the parsed local flags for the dump command.
-// The struct is populated either by the legacy flag.FlagSet (removed) or by
-// the Cobra RunE path reading cmd.Flags().
+// dumpOptions holds the parsed local flags for the dump command. The Cobra RunE
+// path populates it from cmd.Flags().
 type dumpOptions struct {
 	out             string
 	products        string
@@ -1323,9 +1322,10 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 // newProductCmd. Local flags (--out, --products, --resources, --continue-on-error,
 // --force) are declared as Cobra local flags and read inside RunE after parsing.
 //
-// --format ndjson is rejected before LoadConfig (fast-path, same as the legacy path).
+// --format ndjson is rejected before LoadConfig.
 // --out validation (non-empty) is enforced inside runDumpWithOptions.
-// MarkFlagRequired is NOT used for --out — the legacy UsageError must be returned.
+// MarkFlagRequired is NOT used for --out because it would bypass the canonical
+// UsageError path.
 //
 // No cobra.Args validator is set: NArg() == 0 is checked in RunE so the exact
 // UsageError message ("usage: zscalerctl dump ...") is preserved.
@@ -1334,7 +1334,7 @@ func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
 		Use:   "dump",
 		Short: "write a full or filtered resource dump to a directory",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Reject --format ndjson first, before any config work (mirrors legacy path).
+			// Reject --format ndjson first, before any config work.
 			if opts.format == output.FormatNDJSON {
 				return rejectUnsupportedFormat("dump", opts.format)
 			}
@@ -1441,11 +1441,12 @@ func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newD
 // --allow-partial, --fail-on-drift) are declared as Cobra local flags and
 // read inside RunE after parsing.
 //
-// --format ndjson is rejected before any Compare work (fast-path, mirrors the
-// legacy path). The two positional dirs are read from cmd.Flags().Args() and
+// --format ndjson is rejected before any Compare work. The two positional dirs
+// are read from cmd.Flags().Args() and
 // exactly 2 are required (len != 2 → UsageError{diffUsage()}).
 //
-// MarkFlagRequired is NOT used — the legacy UsageError must be returned.
+// MarkFlagRequired is NOT used because it would bypass the canonical UsageError
+// path.
 // cobra.ExactArgs is NOT used — plain error → wrong exit code.
 func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
@@ -1457,7 +1458,7 @@ func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 			"introspect/args-policy": "exact:2",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Reject --format ndjson first (mirrors legacy path, before any work).
+			// Reject --format ndjson first, before any work.
 			if opts.format == output.FormatNDJSON {
 				return rejectUnsupportedFormat("diff", opts.format)
 			}
