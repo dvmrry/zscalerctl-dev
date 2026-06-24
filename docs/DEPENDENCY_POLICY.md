@@ -110,6 +110,23 @@ gate. If a normal startup package imported Bubble Tea, every `zscalerctl`
 invocation could probe the terminal, even when the user requested JSON/NDJSON
 output or ran non-interactively.
 
+Because `cmd/zscalerctl-tui` is allowed to import Bubble Tea, the vendored
+`github.com/charmbracelet/bubbletea/tea_init.go` is patched to remove the
+`lipgloss.HasDarkBackground()` call from `init()`. The unpatched init emits
+OSC/DSR probes before `main()` and causes `zscalerctl-tui --live --profile
+<invalid>` to hang instead of returning a config/profile error. The patch is
+acceptable because:
+
+- `zscalerctl` (the normal binary) still never imports Bubble Tea, so the
+  patch has no effect on normal CLI output.
+- `zscalerctl-tui` does not rely on Bubble Tea's startup background-color
+  detection; color is driven by the existing `output.ShouldColor` gate after
+  `main()` runs.
+- The patch is guarded by `scripts/verify-bubbletea-vendor-patch.sh`, which
+  fails if `go mod vendor` reintroduces the probe. A PTY regression verifier
+  (`scripts/verify-zscalerctl-tui-live-failure.sh`) proves the failure path
+  returns promptly with no ESC bytes.
+
 See [cli/tui-import-boundary.md](cli/tui-import-boundary.md) for the full
 finding and enforcement details.
 

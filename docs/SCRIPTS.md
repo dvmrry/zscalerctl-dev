@@ -47,6 +47,10 @@ registered path exists.
 | `scripts/verify-pty-escape-clean.py` | dev | `scripts/verify-pty-escape-clean.sh` | PTY helper for escape-sequence regression check |
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
 | `scripts/verify-tui-import-boundary.sh` | verify | `make verify-tui-import-boundary` | `scripts/test-verify-tui-import-boundary.sh` |
+| `scripts/verify-bubbletea-vendor-patch.sh` | verify | `make verify-bubbletea-vendor-patch` | `scripts/test-verify-bubbletea-vendor-patch.sh` |
+| `scripts/test-verify-bubbletea-vendor-patch.sh` | test | `make verify-bubbletea-vendor-patch` | Self-contained verifier test |
+| `scripts/verify-zscalerctl-tui-live-failure.sh` | verify | `make verify-zscalerctl-tui-live-failure` | PTY regression check for `zscalerctl-tui --live --profile <invalid>` |
+| `scripts/verify-zscalerctl-tui-live-failure.py` | dev | `scripts/verify-zscalerctl-tui-live-failure.sh` | Python helper for the zscalerctl-tui live failure-path PTY check |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |
 
