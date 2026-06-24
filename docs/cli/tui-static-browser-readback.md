@@ -7,10 +7,11 @@ paths remain free of TUI terminal sequences.
 
 ## Scope
 
-- Browser demo: `go run -mod=vendor ./scripts/tui-browser-demo.go` (default) or `go run -mod=vendor ./scripts/tui-browser-demo.go --projected-fixture`.
+- Browser demo: `go run -mod=vendor ./scripts/tui-browser-demo.go` (default), or with `--projected-fixture`, or with `--collector-fixture`.
 - Model: `internal/tui/tea.BrowserModel`.
 - Default data: hard-coded fake products, resources, and records via `NewFakeBrowserData()`.
 - Projected data: `internal/tui/browserdata.Build` adapts fake projected records into `BrowserData`.
+- Collector data: `internal/tui/browserdata.Collector` coordinates fake reader, projection, and `Build` into `BrowserData`.
 - No Cobra command is added.
 - No config is loaded.
 - No credentials are resolved.

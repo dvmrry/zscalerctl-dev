@@ -3,6 +3,7 @@
 package browserdata
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -18,9 +19,38 @@ import (
 type ProjectedFixtureSource struct{}
 
 func (ProjectedFixtureSource) ProjectedRecords(spec resources.ResourceSpec) ([]resources.ProjectedRecord, error) {
-	switch fmt.Sprintf("%s/%s", spec.Product, spec.Name) {
+	records, err := fixtureSourceRecords(fmt.Sprintf("%s/%s", spec.Product, spec.Name))
+	if err != nil || len(records) == 0 {
+		return nil, err
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, records)
+	return projected.Records(), err
+}
+
+// FixtureReader returns fake source records for the same subset of the catalog
+// as ProjectedFixtureSource. It is intended for the isolated TUI browser demo and
+// tests only: it never contacts Zscaler, loads config, or resolves credentials.
+type FixtureReader struct{}
+
+func (FixtureReader) List(ctx context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	return fixtureSourceRecords(fmt.Sprintf("%s/%s", product, resource))
+}
+
+func (FixtureReader) Show(ctx context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
+	records, err := fixtureSourceRecords(fmt.Sprintf("%s/%s", product, resource))
+	if err != nil {
+		return resources.SourceRecord{}, err
+	}
+	if len(records) == 0 {
+		return resources.SourceRecord{}, fmt.Errorf("singleton %s/%s not found", product, resource)
+	}
+	return records[0], nil
+}
+
+func fixtureSourceRecords(key string) ([]resources.SourceRecord, error) {
+	switch key {
 	case "zia/locations":
-		records := []resources.SourceRecord{
+		return []resources.SourceRecord{
 			resources.NewSourceRecord(map[string]any{
 				"id":             "123",
 				"name":           "HQ",
@@ -41,12 +71,9 @@ func (ProjectedFixtureSource) ProjectedRecords(spec resources.ResourceSpec) ([]r
 				"country":     "JP",
 				"description": "APAC",
 			}),
-		}
-		projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, records)
-		return projected.Records(), err
-
+		}, nil
 	case "zia/url-filtering-rules":
-		records := []resources.SourceRecord{
+		return []resources.SourceRecord{
 			resources.NewSourceRecord(map[string]any{
 				"id":             "501",
 				"name":           "Social",
@@ -62,15 +89,11 @@ func (ProjectedFixtureSource) ProjectedRecords(spec resources.ResourceSpec) ([]r
 				"state":       "active",
 				"action":      "allow",
 			}),
-		}
-		projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, records)
-		return projected.Records(), err
-
+		}, nil
 	case "zia/forwarding-rules":
 		return nil, nil
-
 	case "zpa/application-segments":
-		records := []resources.SourceRecord{
+		return []resources.SourceRecord{
 			resources.NewSourceRecord(map[string]any{
 				"id":          "901",
 				"name":        "Engineering",
@@ -83,16 +106,11 @@ func (ProjectedFixtureSource) ProjectedRecords(spec resources.ResourceSpec) ([]r
 				"description": "5 apps",
 				"enabled":     true,
 			}),
-		}
-		projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, records)
-		return projected.Records(), err
-
+		}, nil
 	case "zpa/app-connectors":
 		return nil, errors.New("connector list unavailable")
-
 	case "zcc/devices":
 		return nil, nil
-
 	default:
 		return nil, nil
 	}
@@ -118,4 +136,14 @@ func DemoCatalog() resources.ResourceCatalog {
 		}
 	}
 	return out
+}
+
+// NewCollectorFixture returns a Collector wired to the fake FixtureReader and
+// the demo catalog. It is a convenience constructor for the isolated demo.
+func NewCollectorFixture() *Collector {
+	return &Collector{
+		Catalog: DemoCatalog(),
+		Reader:  FixtureReader{},
+		Mode:    redact.ModeStandard,
+	}
 }
