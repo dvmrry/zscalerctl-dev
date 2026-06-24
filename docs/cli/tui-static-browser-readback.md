@@ -30,12 +30,15 @@ final frames from the captured sessions.
 
 ## Viewport stabilization update
 
-The browser model now uses explicit left and right pane viewports. Long resource
-catalogs render only visible left-pane rows, long record lists render only
-visible right-pane records, and `pgup`/`pgdown`/`home`/`end` clamp selection and
-offsets after resize. The code-level readback for this update covers a
-200-resource catalog, a 1000-record resource, 120x32 to 60x16 resize, long field
-value truncation, and unloaded/loading/error states in small geometry.
+The browser model now uses explicit pane viewports. Wide terminals split into
+catalog, record-list, and selected-record detail panes so SDK-shaped projected
+field bodies do not crowd the record picker. Medium and narrow terminals keep a
+two-pane fallback. Long resource catalogs render only visible left-pane rows,
+long record lists render only visible right-pane records, and
+`pgup`/`pgdown`/`home`/`end` clamp selection and offsets after resize. The
+code-level readback for this update covers a 200-resource catalog, a 1000-record
+resource, 120x32 to 60x16 resize, long field value truncation, large selected
+record bodies, and unloaded/loading/error states in small geometry.
 
 The static fixture captures below are retained as baseline visual evidence for
 the isolated browser shape. Current footer text includes page/home/end

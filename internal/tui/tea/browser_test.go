@@ -544,6 +544,66 @@ func TestBrowserModelRightViewportPageHomeEnd(t *testing.T) {
 	}
 }
 
+func TestBrowserModelWideLayoutSplitsRecordsAndDetails(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	view := m.View()
+	for _, want := range []string{"Products / Resources", "Records", "locations", "HQ", "US East"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q in three-pane layout", view, want)
+		}
+	}
+	if !strings.Contains(view, "id=123") {
+		t.Fatalf("View() = %q, want record-list summary with id", view)
+	}
+	if !strings.Contains(view, "id: 123") {
+		t.Fatalf("View() = %q, want detail pane id field", view)
+	}
+	assertViewLineWidths(t, view, 120)
+}
+
+func TestBrowserModelWideTabCyclesThroughDetails(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	if got := m.ActivePane(); got != "right" {
+		t.Fatalf("ActivePane() after first tab = %q, want right", got)
+	}
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	if got := m.ActivePane(); got != "detail" {
+		t.Fatalf("ActivePane() after second tab = %q, want detail", got)
+	}
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	if got := m.ActivePane(); got != "left" {
+		t.Fatalf("ActivePane() after third tab = %q, want left", got)
+	}
+}
+
+func TestBrowserModelDetailViewportScrollsLargeSelectedBody(t *testing.T) {
+	browserData := browserDataWithLargeRecordBody(40)
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 16})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+
+	if got := m.ActivePane(); got != "detail" {
+		t.Fatalf("ActivePane() = %q, want detail", got)
+	}
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	if got := m.detail.Offset; got <= 0 {
+		t.Fatalf("detail offset after end = %d, want > 0", got)
+	}
+	view := m.View()
+	if !strings.Contains(view, "field_39") {
+		t.Fatalf("View() = %q, want final field visible after detail scroll", view)
+	}
+	assertViewLineWidths(t, view, 120)
+}
+
 func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
 	longValue := strings.Repeat("tenant-value-", 80)
 	browserData := data.BrowserData{
@@ -759,6 +819,37 @@ func browserDataWithRecords(count int) data.BrowserData {
 				Name: "zia",
 				Resources: []data.ResourceNode{
 					{Product: "zia", Name: "locations", Records: records},
+				},
+			},
+		},
+	}
+}
+
+func browserDataWithLargeRecordBody(fieldCount int) data.BrowserData {
+	fields := make([]data.KV, fieldCount)
+	for i := range fields {
+		fields[i] = data.KV{
+			Key:   fmt.Sprintf("field_%02d", i),
+			Value: fmt.Sprintf("value_%02d", i),
+		}
+	}
+	return data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "large-body",
+						Records: []data.RecordSummary{
+							{
+								ID:     "1",
+								Name:   "Large body",
+								Status: "active",
+								Fields: fields,
+							},
+						},
+					},
 				},
 			},
 		},
