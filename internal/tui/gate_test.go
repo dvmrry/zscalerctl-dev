@@ -138,6 +138,38 @@ func with(opts tui.Options, apply func(*tui.Options)) tui.Options {
 	return opts
 }
 
+func TestEvaluateRejectsOutputPath(t *testing.T) {
+	opts := with(eligibleOptions(), func(opts *tui.Options) {
+		opts.OutputPath = "/tmp/out.json"
+	})
+	want := tui.Eligibility{Reason: tui.ReasonOutputPath}
+	if got := tui.Evaluate(opts); got != want {
+		t.Errorf("Evaluate(outputPath) = %+v, want %+v", got, want)
+	}
+}
+
+func TestDecideLaunchMirrorsEvaluate(t *testing.T) {
+	opts := tui.LaunchOptions{
+		Requested:  true,
+		StdinTTY:   true,
+		StdoutTTY:  true,
+		StderrTTY:  true,
+		Format:     output.FormatAuto,
+		ColorMode:  output.ColorAuto,
+		OutputPath: "",
+		Env:        []string{"TERM=xterm-256color"},
+	}
+	if got := tui.DecideLaunch(opts); got != (tui.LaunchDecision{Enabled: true}) {
+		t.Errorf("DecideLaunch(eligible) = %+v, want enabled", got)
+	}
+
+	opts.OutputPath = "/tmp/out.json"
+	want := tui.LaunchDecision{Reason: tui.ReasonOutputPath}
+	if got := tui.DecideLaunch(opts); got != want {
+		t.Errorf("DecideLaunch(outputPath) = %+v, want %+v", got, want)
+	}
+}
+
 func TestGatePackageDoesNotImportBubbleTea(t *testing.T) {
 	cmd := exec.Command("go", "list", "-f", "{{join .Imports \"\\n\"}}", "github.com/dvmrry/zscalerctl/internal/tui")
 	out, err := cmd.CombinedOutput()

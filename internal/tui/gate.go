@@ -24,13 +24,14 @@ type Eligibility struct {
 
 // Options describe the terminal context used to evaluate TUI eligibility.
 type Options struct {
-	Requested bool
-	StdinTTY  bool
-	StdoutTTY bool
-	StderrTTY bool
-	Format    output.Format
-	ColorMode output.ColorMode
-	Env       []string
+	Requested  bool
+	StdinTTY   bool
+	StdoutTTY  bool
+	StderrTTY  bool
+	Format     output.Format
+	ColorMode  output.ColorMode
+	OutputPath string
+	Env        []string
 }
 
 const (
@@ -39,6 +40,7 @@ const (
 	ReasonStdoutNotTTY  = "stdout is not interactive"
 	ReasonStderrNotTTY  = "stderr is not interactive"
 	ReasonMachineFormat = "machine output format requested"
+	ReasonOutputPath    = "output path is not supported for TUI"
 	ReasonColorDisabled = "terminal styling disabled"
 	ReasonDumbTerminal  = "TERM=dumb"
 )
@@ -61,6 +63,9 @@ func Evaluate(opts Options) Eligibility {
 	if opts.Format == output.FormatJSON || opts.Format == output.FormatNDJSON {
 		return disabled(ReasonMachineFormat)
 	}
+	if opts.OutputPath != "" {
+		return disabled(ReasonOutputPath)
+	}
 	if envValue(opts.Env, "NO_COLOR") != "" {
 		return disabled(ReasonColorDisabled)
 	}
@@ -71,6 +76,22 @@ func Evaluate(opts Options) Eligibility {
 		return disabled(ReasonColorDisabled)
 	}
 	return Eligibility{Enabled: true}
+}
+
+// LaunchOptions is the explicit bridge-contract name for the same terminal
+// context used by Options. It exists so callers can refer to the TUI launch
+// decision without the older "eligibility" vocabulary.
+type LaunchOptions Options
+
+// LaunchDecision is the explicit bridge-contract name for the result of
+// DecideLaunch. It is identical to Eligibility.
+type LaunchDecision Eligibility
+
+// DecideLaunch returns a LaunchDecision for the supplied terminal context. It
+// is pure and Bubble-free: it imports no Bubble Tea packages and performs no
+// terminal I/O.
+func DecideLaunch(opts LaunchOptions) LaunchDecision {
+	return LaunchDecision(Evaluate(Options(opts)))
 }
 
 func disabled(reason string) Eligibility {
