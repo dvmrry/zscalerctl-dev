@@ -36,6 +36,8 @@ GitHub security policy.
   normal CLI and the isolated TUI runtime.
 - [cli/tui-separate-binary.md](cli/tui-separate-binary.md) — the experimental
   standalone `zscalerctl-tui` binary and the binary-level import boundary.
+- [cli/tui-live-smoke-checklist.md](cli/tui-live-smoke-checklist.md) — manual
+  validation checklist for `zscalerctl-tui --live` against a scratch tenant.
 - [cli/tui-demo-readback.md](cli/tui-demo-readback.md) — integration-branch
   readback for the isolated TUI demo harness.
 - [cli/tui-static-browser-readback.md](cli/tui-static-browser-readback.md) —

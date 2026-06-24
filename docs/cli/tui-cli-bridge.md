@@ -242,8 +242,8 @@ Bubble Tea or `internal/tui/tea`; this is enforced by `go list -deps` in
 ## Remaining work before a user-facing TUI feature
 
 - At least one live-reader-backed readback on a scratch tenant with no secrets in output.
-- Live config, credential, and reader support inside `cmd/zscalerctl-tui`.
 - A decision on whether the main `zscalerctl` binary should ever launch the separate TUI binary.
+- Live-smoke validation of all `--products`, `--resources`, and `--continue-on-error` paths.
 
 ## Status
 
@@ -258,9 +258,10 @@ The blocker fix removed the hidden `browse` command from the normal command tree
 and made `internal/tui/launcher` Bubble-free. An isolated experimental TUI entrypoint
 now exists as `cmd/zscalerctl-tui`. It may import `internal/tui/tea` and Bubble Tea,
 while the normal `zscalerctl` binary and `internal/cli` remain Bubble-free. The
-TUI foundation is therefore ready for merge to `main` as a standalone binary without
-risk to normal CLI output. Future work can add live config/credential/reader support
-to `cmd/zscalerctl-tui` without touching the main binary.
+binary supports both fixture-only modes and a `--live` mode that loads config, resolves
+credentials, builds a real Zscaler reader, and collects tenant data before launching
+the TUI. Future work is to capture live-tenant readback evidence and decide whether
+the main binary should ever `exec` the separate TUI binary.
 
 ## Decision table
 
