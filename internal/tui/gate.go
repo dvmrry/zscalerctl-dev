@@ -60,11 +60,11 @@ func Evaluate(opts Options) Eligibility {
 	if !opts.StderrTTY {
 		return disabled(ReasonStderrNotTTY)
 	}
-	if opts.Format == output.FormatJSON || opts.Format == output.FormatNDJSON {
-		return disabled(ReasonMachineFormat)
-	}
 	if opts.OutputPath != "" {
 		return disabled(ReasonOutputPath)
+	}
+	if opts.Format == output.FormatJSON || opts.Format == output.FormatNDJSON {
+		return disabled(ReasonMachineFormat)
 	}
 	if envValue(opts.Env, "NO_COLOR") != "" {
 		return disabled(ReasonColorDisabled)

@@ -226,6 +226,12 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 - `scripts/verify-tui-import-boundary.sh` passes.
 - No TUI command appears in generated CLI docs until intentionally promoted.
 
+## Status
+
+The first experimental wiring (`zscalerctl browse --tui`) is implemented on
+`feature/tui` as a fixture-backed command. It validates the launch gates, stream
+ownership, and exit behavior without config, credentials, or live network.
+
 ## Decision table
 
 | Condition | TUI enabled | Reason |
@@ -234,9 +240,9 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 | stdin not TTY | no | `stdin is not interactive` |
 | stdout not TTY | no | `stdout is not interactive` |
 | stderr not TTY | no | `stderr is not interactive` |
+| `--output <path>` | no | `output path is not supported for TUI` |
 | `--format json` | no | `machine output format requested` |
 | `--format ndjson` | no | `machine output format requested` |
-| `--output <path>` | no | `output path is not supported for TUI` |
 | `--color never` | no | `terminal styling disabled` |
 | `NO_COLOR` set | no | `terminal styling disabled` |
 | `TERM=dumb` | no | `TERM=dumb` |
