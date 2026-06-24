@@ -25,5 +25,39 @@ for target in ./cmd/zscalerctl ./internal/cli ./internal/tui; do
   fi
 done
 
-# The shell script wrapper must also pass.
+# The shell script wrapper must also pass on the real repository.
 bash scripts/verify-tui-import-boundary.sh
+
+# Negative test: temporarily introduce a forbidden transitive dependency into
+# internal/cli and verify that the verifier catches it. This proves the script
+# is not just passing because the repository is already clean.
+bad_file="internal/cli/zscalerctl_tui_bad_import.go"
+cleanup() {
+  rm -f "$bad_file"
+}
+trap cleanup EXIT
+
+cat >"$bad_file" <<'GO'
+package cli
+
+import _ "github.com/dvmrry/zscalerctl/internal/tui/tea"
+GO
+
+bad_out="$(mktemp)"
+bad_err="$(mktemp)"
+trap 'rm -f "$bad_file" "$bad_out" "$bad_err"' EXIT
+
+if bash scripts/verify-tui-import-boundary.sh >"$bad_out" 2>"$bad_err"; then
+  echo "verify-tui-import-boundary accepted a forbidden transitive dependency" >&2
+  exit 1
+fi
+
+if ! grep -qF "internal/tui/tea" "$bad_err"; then
+  echo "verify-tui-import-boundary did not report the forbidden package" >&2
+  cat "$bad_err" >&2
+  exit 1
+fi
+
+# Clean up the bad file before the trap removes it, so the real repository check
+# above is not contaminated.
+rm -f "$bad_file"
