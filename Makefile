@@ -59,6 +59,13 @@ vendor:
 	go mod vendor
 
 verify-vendor: vendor
+	# `go mod vendor` restores the upstream Bubble Tea init file, which contains
+	# the package-init terminal probe that zscalerctl-tui cannot have. Restore the
+	# approved vendor patch from the repository, then verify the probe is absent.
+	git checkout -- vendor/github.com/charmbracelet/bubbletea/tea_init.go
+	bash scripts/verify-bubbletea-vendor-patch.sh
+	# After restoring the intentional patch, any remaining vendor diff is real
+	# drift that must be reviewed and committed deliberately.
 	git diff --exit-code -- go.mod go.sum vendor
 
 verify-licenses:

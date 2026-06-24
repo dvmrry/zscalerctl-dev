@@ -127,6 +127,21 @@ acceptable because:
   (`scripts/verify-zscalerctl-tui-live-failure.sh`) proves the failure path
   returns promptly with no ESC bytes.
 
+### Patch-aware vendor verification
+
+`make verify-vendor` runs `go mod vendor`, restores the approved Bubble Tea
+patch from the repository with `git checkout --
+vendor/github.com/charmbracelet/bubbletea/tea_init.go`, runs the patch guard,
+and then checks `git diff --exit-code -- go.mod go.sum vendor`. This makes the
+intentional patch part of the integrity contract instead of an exception:
+any remaining vendor diff after the patch is restored is real drift and fails
+the check. `make release-check` depends on `verify-vendor`, so releases can
+pass honestly without requiring tribal knowledge about one expected diff.
+
+After a dependency refresh, if the Bubble Tea init file changed upstream, the
+patch guard will fail and a human must review whether the new upstream code
+still needs the patch and update the vendored file accordingly.
+
 See [cli/tui-import-boundary.md](cli/tui-import-boundary.md) for the full
 finding and enforcement details.
 

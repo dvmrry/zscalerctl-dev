@@ -57,3 +57,14 @@ registered path exists.
 The testdata directory under `scripts/` holds fixtures for script tests and is
 intentionally not a registry entry because the verifier tracks top-level script
 files, not fixture directories.
+
+## Patch-aware vendor verification
+
+`make verify-vendor` refreshes `vendor/` with `go mod vendor`, then restores
+the approved Bubble Tea patch (`vendor/github.com/charmbracelet/bubbletea/tea_init.go`)
+from the repository before running `scripts/verify-bubbletea-vendor-patch.sh` and
+`git diff --exit-code`. This makes the intentional vendor patch part of the
+integrity contract rather than an expected diff. The patch guard and the
+`zscalerctl-tui` live failure-path PTY verifier together ensure the patch is
+present and effective. See [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md) for the
+full vendor-patch policy.
