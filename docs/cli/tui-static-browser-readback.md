@@ -2,14 +2,14 @@
 
 This readback belongs to the `feature/tui` integration line. It records the
 visual behavior of the static/fake-data product browser demo
-(`scripts/tui-browser-demo.go`) and confirms that normal `zscalerctl` CLI paths
-remain free of TUI terminal sequences.
+(`scripts/tui-browser-demo.go`) and confirms that normal `zscalerctl` CLI
+paths remain free of TUI terminal sequences.
 
 ## Scope
 
 - Browser demo: `go run -mod=vendor ./scripts/tui-browser-demo.go`
 - Model: `internal/tui/tea.BrowserModel`
-- Data: hard-coded fake products, resources, and records.
+- Data: hard-coded fake products, resources, and records via `NewFakeBrowserData()`.
 - No Cobra command is added.
 - No config is loaded.
 - No credentials are resolved.
@@ -33,9 +33,10 @@ final frames from the captured sessions.
 │ Products / Resources   ││ zia                                                │
 │                        ││                                                    │
 │ zia                    ││ Product: zia                                       │
-│   locations            ││ Resources: 3                                       │
+│   locations            ││ Resources: 4                                       │
 │   url-filtering-rules  ││                                                    │
 │   forwarding-rules     ││                                                    │
+│   settings             ││                                                    │
 │ zpa                    ││                                                    │
 │   app-segments         ││                                                    │
 │   connectors           ││                                                    │
@@ -49,9 +50,9 @@ final frames from the captured sessions.
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
-│                        ││                                                    │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia · 1/10
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ### 80x24 — resource selected with records
@@ -64,8 +65,9 @@ final frames from the captured sessions.
 │   locations            ││     US East                                        │
 │   url-filtering-rules  ││   Branch (id=124, status=active)                   │
 │   forwarding-rules     ││     EU West                                        │
-│ zpa                    ││   Remote (id=125, status=inactive)               │
-│   app-segments         ││     APAC                                           │
+│   settings             ││   Remote (id=125, status=inactive)                 │
+│ zpa                    ││     APAC                                           │
+│   app-segments         ││                                                    │
 │   connectors           ││                                                    │
 │ zcc                    ││                                                    │
 │   devices              ││                                                    │
@@ -77,9 +79,9 @@ final frames from the captured sessions.
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
-│                        ││                                                    │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia / locations · 2/10 · 3 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ### 80x24 — empty resource state
@@ -88,10 +90,11 @@ final frames from the captured sessions.
 ┌────────────────────────┐┌────────────────────────────────────────────────────┐
 │ Products / Resources   ││ forwarding-rules                                   │
 │                        ││                                                    │
-│ zia                    ││ No records                                         │
-│   locations            ││                                                    │
+│ zia                    ││                                                    │
+│   locations            ││ No records for this resource                       │
 │   url-filtering-rules  ││                                                    │
-│   forwarding-rules     ││                                                    │
+│   forwarding-rules     ││ Select a different resource to browse data.        │
+│   settings             ││                                                    │
 │ zpa                    ││                                                    │
 │   app-segments         ││                                                    │
 │   connectors           ││                                                    │
@@ -105,9 +108,9 @@ final frames from the captured sessions.
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
-│                        ││                                                    │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia / forwarding-rules · 4/10 · 0 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ### 80x24 — error resource state
@@ -116,10 +119,11 @@ final frames from the captured sessions.
 ┌────────────────────────┐┌────────────────────────────────────────────────────┐
 │ Products / Resources   ││ connectors                                         │
 │                        ││                                                    │
-│ zia                    ││ Error: connector list unavailable                  │
-│   locations            ││                                                    │
-│   url-filtering-rules  ││                                                    │
+│ zia                    ││                                                    │
+│   locations            ││ Error loading resource                             │
+│   url-filtering-rules  ││ connector list unavailable                         │
 │   forwarding-rules     ││                                                    │
+│   settings             ││ Press enter to retry from the top of this list.    │
 │ zpa                    ││                                                    │
 │   app-segments         ││                                                    │
 │   connectors           ││                                                    │
@@ -133,31 +137,58 @@ final frames from the captured sessions.
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
-│                        ││                                                    │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zpa / connectors · 8/10 · 0 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
-### 80x24 — right pane active (tab) with record selection
-
-Pressing `tab` moves focus to the right pane; `down` then selects the second
-record. The active pane is shown by the border color in the live session; the
-frame below is the plain-text transcript.
+### 80x24 — long record (detail pane scroll)
 
 ```text
 ┌────────────────────────┐┌────────────────────────────────────────────────────┐
-│ Products / Resources   ││ url-filtering-rules                                │
+│ Products / Resources   ││ settings                                           │
 │                        ││                                                    │
-│ zia                    ││   Social (id=501, status=active)                   │
-│   locations            ││     block social                                   │
-│   url-filtering-rules  ││   Streaming (id=502, status=active)                │
-│   forwarding-rules     ││     allow streaming                                │
-│ zpa                    ││                                                    │
-│   app-segments         ││                                                    │
-│   connectors           ││                                                    │
-│ zcc                    ││                                                    │
-│   devices              ││                                                    │
+│ zia                    ││   Global Policy (id=7001, status=active)           │
+│   locations            ││     default tenant policy                          │
+│   url-filtering-rules  ││     mode: strict                                   │
+│   forwarding-rules     ││     log_level: info                                │
+│   settings             ││     timeout: 30s                                   │
+│ zpa                    ││     retries: 3                                     │
+│   app-segments         ││     region: us-east                                │
+│   connectors           ││     fail_open: false                               │
+│ zcc                    ││     notify: true                                   │
+│   devices              ││     audit: enabled                                 │
+│                        ││     last_updated: 2024-06-24                       │
+│                        ││     updated_by: admin                              │
 │                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+└────────────────────────┘└────────────────────────────────────────────────────┘
+zia / settings · 5/10 · 1 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
+```
+
+After moving focus to the right pane and pressing `down`, the detail pane
+scrolls so the selected record remains at the top of the visible area:
+
+```text
+┌────────────────────────┐┌────────────────────────────────────────────────────┐
+│ Products / Resources   ││   Global Policy (id=7001, status=active)           │
+│                        ││     default tenant policy                          │
+│ zia                    ││     mode: strict                                   │
+│   locations            ││     log_level: info                                │
+│   url-filtering-rules  ││     timeout: 30s                                   │
+│   forwarding-rules     ││     retries: 3                                     │
+│   settings             ││     region: us-east                                │
+│ zpa                    ││     fail_open: false                               │
+│   app-segments         ││     notify: true                                   │
+│   connectors           ││     audit: enabled                                 │
+│ zcc                    ││     last_updated: 2024-06-24                       │
+│   devices              ││     updated_by: admin                              │
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
@@ -167,18 +198,41 @@ frame below is the plain-text transcript.
 │                        ││                                                    │
 │                        ││                                                    │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia / settings · 5/10 · 1 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
+```
+
+### 80x24 — help overlay
+
+```text
+
+                    ┌──────────────────────────────────────┐
+                    │                                      │
+                    │  Keyboard help                       │
+                    │                                      │
+                    │  ↑ / down    move selection          │
+                    │  tab         switch active pane      │
+                    │  enter       reset record selection  │
+                    │  ?           toggle this help        │
+                    │  q / esc     quit                    │
+                    │  ctrl+c      quit                    │
+                    │                                      │
+                    │  Press any key to close.             │
+                    │                                      │
+                    └──────────────────────────────────────┘
+
+
+zia · 1/10
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ### 60x16 — stacked narrow layout
 
-At 60 columns the browser stacks the panes vertically. The left pane is clipped
-to its lower items in this capture; the right pane still shows the selected
-resource details.
+At 60 columns the browser stacks the panes vertically. The status bar and footer
+fit without wrapping, and the right pane still shows the selected resource
+details.
 
 ```text
-│   forwarding-rules                                       │
-│ zpa                                                      │
 │   app-segments                                           │
 │   connectors                                             │
 │ zcc                                                      │
@@ -188,13 +242,15 @@ resource details.
 │ zia                                                      │
 │                                                          │
 │ Product: zia                                             │
-│ Resources: 3                                             │
+│ Resources: 4                                             │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia · 1/10
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ```text
+│   app-segments                                           │
 │   connectors                                             │
 │ zcc                                                      │
 │   devices                                                │
@@ -205,11 +261,9 @@ resource details.
 │   HQ (id=123, status=active)                             │
 │     US East                                              │
 │   Branch (id=124, status=active)                         │
-│     EU West                                              │
-│   Remote (id=125, status=inactive)                       │
-│     APAC                                                 │
 └──────────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia / locations · 2/10 · 3 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ### 120x32 — wide layout
@@ -219,9 +273,10 @@ resource details.
 │ Products / Resources                 ││ zia                                                                          │
 │                                      ││                                                                              │
 │ zia                                  ││ Product: zia                                                                 │
-│   locations                          ││ Resources: 3                                                                 │
+│   locations                          ││ Resources: 4                                                                 │
 │   url-filtering-rules                ││                                                                              │
 │   forwarding-rules                   ││                                                                              │
+│   settings                           ││                                                                              │
 │ zpa                                  ││                                                                              │
 │   app-segments                       ││                                                                              │
 │   connectors                         ││                                                                              │
@@ -245,9 +300,9 @@ resource details.
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
-│                                      ││                                                                              │
 └──────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia · 1/10
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ```text
@@ -258,8 +313,9 @@ resource details.
 │   locations                          ││     US East                                                                  │
 │   url-filtering-rules                ││   Branch (id=124, status=active)                                             │
 │   forwarding-rules                   ││     EU West                                                                  │
-│ zpa                                  ││   Remote (id=125, status=inactive)                                           │
-│   app-segments                       ││     APAC                                                                     │
+│   settings                           ││   Remote (id=125, status=inactive)                                           │
+│ zpa                                  ││     APAC                                                                     │
+│   app-segments                       ││                                                                              │
 │   connectors                         ││                                                                              │
 │ zcc                                  ││                                                                              │
 │   devices                            ││                                                                              │
@@ -281,30 +337,30 @@ resource details.
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
-│                                      ││                                                                              │
 └──────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────┘
-↑/↓ move · tab switch pane · enter select · esc/q quit
+zia / locations · 2/10 · 3 records
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
 ## Keyboard flow
 
 | Sequence | Result |
 | --- | --- |
-| initial | `zia` product selected, right pane shows product summary. |
-| `down` | `locations` selected, right pane shows records. |
-| `down` | `url-filtering-rules` selected, right pane shows records. |
-| `down` | `forwarding-rules` selected, right pane shows "No records". |
-| `down` × 2 | `app-segments` selected, right pane shows records. |
-| `down` | `connectors` selected, right pane shows error. |
+| initial | `zia` product selected, status bar shows `zia · 1/10`. |
+| `down` | `locations` selected, right pane shows records, status bar shows `zia / locations · 2/10 · 3 records`. |
+| `down` | `url-filtering-rules` selected. |
+| `down` | `forwarding-rules` selected, right pane shows empty-state message. |
+| `down` | `settings` selected, right pane shows long record. |
 | `tab` | Focus moves to right pane; border color changes. |
-| `down` | Next record in the right pane is selected. |
+| `down` | Right pane scrolls to keep the selected record visible. |
+| `?` | Help overlay appears; `q` or `esc` dismisses it and quits. |
 | `q` / `esc` / `ctrl+c` | Demo exits cleanly with status 0. |
 
 ## Terminal startup behavior
 
 The raw recordings show the same standard Bubble Tea TUI setup and teardown
-sequences seen in the simple demo: cursor hide/show, bracketed paste on/off,
-and mouse tracking off on exit. No OSC (`ESC]`) or
+sequences: cursor hide/show, bracketed paste on/off, and mouse tracking off on
+exit. No OSC (`ESC]`) or
 device-status-report/cursor-position-report (`ESC[6n`) probes were captured.
 
 These sequences are emitted only by `scripts/tui-browser-demo.go`. Normal
@@ -327,6 +383,7 @@ and the gate-only `internal/tui` package do not import Bubble Tea.
 
 ## Verdict
 
-**Continue.** The static browser shape renders correctly at 80x24, 60x16, and
-120x32, supports the requested keyboard flow, and keeps the TUI isolated behind
-the import boundary. The next step can connect this shape to real CLI data.
+**Continue.** The polished fake-data browser is usable at 80x24, 60x16, and
+120x32, shows explicit empty/error states, supports a help overlay, and keeps
+the TUI isolated behind the import boundary. The next step can connect this
+shape to real projected CLI data.

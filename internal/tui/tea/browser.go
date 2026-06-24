@@ -17,15 +17,17 @@ import (
 // BrowserData view model. It contains no config, credential, network, or live
 // reader dependencies.
 type BrowserModel struct {
-	style   output.Style
-	width   int
-	height  int
-	data    BrowserData
-	items   []browserItem
-	idx     int
-	active  string // "left" or "right"
-	rIdx    int
-	exitKey string
+	style    output.Style
+	width    int
+	height   int
+	data     BrowserData
+	items    []browserItem
+	idx      int
+	active   string // "left" or "right"
+	rIdx     int
+	scroll   int
+	showHelp bool
+	exitKey  string
 }
 
 // browserItem is a single row in the left navigation pane.
@@ -36,6 +38,7 @@ type browserItem struct {
 	records []RecordSummary
 	empty   bool
 	err     string
+	Product string
 }
 
 var _ tea.Model = BrowserModel{}
@@ -61,21 +64,37 @@ func (m BrowserModel) Init() tea.Cmd {
 }
 
 func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.showHelp {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			m.showHelp = false
+			// Quit keys should pass through and exit immediately.
+			if key.String() == "ctrl+c" || key.String() == "esc" || key.String() == "q" {
+				m.exitKey = key.String()
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc", "q":
 			m.exitKey = msg.String()
 			return m, tea.Quit
+		case "?":
+			m.showHelp = true
 		case "up":
 			if m.active == "left" {
 				if m.idx > 0 {
 					m.idx--
 					m.rIdx = 0
+					m.scroll = 0
 				}
 			} else {
 				if m.rIdx > 0 {
 					m.rIdx--
+					m.adjustScrollToRecord()
 				}
 			}
 		case "down":
@@ -83,10 +102,12 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.idx < len(m.items)-1 {
 					m.idx++
 					m.rIdx = 0
+					m.scroll = 0
 				}
 			} else {
 				if m.rIdx < len(m.items[m.idx].records)-1 {
 					m.rIdx++
+					m.adjustScrollToRecord()
 				}
 			}
 		case "tab":
@@ -95,14 +116,14 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.rIdx >= len(m.items[m.idx].records) {
 					m.rIdx = 0
 				}
+				m.adjustScrollToRecord()
 			} else {
 				m.active = "left"
 			}
 		case "enter":
-			// Enter confirms the current selection; on the right pane this resets
-			// the record index to the top of the current list.
 			if m.active == "right" {
 				m.rIdx = 0
+				m.scroll = 0
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -112,12 +133,46 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *BrowserModel) adjustScrollToRecord() {
+	records := m.items[m.idx].records
+	if m.rIdx < 0 {
+		m.rIdx = 0
+	}
+	if len(records) == 0 {
+		m.rIdx = 0
+		m.scroll = 0
+		return
+	}
+	if m.rIdx >= len(records) {
+		m.rIdx = len(records) - 1
+	}
+	m.scroll = m.recordStartLine(m.rIdx)
+}
+
+func (m BrowserModel) recordStartLine(rIdx int) int {
+	item := m.items[m.idx]
+	if item.kind != "resource" || rIdx < 0 || rIdx >= len(item.records) {
+		return 0
+	}
+	start := 2 // title + blank line
+	for i := 0; i < rIdx && i < len(item.records); i++ {
+		rec := item.records[i]
+		start++ // record header
+		if rec.Detail != "" {
+			start++
+		}
+		start += len(rec.Fields)
+	}
+	return start
+}
+
 func (m BrowserModel) View() string {
 	width, height := m.dimensions()
 	r := browserRenderer(m.style)
 
+	statusHeight := 1
 	footerHeight := 2
-	bodyHeight := height - footerHeight
+	bodyHeight := height - statusHeight - footerHeight
 	if bodyHeight < 6 {
 		bodyHeight = 6
 	}
@@ -149,8 +204,13 @@ func (m BrowserModel) View() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 	}
 
+	if m.showHelp {
+		body = m.renderHelpOverlay(r, width, height-statusHeight-1)
+	}
+
+	status := m.renderStatus(r, width)
 	footer := m.renderFooter(r, width)
-	return body + "\n" + footer + "\n"
+	return body + "\n" + status + "\n" + footer + "\n"
 }
 
 // ActivePane reports which pane currently has focus.
@@ -166,6 +226,16 @@ func (m BrowserModel) SelectedIndex() int {
 // RecordIndex reports the selected right-pane record index.
 func (m BrowserModel) RecordIndex() int {
 	return m.rIdx
+}
+
+// ScrollOffset reports the right-pane line scroll offset.
+func (m BrowserModel) ScrollOffset() int {
+	return m.scroll
+}
+
+// ShowingHelp reports whether the help overlay is visible.
+func (m BrowserModel) ShowingHelp() bool {
+	return m.showHelp
 }
 
 // ExitKey returns the key that requested shutdown, if any.
@@ -195,7 +265,7 @@ func (m BrowserModel) renderLeftPane(r *lipgloss.Renderer, width, height int) st
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(browserBorderColor(m.style, m.active == "left")).
 		Padding(0, 1).
-		Width(width - 2). // subtract border
+		Width(width - 2).
 		Height(height - 2)
 
 	var lines []string
@@ -227,6 +297,13 @@ func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) s
 		Width(width - 2).
 		Height(height - 2)
 
+	content := m.rightPaneContent(r)
+	visible := m.visibleLines(content, height-2)
+
+	return style.Render(strings.Join(visible, "\n"))
+}
+
+func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer) []string {
 	item := m.items[m.idx]
 	var lines []string
 
@@ -243,13 +320,17 @@ func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) s
 		lines = append(lines, fmt.Sprintf("Resources: %d", resourceCount))
 
 	case item.err != "":
-		lines = append(lines, browserErrorStyle(m.style).Render("Error: "+item.err))
+		lines = append(lines, "")
+		lines = append(lines, browserErrorStyle(m.style).Render("Error loading resource"))
+		lines = append(lines, browserErrorStyle(m.style).Render(item.err))
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to retry from the top of this list."))
 
-	case item.empty:
-		lines = append(lines, browserEmptyStyle(m.style).Render("No records"))
-
-	case len(item.records) == 0:
-		lines = append(lines, browserEmptyStyle(m.style).Render("No records"))
+	case item.empty || len(item.records) == 0:
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("No records for this resource"))
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("Select a different resource to browse data."))
 
 	default:
 		for i, rec := range item.records {
@@ -267,14 +348,74 @@ func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) s
 		}
 	}
 
-	return style.Render(strings.Join(lines, "\n"))
+	return lines
+}
+
+func (m BrowserModel) visibleLines(lines []string, maxLines int) []string {
+	if maxLines <= 0 {
+		return []string{}
+	}
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+	if m.scroll >= len(lines) {
+		m.scroll = len(lines) - 1
+		if m.scroll < 0 {
+			m.scroll = 0
+		}
+	}
+	end := m.scroll + maxLines
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return lines[m.scroll:end]
+}
+
+func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
+	item := m.items[m.idx]
+	var selected string
+	if item.kind == "product" {
+		selected = item.name
+	} else {
+		selected = item.Product + " / " + item.name
+	}
+	status := fmt.Sprintf("%s · %d/%d", selected, m.idx+1, len(m.items))
+	if item.kind == "resource" {
+		status += fmt.Sprintf(" · %d records", len(item.records))
+	}
+	return r.NewStyle().
+		Width(width - 2).
+		Render(status)
 }
 
 func (m BrowserModel) renderFooter(r *lipgloss.Renderer, width int) string {
-	help := "↑/↓ move · tab switch pane · enter select · esc/q quit"
+	help := "↑/↓ move · tab switch · enter select · ? help · esc/q quit"
 	return r.NewStyle().
 		Width(width - 2).
 		Render(help)
+}
+
+func (m BrowserModel) renderHelpOverlay(r *lipgloss.Renderer, width, height int) string {
+	helpText := strings.Join([]string{
+		"Keyboard help",
+		"",
+		"↑ / down    move selection",
+		"tab         switch active pane",
+		"enter       reset record selection",
+		"?           toggle this help",
+		"q / esc     quit",
+		"ctrl+c      quit",
+		"",
+		"Press any key to close.",
+	}, "\n")
+
+	panel := r.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(browserBorderColor(m.style, true)).
+		Padding(1, 2).
+		Render(helpText)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, panel)
 }
 
 func flattenBrowserData(data BrowserData) []browserItem {
@@ -289,6 +430,7 @@ func flattenBrowserData(data BrowserData) []browserItem {
 				records: r.Records,
 				empty:   r.Empty,
 				err:     r.Error,
+				Product: r.Product,
 			})
 		}
 	}
