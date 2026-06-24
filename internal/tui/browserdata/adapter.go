@@ -42,13 +42,38 @@ func Build(catalog resources.ResourceCatalog, src ProjectedRecordSource) (data.B
 	return data.BrowserData{Products: products}, nil
 }
 
+// BuildUnloadedCatalog converts a resource catalog into a BrowserData view
+// model without reading records. Live TUI mode uses this so first paint only
+// depends on config, credentials, reader construction, and catalog filtering.
+func BuildUnloadedCatalog(catalog resources.ResourceCatalog) data.BrowserData {
+	var products []data.ProductNode
+	var current *data.ProductNode
+	for _, spec := range catalog {
+		if spec.Name == "" {
+			continue
+		}
+		if current == nil || current.Name != string(spec.Product) {
+			products = append(products, data.ProductNode{Name: string(spec.Product)})
+			current = &products[len(products)-1]
+		}
+		current.Resources = append(current.Resources, data.ResourceNode{
+			Product: string(spec.Product),
+			Name:    spec.Name,
+			State:   data.ResourceStateUnloaded,
+		})
+	}
+	return data.BrowserData{Products: products}
+}
+
 func buildResourceNode(spec resources.ResourceSpec, src ProjectedRecordSource) (data.ResourceNode, error) {
 	node := data.ResourceNode{
 		Product: string(spec.Product),
 		Name:    spec.Name,
+		State:   data.ResourceStateLoaded,
 	}
 	records, err := src.ProjectedRecords(spec)
 	if err != nil {
+		node.State = data.ResourceStateError
 		node.Error = err.Error()
 		return node, nil
 	}

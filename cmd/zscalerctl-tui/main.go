@@ -7,7 +7,7 @@
 // Modes:
 //
 //   - --live: load config, resolve credentials, build a real resource reader, and
-//     collect targeted live tenant data before launching the TUI.
+//     launch with a catalog. Records are loaded on demand when selected.
 //   - --collector-fixture: use the fake-reader-backed collector fixture (default).
 //   - --fixture: use the hard-coded static fixture.
 //
@@ -16,13 +16,12 @@
 //	go run ./cmd/zscalerctl-tui [--live] [--collector-fixture] [--fixture] [--products <list>] [--resources <list>] [--continue-on-error] [--profile <name>] [--config <path>] [--timeout 30s] [--verbose] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
 //
 // The default mode is --collector-fixture. Live mode requires ZSCALERCTL_*
-// credentials or a config profile that provides them, and currently requires a
-// targeted --resources filter.
+// credentials or a config profile that provides them. --products and
+// --resources limit the visible live catalog; they do not preload records.
 package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -42,8 +41,6 @@ import (
 	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
-
-var errLiveBroadCollectionDisabled = errors.New("live broad collection is disabled in this experimental build; specify --resources <name> for targeted collection")
 
 func main() {
 	if err := run(
@@ -97,7 +94,7 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	flags := flag.NewFlagSet("zscalerctl-tui", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	liveFlag := flags.Bool("live", false, "load config, resolve credentials, and collect live tenant data")
+	liveFlag := flags.Bool("live", false, "load config, resolve credentials, and lazily browse live tenant data")
 	fixtureFlag := flags.Bool("fixture", false, "use the hard-coded fake fixture")
 	collectorFixtureFlag := flags.Bool("collector-fixture", false, "use the fake-reader-backed collector fixture")
 	productsFlag := flags.String("products", "", "comma-separated list of products to include")
@@ -105,7 +102,7 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	continueOnErrorFlag := flags.Bool("continue-on-error", false, "continue collecting after a resource error")
 	profileFlag := flags.String("profile", "", "config profile name")
 	configPathFlag := flags.String("config", "", "config file path")
-	timeoutFlag := flags.Duration("timeout", 30*time.Second, "timeout for live collection (e.g. 30s, 2m)")
+	timeoutFlag := flags.Duration("timeout", 30*time.Second, "timeout for each live resource load (e.g. 30s, 2m)")
 	verboseFlag := flags.Bool("verbose", false, "print pre-launch diagnostics to stderr")
 	colorFlag := flags.String("color", string(output.ColorAuto), "color mode: auto, always, never")
 	formatFlag := flags.String("format", string(output.FormatAuto), "output format gate: auto, table, pretty, json, ndjson")
@@ -170,12 +167,11 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	collectOpts := collectOptionsFromFlags(*productsFlag, *resourcesFlag, *continueOnErrorFlag)
 
 	var browserData data.BrowserData
+	var resourceLoader tui_tea.ResourceLoader
 	switch {
 	case *liveFlag:
 		logVerbose("loading config profile %q", *profileFlag)
-		collectCtx, cancel := context.WithTimeout(ctx, *timeoutFlag)
-		defer cancel()
-		browserData, err = collectLive(collectCtx, deps, env, *profileFlag, *configPathFlag, collectOpts, logVerbose)
+		browserData, resourceLoader, err = prepareLive(ctx, deps, env, *profileFlag, *configPathFlag, collectOpts, logVerbose)
 	case *fixtureFlag:
 		browserData = data.NewFakeBrowserData()
 	default:
@@ -197,12 +193,14 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 		style.Width = 80
 	}
 
-	p := deps.newProgram(
-		tui_tea.NewBrowserModel(style, browserData),
-		tea.WithContext(ctx),
-		tea.WithInput(os.Stdin),
-		tea.WithOutput(os.Stdout),
-	)
+	var model tea.Model
+	if resourceLoader != nil {
+		model = tui_tea.NewLazyBrowserModel(style, browserData, resourceLoader, *timeoutFlag)
+	} else {
+		model = tui_tea.NewBrowserModel(style, browserData)
+	}
+
+	p := deps.newProgram(model, tea.WithContext(ctx), tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	_, err = p.Run()
 	return err
 }
@@ -239,7 +237,7 @@ func collectFixture(ctx context.Context, opts browserdata.CollectOptions) (data.
 	return collector.Collect(ctx, fixtureOpts)
 }
 
-func collectLive(
+func prepareLive(
 	ctx context.Context,
 	deps dependencies,
 	env []string,
@@ -247,13 +245,10 @@ func collectLive(
 	configPath string,
 	collectOpts browserdata.CollectOptions,
 	logVerbose func(format string, args ...any),
-) (data.BrowserData, error) {
+) (data.BrowserData, tui_tea.ResourceLoader, error) {
 	cfg, err := deps.loadConfig(env, config.LoadOptions{Profile: profile, ConfigPath: configPath})
 	if err != nil {
-		return data.BrowserData{}, err
-	}
-	if len(collectOpts.Resources) == 0 {
-		return data.BrowserData{}, errLiveBroadCollectionDisabled
+		return data.BrowserData{}, nil, err
 	}
 
 	authMode := cfg.EffectiveAuthMode()
@@ -265,17 +260,17 @@ func collectLive(
 	case config.AuthModeZIALegacy:
 		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
 		if err != nil {
-			return data.BrowserData{}, fmt.Errorf("resolve zia password: %w", err)
+			return data.BrowserData{}, nil, fmt.Errorf("resolve zia password: %w", err)
 		}
 		ziaAPIKey, err = cfg.ZIALegacy.APIKey.Resolve(ctx)
 		if err != nil {
-			return data.BrowserData{}, fmt.Errorf("resolve zia api key: %w", err)
+			return data.BrowserData{}, nil, fmt.Errorf("resolve zia api key: %w", err)
 		}
 	default:
 		// OneAPI is the default auth mode.
 		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
 		if err != nil {
-			return data.BrowserData{}, fmt.Errorf("resolve client secret: %w", err)
+			return data.BrowserData{}, nil, fmt.Errorf("resolve client secret: %w", err)
 		}
 	}
 
@@ -305,7 +300,7 @@ func collectLive(
 	logVerbose("building reader")
 	reader, err := deps.newReader(ctx, readerCfg)
 	if err != nil {
-		return data.BrowserData{}, err
+		return data.BrowserData{}, nil, err
 	}
 	logVerbose("reader ready")
 
@@ -313,21 +308,19 @@ func collectLive(
 	if mode == "" {
 		mode = redact.ModeStandard
 	}
+	catalog := browserdata.CatalogForOptions(resources.Catalog(), collectOpts)
 	collector := &browserdata.Collector{
-		Catalog: resources.Catalog(),
+		Catalog: catalog,
 		Reader:  reader,
 		Mode:    mode,
 	}
 
-	resourcesDesc := "all resources"
+	resourcesDesc := "all visible resources"
 	if len(collectOpts.Resources) > 0 {
 		resourcesDesc = strings.Join(collectOpts.Resources, ", ")
 	}
-	logVerbose("collecting %s", resourcesDesc)
-	browserData, err := collector.Collect(ctx, collectOpts)
-	if err != nil {
-		return data.BrowserData{}, err
-	}
-	logVerbose("collected %d products", len(browserData.Products))
-	return browserData, nil
+	logVerbose("building unloaded catalog for %s", resourcesDesc)
+	browserData := browserdata.BuildUnloadedCatalog(catalog)
+	logVerbose("prepared %d products for lazy loading", len(browserData.Products))
+	return browserData, collector, nil
 }

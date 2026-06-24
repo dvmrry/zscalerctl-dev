@@ -1,8 +1,10 @@
 package tea
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
 
@@ -293,6 +295,147 @@ func TestBrowserModelStatusBar(t *testing.T) {
 	}
 }
 
+func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
+	loader := &recordingResourceLoader{
+		nodes: map[string]data.ResourceNode{
+			"zia/locations": {
+				Product: "zia",
+				Name:    "locations",
+				State:   data.ResourceStateLoaded,
+				Records: []data.RecordSummary{{ID: "1", Name: "HQ", Status: "active"}},
+			},
+		},
+	}
+	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("BrowserModel.Update(enter on unloaded resource) command = nil, want load command")
+	}
+	loading := updated.(BrowserModel)
+	if len(loader.calls) != 0 {
+		t.Fatalf("loader calls before command execution = %v, want none", loader.calls)
+	}
+	if got := loading.items[loading.idx].effectiveState(); got != data.ResourceStateLoading {
+		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoading)
+	}
+	if view := loading.View(); !strings.Contains(view, "Loading resource") {
+		t.Errorf("loading View() = %q, want loading state", view)
+	}
+
+	msg := cmd()
+	if got, want := len(loader.calls), 1; got != want {
+		t.Fatalf("loader calls after command = %d, want %d", got, want)
+	}
+	updated, cmd = loading.Update(msg)
+	if cmd != nil {
+		t.Fatalf("BrowserModel.Update(resourceLoadedMsg) command = %v, want nil", cmd)
+	}
+	loaded := updated.(BrowserModel)
+	if got := loaded.items[loaded.idx].effectiveState(); got != data.ResourceStateLoaded {
+		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoaded)
+	}
+	if view := loaded.View(); !strings.Contains(view, "HQ") {
+		t.Errorf("loaded View() = %q, want record name", view)
+	}
+}
+
+func TestLazyBrowserModelCachesLoadedResourceUntilRefresh(t *testing.T) {
+	loader := &recordingResourceLoader{
+		nodes: map[string]data.ResourceNode{
+			"zia/locations": {
+				Product: "zia",
+				Name:    "locations",
+				State:   data.ResourceStateLoaded,
+				Records: []data.RecordSummary{{ID: "1", Name: "HQ"}},
+			},
+		},
+	}
+	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("first enter command = nil, want load command")
+	}
+	updated, _ = updated.(BrowserModel).Update(cmd())
+	loaded := updated.(BrowserModel)
+	if got := len(loader.calls); got != 1 {
+		t.Fatalf("loader calls after first load = %d, want 1", got)
+	}
+
+	updated, cmd = loaded.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("second enter command = %v, want nil for cached loaded resource", cmd)
+	}
+	if got := len(loader.calls); got != 1 {
+		t.Fatalf("loader calls after cached enter = %d, want 1", got)
+	}
+
+	updated, cmd = updated.(BrowserModel).Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'r'}})
+	if cmd == nil {
+		t.Fatal("refresh command = nil, want load command")
+	}
+	_, _ = updated.(BrowserModel).Update(cmd())
+	if got := len(loader.calls); got != 2 {
+		t.Fatalf("loader calls after refresh = %d, want 2", got)
+	}
+}
+
+func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
+	loader := &recordingResourceLoader{
+		nodes: map[string]data.ResourceNode{
+			"zia/locations": {
+				Product: "zia",
+				Name:    "locations",
+				State:   data.ResourceStateError,
+				Error:   "api failed",
+			},
+		},
+	}
+	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter command = nil, want load command")
+	}
+	updated, _ = updated.(BrowserModel).Update(cmd())
+	errored := updated.(BrowserModel)
+	if got := errored.items[errored.idx].effectiveState(); got != data.ResourceStateError {
+		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
+	}
+	view := errored.View()
+	if !strings.Contains(view, "Error loading resource") || !strings.Contains(view, "api failed") {
+		t.Errorf("error View() = %q, want error state", view)
+	}
+}
+
+func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
+	loader := &recordingResourceLoader{waitForContext: true}
+	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, 5*time.Millisecond)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter command = nil, want load command")
+	}
+	loading := updated.(BrowserModel)
+	if view := loading.View(); !strings.Contains(view, "Loading resource") {
+		t.Errorf("loading View() = %q, want loading state", view)
+	}
+
+	updated, _ = loading.Update(cmd())
+	errored := updated.(BrowserModel)
+	if got := errored.items[errored.idx].effectiveState(); got != data.ResourceStateError {
+		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
+	}
+	if view := errored.View(); !strings.Contains(view, context.DeadlineExceeded.Error()) {
+		t.Errorf("timeout View() = %q, want context deadline exceeded", view)
+	}
+}
+
 func TestBrowserModelLongRecordScroll(t *testing.T) {
 	data := data.BrowserData{
 		Products: []data.ProductNode{
@@ -334,4 +477,47 @@ func TestBrowserModelLongRecordScroll(t *testing.T) {
 func step(m BrowserModel, msg bubbletea.Msg) BrowserModel {
 	updated, _ := m.Update(msg)
 	return updated.(BrowserModel)
+}
+
+type recordingResourceLoader struct {
+	nodes          map[string]data.ResourceNode
+	waitForContext bool
+	calls          []string
+}
+
+func (l *recordingResourceLoader) LoadResource(ctx context.Context, product, resource string) data.ResourceNode {
+	key := product + "/" + resource
+	l.calls = append(l.calls, key)
+	if l.waitForContext {
+		<-ctx.Done()
+		return data.ResourceNode{
+			Product: product,
+			Name:    resource,
+			State:   data.ResourceStateError,
+			Error:   ctx.Err().Error(),
+		}
+	}
+	if node, ok := l.nodes[key]; ok {
+		return node
+	}
+	return data.ResourceNode{
+		Product: product,
+		Name:    resource,
+		State:   data.ResourceStateLoaded,
+		Empty:   true,
+	}
+}
+
+func lazyBrowserData() data.BrowserData {
+	return data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{Product: "zia", Name: "locations", State: data.ResourceStateUnloaded},
+					{Product: "zia", Name: "url-filtering-rules", State: data.ResourceStateUnloaded},
+				},
+			},
+		},
+	}
 }

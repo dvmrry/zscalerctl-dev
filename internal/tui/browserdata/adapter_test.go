@@ -7,6 +7,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 func TestBuildDeterministicOrder(t *testing.T) {
@@ -39,6 +40,29 @@ func TestBuildDeterministicOrder(t *testing.T) {
 	}
 	if data.Products[1].Resources[1].Name != "application-segments" {
 		t.Errorf("second zpa resource = %q, want application-segments", data.Products[1].Resources[1].Name)
+	}
+}
+
+func TestBuildUnloadedCatalog(t *testing.T) {
+	catalog := resources.ResourceCatalog{
+		{Product: resources.ProductZIA, Name: "locations", Operations: resources.ReadOperations(), Fields: standardFields()},
+		{Product: resources.ProductZIA, Name: "url-filtering-rules", Operations: resources.ReadOperations(), Fields: standardFields()},
+	}
+
+	browserData := BuildUnloadedCatalog(catalog)
+	if len(browserData.Products) != 1 {
+		t.Fatalf("products = %d, want 1", len(browserData.Products))
+	}
+	if got := len(browserData.Products[0].Resources); got != 2 {
+		t.Fatalf("resources = %d, want 2", got)
+	}
+	for _, r := range browserData.Products[0].Resources {
+		if got := r.EffectiveState(); got != data.ResourceStateUnloaded {
+			t.Errorf("resource %s state = %s, want %s", r.Name, got, data.ResourceStateUnloaded)
+		}
+		if len(r.Records) != 0 {
+			t.Errorf("resource %s records = %d, want 0", r.Name, len(r.Records))
+		}
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -176,6 +175,39 @@ func runTest(t *testing.T, deps dependencies, args []string) error {
 	return run(context.Background(), deps, args, nil, true, true, true, 80)
 }
 
+func requireBrowserData(t *testing.T, model tea.Model) data.BrowserData {
+	t.Helper()
+	dataModel, ok := model.(interface{ Data() data.BrowserData })
+	if !ok {
+		t.Fatalf("model = %T, want Data() data.BrowserData", model)
+	}
+	return dataModel.Data()
+}
+
+func requireResourceNode(t *testing.T, browserData data.BrowserData, product, resource string) data.ResourceNode {
+	t.Helper()
+	for _, p := range browserData.Products {
+		if p.Name != product {
+			continue
+		}
+		for _, r := range p.Resources {
+			if r.Name == resource {
+				return r
+			}
+		}
+	}
+	t.Fatalf("resource %s/%s not found in BrowserData: %#v", product, resource, browserData)
+	return data.ResourceNode{}
+}
+
+func countResources(browserData data.BrowserData) int {
+	count := 0
+	for _, p := range browserData.Products {
+		count += len(p.Resources)
+	}
+	return count
+}
+
 func TestGateFailureNoProgram(t *testing.T) {
 	prog := &fakeProgram{}
 	deps := dependencies{
@@ -214,9 +246,10 @@ func TestConfigFailureNoProgram(t *testing.T) {
 	}
 }
 
-func TestLiveBroadCollectionDisabledNoReaderNoProgram(t *testing.T) {
+func TestLiveBroadLaunchesWithUnloadedCatalogNoCollection(t *testing.T) {
 	prog := &fakeProgram{}
 	loadConfigCalls := 0
+	reader := newRecordingReader()
 	deps := dependencies{
 		gateChecker: alwaysEnabledGate,
 		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
@@ -224,24 +257,38 @@ func TestLiveBroadCollectionDisabledNoReaderNoProgram(t *testing.T) {
 			return oneAPIConfig(), nil
 		},
 		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
-			t.Fatal("newReader should not be called for broad live collection")
-			return nil, nil
+			return reader, nil
 		},
 		newProgram: fakeProgramFactory(prog),
 	}
 
 	err := runTest(t, deps, []string{"--live", "--products", "zia"})
-	if !errors.Is(err, errLiveBroadCollectionDisabled) {
-		t.Fatalf("runTest(--live --products zia) error = %v, want %v", err, errLiveBroadCollectionDisabled)
-	}
-	if got, want := err.Error(), errLiveBroadCollectionDisabled.Error(); got != want {
-		t.Errorf("runTest(--live --products zia) error message = %q, want %q", got, want)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if loadConfigCalls != 1 {
 		t.Errorf("loadConfig calls = %d, want 1", loadConfigCalls)
 	}
-	if prog.called {
-		t.Error("program should not be launched when broad live collection is disabled")
+	if !prog.called {
+		t.Fatal("program should be launched for broad lazy live mode")
+	}
+	if len(reader.calls) != 0 {
+		t.Fatalf("reader calls before first paint = %v, want none", reader.calls)
+	}
+	browserData := requireBrowserData(t, prog.model)
+	if len(browserData.Products) != 1 || browserData.Products[0].Name != "zia" {
+		t.Fatalf("products = %#v, want only zia", browserData.Products)
+	}
+	if countResources(browserData) == 0 {
+		t.Fatal("expected zia resources in unloaded catalog")
+	}
+	for _, r := range browserData.Products[0].Resources {
+		if got := r.EffectiveState(); got != data.ResourceStateUnloaded {
+			t.Errorf("resource %s state = %s, want %s", r.Name, got, data.ResourceStateUnloaded)
+		}
+		if len(r.Records) != 0 {
+			t.Errorf("resource %s records before first paint = %d, want 0", r.Name, len(r.Records))
+		}
 	}
 }
 
@@ -290,7 +337,7 @@ func TestReaderFailureNoProgram(t *testing.T) {
 	}
 }
 
-func TestCollectorFailureNoProgram(t *testing.T) {
+func TestLiveDeferredResourceErrorStillLaunches(t *testing.T) {
 	prog := &fakeProgram{}
 	reader := newRecordingReader()
 	reader.errors["zia/locations"] = errors.New("api error")
@@ -307,21 +354,24 @@ func TestCollectorFailureNoProgram(t *testing.T) {
 	}
 
 	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
-	if err == nil || err.Error() != "api error" {
-		t.Fatalf("expected collector error, got %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if prog.called {
-		t.Error("program should not be launched when collector fails and continue-on-error is false")
+	if !prog.called {
+		t.Fatal("program should launch before resource errors are discovered")
+	}
+	if len(reader.calls) != 0 {
+		t.Fatalf("reader calls before first paint = %v, want none", reader.calls)
+	}
+	node := requireResourceNode(t, requireBrowserData(t, prog.model), "zia", "locations")
+	if got := node.EffectiveState(); got != data.ResourceStateUnloaded {
+		t.Errorf("zia/locations state = %s, want %s", got, data.ResourceStateUnloaded)
 	}
 }
 
-func TestCollectorContinueOnErrorLaunches(t *testing.T) {
+func TestLiveTargetedResourcesLimitVisibleCatalogNoPreload(t *testing.T) {
 	prog := &fakeProgram{}
 	reader := newRecordingReader()
-	reader.errors["zia/locations"] = errors.New("api error")
-	reader.records["zia/url-filtering-rules"] = []resources.SourceRecord{
-		resources.NewSourceRecord(map[string]any{"id": 1, "name": "rule1"}),
-	}
 
 	deps := dependencies{
 		gateChecker: alwaysEnabledGate,
@@ -334,42 +384,36 @@ func TestCollectorContinueOnErrorLaunches(t *testing.T) {
 		newProgram: fakeProgramFactory(prog),
 	}
 
-	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations,url-filtering-rules", "--continue-on-error"})
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !prog.called {
-		t.Fatal("program should be launched when continue-on-error is true")
+		t.Fatal("program should be launched for targeted live mode")
 	}
-	model, ok := prog.model.(interface{ Data() data.BrowserData })
-	if !ok {
-		t.Fatal("program model does not expose Data()")
+	if len(reader.calls) != 0 {
+		t.Fatalf("reader calls before first paint = %v, want none", reader.calls)
 	}
-	browserData := model.Data()
-	if len(browserData.Products) == 0 {
-		t.Fatal("expected at least one product in BrowserData")
+	browserData := requireBrowserData(t, prog.model)
+	if len(browserData.Products) != 1 {
+		t.Fatalf("products = %d, want 1", len(browserData.Products))
 	}
-	hasError := false
-	hasRecords := false
-	for _, p := range browserData.Products {
-		for _, r := range p.Resources {
-			if r.Error != "" {
-				hasError = true
-			}
-			if len(r.Records) > 0 {
-				hasRecords = true
-			}
-		}
+	if got := browserData.Products[0].Name; got != "zia" {
+		t.Errorf("product = %q, want zia", got)
 	}
-	if !hasError {
-		t.Error("expected a resource error node in BrowserData")
+	if got := len(browserData.Products[0].Resources); got != 1 {
+		t.Fatalf("zia resources = %d, want 1", got)
 	}
-	if !hasRecords {
-		t.Error("expected a resource with records in BrowserData")
+	node := browserData.Products[0].Resources[0]
+	if node.Name != "locations" {
+		t.Errorf("resource = %q, want locations", node.Name)
+	}
+	if got := node.EffectiveState(); got != data.ResourceStateUnloaded {
+		t.Errorf("state = %s, want %s", got, data.ResourceStateUnloaded)
 	}
 }
 
-func TestLiveSuccessLaunches(t *testing.T) {
+func TestLiveLaunchesWithoutPreloadingTargetedRecords(t *testing.T) {
 	prog := &fakeProgram{}
 	reader := newRecordingReader()
 	reader.records["zia/locations"] = []resources.SourceRecord{
@@ -394,18 +438,12 @@ func TestLiveSuccessLaunches(t *testing.T) {
 	if !prog.called {
 		t.Fatal("program should be launched on live success")
 	}
-
-	if len(reader.calls) == 0 {
-		t.Fatal("reader should have been called")
+	if len(reader.calls) != 0 {
+		t.Fatalf("reader calls before first paint = %v, want none", reader.calls)
 	}
-	found := false
-	for _, c := range reader.calls {
-		if c.op == "List" && c.product == "zia" && c.resource == "locations" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("reader calls = %v, want List zia/locations", reader.calls)
+	node := requireResourceNode(t, requireBrowserData(t, prog.model), "zia", "locations")
+	if got := node.EffectiveState(); got != data.ResourceStateUnloaded {
+		t.Errorf("zia/locations state = %s, want %s", got, data.ResourceStateUnloaded)
 	}
 }
 
@@ -562,13 +600,16 @@ func TestProductResourceFiltersPassed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, c := range reader.calls {
-		if c.product != "zia" {
-			t.Errorf("reader called for product %q, want only zia", c.product)
-		}
-		if c.resource != "locations" {
-			t.Errorf("reader called for resource %q, want only locations", c.resource)
-		}
+	if len(reader.calls) != 0 {
+		t.Fatalf("reader calls before first paint = %v, want none", reader.calls)
+	}
+	browserData := requireBrowserData(t, prog.model)
+	if got := countResources(browserData); got != 1 {
+		t.Fatalf("visible resources = %d, want 1", got)
+	}
+	node := requireResourceNode(t, browserData, "zia", "locations")
+	if got := node.EffectiveState(); got != data.ResourceStateUnloaded {
+		t.Errorf("zia/locations state = %s, want %s", got, data.ResourceStateUnloaded)
 	}
 }
 
@@ -669,47 +710,6 @@ func TestColorNeverDisablesTUI(t *testing.T) {
 	}
 }
 
-// blockingReader never returns until its context is cancelled. It is used to
-// test the live-collection timeout without contacting a real API.
-type blockingReader struct{}
-
-func (blockingReader) List(ctx context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-
-func (blockingReader) Show(ctx context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
-	<-ctx.Done()
-	return resources.SourceRecord{}, ctx.Err()
-}
-
-func TestLiveTimeoutNoProgram(t *testing.T) {
-	prog := &fakeProgram{}
-	deps := dependencies{
-		gateChecker: alwaysEnabledGate,
-		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
-			return oneAPIConfig(), nil
-		},
-		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
-			return blockingReader{}, nil
-		},
-		newProgram: fakeProgramFactory(prog),
-	}
-
-	start := time.Now()
-	err := run(context.Background(), deps, []string{"--live", "--timeout", "50ms", "--products", "zia", "--resources", "locations"}, nil, true, true, true, 80)
-	elapsed := time.Since(start)
-	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected context deadline exceeded, got %v", err)
-	}
-	if prog.called {
-		t.Error("program should not be launched when live collection times out")
-	}
-	if elapsed > 500*time.Millisecond {
-		t.Fatalf("timeout took too long: %v", elapsed)
-	}
-}
-
 func TestVerboseLiveMilestones(t *testing.T) {
 	prog := &fakeProgram{}
 	reader := newRecordingReader()
@@ -746,7 +746,8 @@ func TestVerboseLiveMilestones(t *testing.T) {
 		"resolving credentials",
 		"building reader",
 		"reader ready",
-		"collecting",
+		"building unloaded catalog",
+		"prepared",
 		"launching TUI",
 	}
 	joined := strings.Join(logs, "\n")
@@ -759,6 +760,9 @@ func TestVerboseLiveMilestones(t *testing.T) {
 	// "client-secret" as the resolved secret value.
 	if strings.Contains(joined, "client-secret") || strings.Contains(joined, "password") || strings.Contains(joined, "api-key") {
 		t.Errorf("verbose logs appear to contain a secret value: %v", logs)
+	}
+	if strings.Contains(joined, "collecting") {
+		t.Errorf("verbose logs include prelaunch collection milestone: %v", logs)
 	}
 }
 

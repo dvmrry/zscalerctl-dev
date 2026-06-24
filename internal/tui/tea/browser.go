@@ -2,9 +2,11 @@
 package tea
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -14,21 +16,38 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
+const defaultResourceLoadTimeout = 30 * time.Second
+
+// ResourceLoader loads one resource on demand for lazy live browsing.
+type ResourceLoader interface {
+	LoadResource(ctx context.Context, product, resource string) data.ResourceNode
+}
+
+// ResourceLoaderFunc adapts a function into a ResourceLoader.
+type ResourceLoaderFunc func(ctx context.Context, product, resource string) data.ResourceNode
+
+// LoadResource calls f(ctx, product, resource).
+func (f ResourceLoaderFunc) LoadResource(ctx context.Context, product, resource string) data.ResourceNode {
+	return f(ctx, product, resource)
+}
+
 // BrowserModel is a product/resource browser that renders a neutral
-// BrowserData view model. It contains no config, credential, network, or live
-// reader dependencies.
+// BrowserData view model. Live loading is injected through ResourceLoader so
+// config, credential, and reader ownership stay outside the Bubble Tea package.
 type BrowserModel struct {
-	style    output.Style
-	width    int
-	height   int
-	data     data.BrowserData
-	items    []browserItem
-	idx      int
-	active   string // "left" or "right"
-	rIdx     int
-	scroll   int
-	showHelp bool
-	exitKey  string
+	style       output.Style
+	width       int
+	height      int
+	data        data.BrowserData
+	items       []browserItem
+	idx         int
+	active      string // "left" or "right"
+	rIdx        int
+	scroll      int
+	showHelp    bool
+	exitKey     string
+	loader      ResourceLoader
+	loadTimeout time.Duration
 }
 
 // browserItem is a single row in the left navigation pane.
@@ -36,10 +55,27 @@ type browserItem struct {
 	name    string
 	kind    string // "product" or "resource"
 	depth   int
+	state   data.ResourceState
 	records []data.RecordSummary
 	empty   bool
 	err     string
 	Product string
+}
+
+func (i browserItem) effectiveState() data.ResourceState {
+	if i.state != "" {
+		return i.state
+	}
+	if i.err != "" {
+		return data.ResourceStateError
+	}
+	return data.ResourceStateLoaded
+}
+
+type resourceLoadedMsg struct {
+	product string
+	name    string
+	node    data.ResourceNode
 }
 
 var _ tea.Model = BrowserModel{}
@@ -53,6 +89,14 @@ func NewBrowserModel(style output.Style, browserData data.BrowserData) BrowserMo
 		idx:    0,
 		active: "left",
 	}
+}
+
+// NewLazyBrowserModel returns a browser model that loads resources on demand.
+func NewLazyBrowserModel(style output.Style, browserData data.BrowserData, loader ResourceLoader, loadTimeout time.Duration) BrowserModel {
+	m := NewBrowserModel(style, browserData)
+	m.loader = loader
+	m.loadTimeout = loadTimeout
+	return m
 }
 
 // Data returns the BrowserData currently being rendered.
@@ -122,16 +166,123 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.active = "left"
 			}
 		case "enter":
-			if m.active == "right" {
-				m.rIdx = 0
-				m.scroll = 0
+			if m.selectedItem().kind == "resource" {
+				return m.startResourceLoad(false)
 			}
+			if m.active == "right" {
+				m.resetRecordSelection()
+			}
+		case "r":
+			return m.startResourceLoad(true)
 		}
+	case resourceLoadedMsg:
+		m.applyResourceNode(msg.node)
+		m.resetRecordSelection()
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 	}
 	return m, nil
+}
+
+func (m BrowserModel) selectedItem() browserItem {
+	if len(m.items) == 0 || m.idx < 0 || m.idx >= len(m.items) {
+		return browserItem{}
+	}
+	return m.items[m.idx]
+}
+
+func (m BrowserModel) startResourceLoad(refresh bool) (BrowserModel, tea.Cmd) {
+	item := m.selectedItem()
+	if item.kind != "resource" || m.loader == nil {
+		return m, nil
+	}
+	switch item.effectiveState() {
+	case data.ResourceStateLoading:
+		return m, nil
+	case data.ResourceStateLoaded:
+		if !refresh {
+			return m, nil
+		}
+	}
+
+	loading := data.ResourceNode{
+		Product: item.Product,
+		Name:    item.name,
+		State:   data.ResourceStateLoading,
+	}
+	m.applyResourceNode(loading)
+	m.resetRecordSelection()
+	return m, m.loadResourceCmd(item.Product, item.name)
+}
+
+func (m BrowserModel) loadResourceCmd(product, name string) tea.Cmd {
+	loader := m.loader
+	timeout := m.loadTimeout
+	if timeout <= 0 {
+		timeout = defaultResourceLoadTimeout
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		node := loader.LoadResource(ctx, product, name)
+		node = normalizeResourceNode(node, product, name)
+		return resourceLoadedMsg{
+			product: product,
+			name:    name,
+			node:    node,
+		}
+	}
+}
+
+func normalizeResourceNode(node data.ResourceNode, product, name string) data.ResourceNode {
+	if node.Product == "" {
+		node.Product = product
+	}
+	if node.Name == "" {
+		node.Name = name
+	}
+	switch node.EffectiveState() {
+	case data.ResourceStateUnloaded, data.ResourceStateLoading, data.ResourceStateLoaded, data.ResourceStateError:
+		node.State = node.EffectiveState()
+	default:
+		node.State = data.ResourceStateLoaded
+	}
+	if node.State == data.ResourceStateError && node.Error == "" {
+		node.Error = "resource load failed"
+	}
+	if node.State == data.ResourceStateLoaded && len(node.Records) == 0 {
+		node.Empty = true
+	}
+	return node
+}
+
+func (m *BrowserModel) applyResourceNode(node data.ResourceNode) {
+	node = normalizeResourceNode(node, node.Product, node.Name)
+	for pIdx := range m.data.Products {
+		if m.data.Products[pIdx].Name != node.Product {
+			continue
+		}
+		for rIdx := range m.data.Products[pIdx].Resources {
+			if m.data.Products[pIdx].Resources[rIdx].Name == node.Name {
+				m.data.Products[pIdx].Resources[rIdx] = node
+				m.items = flattenBrowserData(m.data)
+				if m.idx >= len(m.items) {
+					m.idx = len(m.items) - 1
+				}
+				if m.idx < 0 {
+					m.idx = 0
+				}
+				return
+			}
+		}
+	}
+}
+
+func (m *BrowserModel) resetRecordSelection() {
+	m.rIdx = 0
+	m.scroll = 0
 }
 
 func (m *BrowserModel) adjustScrollToRecord() {
@@ -305,6 +456,13 @@ func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) s
 }
 
 func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer) []string {
+	if len(m.items) == 0 {
+		return []string{
+			r.NewStyle().Bold(true).Render("No resources"),
+			"",
+			browserEmptyStyle(m.style).Render("No resources match the current filters."),
+		}
+	}
 	item := m.items[m.idx]
 	var lines []string
 
@@ -320,18 +478,30 @@ func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer) []string {
 		lines = append(lines, fmt.Sprintf("Product: %s", item.name))
 		lines = append(lines, fmt.Sprintf("Resources: %d", resourceCount))
 
-	case item.err != "":
+	case item.effectiveState() == data.ResourceStateUnloaded:
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("Resource not loaded"))
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to load this resource."))
+
+	case item.effectiveState() == data.ResourceStateLoading:
+		lines = append(lines, "")
+		lines = append(lines, browserLoadingStyle(m.style).Render("Loading resource..."))
+		lines = append(lines, "")
+		lines = append(lines, browserEmptyStyle(m.style).Render("The API call is running for this resource only."))
+
+	case item.effectiveState() == data.ResourceStateError:
 		lines = append(lines, "")
 		lines = append(lines, browserErrorStyle(m.style).Render("Error loading resource"))
 		lines = append(lines, browserErrorStyle(m.style).Render(item.err))
 		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to retry from the top of this list."))
+		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to retry or r to refresh."))
 
 	case item.empty || len(item.records) == 0:
 		lines = append(lines, "")
 		lines = append(lines, browserEmptyStyle(m.style).Render("No records for this resource"))
 		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Select a different resource to browse data."))
+		lines = append(lines, browserEmptyStyle(m.style).Render("Press r to refresh or select a different resource."))
 
 	default:
 		for i, rec := range item.records {
@@ -373,6 +543,11 @@ func (m BrowserModel) visibleLines(lines []string, maxLines int) []string {
 }
 
 func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
+	if len(m.items) == 0 {
+		return r.NewStyle().
+			Width(width - 2).
+			Render("no resources")
+	}
 	item := m.items[m.idx]
 	var selected string
 	if item.kind == "product" {
@@ -382,7 +557,16 @@ func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
 	}
 	status := fmt.Sprintf("%s · %d/%d", selected, m.idx+1, len(m.items))
 	if item.kind == "resource" {
-		status += fmt.Sprintf(" · %d records", len(item.records))
+		switch item.effectiveState() {
+		case data.ResourceStateUnloaded:
+			status += " · unloaded"
+		case data.ResourceStateLoading:
+			status += " · loading"
+		case data.ResourceStateError:
+			status += " · error"
+		default:
+			status += fmt.Sprintf(" · %d records", len(item.records))
+		}
 	}
 	return r.NewStyle().
 		Width(width - 2).
@@ -390,7 +574,7 @@ func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
 }
 
 func (m BrowserModel) renderFooter(r *lipgloss.Renderer, width int) string {
-	help := "↑/↓ move · tab switch · enter select · ? help · esc/q quit"
+	help := "↑/↓ move · tab switch · enter load/select · r refresh · ? help · esc/q quit"
 	return r.NewStyle().
 		Width(width - 2).
 		Render(help)
@@ -402,7 +586,8 @@ func (m BrowserModel) renderHelpOverlay(r *lipgloss.Renderer, width, height int)
 		"",
 		"↑ / down    move selection",
 		"tab         switch active pane",
-		"enter       reset record selection",
+		"enter       load selected resource or reset record selection",
+		"r           refresh selected resource",
 		"?           toggle this help",
 		"q / esc     quit",
 		"ctrl+c      quit",
@@ -428,6 +613,7 @@ func flattenBrowserData(browserData data.BrowserData) []browserItem {
 				name:    r.Name,
 				kind:    "resource",
 				depth:   1,
+				state:   r.EffectiveState(),
 				records: r.Records,
 				empty:   r.Empty,
 				err:     r.Error,
@@ -475,6 +661,14 @@ func browserEmptyStyle(style output.Style) lipgloss.Style {
 	s := lipgloss.NewStyle()
 	if style.Color {
 		s = s.Foreground(lipgloss.Color("245"))
+	}
+	return s
+}
+
+func browserLoadingStyle(style output.Style) lipgloss.Style {
+	s := lipgloss.NewStyle()
+	if style.Color {
+		s = s.Foreground(browserAccent(style))
 	}
 	return s
 }
