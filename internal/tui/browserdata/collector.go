@@ -64,6 +64,50 @@ func (c *Collector) Collect(ctx context.Context, opts CollectOptions) (data.Brow
 	return Build(filtered, staticSource(results))
 }
 
+// CatalogForOptions returns the catalog subset selected by opts without reading
+// resource records.
+func CatalogForOptions(catalog resources.ResourceCatalog, opts CollectOptions) resources.ResourceCatalog {
+	return filterCatalog(catalog, opts.Products, opts.Resources)
+}
+
+// LoadResource reads, projects, and redacts one resource for lazy live TUI
+// browsing. Read/project failures become a sanitized display error on the
+// returned ResourceNode instead of failing the whole TUI.
+func (c *Collector) LoadResource(ctx context.Context, product, resource string) data.ResourceNode {
+	mode := c.Mode
+	if mode == "" {
+		mode = redact.ModeStandard
+	}
+
+	node := data.ResourceNode{
+		Product: product,
+		Name:    resource,
+		State:   data.ResourceStateLoaded,
+	}
+
+	spec, ok := c.Catalog.FindSpec(resources.Product(product), resource)
+	if !ok {
+		node.State = data.ResourceStateError
+		node.Error = fmt.Sprintf("resource %s/%s not found", product, resource)
+		return node
+	}
+
+	res, err := c.collectResource(ctx, spec, mode)
+	if err != nil {
+		node.State = data.ResourceStateError
+		node.Error = redact.New(mode).String(err.Error())
+		return node
+	}
+	if len(res.records) == 0 {
+		node.Empty = true
+		return node
+	}
+	for _, rec := range res.records {
+		node.Records = append(node.Records, buildRecordSummary(spec, rec))
+	}
+	return node
+}
+
 func (c *Collector) collectResource(ctx context.Context, spec resources.ResourceSpec, mode redact.Mode) (collectionResult, error) {
 	var sourceRecords []resources.SourceRecord
 	var err error

@@ -4,7 +4,9 @@
 package browserdata
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -42,13 +44,38 @@ func Build(catalog resources.ResourceCatalog, src ProjectedRecordSource) (data.B
 	return data.BrowserData{Products: products}, nil
 }
 
+// BuildUnloadedCatalog converts a resource catalog into a BrowserData view
+// model without reading records. Live TUI mode uses this so first paint only
+// depends on config, credentials, reader construction, and catalog filtering.
+func BuildUnloadedCatalog(catalog resources.ResourceCatalog) data.BrowserData {
+	var products []data.ProductNode
+	var current *data.ProductNode
+	for _, spec := range catalog {
+		if spec.Name == "" {
+			continue
+		}
+		if current == nil || current.Name != string(spec.Product) {
+			products = append(products, data.ProductNode{Name: string(spec.Product)})
+			current = &products[len(products)-1]
+		}
+		current.Resources = append(current.Resources, data.ResourceNode{
+			Product: string(spec.Product),
+			Name:    spec.Name,
+			State:   data.ResourceStateUnloaded,
+		})
+	}
+	return data.BrowserData{Products: products}
+}
+
 func buildResourceNode(spec resources.ResourceSpec, src ProjectedRecordSource) (data.ResourceNode, error) {
 	node := data.ResourceNode{
 		Product: string(spec.Product),
 		Name:    spec.Name,
+		State:   data.ResourceStateLoaded,
 	}
 	records, err := src.ProjectedRecords(spec)
 	if err != nil {
+		node.State = data.ResourceStateError
 		node.Error = err.Error()
 		return node, nil
 	}
@@ -95,10 +122,33 @@ func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedReco
 	for _, k := range keys {
 		summary.Fields = append(summary.Fields, data.KV{
 			Key:   k,
-			Value: fmt.Sprintf("%v", fields[k]),
+			Value: formatProjectedValue(fields[k]),
 		})
 	}
 	return summary
+}
+
+func formatProjectedValue(v any) string {
+	if v == nil {
+		return "null"
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	value := reflect.ValueOf(v)
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return "null"
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.Struct:
+		if b, err := json.MarshalIndent(v, "", "  "); err == nil {
+			return string(b)
+		}
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 func fieldString(fields map[string]any, key string) string {

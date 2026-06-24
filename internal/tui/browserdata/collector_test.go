@@ -9,6 +9,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 func TestCollectorAllResourcesSuccess(t *testing.T) {
@@ -171,6 +172,67 @@ func TestCollectorResourceErrorFailFast(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connector list unavailable") {
 		t.Errorf("error = %q, want connector list unavailable", err.Error())
+	}
+}
+
+func TestCollectorLoadResourceSuccess(t *testing.T) {
+	fields := append(standardFields(),
+		resources.FieldSpec{Name: "password", Classification: resources.ClassSecret},
+	)
+	reader := fakeReader{
+		"zia/locations": {records: []resources.SourceRecord{
+			resources.NewSourceRecord(map[string]any{"id": "1", "name": "A", "password": "hunter2"}),
+		}},
+	}
+	collector := &Collector{
+		Catalog: resources.ResourceCatalog{
+			{Product: resources.ProductZIA, Name: "locations", Operations: resources.ReadOperations(), Fields: fields},
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	node := collector.LoadResource(context.Background(), "zia", "locations")
+	if got := node.EffectiveState(); got != data.ResourceStateLoaded {
+		t.Fatalf("LoadResource state = %s, want %s", got, data.ResourceStateLoaded)
+	}
+	if len(node.Records) != 1 {
+		t.Fatalf("LoadResource records = %d, want 1", len(node.Records))
+	}
+	if node.Records[0].Name != "A" {
+		t.Errorf("LoadResource record name = %q, want A", node.Records[0].Name)
+	}
+	for _, f := range node.Records[0].Fields {
+		if f.Key == "password" || strings.Contains(f.Value, "hunter2") {
+			t.Errorf("secret leaked through LoadResource field %q=%q", f.Key, f.Value)
+		}
+	}
+}
+
+func TestCollectorLoadResourceErrorIsDisplayState(t *testing.T) {
+	reader := fakeReader{
+		"zia/locations": {err: errors.New("api failed client_secret=hunter2")},
+	}
+	collector := &Collector{
+		Catalog: resources.ResourceCatalog{
+			{Product: resources.ProductZIA, Name: "locations", Operations: resources.ReadOperations(), Fields: standardFields()},
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	node := collector.LoadResource(context.Background(), "zia", "locations")
+	if got := node.EffectiveState(); got != data.ResourceStateError {
+		t.Fatalf("LoadResource state = %s, want %s", got, data.ResourceStateError)
+	}
+	if !strings.Contains(node.Error, "api failed") {
+		t.Errorf("LoadResource error = %q, want api failed context", node.Error)
+	}
+	if strings.Contains(node.Error, "hunter2") {
+		t.Errorf("LoadResource error = %q, want secret value redacted", node.Error)
+	}
+	if len(node.Records) != 0 {
+		t.Errorf("LoadResource records on error = %d, want 0", len(node.Records))
 	}
 }
 

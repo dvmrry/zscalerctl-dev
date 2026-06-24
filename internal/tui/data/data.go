@@ -18,13 +18,38 @@ type ProductNode struct {
 	Resources []ResourceNode
 }
 
+// ResourceState describes whether a resource's records have been loaded into
+// the browser.
+type ResourceState string
+
+const (
+	ResourceStateUnloaded ResourceState = "unloaded"
+	ResourceStateLoading  ResourceState = "loading"
+	ResourceStateLoaded   ResourceState = "loaded"
+	ResourceStateError    ResourceState = "error"
+)
+
 // ResourceNode is a resource under a product.
 type ResourceNode struct {
 	Product string
 	Name    string
+	State   ResourceState
 	Records []RecordSummary
 	Empty   bool
 	Error   string
+}
+
+// EffectiveState returns the resource state, preserving the historical
+// BrowserData contract where a resource with no explicit state is already
+// loaded.
+func (n ResourceNode) EffectiveState() ResourceState {
+	if n.State != "" {
+		return n.State
+	}
+	if n.Error != "" {
+		return ResourceStateError
+	}
+	return ResourceStateLoaded
 }
 
 // RecordSummary is a single record shown in the right details pane.

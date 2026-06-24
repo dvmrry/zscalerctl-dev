@@ -7,6 +7,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 func TestBuildDeterministicOrder(t *testing.T) {
@@ -39,6 +40,29 @@ func TestBuildDeterministicOrder(t *testing.T) {
 	}
 	if data.Products[1].Resources[1].Name != "application-segments" {
 		t.Errorf("second zpa resource = %q, want application-segments", data.Products[1].Resources[1].Name)
+	}
+}
+
+func TestBuildUnloadedCatalog(t *testing.T) {
+	catalog := resources.ResourceCatalog{
+		{Product: resources.ProductZIA, Name: "locations", Operations: resources.ReadOperations(), Fields: standardFields()},
+		{Product: resources.ProductZIA, Name: "url-filtering-rules", Operations: resources.ReadOperations(), Fields: standardFields()},
+	}
+
+	browserData := BuildUnloadedCatalog(catalog)
+	if len(browserData.Products) != 1 {
+		t.Fatalf("products = %d, want 1", len(browserData.Products))
+	}
+	if got := len(browserData.Products[0].Resources); got != 2 {
+		t.Fatalf("resources = %d, want 2", got)
+	}
+	for _, r := range browserData.Products[0].Resources {
+		if got := r.EffectiveState(); got != data.ResourceStateUnloaded {
+			t.Errorf("resource %s state = %s, want %s", r.Name, got, data.ResourceStateUnloaded)
+		}
+		if len(r.Records) != 0 {
+			t.Errorf("resource %s records = %d, want 0", r.Name, len(r.Records))
+		}
 	}
 }
 
@@ -134,6 +158,49 @@ func TestBuildLongRecord(t *testing.T) {
 		if f.Key == "id" || f.Key == "name" {
 			t.Errorf("field %q should not be repeated as generic data.KV", f.Key)
 		}
+	}
+}
+
+func TestBuildStructuredFieldFormatsAsIndentedJSON(t *testing.T) {
+	fields := append(standardFields(),
+		resources.FieldSpec{
+			Name:           "dynamicLocationGroups",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   standardShareModes(),
+			Fields: []resources.FieldSpec{
+				{Name: "id", Classification: resources.ClassOperational, AllowedModes: allModes()},
+				{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: standardShareModes()},
+			},
+		},
+	)
+	catalog := simpleCatalog("zia", "rules", fields)
+	src := fakeSource{
+		"zia/rules": {records: []map[string]any{
+			{
+				"id":   "1",
+				"name": "Rule",
+				"dynamicLocationGroups": []map[string]any{
+					{"id": "1132433111", "name": "Corporate User Traffic"},
+				},
+			},
+		}},
+	}
+	data, err := Build(catalog, src)
+	if err != nil {
+		t.Fatalf("Build error = %v", err)
+	}
+	rec := data.Products[0].Resources[0].Records[0]
+	if len(rec.Fields) != 1 {
+		t.Fatalf("fields = %d, want 1", len(rec.Fields))
+	}
+	got := rec.Fields[0].Value
+	for _, want := range []string{"[\n", `"id": "1132433111"`, `"name": "Corporate User Traffic"`, "\n]"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("structured field value = %q, want substring %q", got, want)
+		}
+	}
+	if strings.Contains(got, "map[") {
+		t.Errorf("structured field value = %q, want JSON-style formatting instead of Go map formatting", got)
 	}
 }
 
