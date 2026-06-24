@@ -24,6 +24,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui"
 	"github.com/dvmrry/zscalerctl/internal/tui/browserdata"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
 )
 
@@ -80,7 +81,7 @@ func run(ctx context.Context, args []string) error {
 	)
 	style.Width = output.TerminalWidth(os.Stdout)
 
-	var browserData tui_tea.BrowserData
+	var browserData data.BrowserData
 	if *projectedFlag {
 		var err error
 		browserData, err = browserdata.Build(browserdata.DemoCatalog(), browserdata.ProjectedFixtureSource{})
@@ -95,7 +96,7 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	} else {
-		browserData = tui_tea.NewFakeBrowserData()
+		browserData = data.NewFakeBrowserData()
 	}
 
 	program := tea.NewProgram(

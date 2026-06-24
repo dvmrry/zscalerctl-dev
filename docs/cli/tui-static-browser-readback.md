@@ -415,34 +415,18 @@ zia · 1/9
 ↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
-## Experimental `browse --tui` command
+## Normal `zscalerctl` CLI boundary
 
-The hidden `zscalerctl browse --tui` command now wires the same Bubble Tea browser
-through the real Cobra command tree, `internal/tui/launcher`, and the real
-config/credential/reader path. The TUI gate is evaluated before any config,
-credential, or reader work, so `--format json`, `--output`, and non-TTY
-invocations fail with a usage error before secrets are touched. When the gate
-passes, the command loads config, builds the reader (injected fake reader in
-hermetic tests), and runs the collector before launching the TUI.
+The hidden `zscalerctl browse --tui` command has been removed from the normal
+command tree. Bubble Tea v1.x runs package-init terminal probing that can emit
+OSC/DSR sequences before `main()`, so the TUI runtime must not be linked into the
+normal `zscalerctl` binary. The gate/collector path (`internal/tui/launcher`)
+remains available, but the actual Bubble Tea launch is restricted to isolated TUI
+entrypoints such as `scripts/tui-browser-demo.go` or a future `cmd/zscalerctl-tui`.
 
-### Exit keys
-
-| Key | Result |
-| --- | --- |
-| `q` | TUI exits cleanly with status 0. |
-| `esc` | TUI exits cleanly with status 0. |
-| `ctrl+c` | TUI exits cleanly with status 0. |
-
-### Rejection readbacks (TTY context)
-
-The launch gate was exercised with a real PTY so the TTY checks pass, allowing
-each non-TTY rejection to surface on its own before any config or reader work.
-
-| Invocation | Error |
-| --- | --- |
-| `zscalerctl --format json browse --tui` | `{"error":{"kind":"usage","message":"tui disabled: machine output format requested"}}` |
-| `zscalerctl browse --tui --output /tmp/out` | `zscalerctl: tui disabled: output path is not supported for TUI` |
-| `zscalerctl browse --tui --color never` | `zscalerctl: tui disabled: terminal styling disabled` |
+Rejection readbacks were captured before the command was removed; they now live
+only in the integration history. The important invariant is that no normal
+`zscalerctl` invocation can reach Bubble Tea.
 
 ## Terminal startup behavior
 
@@ -458,14 +442,14 @@ These sequences are emitted only by `scripts/tui-browser-demo.go`. Normal
 
 The following commands were run from a non-TTY pipe and their stdout/stderr
 were inspected for terminal escape sequences. None contained any `ESC` bytes,
-OSC, DSR, bracketed-paste, mouse, or cursor hide/show sequences. `browse --tui`
-rejected at the TTY gate before any config, credential, reader, or Bubble Tea
-program was constructed.
+OSC, DSR, bracketed-paste, mouse, or cursor hide/show sequences. In addition,
+`zscalerctl version --format json` was run inside a real PTY and confirmed to
+emit zero `ESC` bytes and valid JSON, proving that the normal binary is not
+linked with Bubble Tea.
 
-- `zscalerctl version --format json`
+- `zscalerctl version --format json` (non-TTY pipe and PTY)
 - `zscalerctl version --format pretty --color never`
 - `zscalerctl introspect --format json`
-- `zscalerctl browse --tui` (non-TTY, exits 2 with `tui disabled: stdout is not interactive`)
 
 ## Import boundary
 
@@ -474,12 +458,13 @@ and the gate-only `internal/tui` package do not import Bubble Tea.
 
 ## Verdict
 
-**Continue.** The fake-data browser is usable at 80x24, 60x16, and 120x32, shows
-explicit empty/error states, supports a help overlay, and keeps the TUI
-isolated behind the import boundary. The hidden experimental `browse --tui`
-command now proves the full Cobra → gate → config → credentials → reader →
-collector → BrowserData → launcher → Bubble Tea path. The implementation is
-hermetically testable with injected fake readers, and missing credentials or
-config errors prevent the TUI from launching. The remaining work is to promote
-the command from experimental to supported, optionally with a live-tenant
-readback once credentials are available.
+**Continue with an isolated TUI entrypoint.** The fake-data browser is usable at
+80x24, 60x16, and 120x32, shows explicit empty/error states, supports a help
+overlay, and keeps the TUI isolated behind the import boundary. The Bubble Tea
+runtime must remain outside the normal `zscalerctl` binary because Bubble Tea
+v1.x package-init probing can corrupt interactive JSON output. The hidden
+`browse --tui` command has been removed; a future TUI should be exposed only
+through an isolated entrypoint (e.g. `scripts/tui-browser-demo.go` or a
+`cmd/zscalerctl-tui` subprocess) that imports `internal/tui/tea` and Bubble Tea.
+The remaining work is to design and approve that isolation mechanism before any
+user-facing TUI launch.

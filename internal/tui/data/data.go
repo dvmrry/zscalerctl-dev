@@ -1,9 +1,12 @@
-// Package tea holds the Bubble Tea runtime model for the isolated TUI demo.
-package tea
+// Package data holds the neutral view model types shared by the TUI browser.
+// It intentionally imports no terminal or Bubble Tea packages so it can be used
+// by the Bubble-free collector/launcher layers and only consumed by the
+// Bubble Tea runtime in internal/tui/tea.
+package data
 
-// BrowserData is the neutral view model consumed by BrowserModel. It is
+// BrowserData is the neutral view model consumed by the TUI browser. It is
 // intentionally free of config, credential, network, and live-reader concerns.
-// Future CLI integration will produce BrowserData by projecting and redacting
+// The CLI integration produces BrowserData by projecting and redacting
 // existing resource data before handing it to the TUI.
 type BrowserData struct {
 	Products []ProductNode

@@ -44,6 +44,8 @@ registered path exists.
 | `scripts/verify-sdk-boundary.sh` | verify | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | `scripts/test-verify-sdk-boundary.sh` |
 | `scripts/verify-script-registry.sh` | verify | `make verify-script-registry` | `scripts/test-verify-script-registry.sh` |
 | `scripts/verify-surface-changes-manifest.sh` | verify | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | `scripts/test-verify-surface-changes-manifest.sh` |
+| `scripts/verify-pty-escape-clean.py` | dev | `scripts/verify-pty-escape-clean.sh` | PTY helper for escape-sequence regression check |
+| `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
 | `scripts/verify-tui-import-boundary.sh` | verify | `make verify-tui-import-boundary` | `scripts/test-verify-tui-import-boundary.sh` |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |

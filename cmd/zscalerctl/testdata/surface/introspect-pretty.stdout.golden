@@ -18,14 +18,9 @@ Global flags (13):
   --search (string)  narrow list results to records whose rendered values contain term (case-insensitive)
   --timeout (duration, default "30s")  request timeout
 
-Commands (291):
+Commands (290):
   auth                                      inspect authentication configuration
   auth status                               show authentication status for the active profile
-  browse                                    experimental TUI browser [hidden]
-      --continue-on-error (bool, default "false")
-      --products (string)
-      --resources (string)
-      --tui (bool, default "false")
   completion                                Generate the autocompletion script for the specified shell
   completion bash                           Generate the autocompletion script for bash
       --no-descriptions (bool, default "false")

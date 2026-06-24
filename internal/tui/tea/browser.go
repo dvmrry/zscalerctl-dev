@@ -11,6 +11,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 // BrowserModel is a product/resource browser that renders a neutral
@@ -20,7 +21,7 @@ type BrowserModel struct {
 	style    output.Style
 	width    int
 	height   int
-	data     BrowserData
+	data     data.BrowserData
 	items    []browserItem
 	idx      int
 	active   string // "left" or "right"
@@ -35,7 +36,7 @@ type browserItem struct {
 	name    string
 	kind    string // "product" or "resource"
 	depth   int
-	records []RecordSummary
+	records []data.RecordSummary
 	empty   bool
 	err     string
 	Product string
@@ -44,18 +45,18 @@ type browserItem struct {
 var _ tea.Model = BrowserModel{}
 
 // NewBrowserModel returns a browser model that renders the supplied BrowserData.
-func NewBrowserModel(style output.Style, data BrowserData) BrowserModel {
+func NewBrowserModel(style output.Style, browserData data.BrowserData) BrowserModel {
 	return BrowserModel{
 		style:  style,
-		data:   data,
-		items:  flattenBrowserData(data),
+		data:   browserData,
+		items:  flattenBrowserData(browserData),
 		idx:    0,
 		active: "left",
 	}
 }
 
 // Data returns the BrowserData currently being rendered.
-func (m BrowserModel) Data() BrowserData {
+func (m BrowserModel) Data() data.BrowserData {
 	return m.data
 }
 
@@ -418,9 +419,9 @@ func (m BrowserModel) renderHelpOverlay(r *lipgloss.Renderer, width, height int)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, panel)
 }
 
-func flattenBrowserData(data BrowserData) []browserItem {
+func flattenBrowserData(browserData data.BrowserData) []browserItem {
 	var items []browserItem
-	for _, p := range data.Products {
+	for _, p := range browserData.Products {
 		items = append(items, browserItem{name: p.Name, kind: "product", depth: 0})
 		for _, r := range p.Resources {
 			items = append(items, browserItem{
