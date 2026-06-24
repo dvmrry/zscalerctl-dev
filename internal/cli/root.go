@@ -61,12 +61,12 @@ func newRootCmd(a *App) *cobra.Command {
 		// suggestions. 2 is the cobra default (set here explicitly for clarity).
 		SuggestionsMinimumDistance: 2,
 
-		// RunE: latent guard against unknown top-level commands. Today execCobra is
-		// only called when isMigrated(rest[0]) is true, so this RunE cannot fire for
-		// any valid dispatch path — it is a forward-compatibility guard for the moment
-		// Cobra owns the full root. TraverseChildren=true means that without this, an
-		// unknown command would fall through to the root and print help (exit 0);
-		// with this, it exits 2 via UsageError (M-9 from the adversarial review).
+		// RunE: latent guard against unknown top-level commands. runParsed routes all
+		// recognized commands through Cobra, so this RunE cannot fire for any valid
+		// dispatch path — it is a safety net for the case an unknown command somehow
+		// reaches Cobra. TraverseChildren=true means that without this, an unknown
+		// command would fall through to the root and print help (exit 0); with this,
+		// it exits 2 via UsageError (M-9 from the adversarial review).
 		//
 		// INVARIANT: this must NOT change any current behaviour. Bare "zscalerctl"
 		// (empty args) goes through the legacy empty-rest path in runParsed and never

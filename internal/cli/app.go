@@ -343,8 +343,8 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	}
 	// completion does not produce a record stream, so --format ndjson is rejected
 	// here, before execCobra, just as the legacy path did. This check must come
-	// BEFORE the isMigrated dispatch so the format gate fires even when Cobra
-	// owns the completion command.
+	// before the Cobra dispatch so the format gate fires even when Cobra owns the
+	// completion command.
 	if rest[0] == "completion" && opts.format == output.FormatNDJSON {
 		return rejectUnsupportedFormat("completion", opts.format)
 	}
@@ -2121,9 +2121,9 @@ func safeJSONRecords(records resources.ProjectedRecords) []output.SafeJSON {
 }
 
 // writeHelp prints the global usage. It is only reachable when rest is empty
-// (all migrated commands, including products, are intercepted by the
-// isMigrated guard in runParsed before writeHelp is called). The per-command
-// and per-product cases that previously lived here were dead code.
+// (all recognized commands, including products, are routed through Cobra in
+// runParsed before writeHelp is called). The per-command and per-product cases
+// that previously lived here were dead code.
 func (a *App) writeHelp(w io.Writer, rest []string) {
 	a.writeUsage(w, a.resourceCatalog())
 }

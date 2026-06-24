@@ -1,9 +1,9 @@
 package cli_test
 
-// cobra_product_test.go -- Phase 2a: product command Cobra migration tests.
+// cobra_product_test.go -- product command tests for the Cobra command tree.
 //
-// Tests verify that zia/zpa/ztw/zcc/zidentity (all knownProducts) are correctly
-// wired through the Cobra path and produce behaviour identical to the legacy path.
+// Tests verify that zia/zpa/ztw/zcc/zidentity (all known products) are correctly
+// wired through the Cobra path and produce the expected behaviour.
 //
 // Test layers:
 //  1. Data-path behaviour (fake reader): list/get/show produce correct projected
@@ -12,8 +12,8 @@ package cli_test
 //     bogus resource -> ResourceNotFoundError (exit 4 sentinel).
 //  3. No-creds path: missing reader -> ErrMissingCredentials (exit 3 sentinel).
 //  4. url-lookup: zia url-lookup reaches runURLLookup via the Cobra path.
-//  5. isMigrated gate: product commands go through Cobra, not legacy path.
-//  6. Phase 2c: resource-specific --help (SetHelpFunc) and catalog completion.
+//  5. Cobra routing: product commands go through Cobra.
+//  6. Resource-specific --help (SetHelpFunc) and catalog completion.
 
 import (
 	"bytes"
@@ -569,12 +569,12 @@ func TestProductCmd_ZIALocations_StillRoutesToProductRunE(t *testing.T) {
 	}
 }
 
-// -- isMigrated gate / hybrid routing -----------------------------------------
+// -- Cobra routing ------------------------------------------------------------
 
-// TestProductCmd_GoesViaCobra verifies that product commands are now routed
-// through Cobra (not the legacy path). The positive signal is that a credential
-// error is NOT a Cobra unknown-command error -- confirming the Cobra root
-// registered the product command and attempted to execute it.
+// TestProductCmd_GoesViaCobra verifies that product commands are routed through
+// Cobra. The positive signal is that a credential error is NOT a Cobra
+// unknown-command error -- confirming the Cobra root registered the product
+// command and attempted to execute it.
 //
 // Uses cli.KnownProductNames() (derived from the live catalog) so a future 6th
 // product is automatically covered without touching this test.
@@ -734,7 +734,7 @@ func TestProductCmd_ProductHelp_NoResource(t *testing.T) {
 // TestProductCmd_ValidArgsFunction_FirstArg verifies that the ValidArgsFunction
 // returns the product's catalog resource names as first-arg completions.
 // Uses the exported ProductCmdCompletions helper (export_test.go) which calls the
-// function directly, bypassing the hybrid App.Run dispatch layer.
+// function directly, bypassing the App.Run dispatch layer.
 func TestProductCmd_ValidArgsFunction_FirstArg(t *testing.T) {
 	t.Parallel()
 

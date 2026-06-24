@@ -1,12 +1,11 @@
 package cli_test
 
-// cobra_dispatch_test.go — Tests for the hybrid Cobra/legacy dispatch (Tasks 1.4 + 1.5 + 1.5.2).
+// cobra_dispatch_test.go — Tests for Cobra dispatch.
 //
 // Tests here verify:
-//  1. Hybrid routing: migrated command (version, doctor) goes through Cobra; un-migrated
-//     commands (zia, auth) still go through the legacy path.
+//  1. Routing: recognized commands (version, doctor, zia, auth, …) go through Cobra.
 //  2. version --help / doctor --help → Cobra-rendered help.
-//  3. version/doctor --output <file>: migrated commands run inside the --output wrapper.
+//  3. version/doctor --output <file>: commands run inside the --output wrapper.
 //  4. Format/arity surface preservation: --format ndjson → exit 2; extra args → UsageError.
 //  5. doctor config-lazy RunE: loads config itself; config-error path surfaces correctly.
 
