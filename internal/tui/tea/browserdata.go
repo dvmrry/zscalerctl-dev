@@ -40,7 +40,7 @@ type KV struct {
 }
 
 // NewFakeBrowserData returns the hard-coded fixture data used by the demo.
-// It exercises normal, empty, and error resource states.
+// It exercises normal, empty, error, and long-record resource states.
 func NewFakeBrowserData() BrowserData {
 	return BrowserData{
 		Products: []ProductNode{
@@ -68,6 +68,30 @@ func NewFakeBrowserData() BrowserData {
 						Product: "zia",
 						Name:    "forwarding-rules",
 						Empty:   true,
+					},
+					{
+						Product: "zia",
+						Name:    "settings",
+						Records: []RecordSummary{
+							{
+								ID:     "7001",
+								Name:   "Global Policy",
+								Status: "active",
+								Detail: "default tenant policy",
+								Fields: []KV{
+									{Key: "mode", Value: "strict"},
+									{Key: "log_level", Value: "info"},
+									{Key: "timeout", Value: "30s"},
+									{Key: "retries", Value: "3"},
+									{Key: "region", Value: "us-east"},
+									{Key: "fail_open", Value: "false"},
+									{Key: "notify", Value: "true"},
+									{Key: "audit", Value: "enabled"},
+									{Key: "last_updated", Value: "2024-06-24"},
+									{Key: "updated_by", Value: "admin"},
+								},
+							},
+						},
 					},
 				},
 			},

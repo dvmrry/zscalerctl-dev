@@ -138,8 +138,9 @@ func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 
 func TestBrowserModelViewContainsErrorState(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
-	// Select connectors (index 6): zia, locations, url-filtering-rules, forwarding-rules, zpa, app-segments, connectors.
-	for i := 0; i < 6; i++ {
+	// Select connectors (index 7): zia, locations, url-filtering-rules, forwarding-rules,
+	// settings, zpa, app-segments, connectors.
+	for i := 0; i < 7; i++ {
 		m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	}
 	view := m.View()
@@ -148,6 +149,9 @@ func TestBrowserModelViewContainsErrorState(t *testing.T) {
 	}
 	if !strings.Contains(view, "connector list unavailable") {
 		t.Errorf("View() = %q, want error message", view)
+	}
+	if !strings.Contains(view, "Error loading resource") {
+		t.Errorf("View() = %q, want error header", view)
 	}
 }
 
@@ -161,8 +165,8 @@ func TestBrowserDataFakeFixture(t *testing.T) {
 		switch p.Name {
 		case "zia":
 			zia = true
-			if len(p.Resources) != 3 {
-				t.Errorf("zia resources = %d, want 3", len(p.Resources))
+			if len(p.Resources) != 4 {
+				t.Errorf("zia resources = %d, want 4", len(p.Resources))
 			}
 		case "zpa":
 			zpa = true
@@ -178,6 +182,16 @@ func TestBrowserDataFakeFixture(t *testing.T) {
 	}
 	if !zia || !zpa || !zcc {
 		t.Errorf("missing expected products: zia=%v zpa=%v zcc=%v", zia, zpa, zcc)
+	}
+	// settings is the long-record resource.
+	var settings bool
+	for _, r := range data.Products[0].Resources {
+		if r.Name == "settings" && len(r.Records) == 1 && len(r.Records[0].Fields) > 5 {
+			settings = true
+		}
+	}
+	if !settings {
+		t.Errorf("settings long-record resource missing or malformed")
 	}
 }
 
@@ -240,6 +254,79 @@ func TestBrowserModelRendersDataFields(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "region: us-east") {
 		t.Errorf("view = %q, want generic field", view)
+	}
+}
+
+func TestBrowserModelHelpOverlay(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'?'}})
+	m2 := updated.(BrowserModel)
+	if !m2.ShowingHelp() {
+		t.Errorf("ShowingHelp() = false, want true")
+	}
+	view := m2.View()
+	if !strings.Contains(view, "Keyboard help") {
+		t.Errorf("View() = %q, want help overlay", view)
+	}
+
+	updated, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m3 := updated.(BrowserModel)
+	if m3.ShowingHelp() {
+		t.Errorf("ShowingHelp() = true after dismiss, want false")
+	}
+}
+
+func TestBrowserModelStatusBar(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	view := m.View()
+	if !strings.Contains(view, "zia · 1/10") {
+		t.Errorf("View() = %q, want selected index status", view)
+	}
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	view = m.View()
+	if !strings.Contains(view, "zia / locations · 2/10") {
+		t.Errorf("View() = %q, want resource path status", view)
+	}
+	if !strings.Contains(view, "3 records") {
+		t.Errorf("View() = %q, want record count", view)
+	}
+}
+
+func TestBrowserModelLongRecordScroll(t *testing.T) {
+	data := BrowserData{
+		Products: []ProductNode{
+			{
+				Name: "test",
+				Resources: []ResourceNode{
+					{
+						Name:    "scroll",
+						Product: "test",
+						Records: []RecordSummary{
+							{ID: "1", Name: "First", Status: "active", Detail: "first", Fields: []KV{
+								{Key: "a", Value: "1"}, {Key: "b", Value: "2"}, {Key: "c", Value: "3"},
+								{Key: "d", Value: "4"}, {Key: "e", Value: "5"}, {Key: "f", Value: "6"},
+							}},
+							{ID: "2", Name: "Second", Status: "active"},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, data)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown}) // select resource
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})  // focus right pane
+	initialScroll := m.ScrollOffset()
+	if initialScroll < 0 {
+		t.Errorf("initial ScrollOffset() = %d, want >= 0", initialScroll)
+	}
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown}) // move to second record
+	if got := m.ScrollOffset(); got <= initialScroll {
+		t.Errorf("ScrollOffset() = %d, want > %d after moving to lower record", got, initialScroll)
+	}
+	view := m.View()
+	if !strings.Contains(view, "Second") {
+		t.Errorf("View() = %q, want second record name", view)
 	}
 }
 
