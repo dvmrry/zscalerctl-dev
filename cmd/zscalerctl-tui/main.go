@@ -7,7 +7,7 @@
 // Modes:
 //
 //   - --live: load config, resolve credentials, build a real resource reader, and
-//     collect live tenant data before launching the TUI.
+//     collect targeted live tenant data before launching the TUI.
 //   - --collector-fixture: use the fake-reader-backed collector fixture (default).
 //   - --fixture: use the hard-coded static fixture.
 //
@@ -16,11 +16,13 @@
 //	go run ./cmd/zscalerctl-tui [--live] [--collector-fixture] [--fixture] [--products <list>] [--resources <list>] [--continue-on-error] [--profile <name>] [--config <path>] [--timeout 30s] [--verbose] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
 //
 // The default mode is --collector-fixture. Live mode requires ZSCALERCTL_*
-// credentials or a config profile that provides them.
+// credentials or a config profile that provides them, and currently requires a
+// targeted --resources filter.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -40,6 +42,8 @@ import (
 	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
+
+var errLiveBroadCollectionDisabled = errors.New("live broad collection is disabled in this experimental build; specify --resources <name> for targeted collection")
 
 func main() {
 	if err := run(
@@ -207,12 +211,20 @@ func collectOptionsFromFlags(productsStr, resourcesStr string, continueOnError b
 	opts := browserdata.CollectOptions{ContinueOnError: continueOnError}
 	if productsStr != "" {
 		for _, p := range strings.Split(productsStr, ",") {
-			opts.Products = append(opts.Products, resources.Product(strings.TrimSpace(p)))
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			opts.Products = append(opts.Products, resources.Product(p))
 		}
 	}
 	if resourcesStr != "" {
 		for _, r := range strings.Split(resourcesStr, ",") {
-			opts.Resources = append(opts.Resources, strings.TrimSpace(r))
+			r = strings.TrimSpace(r)
+			if r == "" {
+				continue
+			}
+			opts.Resources = append(opts.Resources, r)
 		}
 	}
 	return opts
@@ -239,6 +251,9 @@ func collectLive(
 	cfg, err := deps.loadConfig(env, config.LoadOptions{Profile: profile, ConfigPath: configPath})
 	if err != nil {
 		return data.BrowserData{}, err
+	}
+	if len(collectOpts.Resources) == 0 {
+		return data.BrowserData{}, errLiveBroadCollectionDisabled
 	}
 
 	authMode := cfg.EffectiveAuthMode()
