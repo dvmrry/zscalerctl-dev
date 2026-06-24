@@ -34,6 +34,8 @@ GitHub security policy.
   package and Bubble Tea runtime are separated.
 - [cli/tui-demo-readback.md](cli/tui-demo-readback.md) — integration-branch
   readback for the isolated TUI demo harness.
+- [cli/tui-static-browser-readback.md](cli/tui-static-browser-readback.md) —
+  integration-branch readback for the static fake-data TUI browser.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
 - [schema/](schema/) — published JSON Schemas for machine-readable artifacts.
 - [SCRIPTS.md](SCRIPTS.md) — registry of `scripts/` ownership and validation.
