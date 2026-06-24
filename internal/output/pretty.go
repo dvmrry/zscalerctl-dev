@@ -59,38 +59,50 @@ func RenderRecordsPretty(headers []string, rows [][]string, style Style) SafeTex
 			return cellStyle
 		})
 
-	rendered := t.Render()
-	// Only constrain the width when the natural table would overflow the
-	// terminal; otherwise a narrow table would be stretched to fill the screen.
-	// With a width set, lipgloss wraps cell contents (wrap defaults to true)
-	// instead of letting a long value run off the line and smear the borders.
-	if style.Width > 0 && lipgloss.Width(rendered) > style.Width {
-		rendered = t.Width(style.Width).Render()
-	}
-	return NewSafeText(rendered + "\n")
+	return renderPrettyTable(t, style)
 }
 
-// RenderRecordPretty renders a single record as an aligned key/value block with
-// emphasized keys. It is the show/get counterpart to RenderRecordsPretty.
+// RenderRecordPretty renders a single record as a bordered key/value table. It
+// is the show/get counterpart to RenderRecordsPretty.
 func RenderRecordPretty(rows []KV, style Style) SafeText {
+	return RenderKeyValuesPretty(rows, style)
+}
+
+// RenderKeyValuesPretty renders general key/value rows as a bordered table.
+func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
 	r := prettyRenderer(style)
-	keyStyle := r.NewStyle().Bold(true)
+	headerStyle := r.NewStyle().Bold(true).Padding(0, 1)
+	keyStyle := r.NewStyle().Bold(true).Padding(0, 1)
+	cellStyle := r.NewStyle().Padding(0, 1)
 	if style.Color {
+		headerStyle = headerStyle.Foreground(prettyAccent(style))
 		keyStyle = keyStyle.Foreground(prettyAccent(style))
 	}
-	width := 0
-	for _, row := range rows {
-		if len(row.Key) > width {
-			width = len(row.Key)
-		}
-	}
-	keyStyle = keyStyle.Width(width)
 
-	var body string
+	tableRows := make([][]string, 0, len(rows))
 	for _, row := range rows {
-		body += keyStyle.Render(row.Key) + "  " + row.Value + "\n"
+		if row.Kind == "" {
+			row.Kind = row.Key
+		}
+		tableRows = append(tableRows, []string{row.Key, style.Value(row.Kind, row.Value)})
 	}
-	return NewSafeText(body)
+
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(prettyBorderStyle(r, style)).
+		Headers("field", "value").
+		Rows(tableRows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return headerStyle
+			}
+			if col == 0 {
+				return keyStyle
+			}
+			return cellStyle
+		})
+
+	return renderPrettyTable(t, style)
 }
 
 func prettyAccent(style Style) lipgloss.Color {
@@ -109,4 +121,16 @@ func prettyBorderStyle(r *lipgloss.Renderer, style Style) lipgloss.Style {
 		return s.Foreground(lipgloss.Color("240"))
 	}
 	return s.Foreground(lipgloss.Color("8"))
+}
+
+func renderPrettyTable(t *table.Table, style Style) SafeText {
+	rendered := t.Render()
+	// Only constrain the width when the natural table would overflow the
+	// terminal; otherwise a narrow table would be stretched to fill the screen.
+	// With a width set, lipgloss wraps cell contents (wrap defaults to true)
+	// instead of letting a long value run off the line and smear the borders.
+	if style.Width > 0 && lipgloss.Width(rendered) > style.Width {
+		rendered = t.Width(style.Width).Render()
+	}
+	return NewSafeText(rendered + "\n")
 }
