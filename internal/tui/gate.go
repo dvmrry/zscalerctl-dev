@@ -1,4 +1,7 @@
-// Package tui contains the disabled-by-default terminal UI foundation.
+// Package tui contains the disabled-by-default terminal UI foundation. Bubble
+// Tea v1.x probes the terminal during package initialization, so this package
+// must stay out of normal CLI execution paths until that startup behavior is an
+// accepted product tradeoff.
 package tui
 
 import (

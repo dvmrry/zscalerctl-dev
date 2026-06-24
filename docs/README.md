@@ -30,6 +30,8 @@ GitHub security policy.
 - [ZDX_SCOPE_PLAN.md](ZDX_SCOPE_PLAN.md)
 - [VERSIONING.md](VERSIONING.md)
 - [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md)
+- [cli/tui-demo-readback.md](cli/tui-demo-readback.md) — integration-branch
+  readback for the isolated TUI demo harness.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
 - [schema/](schema/) — published JSON Schemas for machine-readable artifacts.
 - [SCRIPTS.md](SCRIPTS.md) — registry of `scripts/` ownership and validation.

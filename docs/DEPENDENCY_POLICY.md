@@ -125,6 +125,13 @@ wrap `os/exec`. The TUI foundation does not call them. Future TUI work must not
 use those helpers or otherwise introduce subprocess execution without an
 explicit dependency/security review.
 
+Bubble Tea v1.x also runs package initialization that calls Lip Gloss background
+detection, which can issue terminal OSC/cursor queries before application code
+has a chance to evaluate `zscalerctl`'s TUI gate. Do not import Bubble Tea from
+normal CLI execution paths until that startup probing is accepted or avoided.
+Current TUI work must stay in isolated integration/demo entry points while this
+constraint is unresolved.
+
 For every TUI or Charm dependency change:
 
 - Do not add workflow `curl | sh`, ad hoc installers, or `@latest`.
