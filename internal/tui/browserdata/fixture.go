@@ -1,5 +1,5 @@
 // Package browserdata adapts safe, already-projected resource records into the
-// BrowserData view model consumed by the TUI browser.
+// data.BrowserData view model consumed by the TUI browser.
 package browserdata
 
 import (

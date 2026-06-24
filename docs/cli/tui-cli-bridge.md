@@ -121,9 +121,11 @@ load config (internal/config)
   ↓
 resolve credentials (internal/credentials)
   ↓
-build ResourceReader (internal/cli App or equivalent)
+build ResourceReader (entrypoint)
   ↓
 run Collector (internal/tui/browserdata)
+  ↓
+produce BrowserData (internal/tui/data)
   ↓
 launch Bubble Tea (internal/tui/tea)
 ```
@@ -146,8 +148,8 @@ Collection is performed before the TUI starts. The collector (`internal/tui/brow
 - the active redaction mode (`--redaction`, default `standard`),
 - `ContinueOnError` behavior (default `false` for the first command).
 
-Projected records are converted to `tea.BrowserData` by the existing adapter. The
-TUI model consumes `BrowserData` only; it never calls the reader or handles config.
+Projected records are converted to `data.BrowserData` by the existing adapter. The
+TUI model consumes `data.BrowserData` only; it never calls the reader or handles config.
 
 ## Error handling
 
@@ -199,27 +201,40 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 | Package | Responsibility |
 | --- | --- |
 | `internal/tui` | Pure, Bubble-free launch eligibility and decision helpers. |
-| `internal/tui/browserdata` | Catalog filtering, reader coordination, projection, `BrowserData` conversion. |
-| `internal/tui/tea` | Bubble Tea model, view, and update loop. Consumes `BrowserData` only. |
-| `cmd/zscalerctl` or `internal/cli` | Cobra command registration, global flag parsing, config/credential/reader construction, TUI launch orchestration. |
+| `internal/tui/data` | Neutral `BrowserData` view model types shared by collector and TUI. Bubble-free. |
+| `internal/tui/browserdata` | Catalog filtering, reader coordination, projection, `BrowserData` conversion. Bubble-free. |
+| `internal/tui/launcher` | Bubble-free gate evaluation and `BrowserData` collection. Does not import `internal/tui/tea` or Bubble Tea. |
+| `internal/tui/tea` | Bubble Tea model, view, and update loop. Consumes `internal/tui/data` only. |
+| `cmd/zscalerctl` or `internal/cli` | Normal Cobra command tree. Must not import Bubble Tea or `internal/tui/tea` (verified by `go list -deps`). |
+| Isolated TUI entrypoint | `scripts/tui-demo.go`, `scripts/tui-browser-demo.go`, or a future `cmd/zscalerctl-tui`. May import Bubble Tea and `internal/tui/tea`. |
 
-## Implementation order for the wiring PR
+## Implementation order for the isolated TUI entrypoint
 
-1. Add the `browse` command with a `--tui` flag (or hidden `experimental tui`).
-2. In the command runner, call `tui.DecideLaunch(opts)` before any heavy work.
+1. Add an isolated TUI entrypoint (e.g. `scripts/tui-browser-demo.go` or a future
+   `cmd/zscalerctl-tui`). This entrypoint is the only place that may import
+   `github.com/charmbracelet/bubbletea` and `internal/tui/tea`.
+2. In the entrypoint, call `tui.DecideLaunch(opts)` before any heavy work.
 3. If disabled, print the reason and exit `2`.
-4. If enabled, load config, resolve credentials, build the reader.
+4. If enabled, load config, resolve credentials, build the reader (or use a fake
+   reader for the demo).
 5. Run the collector with the requested filters and redaction mode.
-6. Convert the result to `tea.BrowserData`.
+6. Convert the result to `data.BrowserData`.
 7. Launch `internal/tui/tea.NewBrowserModel` via `tea.NewProgram`.
 8. Return the program exit code.
 
+The normal `cmd/zscalerctl` and `internal/cli` packages must never import
+Bubble Tea or `internal/tui/tea`; this is enforced by `go list -deps` in
+`scripts/verify-tui-import-boundary.sh`.
+
 ## Promotion criteria before `feature/tui` merges to `main`
 
-- Hidden or clearly experimental command shape.
-- Real TTY readbacks for `80x24`, `60x16`, and `120x32`.
+- Isolated TUI entrypoint; no Bubble Tea in `cmd/zscalerctl` or `internal/cli`.
+- `go list -deps ./cmd/zscalerctl` and `go list -deps ./internal/cli` must not
+  include `github.com/charmbracelet/bubbletea` or `internal/tui/tea`.
+- Real TTY readbacks for `80x24`, `60x16`, and `120x32` from the isolated entrypoint.
 - Evidence that normal CLI paths (non-TTY, `--format json`, `NO_COLOR`) still
-  produce no Bubble Tea sequences.
+  produce no Bubble Tea sequences; verified in a PTY by
+  `scripts/verify-pty-escape-clean.sh`.
 - At least one live-reader-backed readback on a scratch tenant with no secrets in
   output.
 - Golden CLI surface tests pass.
@@ -228,12 +243,19 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 
 ## Status
 
-The experimental wiring (`zscalerctl browse --tui`) is implemented on `feature/tui`
-and now exercises the full real CLI path: gate → config → credentials → reader
-→ collector → BrowserData → launcher → Bubble Tea. The implementation is fully
-hermetic: tests inject fake readers to prove the success path, and missing
-credentials or invalid config are verified to prevent Bubble Tea from launching.
-No live tenant demo is required.
+The experimental `zscalerctl browse --tui` command was implemented on `feature/tui`
+and exercised the full real CLI path: gate → config → credentials → reader →
+collector → BrowserData → launcher → Bubble Tea. However, that path transitively
+linked Bubble Tea into the normal `zscalerctl` binary (`cmd/zscalerctl` and
+`internal/cli`), which violates the TUI import boundary because Bubble Tea v1.x
+runs package-init terminal probing that can emit OSC/DSR sequences before `main()`.
+
+The blocker fix removes the hidden `browse` command from the normal command tree
+and makes `internal/tui/launcher` Bubble-free. The gate/collector path remains
+available for a future isolated TUI entrypoint (e.g. `cmd/zscalerctl-tui` or a
+subprocess design), but no normal `zscalerctl` invocation can launch or even
+transitively import Bubble Tea. TUI rendering is still available through the
+isolated demo scripts `scripts/tui-demo.go` and `scripts/tui-browser-demo.go`.
 
 ## Decision table
 

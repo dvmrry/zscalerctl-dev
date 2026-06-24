@@ -1,5 +1,5 @@
 // Package browserdata adapts safe, already-projected resource records into the
-// BrowserData view model consumed by the TUI browser. It does not import Bubble
+// data.BrowserData view model consumed by the TUI browser. It does not import Bubble
 // Tea, config, credentials, or network clients.
 package browserdata
 
@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
-	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 // ProjectedRecordSource provides already-projected records for a resource spec.
@@ -18,32 +18,32 @@ type ProjectedRecordSource interface {
 	ProjectedRecords(spec resources.ResourceSpec) ([]resources.ProjectedRecord, error)
 }
 
-// Build converts a resource catalog and projected records into a BrowserData view
+// Build converts a resource catalog and projected records into a data.BrowserData view
 // model. The catalog order is preserved. A source error becomes a display-only
 // error on the corresponding resource node; an empty result becomes an empty
 // state.
-func Build(catalog resources.ResourceCatalog, src ProjectedRecordSource) (tui_tea.BrowserData, error) {
-	var products []tui_tea.ProductNode
-	var current *tui_tea.ProductNode
+func Build(catalog resources.ResourceCatalog, src ProjectedRecordSource) (data.BrowserData, error) {
+	var products []data.ProductNode
+	var current *data.ProductNode
 	for _, spec := range catalog {
 		if spec.Name == "" {
 			continue
 		}
 		if current == nil || current.Name != string(spec.Product) {
-			products = append(products, tui_tea.ProductNode{Name: string(spec.Product)})
+			products = append(products, data.ProductNode{Name: string(spec.Product)})
 			current = &products[len(products)-1]
 		}
 		node, err := buildResourceNode(spec, src)
 		if err != nil {
-			return tui_tea.BrowserData{}, err
+			return data.BrowserData{}, err
 		}
 		current.Resources = append(current.Resources, node)
 	}
-	return tui_tea.BrowserData{Products: products}, nil
+	return data.BrowserData{Products: products}, nil
 }
 
-func buildResourceNode(spec resources.ResourceSpec, src ProjectedRecordSource) (tui_tea.ResourceNode, error) {
-	node := tui_tea.ResourceNode{
+func buildResourceNode(spec resources.ResourceSpec, src ProjectedRecordSource) (data.ResourceNode, error) {
+	node := data.ResourceNode{
 		Product: string(spec.Product),
 		Name:    spec.Name,
 	}
@@ -62,7 +62,7 @@ func buildResourceNode(spec resources.ResourceSpec, src ProjectedRecordSource) (
 	return node, nil
 }
 
-func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedRecord) tui_tea.RecordSummary {
+func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedRecord) data.RecordSummary {
 	fields := rec.Fields()
 
 	idKey := spec.EffectiveGetKey()
@@ -77,7 +77,7 @@ func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedReco
 	}
 	detail := fieldString(fields, "description")
 
-	summary := tui_tea.RecordSummary{
+	summary := data.RecordSummary{
 		ID:     id,
 		Name:   name,
 		Status: status,
@@ -93,7 +93,7 @@ func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedReco
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		summary.Fields = append(summary.Fields, tui_tea.KV{
+		summary.Fields = append(summary.Fields, data.KV{
 			Key:   k,
 			Value: fmt.Sprintf("%v", fields[k]),
 		})

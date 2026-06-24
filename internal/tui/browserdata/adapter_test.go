@@ -129,10 +129,10 @@ func TestBuildLongRecord(t *testing.T) {
 	if len(rec.Fields) < 6 {
 		t.Errorf("fields = %d, want >= 6", len(rec.Fields))
 	}
-	// id and name should be promoted, not repeated as generic KV fields.
+	// id and name should be promoted, not repeated as generic data.KV fields.
 	for _, f := range rec.Fields {
 		if f.Key == "id" || f.Key == "name" {
-			t.Errorf("field %q should not be repeated as generic KV", f.Key)
+			t.Errorf("field %q should not be repeated as generic data.KV", f.Key)
 		}
 	}
 }
@@ -155,7 +155,7 @@ func TestBuildSecretFieldDropped(t *testing.T) {
 	rec := data.Products[0].Resources[0].Records[0]
 	for _, f := range rec.Fields {
 		if f.Key == "password" || f.Key == "token" {
-			t.Errorf("secret field %q leaked into BrowserData", f.Key)
+			t.Errorf("secret field %q leaked into data.BrowserData", f.Key)
 		}
 		if strings.Contains(f.Value, "hunter2") || strings.Contains(f.Value, "sekret") {
 			t.Errorf("secret value leaked in field %q=%q", f.Key, f.Value)
@@ -205,7 +205,7 @@ func TestBuildFixtureSource(t *testing.T) {
 				for _, f := range rec.Fields {
 					lower := strings.ToLower(f.Key)
 					if strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "psk") || strings.Contains(lower, "credential") {
-						t.Errorf("secret-like key %q found in BrowserData", f.Key)
+						t.Errorf("secret-like key %q found in data.BrowserData", f.Key)
 					}
 					if strings.Contains(f.Value, "secret-key-material") || strings.Contains(f.Value, "secret") {
 						t.Errorf("secret value leaked in field %q=%q", f.Key, f.Value)

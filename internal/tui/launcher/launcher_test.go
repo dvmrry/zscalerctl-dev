@@ -9,7 +9,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/tui"
 )
 
-func TestLaunchBrowserRequiresExplicitRequest(t *testing.T) {
+func TestCollectBrowserDataRequiresExplicitRequest(t *testing.T) {
 	cfg := Config{
 		Requested: true,
 		StdinTTY:  true,
@@ -20,7 +20,7 @@ func TestLaunchBrowserRequiresExplicitRequest(t *testing.T) {
 		Env:       []string{"TERM=xterm-256color"},
 	}
 	cfg.Requested = false
-	err := LaunchBrowser(context.Background(), cfg)
+	_, err := CollectBrowserData(context.Background(), cfg)
 	var launchErr LaunchError
 	if !errors.As(err, &launchErr) {
 		t.Fatalf("error = %v, want LaunchError", err)
@@ -30,7 +30,7 @@ func TestLaunchBrowserRequiresExplicitRequest(t *testing.T) {
 	}
 }
 
-func TestLaunchBrowserRejectsNonTTY(t *testing.T) {
+func TestCollectBrowserDataRejectsNonTTY(t *testing.T) {
 	base := Config{
 		Requested: true,
 		StdinTTY:  true,
@@ -55,7 +55,7 @@ func TestLaunchBrowserRejectsNonTTY(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := base
 			tt.mutate(&cfg)
-			err := LaunchBrowser(context.Background(), cfg)
+			_, err := CollectBrowserData(context.Background(), cfg)
 			var launchErr LaunchError
 			if !errors.As(err, &launchErr) {
 				t.Fatalf("error = %v, want LaunchError", err)
@@ -67,7 +67,7 @@ func TestLaunchBrowserRejectsNonTTY(t *testing.T) {
 	}
 }
 
-func TestLaunchBrowserRejectsMachineFormats(t *testing.T) {
+func TestCollectBrowserDataRejectsMachineFormats(t *testing.T) {
 	cfg := Config{
 		Requested: true,
 		StdinTTY:  true,
@@ -79,7 +79,7 @@ func TestLaunchBrowserRejectsMachineFormats(t *testing.T) {
 
 	for _, format := range []output.Format{output.FormatJSON, output.FormatNDJSON} {
 		cfg.Format = format
-		err := LaunchBrowser(context.Background(), cfg)
+		_, err := CollectBrowserData(context.Background(), cfg)
 		var launchErr LaunchError
 		if !errors.As(err, &launchErr) {
 			t.Fatalf("format=%q error = %v, want LaunchError", format, err)
@@ -90,7 +90,7 @@ func TestLaunchBrowserRejectsMachineFormats(t *testing.T) {
 	}
 }
 
-func TestLaunchBrowserRejectsOutputPath(t *testing.T) {
+func TestCollectBrowserDataRejectsOutputPath(t *testing.T) {
 	cfg := Config{
 		Requested:  true,
 		StdinTTY:   true,
@@ -101,7 +101,7 @@ func TestLaunchBrowserRejectsOutputPath(t *testing.T) {
 		OutputPath: "/tmp/out.json",
 		Env:        []string{"TERM=xterm-256color"},
 	}
-	err := LaunchBrowser(context.Background(), cfg)
+	_, err := CollectBrowserData(context.Background(), cfg)
 	var launchErr LaunchError
 	if !errors.As(err, &launchErr) {
 		t.Fatalf("error = %v, want LaunchError", err)
@@ -111,7 +111,7 @@ func TestLaunchBrowserRejectsOutputPath(t *testing.T) {
 	}
 }
 
-func TestLaunchBrowserRejectsColorDisabled(t *testing.T) {
+func TestCollectBrowserDataRejectsColorDisabled(t *testing.T) {
 	base := Config{
 		Requested: true,
 		StdinTTY:  true,
@@ -148,7 +148,7 @@ func TestLaunchBrowserRejectsColorDisabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := LaunchBrowser(context.Background(), tt.cfg)
+			_, err := CollectBrowserData(context.Background(), tt.cfg)
 			var launchErr LaunchError
 			if !errors.As(err, &launchErr) {
 				t.Fatalf("error = %v, want LaunchError", err)
@@ -157,6 +157,25 @@ func TestLaunchBrowserRejectsColorDisabled(t *testing.T) {
 				t.Errorf("reason = %q, want %q", launchErr.Reason, tt.want)
 			}
 		})
+	}
+}
+
+func TestCollectBrowserDataReturnsFixtureData(t *testing.T) {
+	cfg := Config{
+		Requested: true,
+		StdinTTY:  true,
+		StdoutTTY: true,
+		StderrTTY: true,
+		Format:    output.FormatAuto,
+		ColorMode: output.ColorAuto,
+		Env:       []string{"TERM=xterm-256color"},
+	}
+	browserData, err := CollectBrowserData(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("CollectBrowserData: %v", err)
+	}
+	if len(browserData.Products) == 0 {
+		t.Errorf("len(Products) = %d, want > 0", len(browserData.Products))
 	}
 }
 

@@ -154,55 +154,6 @@
       ]
     },
     {
-      "path": "browse",
-      "short": "experimental TUI browser",
-      "aliases": [],
-      "hidden": true,
-      "mutating": false,
-      "args": {
-        "policy": "none"
-      },
-      "flags": [
-        {
-          "name": "continue-on-error",
-          "type": "bool",
-          "default": "false",
-          "usage": "continue collecting resources after an error"
-        },
-        {
-          "name": "products",
-          "type": "string",
-          "usage": "comma-separated products to browse"
-        },
-        {
-          "name": "resources",
-          "type": "string",
-          "usage": "comma-separated resources to browse"
-        },
-        {
-          "name": "tui",
-          "type": "bool",
-          "default": "false",
-          "usage": "launch the interactive TUI browser"
-        }
-      ],
-      "inherited_flags": [
-        "color",
-        "config",
-        "fields",
-        "filter",
-        "format",
-        "log-level",
-        "no-cache",
-        "no-color",
-        "output",
-        "profile",
-        "redaction",
-        "search",
-        "timeout"
-      ]
-    },
-    {
       "path": "completion",
       "short": "Generate the autocompletion script for the specified shell",
       "aliases": [],

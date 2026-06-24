@@ -4,6 +4,15 @@ Release-candidate audit for the `feature/tui` integration branch. This document
 records the architecture, command surface, dependency changes, validation
 evidence, and remaining risks before `feature/tui` can be promoted to `main`.
 
+> **Post-blocker-fix update:** the hidden `zscalerctl browse --tui` command
+described in this audit has been removed because it transitively linked Bubble
+Tea into the normal `zscalerctl` binary via `internal/cli -> internal/tui/launcher
+-> internal/tui/tea`. Bubble Tea v1.x package-init probing can emit OSC/DSR
+sequences before `main()`, corrupting interactive JSON output. The gate/collector
+path remains, but the TUI runtime is now restricted to isolated entrypoints such
+as `scripts/tui-browser-demo.go` or a future `cmd/zscalerctl-tui`. See
+`docs/cli/tui-import-boundary.md` for the updated boundary.
+
 **Scope:** docs and verification only. No new features or behavior changes were
 introduced during this audit.
 
@@ -346,33 +355,41 @@ Specific test coverage includes:
 
 ## 13. Recommendation
 
-**Recommendation: promote after live credential smoke, or keep incubating with
-a clear follow-up issue.**
+**Recommendation: keep incubating until an isolated TUI entrypoint is designed
+and approved.**
 
-The `feature/tui` branch is architecturally sound and ready for review. The
-import boundary, gate ordering, and hermetic test coverage are strong. The only
-material gap is a real-tenant success-path validation. Because the command is
-hidden and the normal CLI surface is unchanged, the risk of merging without live
-smoke is low, but the project should explicitly decide:
+The `feature/tui` branch is architecturally sound as a collection of reusable
+TUI components, but it is **not** ready for promotion to `main` as a user-facing
+feature. The blocker fix removed the hidden `browse --tui` command because it
+transitively linked Bubble Tea into the normal `zscalerctl` binary. Bubble Tea
+v1.x package-init probing can emit OSC/DSR sequences before `main()`, which
+would corrupt normal CLI output (e.g. `zscalerctl version --format json` run in
+a PTY). The gate/collector path is still present and tested, but the actual TUI
+launch must be exposed only through an isolated entrypoint such as
+`scripts/tui-browser-demo.go` or a future `cmd/zscalerctl-tui`.
 
-- **Option A — promote now:** Accept the hidden experimental command on `main`
-  with the fixture/fake-reader evidence and a follow-up task to capture a live
-  tenant readback before unhiding or documenting `browse`.
-- **Option B — keep incubating:** Keep `feature/tui` open until one real tenant
-  `browse --tui` readback is captured and reviewed.
+Before promotion:
 
-This audit does not discover any correctness or security issue that blocks
-promotion. The decision is therefore a risk/policy choice, not a technical
-blocker.
+- Design and approve the isolation mechanism for the TUI entrypoint.
+- Confirm that `go list -deps ./cmd/zscalerctl` and `go list -deps ./internal/cli`
+  never include `github.com/charmbracelet/bubbletea` or `internal/tui/tea`.
+- Capture at least one live-reader-backed readback from the isolated entrypoint
+  on a scratch tenant with no secrets in output.
+- Update the promotion audit to reflect the final isolation design.
+
+This audit now discovers a **technical blocker**: the TUI runtime cannot be
+linked into the normal `zscalerctl` binary. The blocker is fixed by removing the
+unsafe command, but the feature remains incomplete until an isolated launch
+path is added.
 
 ---
 
 ## 14. Open questions before promotion
 
-- Should `browse` remain hidden in `main` until live smoke is captured, or is a
-  hidden experimental command acceptable without it?
-- Should the generated CLI docs (`docs/cli/zscalerctl.md`) explicitly exclude
-  `browse` from the agent-facing surface, or is the current hidden status
-  sufficient? (It is already hidden and does not appear in generated docs.)
+- What is the approved isolation mechanism for the TUI entrypoint? Options:
+  a separate `cmd/zscalerctl-tui` binary, a `zscalerctl tui` subprocess that
+  forks to the separate binary, or an isolated demo-only path.
+- How will the TUI entrypoint load config and credentials without pulling
+  Bubble Tea into the normal CLI binary?
 - Is the transitive `x/ansi` version bump acceptable for the existing `lipgloss`
   usage, or should it be pinned separately?

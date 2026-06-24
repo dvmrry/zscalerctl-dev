@@ -1,5 +1,5 @@
 // Package browserdata adapts safe, already-projected resource records into the
-// BrowserData view model consumed by the TUI browser.
+// data.BrowserData view model consumed by the TUI browser.
 package browserdata
 
 import (
@@ -8,7 +8,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
-	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 // RecordReader provides source records for a resource. It is a deliberately
@@ -28,7 +28,7 @@ type CollectOptions struct {
 }
 
 // Collector coordinates catalog selection, source-record collection, projection,
-// and conversion into BrowserData. It does not import Bubble Tea and does not
+// and conversion into data.BrowserData. It does not import Bubble Tea and does not
 // load config or credentials.
 type Collector struct {
 	Catalog resources.ResourceCatalog
@@ -37,10 +37,10 @@ type Collector struct {
 }
 
 // Collect iterates the selected resources, reads and projects their records,
-// and returns a BrowserData view model. When ContinueOnError is true, a resource
+// and returns a data.BrowserData view model. When ContinueOnError is true, a resource
 // error becomes an error state on the corresponding resource node; otherwise the
 // first error is returned immediately.
-func (c *Collector) Collect(ctx context.Context, opts CollectOptions) (tui_tea.BrowserData, error) {
+func (c *Collector) Collect(ctx context.Context, opts CollectOptions) (data.BrowserData, error) {
 	mode := c.Mode
 	if mode == "" {
 		mode = redact.ModeStandard
@@ -49,7 +49,7 @@ func (c *Collector) Collect(ctx context.Context, opts CollectOptions) (tui_tea.B
 	results := make(map[string]collectionResult, len(filtered))
 	for _, spec := range filtered {
 		if err := ctx.Err(); err != nil {
-			return tui_tea.BrowserData{}, err
+			return data.BrowserData{}, err
 		}
 		res, err := c.collectResource(ctx, spec, mode)
 		if err != nil {
@@ -57,7 +57,7 @@ func (c *Collector) Collect(ctx context.Context, opts CollectOptions) (tui_tea.B
 				results[specKey(spec)] = collectionResult{err: err}
 				continue
 			}
-			return tui_tea.BrowserData{}, err
+			return data.BrowserData{}, err
 		}
 		results[specKey(spec)] = res
 	}

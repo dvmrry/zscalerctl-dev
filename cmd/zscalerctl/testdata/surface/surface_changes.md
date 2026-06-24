@@ -64,6 +64,8 @@ Column definitions:
 | `introspect-pretty` | 290 commands | 291 commands; `browse` shown as `[hidden]` with `--tui` | Same experimental TUI wiring as `introspect`; hidden commands appear in the pretty tree with a `[hidden]` marker. | `help-text` |
 | `introspect` | `browse` has one local flag (`--tui`) | `browse` now has four local flags: `--tui`, `--products`, `--resources`, `--continue-on-error` | Real reader-backed TUI collection path: `browse --tui` now loads config, builds a reader, and runs the collector with product/resource filters and continue-on-error policy. | `flag-added` |
 | `introspect-pretty` | `browse` shows only `--tui` | `browse` shows `--tui`, `--products`, `--resources`, `--continue-on-error` | Same real reader-backed collection path as `introspect`. | `help-text` |
+| `introspect` | 291 commands; `browse` shown as hidden with four local flags | 290 commands; no `browse` command | Bubble Tea blocker fix: `browse --tui` transitively linked Bubble Tea into the normal `zscalerctl` binary via `internal/cli -> internal/tui/launcher -> internal/tui/tea`. Bubble Tea v1.x init() can probe the terminal before `main()`, so the hidden command is removed until a subprocess/isolated-entrypoint design is approved. | `command-removed` |
+| `introspect-pretty` | 291 commands; `browse` shown as `[hidden]` with four flags | 290 commands; no `browse` command | Same Bubble Tea blocker fix as `introspect`. | `command-removed` |
 
 ---
 

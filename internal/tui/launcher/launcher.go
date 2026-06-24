@@ -1,24 +1,24 @@
-// Package launcher is the bridge that evaluates TUI eligibility, collects
-// BrowserData from a caller-supplied collector, and launches the Bubble Tea
-// runtime. It does not import github.com/charmbracelet/bubbletea directly;
-// terminal program construction is delegated to internal/tui/tea.
+// Package launcher is the bridge that evaluates TUI eligibility and collects
+// BrowserData from a caller-supplied collector. It is intentionally Bubble-free:
+// it does not import github.com/charmbracelet/bubbletea or internal/tui/tea.
+// Terminal program construction is delegated to isolated TUI entrypoints (e.g.
+// scripts/tui-demo.go, scripts/tui-browser-demo.go, or a future cmd/zscalerctl-tui).
 package launcher
 
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui"
 	"github.com/dvmrry/zscalerctl/internal/tui/browserdata"
-	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 // Config describes the terminal context and user request for the TUI launch
-// layer. The caller (e.g. a Cobra command) is responsible for detecting whether
-// stdin/stdout/stderr are interactive TTYs and for supplying the terminal
-// streams that Bubble Tea will own.
+// layer. The caller is responsible for detecting whether stdin/stdout/stderr
+// are interactive TTYs and for supplying the terminal streams that the eventual
+// TUI runtime will own.
 type Config struct {
 	Requested      bool
 	StdinTTY       bool
@@ -28,8 +28,6 @@ type Config struct {
 	ColorMode      output.ColorMode
 	OutputPath     string
 	Env            []string
-	Input          io.Reader
-	Output         io.Writer
 	Collector      *browserdata.Collector
 	CollectOptions browserdata.CollectOptions
 }
@@ -69,12 +67,13 @@ func CheckGate(cfg Config) error {
 	return nil
 }
 
-// LaunchBrowser evaluates the TUI launch gates, collects BrowserData from the
-// supplied collector, and runs the Bubble Tea browser. If a gate disables the
-// TUI, it returns a LaunchError (which the caller can wrap as a usage error).
-func LaunchBrowser(ctx context.Context, cfg Config) error {
+// CollectBrowserData evaluates the TUI launch gates and collects a BrowserData
+// view model from the supplied collector. If a gate disables the TUI, it returns
+// a LaunchError (which the caller can wrap as a usage error). If no collector is
+// supplied, it falls back to the fixture collector used by the isolated demo.
+func CollectBrowserData(ctx context.Context, cfg Config) (data.BrowserData, error) {
 	if err := CheckGate(cfg); err != nil {
-		return err
+		return data.BrowserData{}, err
 	}
 
 	collector := cfg.Collector
@@ -83,18 +82,5 @@ func LaunchBrowser(ctx context.Context, cfg Config) error {
 		collector = browserdata.NewCollectorFixture()
 		collectOpts = browserdata.CollectOptions{ContinueOnError: true}
 	}
-	browserData, err := collector.Collect(ctx, collectOpts)
-	if err != nil {
-		return err
-	}
-
-	style := output.NewStyle(
-		output.ShouldColor(cfg.ColorMode, cfg.Env, cfg.StdoutTTY),
-		output.Supports256Color(cfg.Env),
-	)
-	if cfg.StdoutTTY {
-		style.Width = output.TerminalWidth(cfg.Output)
-	}
-
-	return tui_tea.RunProgram(ctx, cfg.Input, cfg.Output, tui_tea.NewBrowserModel(style, browserData))
+	return collector.Collect(ctx, collectOpts)
 }

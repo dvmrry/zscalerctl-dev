@@ -7,10 +7,11 @@ import (
 	bubbletea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
+	"github.com/dvmrry/zscalerctl/internal/tui/data"
 )
 
 func TestBrowserModelInitialSelection(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	if got := m.SelectedIndex(); got != 0 {
 		t.Errorf("initial selected index = %d, want 0", got)
 	}
@@ -20,7 +21,7 @@ func TestBrowserModelInitialSelection(t *testing.T) {
 }
 
 func TestBrowserModelDownMovesSelection(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'j'}})
 	// 'j' is not bound, so no change.
 	m2, ok := updated.(BrowserModel)
@@ -39,7 +40,7 @@ func TestBrowserModelDownMovesSelection(t *testing.T) {
 }
 
 func TestBrowserModelUpStopsAtTop(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyUp})
 	m2 := updated.(BrowserModel)
 	if got := m2.SelectedIndex(); got != 0 {
@@ -48,7 +49,7 @@ func TestBrowserModelUpStopsAtTop(t *testing.T) {
 }
 
 func TestBrowserModelDownStopsAtBottom(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	for i := 0; i < len(m.items)+2; i++ {
 		updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 		m = updated.(BrowserModel)
@@ -59,7 +60,7 @@ func TestBrowserModelDownStopsAtBottom(t *testing.T) {
 }
 
 func TestBrowserModelTabSwitchesPane(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyTab})
 	m2 := updated.(BrowserModel)
 	if got := m2.ActivePane(); got != "right" {
@@ -73,7 +74,7 @@ func TestBrowserModelTabSwitchesPane(t *testing.T) {
 }
 
 func TestBrowserModelRightPaneNavigation(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	// Select locations (index 1), then tab, then down twice.
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
@@ -94,7 +95,7 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 		{Type: bubbletea.KeyEsc},
 		{Type: bubbletea.KeyCtrlC},
 	} {
-		m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+		m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 		updated, cmd := m.Update(key)
 		if cmd == nil {
 			t.Fatalf("Update(%q) command = nil, want quit command", key.String())
@@ -110,7 +111,7 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	view := m.View()
 	if !strings.Contains(view, "locations") {
@@ -122,7 +123,7 @@ func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsEmptyState(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	// Select forwarding-rules (index 3).
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
@@ -137,7 +138,7 @@ func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsErrorState(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	// Select connectors (index 7): zia, locations, url-filtering-rules, forwarding-rules,
 	// settings, zpa, app-segments, connectors.
 	for i := 0; i < 7; i++ {
@@ -156,7 +157,7 @@ func TestBrowserModelViewContainsErrorState(t *testing.T) {
 }
 
 func TestBrowserDataFakeFixture(t *testing.T) {
-	data := NewFakeBrowserData()
+	data := data.NewFakeBrowserData()
 	if len(data.Products) != 3 {
 		t.Errorf("len(Products) = %d, want 3", len(data.Products))
 	}
@@ -196,12 +197,12 @@ func TestBrowserDataFakeFixture(t *testing.T) {
 }
 
 func TestBrowserDataContractStates(t *testing.T) {
-	data := BrowserData{
-		Products: []ProductNode{
+	data := data.BrowserData{
+		Products: []data.ProductNode{
 			{
 				Name: "test",
-				Resources: []ResourceNode{
-					{Name: "normal", Product: "test", Records: []RecordSummary{{ID: "1", Name: "A"}}},
+				Resources: []data.ResourceNode{
+					{Name: "normal", Product: "test", Records: []data.RecordSummary{{ID: "1", Name: "A"}}},
 					{Name: "empty", Product: "test", Empty: true},
 					{Name: "error", Product: "test", Error: "boom"},
 				},
@@ -233,16 +234,16 @@ func TestBrowserDataContractStates(t *testing.T) {
 }
 
 func TestBrowserModelRendersDataFields(t *testing.T) {
-	data := BrowserData{
-		Products: []ProductNode{
+	data := data.BrowserData{
+		Products: []data.ProductNode{
 			{
 				Name: "test",
-				Resources: []ResourceNode{
+				Resources: []data.ResourceNode{
 					{
 						Name:    "fields",
 						Product: "test",
-						Records: []RecordSummary{
-							{ID: "1", Name: "A", Fields: []KV{{Key: "region", Value: "us-east"}}},
+						Records: []data.RecordSummary{
+							{ID: "1", Name: "A", Fields: []data.KV{{Key: "region", Value: "us-east"}}},
 						},
 					},
 				},
@@ -258,7 +259,7 @@ func TestBrowserModelRendersDataFields(t *testing.T) {
 }
 
 func TestBrowserModelHelpOverlay(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'?'}})
 	m2 := updated.(BrowserModel)
 	if !m2.ShowingHelp() {
@@ -277,7 +278,7 @@ func TestBrowserModelHelpOverlay(t *testing.T) {
 }
 
 func TestBrowserModelStatusBar(t *testing.T) {
-	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	view := m.View()
 	if !strings.Contains(view, "zia · 1/10") {
 		t.Errorf("View() = %q, want selected index status", view)
@@ -293,16 +294,16 @@ func TestBrowserModelStatusBar(t *testing.T) {
 }
 
 func TestBrowserModelLongRecordScroll(t *testing.T) {
-	data := BrowserData{
-		Products: []ProductNode{
+	data := data.BrowserData{
+		Products: []data.ProductNode{
 			{
 				Name: "test",
-				Resources: []ResourceNode{
+				Resources: []data.ResourceNode{
 					{
 						Name:    "scroll",
 						Product: "test",
-						Records: []RecordSummary{
-							{ID: "1", Name: "First", Status: "active", Detail: "first", Fields: []KV{
+						Records: []data.RecordSummary{
+							{ID: "1", Name: "First", Status: "active", Detail: "first", Fields: []data.KV{
 								{Key: "a", Value: "1"}, {Key: "b", Value: "2"}, {Key: "c", Value: "3"},
 								{Key: "d", Value: "4"}, {Key: "e", Value: "5"}, {Key: "f", Value: "6"},
 							}},
