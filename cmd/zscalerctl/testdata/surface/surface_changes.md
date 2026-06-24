@@ -62,6 +62,8 @@ Column definitions:
 | `inventory` | Hardcoded `topLevel` slice in `TestCommandTreeInventory` | `TopLevel` derived from live Cobra tree via `WalkCobraTree`; deterministic alphabetical order; no commands added or removed | Live-tree oracle prevents drift between command tree and inventory golden. | `output-shape` |
 | `introspect` | 290 commands | 291 commands; added `browse` as a hidden command with `--tui` local flag | Experimental TUI wiring on `feature/tui`: `browse` is hidden, requires `--tui`, and is fixture-backed (no config, credentials, or network). Hidden commands are already exposed by the introspect schema; agents should ignore `hidden: true` commands. | `command-added` |
 | `introspect-pretty` | 290 commands | 291 commands; `browse` shown as `[hidden]` with `--tui` | Same experimental TUI wiring as `introspect`; hidden commands appear in the pretty tree with a `[hidden]` marker. | `help-text` |
+| `introspect` | `browse` has one local flag (`--tui`) | `browse` now has four local flags: `--tui`, `--products`, `--resources`, `--continue-on-error` | Real reader-backed TUI collection path: `browse --tui` now loads config, builds a reader, and runs the collector with product/resource filters and continue-on-error policy. | `flag-added` |
+| `introspect-pretty` | `browse` shows only `--tui` | `browse` shows `--tui`, `--products`, `--resources`, `--continue-on-error` | Same real reader-backed collection path as `introspect`. | `help-text` |
 
 ---
 

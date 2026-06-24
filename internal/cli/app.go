@@ -22,6 +22,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/tui/launcher"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 	"github.com/spf13/cobra"
@@ -86,11 +87,18 @@ type App struct {
 	out       io.Writer
 	err       io.Writer
 	env       []string
+	stdinTTY  bool
 	stdoutTTY bool
 	stderrTTY bool
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
+
+	// launchBrowser is the function used by the hidden browse command to
+	// evaluate the TUI gate and launch Bubble Tea. It is injectable so tests can
+	// record the launch attempt without constructing a real terminal. Defaults to
+	// launcher.LaunchBrowser in NewWithOptions.
+	launchBrowser func(context.Context, launcher.Config) error
 }
 
 // diagLogger returns the diagnostic logger, defaulting to a disabled one so log
@@ -130,6 +138,7 @@ func newDiagLogger(w io.Writer, level string) (*slog.Logger, error) {
 
 func New(out, err io.Writer, env []string) *App {
 	return NewWithOptions(out, err, env, Options{
+		StdinTTY:  output.IsTerminal(os.Stdin),
 		StdoutTTY: output.IsTerminal(out),
 		StderrTTY: output.IsTerminal(err),
 	})
@@ -146,6 +155,7 @@ type resourceSessionProvider interface {
 }
 
 type Options struct {
+	StdinTTY  bool
 	StdoutTTY bool
 	StderrTTY bool
 	Reader    ResourceReader
@@ -166,13 +176,15 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 		catalog = resources.Catalog()
 	}
 	return &App{
-		out:       out,
-		err:       err,
-		env:       envCopy,
-		stdoutTTY: opts.StdoutTTY,
-		stderrTTY: opts.StderrTTY,
-		reader:    opts.Reader,
-		catalog:   catalog,
+		out:           out,
+		err:           err,
+		env:           envCopy,
+		stdinTTY:      opts.StdinTTY,
+		stdoutTTY:     opts.StdoutTTY,
+		stderrTTY:     opts.StderrTTY,
+		reader:        opts.Reader,
+		catalog:       catalog,
+		launchBrowser: launcher.LaunchBrowser,
 	}
 }
 

@@ -164,6 +164,22 @@
       },
       "flags": [
         {
+          "name": "continue-on-error",
+          "type": "bool",
+          "default": "false",
+          "usage": "continue collecting resources after an error"
+        },
+        {
+          "name": "products",
+          "type": "string",
+          "usage": "comma-separated products to browse"
+        },
+        {
+          "name": "resources",
+          "type": "string",
+          "usage": "comma-separated resources to browse"
+        },
+        {
           "name": "tui",
           "type": "bool",
           "default": "false",
