@@ -1,0 +1,15 @@
+┌─────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ field       │ value                                                                                                                                        │
+├─────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Status      │ OK                                                                                                                                           │
+│ Mode        │ read-only                                                                                                                                    │
+│ Profile     │ default                                                                                                                                      │
+│ Config      │ environment                                                                                                                                  │
+│ Auth Mode   │ oneapi                                                                                                                                       │
+│ Redaction   │ standard                                                                                                                                     │
+│ Timeout     │ 30s                                                                                                                                          │
+│ Cache       │ default                                                                                                                                      │
+│ Proxy       │ direct                                                                                                                                       │
+│ Credentials │ not configured                                                                                                                               │
+│ Live API    │ requires ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, and ZSCALERCTL_VANITY_DOMAIN; ZPA resources also require ZSCALERCTL_ZPA_CUSTOMER_ID │
+└─────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

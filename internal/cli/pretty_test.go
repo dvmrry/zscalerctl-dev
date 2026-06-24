@@ -141,6 +141,29 @@ func TestPrettyListColorEmitsANSIWhenRequested(t *testing.T) {
 	}
 }
 
+func TestPrettyVersionRendersKeyValueTable(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+
+	if err := app.Run(context.Background(), []string{"--format", "pretty", "--color", "never", "version"}); err != nil {
+		t.Fatalf("App.Run(pretty version) error = %v, want nil", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "\x1b[") {
+		t.Errorf("pretty version --color never output = %q, want no ANSI escapes", got)
+	}
+	if !hasBoxDrawing(got) {
+		t.Errorf("pretty version output = %q, want bordered key/value table", got)
+	}
+	for _, want := range []string{"field", "value", "Version", "Platform"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("pretty version output = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestPrettyFieldsNarrowsColumns(t *testing.T) {
 	t.Parallel()
 
@@ -177,6 +200,9 @@ func TestPrettyShowRendersKeyValues(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, "apiSessionTimeout") || !strings.Contains(got, "30") {
 		t.Errorf("pretty show output = %q, want apiSessionTimeout 30", got)
+	}
+	if !hasBoxDrawing(got) {
+		t.Errorf("pretty show output = %q, want bordered key/value table", got)
 	}
 	if strings.Contains(got, "\x1b[") {
 		t.Errorf("pretty show --color never output = %q, want no ANSI escapes", got)

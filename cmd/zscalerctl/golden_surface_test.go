@@ -326,6 +326,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "stable-in-hermetic-env",
 		},
+		// ── --format pretty doctor ───────────────────────────────────────────────
+		{
+			name:     "doctor-pretty",
+			args:     []string{"--format", "pretty", "--color", "never", "doctor"},
+			wantCode: 0,
+			note:     "pretty-key-value-shape",
+		},
 		// ── unknown command ───────────────────────────────────────────────────────
 		{
 			name:     "unknown-command",

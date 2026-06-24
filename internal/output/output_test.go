@@ -85,6 +85,31 @@ func TestRenderRecordsPrettyDoesNotStretchNarrowTable(t *testing.T) {
 	}
 }
 
+func TestRenderKeyValuesPrettyRendersBorderedTable(t *testing.T) {
+	t.Parallel()
+
+	style := output.NewStyle(false, false)
+	style.Width = 48
+	got := output.RenderKeyValuesPretty([]output.KV{
+		{Key: "Status", Value: "OK", Kind: "ok"},
+		{Key: "Live API", Value: "requires credentials before contacting Zscaler"},
+	}, style).String()
+
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("key/value pretty (color off) output = %q, want no ANSI escapes", got)
+	}
+	for _, want := range []string{"┌", "field", "value", "Status", "OK", "Live API"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("key/value pretty output = %q, want %q", got, want)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if width := lipgloss.Width(line); width > style.Width {
+			t.Errorf("key/value pretty line width = %d (> %d): %q", width, style.Width, line)
+		}
+	}
+}
+
 func TestRenderRecordsPrettyKeepsWideCharactersWithinConfiguredWidth(t *testing.T) {
 	t.Parallel()
 

@@ -1038,13 +1038,14 @@ func (a *App) runVersion(opts globalOptions, args []string) error {
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return rejectUnsupportedFormat("version", opts.format)
 	}
-	body := output.RenderKeyValues([]output.KV{
+	rows := []output.KV{
 		{Key: "Version", Value: info.Version},
 		{Key: "Commit", Value: info.Commit},
 		{Key: "Date", Value: info.Date},
 		{Key: "Go", Value: info.Go},
 		{Key: "Platform", Value: info.OS + "/" + info.Arch},
-	}, a.style(opts))
+	}
+	body := renderKeyValuesForFormat(rows, opts.format, a.style(opts))
 	return output.NewRenderer(redact.New(redact.ModeStandard)).WriteText(a.out, body)
 }
 
@@ -1073,7 +1074,7 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return rejectUnsupportedFormat("doctor", opts.format)
 	}
-	body := output.RenderKeyValues(doctorStatusRows(status), a.style(opts))
+	body := renderKeyValuesForFormat(doctorStatusRows(status), opts.format, a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
 }
 
@@ -1090,7 +1091,7 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return rejectUnsupportedFormat("auth status", opts.format)
 	}
-	body := output.RenderKeyValues(authStatusRows(status), a.style(opts))
+	body := renderKeyValuesForFormat(authStatusRows(status), opts.format, a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
 }
 
@@ -1107,7 +1108,7 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 		return rejectUnsupportedFormat("config show", opts.format)
 	}
 	safe := cfg.Safe()
-	body := output.RenderKeyValues([]output.KV{
+	rows := []output.KV{
 		{Key: "Profile", Value: safe.Profile},
 		{Key: "Config", Value: configSourceStatus(safe)},
 		{Key: "Auth Mode", Value: safe.AuthMode},
@@ -1124,7 +1125,8 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 		{Key: "Proxy", Value: proxyStatus(cfg.Proxy)},
 		{Key: "Redaction", Value: safe.Defaults.Redaction},
 		{Key: "Cache", Value: cacheStatus(safe.Defaults.NoCache)},
-	}, a.style(opts))
+	}
+	body := renderKeyValuesForFormat(rows, opts.format, a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
 }
 
@@ -2250,6 +2252,13 @@ func renderRecordKeyValues(
 			Kind:  field,
 			Value: formatTableValue(values[field]),
 		})
+	}
+	return output.RenderKeyValues(rows, style)
+}
+
+func renderKeyValuesForFormat(rows []output.KV, format output.Format, style output.Style) output.SafeText {
+	if format == output.FormatPretty {
+		return output.RenderKeyValuesPretty(rows, style)
 	}
 	return output.RenderKeyValues(rows, style)
 }
