@@ -15,8 +15,8 @@ import (
 // the completion strings and the raw directive integer.
 //
 // This helper lets cli_test tests exercise the ValidArgsFunction directly
-// without routing through App.Run (which would hit the hybrid-dispatch gate and
-// never reach the Cobra __complete protocol).
+// without routing through App.Run (which would dispatch to the Cobra __complete
+// protocol and complicate the test setup).
 //
 // SECURITY contract: the call must not panic, must not call config.LoadConfig,
 // and must not return an error — it returns only catalog-derived strings.
