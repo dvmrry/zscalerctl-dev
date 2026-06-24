@@ -95,6 +95,30 @@ The credential discovery order is the same as the normal `zscalerctl` CLI:
 `ZSCALERCTL_*` environment variables take precedence, then a profile from the
 selected config file. See `docs/INSTALL.md` for details.
 
+## Live diagnostics and timeout
+
+Because live mode collects data before launching the TUI, a slow API or auth
+step can look like a hang. Use `--verbose` to print pre-launch milestones to
+stderr:
+
+```sh
+./zscalerctl-tui --live --verbose --profile prod
+```
+
+Milestones are intentionally secret-safe: they report the auth mode and selected
+resources, but never emit the client secret, password, API key, tenant URL, or
+other credentials.
+
+Use `--timeout` to cap the live collection phase. The default is `30s`:
+
+```sh
+./zscalerctl-tui --live --timeout 10s --profile prod
+```
+
+If the timeout fires, the program exits with a `context deadline exceeded`
+error before the TUI opens. This helps distinguish network/auth hangs from TUI
+bugs.
+
 ## Flags
 
 | Flag | Default | Description |
@@ -107,6 +131,8 @@ selected config file. See `docs/INSTALL.md` for details.
 | `--continue-on-error` | `false` | Continue collecting after a resource error. In fixture mode this is always true. |
 | `--profile` | `""` | Config profile name (live mode only). |
 | `--config` | `""` | Config file path (live mode only). |
+| `--timeout` | `30s` | Timeout for live collection (e.g. `30s`, `2m`). |
+| `--verbose` | `false` | Print pre-launch diagnostics to stderr. |
 | `--color` | `auto` | Color mode: `auto`, `always`, `never`. |
 | `--format` | `auto` | Output format gate (used by the TUI eligibility check). |
 

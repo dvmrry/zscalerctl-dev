@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -633,5 +635,133 @@ func TestColorNeverDisablesTUI(t *testing.T) {
 	}
 	if prog.called {
 		t.Error("program should not be launched when color is disabled")
+	}
+}
+
+// blockingReader never returns until its context is cancelled. It is used to
+// test the live-collection timeout without contacting a real API.
+type blockingReader struct{}
+
+func (blockingReader) List(ctx context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingReader) Show(ctx context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
+	<-ctx.Done()
+	return resources.SourceRecord{}, ctx.Err()
+}
+
+func TestLiveTimeoutNoProgram(t *testing.T) {
+	prog := &fakeProgram{}
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return oneAPIConfig(), nil
+		},
+		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			return blockingReader{}, nil
+		},
+		newProgram: fakeProgramFactory(prog),
+	}
+
+	start := time.Now()
+	err := run(context.Background(), deps, []string{"--live", "--timeout", "50ms", "--products", "zia", "--resources", "locations"}, nil, true, true, true, 80)
+	elapsed := time.Since(start)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded, got %v", err)
+	}
+	if prog.called {
+		t.Error("program should not be launched when live collection times out")
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("timeout took too long: %v", elapsed)
+	}
+}
+
+func TestVerboseLiveMilestones(t *testing.T) {
+	prog := &fakeProgram{}
+	reader := newRecordingReader()
+	reader.records["zia/locations"] = []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ"}),
+	}
+	var logs []string
+
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return oneAPIConfig(), nil
+		},
+		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			return reader, nil
+		},
+		newProgram: fakeProgramFactory(prog),
+		verboseLog: func(format string, args ...any) { logs = append(logs, fmt.Sprintf(format, args...)) },
+	}
+
+	err := run(context.Background(), deps, []string{"--live", "--verbose", "--products", "zia", "--resources", "locations"}, nil, true, true, true, 80)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prog.called {
+		t.Fatal("program should be launched")
+	}
+
+	want := []string{
+		"checking terminal eligibility",
+		"terminal eligibility passed",
+		"loading config profile",
+		"resolved auth mode",
+		"resolving credentials",
+		"building reader",
+		"reader ready",
+		"collecting",
+		"launching TUI",
+	}
+	joined := strings.Join(logs, "\n")
+	for _, w := range want {
+		if !strings.Contains(joined, w) {
+			t.Errorf("verbose logs missing %q; logs = %v", w, logs)
+		}
+	}
+	// Sanity: no secret values should appear in the logs. The oneAPI config uses
+	// "client-secret" as the resolved secret value.
+	if strings.Contains(joined, "client-secret") || strings.Contains(joined, "password") || strings.Contains(joined, "api-key") {
+		t.Errorf("verbose logs appear to contain a secret value: %v", logs)
+	}
+}
+
+func TestVerboseFixtureMilestones(t *testing.T) {
+	prog := &fakeProgram{}
+	var logs []string
+
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig:  config.LoadConfig,
+		newReader:   defaultDependencies().newReader,
+		newProgram:  fakeProgramFactory(prog),
+		verboseLog:  func(format string, args ...any) { logs = append(logs, fmt.Sprintf(format, args...)) },
+	}
+
+	err := run(context.Background(), deps, []string{"--fixture", "--verbose"}, nil, true, true, true, 80)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prog.called {
+		t.Fatal("program should be launched in fixture mode")
+	}
+
+	joined := strings.Join(logs, "\n")
+	if !strings.Contains(joined, "checking terminal eligibility") {
+		t.Error("verbose logs missing gate milestone")
+	}
+	if !strings.Contains(joined, "launching TUI") {
+		t.Error("verbose logs missing launch milestone")
+	}
+	// Fixture mode should not log live-specific milestones.
+	for _, forbidden := range []string{"loading config profile", "resolving credentials", "building reader", "collecting"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("fixture mode logged live milestone %q", forbidden)
+		}
 	}
 }

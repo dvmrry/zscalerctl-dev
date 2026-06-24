@@ -13,7 +13,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/zscalerctl-tui [--live] [--collector-fixture] [--fixture] [--products <list>] [--resources <list>] [--continue-on-error] [--profile <name>] [--config <path>] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
+//	go run ./cmd/zscalerctl-tui [--live] [--collector-fixture] [--fixture] [--products <list>] [--resources <list>] [--continue-on-error] [--profile <name>] [--config <path>] [--timeout 30s] [--verbose] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
 //
 // The default mode is --collector-fixture. Live mode requires ZSCALERCTL_*
 // credentials or a config profile that provides them.
@@ -71,6 +71,9 @@ type dependencies struct {
 	loadConfig  func(environ []string, opts config.LoadOptions) (config.Config, error)
 	newReader   func(ctx context.Context, cfg zscaler.ReaderConfig) (browserdata.RecordReader, error)
 	newProgram  func(model tea.Model, opts ...tea.ProgramOption) programRunner
+	// verboseLog is an optional test override for verbose diagnostic output.
+	// When nil, --verbose writes to os.Stderr.
+	verboseLog func(format string, args ...any)
 }
 
 func defaultDependencies() dependencies {
@@ -98,6 +101,8 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	continueOnErrorFlag := flags.Bool("continue-on-error", false, "continue collecting after a resource error")
 	profileFlag := flags.String("profile", "", "config profile name")
 	configPathFlag := flags.String("config", "", "config file path")
+	timeoutFlag := flags.Duration("timeout", 30*time.Second, "timeout for live collection (e.g. 30s, 2m)")
+	verboseFlag := flags.Bool("verbose", false, "print pre-launch diagnostics to stderr")
 	colorFlag := flags.String("color", string(output.ColorAuto), "color mode: auto, always, never")
 	formatFlag := flags.String("format", string(output.FormatAuto), "output format gate: auto, table, pretty, json, ndjson")
 
@@ -106,6 +111,17 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected positional arguments: %v", flags.Args())
+	}
+
+	logVerbose := func(format string, args ...any) {}
+	if *verboseFlag {
+		if deps.verboseLog != nil {
+			logVerbose = deps.verboseLog
+		} else {
+			logVerbose = func(format string, args ...any) {
+				fmt.Fprintf(os.Stderr, "zscalerctl-tui: "+format+"\n", args...)
+			}
+		}
 	}
 
 	modeCount := 0
@@ -131,6 +147,7 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 		return err
 	}
 
+	logVerbose("checking terminal eligibility")
 	eligibility := deps.gateChecker(tui.Options{
 		Requested:  true,
 		StdinTTY:   stdinTTY,
@@ -144,13 +161,17 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	if !eligibility.Enabled {
 		return fmt.Errorf("disabled: %s", eligibility.Reason)
 	}
+	logVerbose("terminal eligibility passed")
 
 	collectOpts := collectOptionsFromFlags(*productsFlag, *resourcesFlag, *continueOnErrorFlag)
 
 	var browserData data.BrowserData
 	switch {
 	case *liveFlag:
-		browserData, err = collectLive(ctx, deps, env, *profileFlag, *configPathFlag, collectOpts)
+		logVerbose("loading config profile %q", *profileFlag)
+		collectCtx, cancel := context.WithTimeout(ctx, *timeoutFlag)
+		defer cancel()
+		browserData, err = collectLive(collectCtx, deps, env, *profileFlag, *configPathFlag, collectOpts, logVerbose)
 	case *fixtureFlag:
 		browserData = data.NewFakeBrowserData()
 	default:
@@ -161,6 +182,7 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 		return err
 	}
 
+	logVerbose("launching TUI")
 	style := output.NewStyle(
 		output.ShouldColor(colorMode, env, stdoutTTY),
 		output.Supports256Color(env),
@@ -212,6 +234,7 @@ func collectLive(
 	profile string,
 	configPath string,
 	collectOpts browserdata.CollectOptions,
+	logVerbose func(format string, args ...any),
 ) (data.BrowserData, error) {
 	cfg, err := deps.loadConfig(env, config.LoadOptions{Profile: profile, ConfigPath: configPath})
 	if err != nil {
@@ -219,6 +242,8 @@ func collectLive(
 	}
 
 	authMode := cfg.EffectiveAuthMode()
+	logVerbose("resolved auth mode %q", authMode)
+	logVerbose("resolving credentials for auth mode %q", authMode)
 	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
 
 	switch authMode {
@@ -262,10 +287,12 @@ func collectLive(
 		},
 	}
 
+	logVerbose("building reader")
 	reader, err := deps.newReader(ctx, readerCfg)
 	if err != nil {
 		return data.BrowserData{}, err
 	}
+	logVerbose("reader ready")
 
 	mode := cfg.Defaults.Redaction
 	if mode == "" {
@@ -276,5 +303,16 @@ func collectLive(
 		Reader:  reader,
 		Mode:    mode,
 	}
-	return collector.Collect(ctx, collectOpts)
+
+	resourcesDesc := "all resources"
+	if len(collectOpts.Resources) > 0 {
+		resourcesDesc = strings.Join(collectOpts.Resources, ", ")
+	}
+	logVerbose("collecting %s", resourcesDesc)
+	browserData, err := collector.Collect(ctx, collectOpts)
+	if err != nil {
+		return data.BrowserData{}, err
+	}
+	logVerbose("collected %d products", len(browserData.Products))
+	return browserData, nil
 }

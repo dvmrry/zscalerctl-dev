@@ -32,10 +32,12 @@ Expected: both launch the TUI and exit cleanly with `q`/`esc`/`ctrl+c`.
 ### Live gate
 
 ```sh
-./zscalerctl-tui --live
+./zscalerctl-tui --live --verbose
 ```
 
-Expected: the TUI launches and shows at least one product/resource tree.
+Expected: the TUI launches and shows at least one product/resource tree. The
+verbose output should print milestones through "launching TUI" with no
+secret values.
 
 ### Live filtering
 
@@ -73,6 +75,9 @@ For each of the following, confirm the program exits with a non-zero status and
 
 # Missing credentials (unset ZSCALERCTL_*)
 env -u ZSCALERCTL_CLIENT_SECRET -u ZSCALERCTL_CLIENT_ID ./zscalerctl-tui --live
+
+# Collection timeout
+./zscalerctl-tui --live --timeout 1s --profile prod
 ```
 
 ### Boundary safety
@@ -106,7 +111,8 @@ While running live mode, verify:
 - [ ] Live mode launches on a scratch tenant.
 - [ ] Product/resource filters work.
 - [ ] Continue-on-error launches with error nodes.
-- [ ] Non-TTY, machine format, and missing-credential failures exit before the TUI.
+- [ ] Non-TTY, machine format, missing-credential, and timeout failures exit before the TUI.
+- [ ] `--verbose` live output shows milestones without secret values.
 - [ ] Normal `zscalerctl` remains Bubble Tea-free.
 - [ ] Normal JSON output remains ESC-clean in a PTY.
 - [ ] No secrets appear in the TUI output.
