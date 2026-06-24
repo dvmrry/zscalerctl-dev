@@ -106,6 +106,35 @@ and Renovate's `gomod` manager auto-discovers `tools/go.mod` to keep the
 version current. GitHub Action SHA pinning does not apply to that dependency
 path.
 
+## Interactive TUI Dependencies
+
+Interactive terminal UI work is opt-in only. It must not affect dispatch,
+`parseGlobal`, completion, introspection, JSON/NDJSON, machine error envelopes,
+or default command output unless that behavior change is deliberately scoped and
+recorded in the surface manifest.
+
+The TUI foundation uses `github.com/charmbracelet/bubbletea`, pinned in
+`go.mod`, hash-verified in `go.sum`, and vendored for review. Future TUI work
+must keep the existing gate shape: no TUI path is eligible unless it is
+explicitly requested and stdin, stdout, and stderr are all interactive. Machine
+formats (`json`, `ndjson`) and plain terminal signals (`--color never`,
+`NO_COLOR`, `TERM=dumb`) must remain non-TUI paths.
+
+Bubble Tea exposes optional subprocess helpers (`Exec` / `ExecProcess`) that
+wrap `os/exec`. The TUI foundation does not call them. Future TUI work must not
+use those helpers or otherwise introduce subprocess execution without an
+explicit dependency/security review.
+
+For every TUI or Charm dependency change:
+
+- Do not add workflow `curl | sh`, ad hoc installers, or `@latest`.
+- Keep Go tool dependencies pinned through `go.mod` / `go.sum` or a fixed
+  version.
+- Keep GitHub Actions SHA-pinned.
+- Review `go.mod`, `go.sum`, `vendor/`, and any workflow changes as the primary
+  dependency surface.
+- Run `go mod verify`, `make verify-licenses`, `make vuln`, and `make check`.
+
 The Zscaler SDK package is handled separately from routine dependency updates.
 Renovate requires dependency dashboard approval for SDK bumps and annotates those
 PRs with the SDK upgrade runbook requirement.
