@@ -12,7 +12,8 @@ paths remain free of TUI terminal sequences.
 - Default data: hard-coded fake products, resources, and records via `NewFakeBrowserData()`.
 - Projected data: `internal/tui/browserdata.Build` adapts fake projected records into `BrowserData`.
 - Collector data: `internal/tui/browserdata.Collector` coordinates fake reader, projection, and `Build` into `BrowserData`.
-- No Cobra command is added.
+- Experimental command: `zscalerctl browse --tui` is a hidden, fixture-backed command that exercises the real Cobra → `internal/tui/launcher` → Bubble Tea path.
+- No Cobra command is added to normal `zscalerctl` usage (the command is hidden and requires `--tui`).
 - No config is loaded.
 - No credentials are resolved.
 - No Zscaler client or network path is used.
@@ -358,6 +359,81 @@ zia / locations · 2/10 · 3 records
 | `?` | Help overlay appears; `q` or `esc` dismisses it and quits. |
 | `q` / `esc` / `ctrl+c` | Demo exits cleanly with status 0. |
 
+## Experimental `browse --tui` command
+
+The hidden `zscalerctl browse --tui` command wires the same Bubble Tea browser
+through the real Cobra command tree and `internal/tui/launcher`. It is
+fixture-backed, so it still loads no config, resolves no credentials, and contacts
+no Zscaler tenant. The readbacks below were produced by spawning the built
+`zscalerctl` binary in a real PTY and pressing the exit key.
+
+### 80x24 — initial frame
+
+```text
+┌────────────────────────┐┌────────────────────────────────────────────────────┐
+│ Products / Resources   ││ zia                                                │
+│                        ││                                                    │
+│ zia                    ││ Product: zia                                       │
+│   locations            ││ Resources: 3                                       │
+│   url-filtering-rules  ││                                                    │
+│   forwarding-rules     ││                                                    │
+│ zpa                    ││                                                    │
+│   application-segments ││                                                    │
+│   app-connectors       ││                                                    │
+│ zcc                    ││                                                    │
+│   devices              ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+└────────────────────────┘└────────────────────────────────────────────────────┘
+zia · 1/9
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
+```
+
+### 60x16 — initial frame
+
+```text
+│ zpa                                                      │
+│   application-segments                                   │
+│   app-connectors                                         │
+│ zcc                                                      │
+│   devices                                                │
+└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ zia                                                      │
+│                                                          │
+│ Product: zia                                             │
+│ Resources: 3                                             │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+zia · 1/9
+↑/↓ move · tab switch · enter select · ? help · esc/q quit
+```
+
+### Exit keys
+
+| Key | Result |
+| --- | --- |
+| `q` | TUI exits cleanly with status 0. |
+| `esc` | TUI exits cleanly with status 0. |
+| `ctrl+c` | TUI exits cleanly with status 0. |
+
+### Rejection readbacks (TTY context)
+
+The launch gate was exercised with a real PTY so the TTY checks pass, allowing
+each non-TTY rejection to surface on its own.
+
+| Invocation | Error |
+| --- | --- |
+| `zscalerctl --format json browse --tui` | `{"error":{"kind":"usage","message":"tui disabled: machine output format requested"}}` |
+| `zscalerctl browse --tui --output /tmp/out` | `zscalerctl: tui disabled: output path is not supported for TUI` |
+| `zscalerctl browse --tui --color never` | `zscalerctl: tui disabled: terminal styling disabled` |
+
 ## Terminal startup behavior
 
 The raw recordings show the same standard Bubble Tea TUI setup and teardown
@@ -372,11 +448,13 @@ These sequences are emitted only by `scripts/tui-browser-demo.go`. Normal
 
 The following commands were run from a non-TTY pipe and their stdout/stderr
 were inspected for terminal escape sequences. None contained any `ESC` bytes,
-OSC, DSR, bracketed-paste, mouse, or cursor hide/show sequences.
+OSC, DSR, bracketed-paste, mouse, or cursor hide/show sequences. `browse --tui`
+rejected at the TTY gate before any Bubble Tea program was constructed.
 
 - `zscalerctl version --format json`
 - `zscalerctl version --format pretty --color never`
 - `zscalerctl introspect --format json`
+- `zscalerctl browse --tui` (non-TTY, exits 2 with `tui disabled: stdout is not interactive`)
 
 ## Import boundary
 
@@ -385,7 +463,9 @@ and the gate-only `internal/tui` package do not import Bubble Tea.
 
 ## Verdict
 
-**Continue.** The polished fake-data browser is usable at 80x24, 60x16, and
-120x32, shows explicit empty/error states, supports a help overlay, and keeps
-the TUI isolated behind the import boundary. The next step can connect this
-shape to real projected CLI data.
+**Continue.** The fake-data browser is usable at 80x24, 60x16, and 120x32, shows
+explicit empty/error states, supports a help overlay, and keeps the TUI
+isolated behind the import boundary. The hidden experimental `browse --tui`
+command now proves the full Cobra → launcher → Bubble Tea path without loading
+config, credentials, or network data. The next step can replace the fixture
+data with a real reader-backed collection path.

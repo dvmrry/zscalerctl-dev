@@ -700,7 +700,8 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
-		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
+		a.newBrowseCmd(opts))
 	catalog := a.resourceCatalog()
 	for _, p := range knownProducts(catalog) {
 		root.AddCommand(a.newProductCmd(p, opts))
@@ -2416,7 +2417,7 @@ func knownProductCommand(name string, catalog resources.ResourceCatalog) bool {
 
 func isRunnableCommand(name string, catalog resources.ResourceCatalog) bool {
 	switch name {
-	case "doctor", "auth", "config", "schema", "dump", "diff":
+	case "doctor", "auth", "config", "schema", "dump", "diff", "browse":
 		return true
 	default:
 		return knownProductCommand(name, catalog)
