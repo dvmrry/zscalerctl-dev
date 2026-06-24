@@ -161,6 +161,49 @@ func TestBuildLongRecord(t *testing.T) {
 	}
 }
 
+func TestBuildStructuredFieldFormatsAsIndentedJSON(t *testing.T) {
+	fields := append(standardFields(),
+		resources.FieldSpec{
+			Name:           "dynamicLocationGroups",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   standardShareModes(),
+			Fields: []resources.FieldSpec{
+				{Name: "id", Classification: resources.ClassOperational, AllowedModes: allModes()},
+				{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: standardShareModes()},
+			},
+		},
+	)
+	catalog := simpleCatalog("zia", "rules", fields)
+	src := fakeSource{
+		"zia/rules": {records: []map[string]any{
+			{
+				"id":   "1",
+				"name": "Rule",
+				"dynamicLocationGroups": []map[string]any{
+					{"id": "1132433111", "name": "Corporate User Traffic"},
+				},
+			},
+		}},
+	}
+	data, err := Build(catalog, src)
+	if err != nil {
+		t.Fatalf("Build error = %v", err)
+	}
+	rec := data.Products[0].Resources[0].Records[0]
+	if len(rec.Fields) != 1 {
+		t.Fatalf("fields = %d, want 1", len(rec.Fields))
+	}
+	got := rec.Fields[0].Value
+	for _, want := range []string{"[\n", `"id": "1132433111"`, `"name": "Corporate User Traffic"`, "\n]"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("structured field value = %q, want substring %q", got, want)
+		}
+	}
+	if strings.Contains(got, "map[") {
+		t.Errorf("structured field value = %q, want JSON-style formatting instead of Go map formatting", got)
+	}
+}
+
 func TestBuildSecretFieldDropped(t *testing.T) {
 	fields := append(standardFields(),
 		resources.FieldSpec{Name: "password", Classification: resources.ClassSecret},

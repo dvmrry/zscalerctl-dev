@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -475,7 +477,7 @@ func (m BrowserModel) detailViewportHeight() int {
 }
 
 func (m BrowserModel) detailLineCount() int {
-	return len(m.detailLines(0))
+	return len(m.detailLines(paneContentWidth(m.geometry().detailWidth)))
 }
 
 func recordBlockLineCount(records []data.RecordSummary, start, end int) int {
@@ -505,7 +507,17 @@ func recordLineCount(rec data.RecordSummary) int {
 }
 
 func recordSummaryLine(rec data.RecordSummary) string {
-	return fmt.Sprintf("  %s (id=%s, status=%s)", recordTitle(rec), rec.ID, rec.Status)
+	var parts []string
+	if rec.ID != "" {
+		parts = append(parts, "id="+rec.ID)
+	}
+	if rec.Status != "" {
+		parts = append(parts, "status="+rec.Status)
+	}
+	if len(parts) == 0 {
+		return "  " + recordTitle(rec)
+	}
+	return fmt.Sprintf("  %s (%s)", recordTitle(rec), strings.Join(parts, ", "))
 }
 
 func recordTitle(rec data.RecordSummary) string {
@@ -519,7 +531,7 @@ func recordTitle(rec data.RecordSummary) string {
 }
 
 func isSummaryField(key string) bool {
-	switch key {
+	switch strings.ToLower(key) {
 	case "id", "name", "status", "description":
 		return true
 	default:
@@ -832,7 +844,7 @@ func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer, width, maxLines int
 				appendFittedLine(&lines, maxLines, width, "    "+rec.Detail)
 			}
 			for _, f := range rec.Fields {
-				appendFittedLine(&lines, maxLines, width, fmt.Sprintf("    %s: %s", f.Key, f.Value))
+				appendFittedLine(&lines, maxLines, width, fmt.Sprintf("    %s: %s", f.Key, singleLineValue(f.Value)))
 			}
 		}
 	}
@@ -917,24 +929,21 @@ func (m BrowserModel) detailLines(width int) []string {
 		return fittedLines(width, item.name, "", "No record selected.")
 	}
 	rec := item.records[m.right.Selected]
-	lines := []string{
-		recordTitle(rec),
-		"",
-		fmt.Sprintf("id: %s", rec.ID),
-		fmt.Sprintf("name: %s", rec.Name),
-		fmt.Sprintf("status: %s", rec.Status),
-	}
+	lines := fittedLines(width, recordTitle(rec), "")
 	if rec.Detail != "" {
-		lines = append(lines, fmt.Sprintf("description: %s", rec.Detail))
+		appendWrappedField(&lines, width, "description", rec.Detail)
 	}
 	fields := detailFields(rec.Fields)
 	if len(fields) > 0 {
 		lines = append(lines, "", "Fields")
 		for _, f := range fields {
-			lines = append(lines, fmt.Sprintf("%s: %s", f.Key, f.Value))
+			appendWrappedField(&lines, width, f.Key, f.Value)
 		}
 	}
-	return fittedLines(width, lines...)
+	if rec.Detail == "" && len(fields) == 0 {
+		lines = append(lines, "No additional fields.")
+	}
+	return lines
 }
 
 func detailFields(fields []data.KV) []data.KV {
@@ -946,6 +955,106 @@ func detailFields(fields []data.KV) []data.KV {
 		out = append(out, f)
 	}
 	return out
+}
+
+func appendWrappedField(lines *[]string, width int, key, value string) {
+	if strings.Contains(value, "\n") {
+		*lines = append(*lines, wrapText(key+":", width)...)
+		for _, line := range strings.Split(value, "\n") {
+			*lines = append(*lines, wrapText("  "+line, width)...)
+		}
+		return
+	}
+	*lines = append(*lines, wrapLabelValue(key, value, width)...)
+}
+
+func wrapLabelValue(key, value string, width int) []string {
+	if width <= 0 {
+		return []string{""}
+	}
+	prefix := key + ": "
+	prefixWidth := lipgloss.Width(prefix)
+	if prefixWidth >= width {
+		out := wrapText(key+":", width)
+		return append(out, wrapText("  "+value, width)...)
+	}
+	var out []string
+	remaining := value
+	first := true
+	for {
+		linePrefix := "  "
+		if first {
+			linePrefix = prefix
+		}
+		available := width - lipgloss.Width(linePrefix)
+		if available <= 0 {
+			out = append(out, fitText(linePrefix, width))
+			return out
+		}
+		head, tail := splitAtWidth(remaining, available)
+		out = append(out, linePrefix+head)
+		if tail == "" {
+			break
+		}
+		remaining = tail
+		first = false
+	}
+	return out
+}
+
+func wrapText(s string, width int) []string {
+	if width <= 0 {
+		return []string{""}
+	}
+	if s == "" {
+		return []string{""}
+	}
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		for line != "" {
+			head, tail := splitAtWidth(line, width)
+			out = append(out, head)
+			line = tail
+		}
+	}
+	return out
+}
+
+func splitAtWidth(s string, width int) (string, string) {
+	if width <= 0 || s == "" {
+		return "", s
+	}
+	used := 0
+	cut := 0
+	lastSpace := -1
+	lastSpaceEnd := -1
+	for idx, r := range s {
+		cellWidth := lipgloss.Width(string(r))
+		if used+cellWidth > width {
+			break
+		}
+		if unicode.IsSpace(r) {
+			lastSpace = idx
+			lastSpaceEnd = idx + utf8.RuneLen(r)
+		}
+		used += cellWidth
+		cut = idx + utf8.RuneLen(r)
+	}
+	if cut >= len(s) {
+		return s, ""
+	}
+	if lastSpace > 0 && lipgloss.Width(s[:lastSpace]) >= width/2 {
+		return strings.TrimRight(s[:lastSpace], " "), strings.TrimLeft(s[lastSpaceEnd:], " ")
+	}
+	return s[:cut], s[cut:]
+}
+
+func singleLineValue(value string) string {
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func (m BrowserModel) rightVisibleRecordStart(item browserItem, maxLines int) int {

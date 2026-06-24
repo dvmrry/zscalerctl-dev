@@ -4,7 +4,9 @@
 package browserdata
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -120,10 +122,33 @@ func buildRecordSummary(spec resources.ResourceSpec, rec resources.ProjectedReco
 	for _, k := range keys {
 		summary.Fields = append(summary.Fields, data.KV{
 			Key:   k,
-			Value: fmt.Sprintf("%v", fields[k]),
+			Value: formatProjectedValue(fields[k]),
 		})
 	}
 	return summary
+}
+
+func formatProjectedValue(v any) string {
+	if v == nil {
+		return "null"
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	value := reflect.ValueOf(v)
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return "null"
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.Struct:
+		if b, err := json.MarshalIndent(v, "", "  "); err == nil {
+			return string(b)
+		}
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 func fieldString(fields map[string]any, key string) string {

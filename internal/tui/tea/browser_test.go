@@ -558,8 +558,11 @@ func TestBrowserModelWideLayoutSplitsRecordsAndDetails(t *testing.T) {
 	if !strings.Contains(view, "id=123") {
 		t.Fatalf("View() = %q, want record-list summary with id", view)
 	}
-	if !strings.Contains(view, "id: 123") {
-		t.Fatalf("View() = %q, want detail pane id field", view)
+	if strings.Contains(view, "id: 123") {
+		t.Fatalf("View() = %q, want detail pane to avoid repeating record-list id", view)
+	}
+	if strings.Contains(view, "status: active") {
+		t.Fatalf("View() = %q, want detail pane to avoid repeating record-list status", view)
 	}
 	assertViewLineWidths(t, view, 120)
 }
@@ -600,6 +603,48 @@ func TestBrowserModelDetailViewportScrollsLargeSelectedBody(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "field_39") {
 		t.Fatalf("View() = %q, want final field visible after detail scroll", view)
+	}
+	assertViewLineWidths(t, view, 120)
+}
+
+func TestBrowserModelDetailWrapsStructuredFieldWithoutEllipsis(t *testing.T) {
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "rules",
+						Records: []data.RecordSummary{
+							{
+								ID:     "12341235",
+								Name:   "Rule",
+								Status: "active",
+								Fields: []data.KV{
+									{Key: "dynamicLocationGroups", Value: "[\n  {\n    \"id\": \"1132433111\",\n    \"name\": \"Corporate User Traffic With A Long Name That Wraps\"\n  }\n]"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	view := m.View()
+	for _, want := range []string{"Rule (id=12341235", "status=active)", "dynamicLocationGroups:", `"name": "Corporate User Traffic`, "]"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q", view, want)
+		}
+	}
+	for _, notWant := range []string{"dynamicLocationGroups: [map[", "id: 12341235", "status: active", "..."} {
+		if strings.Contains(view, notWant) {
+			t.Fatalf("View() = %q, did not want %q", view, notWant)
+		}
 	}
 	assertViewLineWidths(t, view, 120)
 }
