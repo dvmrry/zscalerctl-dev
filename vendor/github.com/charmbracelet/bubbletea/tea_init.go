@@ -1,22 +1,15 @@
 package tea
 
-import (
-	"github.com/charmbracelet/lipgloss"
-)
-
 func init() {
-	// XXX: This is a workaround to make assure that Lip Gloss and Termenv
-	// query the terminal before any Bubble Tea Program runs and acquires the
-	// terminal. Without this, Programs that use Lip Gloss/Termenv might hang
-	// while waiting for a a [termenv.OSCTimeout] while querying the terminal
-	// for its background/foreground colors.
+	// zscalerctl patch: the upstream Bubble Tea v1.x init called
+	// lipgloss.HasDarkBackground(), which emits OSC/DSR terminal probes before
+	// main() runs. That caused hangs in zscalerctl-tui failure paths such as
+	// `zscalerctl-tui --live --profile definitely-not-real`, where the binary
+	// should fail promptly but instead blocked on a terminal query.
 	//
-	// This happens because Bubble Tea acquires the terminal before termenv
-	// reads any responses.
+	// The patched init does nothing. The zscalerctl-tui binary does not rely on
+	// Bubble Tea's startup background-color detection; styling is decided by the
+	// existing output.ShouldColor gate after main() runs.
 	//
-	// Note that this will only affect programs running on the default IO i.e.
-	// [os.Stdout] and [os.Stdin].
-	//
-	// This workaround will be removed in v2.
-	_ = lipgloss.HasDarkBackground()
+	// This workaround will be removed when Bubble Tea v2 is adopted upstream.
 }

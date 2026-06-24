@@ -32,6 +32,28 @@ The boundary is enforced by `scripts/verify-tui-import-boundary.sh`, which runs
 `go list -deps` on `./cmd/zscalerctl`, `./internal/cli`, `./internal/tui`,
 `./internal/tui/data`, `./internal/tui/browserdata`, and `./internal/tui/launcher`.
 
+## Vendor patch
+
+`cmd/zscalerctl-tui` intentionally imports `github.com/charmbracelet/bubbletea`.
+Bubble Tea v1.x runs `lipgloss.HasDarkBackground()` in package `init()`, which
+emits OSC/DSR terminal probes before `main()` and can hang failure paths such as
+`zscalerctl-tui --live --profile <invalid>`. The vendored
+`vendor/github.com/charmbracelet/bubbletea/tea_init.go` is patched to remove
+that call; the patched `init()` does nothing.
+
+This is acceptable because:
+
+- `cmd/zscalerctl` (the normal binary) still never imports Bubble Tea, so the
+  patch has no effect on normal CLI output.
+- `zscalerctl-tui` does not rely on Bubble Tea's startup background-color
+  detection; color is decided by the existing `output.ShouldColor` gate after
+  `main()` runs.
+- The patch is guarded by `scripts/verify-bubbletea-vendor-patch.sh`, which
+  fails if `go mod vendor` reintroduces the probe.
+- A PTY regression verifier, `scripts/verify-zscalerctl-tui-live-failure.sh`,
+  proves the patched failure path returns promptly with zero `ESC` bytes and a
+  config/profile error.
+
 ## Modes
 
 ### Fixture modes (no credentials)
@@ -61,10 +83,17 @@ go run ./cmd/zscalerctl-tui --live --continue-on-error
 go run ./cmd/zscalerctl-tui --live --profile prod --config /path/to/config.yaml
 ```
 
-Live mode requires Zscaler credentials. The credential discovery order is the
-same as the normal `zscalerctl` CLI: `ZSCALERCTL_*` environment variables take
-precedence, then a profile from the selected config file. See `docs/INSTALL.md`
-for details.
+Live mode requires Zscaler credentials for the selected auth mode only:
+
+- OneAPI (default): resolves `client_secret`.
+- ZIA legacy (`auth_mode: zia-legacy`): resolves `zia_password` and `zia_api_key`.
+
+Unused credentials are not resolved, so a OneAPI profile does not need legacy
+ZIA secrets and a legacy ZIA profile does not need a client secret.
+
+The credential discovery order is the same as the normal `zscalerctl` CLI:
+`ZSCALERCTL_*` environment variables take precedence, then a profile from the
+selected config file. See `docs/INSTALL.md` for details.
 
 ## Flags
 

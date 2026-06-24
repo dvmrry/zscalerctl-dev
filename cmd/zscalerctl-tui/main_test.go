@@ -65,6 +65,35 @@ func legacyConfig() config.Config {
 	}
 }
 
+// panicSecretSource is a SecretSource that fails the test if Resolve is called.
+// It is used to prove that credentials not required by the selected auth mode
+// are never resolved.
+type panicSecretSource struct{}
+
+func (panicSecretSource) Scheme() string     { return "panic" }
+func (panicSecretSource) IsConfigured() bool { return false }
+func (panicSecretSource) Resolve(context.Context) (secret.Secret, error) {
+	panic("unused secret was resolved")
+}
+
+func oneAPIConfigWithoutLegacySecrets() config.Config {
+	cfg := oneAPIConfig()
+	cfg.ZIALegacy = config.ZIALegacyCredentials{
+		Password: panicSecretSource{},
+		APIKey:   panicSecretSource{},
+	}
+	return cfg
+}
+
+func legacyConfigWithoutClientSecret() config.Config {
+	cfg := legacyConfig()
+	cfg.Credentials.ClientSecret = panicSecretSource{}
+	cfg.Credentials.ClientID = secret.Secret{}
+	cfg.VanityDomain = ""
+	cfg.Cloud = ""
+	return cfg
+}
+
 // recordingReader implements browserdata.RecordReader and records every call.
 type recordingReader struct {
 	records map[string][]resources.SourceRecord
@@ -371,6 +400,107 @@ func TestLegacyZIALiveSuccessLaunches(t *testing.T) {
 	}
 	if !prog.called {
 		t.Fatal("program should be launched on legacy ZIA live success")
+	}
+}
+
+func TestOneAPIWithoutLegacySecretsLaunches(t *testing.T) {
+	prog := &fakeProgram{}
+	reader := newRecordingReader()
+	reader.records["zia/locations"] = []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ"}),
+	}
+	var gotCfg zscaler.ReaderConfig
+
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return oneAPIConfigWithoutLegacySecrets(), nil
+		},
+		newReader: func(ctx context.Context, cfg zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			gotCfg = cfg
+			return reader, nil
+		},
+		newProgram: fakeProgramFactory(prog),
+	}
+
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prog.called {
+		t.Fatal("program should be launched when OneAPI credentials are present and legacy secrets are absent")
+	}
+	if gotCfg.AuthMode != zscaler.AuthModeOneAPI {
+		t.Errorf("AuthMode = %q, want %q", gotCfg.AuthMode, zscaler.AuthModeOneAPI)
+	}
+	if !gotCfg.ClientSecret.IsSet() {
+		t.Error("OneAPI reader config should have a resolved client secret")
+	}
+	if gotCfg.ZIALegacy.Password.IsSet() || gotCfg.ZIALegacy.APIKey.IsSet() {
+		t.Error("OneAPI reader config should not have resolved ZIA legacy secrets")
+	}
+}
+
+func TestLegacyZIAWithoutClientSecretLaunches(t *testing.T) {
+	prog := &fakeProgram{}
+	reader := newRecordingReader()
+	reader.records["zia/locations"] = []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "LegacyHQ"}),
+	}
+	var gotCfg zscaler.ReaderConfig
+
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return legacyConfigWithoutClientSecret(), nil
+		},
+		newReader: func(ctx context.Context, cfg zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			gotCfg = cfg
+			return reader, nil
+		},
+		newProgram: fakeProgramFactory(prog),
+	}
+
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !prog.called {
+		t.Fatal("program should be launched when ZIA legacy credentials are present and client secret is absent")
+	}
+	if gotCfg.AuthMode != zscaler.AuthModeZIALegacy {
+		t.Errorf("AuthMode = %q, want %q", gotCfg.AuthMode, zscaler.AuthModeZIALegacy)
+	}
+	if gotCfg.ClientSecret.IsSet() {
+		t.Error("ZIA legacy reader config should not have a resolved client secret")
+	}
+	if !gotCfg.ZIALegacy.Password.IsSet() || !gotCfg.ZIALegacy.APIKey.IsSet() {
+		t.Error("ZIA legacy reader config should have resolved password and api key")
+	}
+}
+
+func TestLegacyZIAMissingPasswordFailsBeforeTUI(t *testing.T) {
+	prog := &fakeProgram{}
+	cfg := legacyConfig()
+	cfg.ZIALegacy.Password = fakeSecretSource{scheme: "fake", err: errors.New("missing zia password")}
+
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return cfg, nil
+		},
+		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			return nil, errors.New("reader should not be reached")
+		},
+		newProgram: fakeProgramFactory(prog),
+	}
+
+	err := runTest(t, deps, []string{"--live"})
+	if err == nil {
+		t.Fatal("expected credential error, got nil")
+	}
+	if prog.called {
+		t.Error("program should not be launched when a required ZIA legacy secret is missing")
 	}
 }
 

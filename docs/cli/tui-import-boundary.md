@@ -57,6 +57,17 @@ A PTY regression verifier, `scripts/verify-pty-escape-clean.sh`, runs the built
 that the output contains zero `ESC` bytes and parses as valid JSON. This guards
 against Bubble Tea package-init probing leaking into normal interactive CLI paths.
 
+Because the standalone `cmd/zscalerctl-tui` binary is allowed to import Bubble
+Tea, its vendored `github.com/charmbracelet/bubbletea/tea_init.go` is patched
+to remove the `lipgloss.HasDarkBackground()` call from `init()`. The unpatched
+code emits OSC/DSR terminal probes before `main()` and hangs failure paths such
+as `zscalerctl-tui --live --profile <invalid>`. The patch is guarded by
+`scripts/verify-bubbletea-vendor-patch.sh` and is exercised by a failure-path
+PTY verifier, `scripts/verify-zscalerctl-tui-live-failure.sh`, which proves the
+invalid-profile invocation returns promptly, emits zero `ESC` bytes, and exits
+with a config/profile error without opening the full-screen TUI. Both verifiers
+are part of `make check`.
+
 ## Non-Goals
 
 This boundary does **not** wire the TUI into normal `zscalerctl` execution,

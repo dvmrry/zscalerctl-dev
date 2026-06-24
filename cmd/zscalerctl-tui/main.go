@@ -33,6 +33,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/secret"
 	"github.com/dvmrry/zscalerctl/internal/tui"
 	"github.com/dvmrry/zscalerctl/internal/tui/browserdata"
 	"github.com/dvmrry/zscalerctl/internal/tui/data"
@@ -217,17 +218,25 @@ func collectLive(
 		return data.BrowserData{}, err
 	}
 
-	clientSecret, err := cfg.Credentials.ClientSecret.Resolve(ctx)
-	if err != nil {
-		return data.BrowserData{}, fmt.Errorf("resolve client secret: %w", err)
-	}
-	ziaPassword, err := cfg.ZIALegacy.Password.Resolve(ctx)
-	if err != nil {
-		return data.BrowserData{}, fmt.Errorf("resolve zia password: %w", err)
-	}
-	ziaAPIKey, err := cfg.ZIALegacy.APIKey.Resolve(ctx)
-	if err != nil {
-		return data.BrowserData{}, fmt.Errorf("resolve zia api key: %w", err)
+	authMode := cfg.EffectiveAuthMode()
+	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
+
+	switch authMode {
+	case config.AuthModeZIALegacy:
+		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
+		if err != nil {
+			return data.BrowserData{}, fmt.Errorf("resolve zia password: %w", err)
+		}
+		ziaAPIKey, err = cfg.ZIALegacy.APIKey.Resolve(ctx)
+		if err != nil {
+			return data.BrowserData{}, fmt.Errorf("resolve zia api key: %w", err)
+		}
+	default:
+		// OneAPI is the default auth mode.
+		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
+		if err != nil {
+			return data.BrowserData{}, fmt.Errorf("resolve client secret: %w", err)
+		}
 	}
 
 	readerCfg := zscaler.ReaderConfig{
@@ -237,7 +246,7 @@ func collectLive(
 		Cloud:            cfg.Cloud,
 		ZPACustomerID:    cfg.ZPA.CustomerID,
 		ZPAMicrotenantID: cfg.ZPA.MicrotenantID,
-		AuthMode:         zscaler.AuthMode(cfg.EffectiveAuthMode()),
+		AuthMode:         zscaler.AuthMode(authMode),
 		ZIALegacy: zscaler.ZIALegacyConfig{
 			Username: cfg.ZIALegacy.Username,
 			Password: ziaPassword,
