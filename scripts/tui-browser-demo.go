@@ -4,12 +4,13 @@
 //
 // Usage:
 //
-//	go run ./scripts/tui-browser-demo.go [--projected-fixture] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
+//	go run ./scripts/tui-browser-demo.go [--projected-fixture] [--collector-fixture] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
 //
 // This harness intentionally does not load zscalerctl config, resolve
 // credentials, contact Zscaler, run subprocesses, write files, or add CLI
-// command surface. It uses either hard-coded fake data or a projected fixture
-// to prove the product browser shape on the feature/tui integration branch.
+// command surface. It uses hard-coded fake data, a projected fixture, or a
+// fake-reader-backed collector to prove the product browser shape on the
+// feature/tui integration branch.
 package main
 
 import (
@@ -37,6 +38,7 @@ func run(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("tui-browser-demo", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	projectedFlag := flags.Bool("projected-fixture", false, "use the projected resource fixture via the browserdata adapter")
+	collectorFlag := flags.Bool("collector-fixture", false, "use the fake-reader-backed collector via the browserdata package")
 	colorFlag := flags.String("color", string(output.ColorAuto), "color mode: auto, always, never")
 	formatFlag := flags.String("format", string(output.FormatAuto), "output format gate: auto, table, pretty, json, ndjson")
 	if err := flags.Parse(args); err != nil {
@@ -82,6 +84,13 @@ func run(ctx context.Context, args []string) error {
 	if *projectedFlag {
 		var err error
 		browserData, err = browserdata.Build(browserdata.DemoCatalog(), browserdata.ProjectedFixtureSource{})
+		if err != nil {
+			return err
+		}
+	} else if *collectorFlag {
+		collector := browserdata.NewCollectorFixture()
+		var err error
+		browserData, err = collector.Collect(ctx, browserdata.CollectOptions{ContinueOnError: true})
 		if err != nil {
 			return err
 		}
