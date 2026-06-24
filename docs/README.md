@@ -36,6 +36,8 @@ GitHub security policy.
   readback for the isolated TUI demo harness.
 - [cli/tui-static-browser-readback.md](cli/tui-static-browser-readback.md) —
   integration-branch readback for the static fake-data TUI browser.
+- [cli/tui-promotion-readiness.md](cli/tui-promotion-readiness.md) — release-
+  candidate audit of the TUI branch before promotion to `main`.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
 - [schema/](schema/) — published JSON Schemas for machine-readable artifacts.
 - [SCRIPTS.md](SCRIPTS.md) — registry of `scripts/` ownership and validation.
