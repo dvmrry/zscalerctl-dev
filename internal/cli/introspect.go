@@ -150,6 +150,7 @@ func IntrospectTree(a *App) IntrospectDoc {
 	// subcommand is included in both the docs and the introspect output.
 	root.InitDefaultCompletionCmd()
 
+	catalog := a.resourceCatalog()
 	doc := IntrospectDoc{
 		Schema:            schemaURL,
 		IntrospectVersion: "1",
@@ -159,7 +160,7 @@ func IntrospectTree(a *App) IntrospectDoc {
 		// local file) are flagged per-command via `mutating`.
 		ReadOnly:           true,
 		GlobalFlags:        buildGlobalFlags(),
-		Catalog:            buildCatalog(),
+		Catalog:            buildCatalog(catalog),
 		ExitCodes:          buildExitCodes(),
 		CompletionProtocol: []string{"__complete", "__completeNoDesc"},
 	}
@@ -174,7 +175,7 @@ func IntrospectTree(a *App) IntrospectDoc {
 	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
 		// A command is a product group node if it is a direct child of root
 		// (no space in path) and its name is a known product in the catalog.
-		if !strings.Contains(path, " ") && knownProductCommand(cmd.Name()) {
+		if !strings.Contains(path, " ") && knownProductCommand(cmd.Name(), catalog) {
 			// Do not emit a CommandDoc for the bare "zia" / "zpa" / … node.
 			// Synthesize virtual entries for each {product} {resource} {op}
 			// triple from the catalog instead.
@@ -209,24 +210,22 @@ func buildGlobalFlags() []FlagDoc {
 	return docs
 }
 
-// buildCatalog converts resources.Catalog() into a CatalogDoc. Fields are the
+// buildCatalog converts a resource catalog into a CatalogDoc. Fields are the
 // standard-mode projected field names (what an agent can use with --fields /
 // --filter). Secret and standard-excluded fields are omitted.
-func buildCatalog() CatalogDoc {
-	cat := resources.Catalog()
-
+func buildCatalog(catalog resources.ResourceCatalog) CatalogDoc {
 	// Collect ordered, deduplicated product list.
 	seen := make(map[resources.Product]bool)
 	products := make([]string, 0)
-	for _, spec := range cat {
+	for _, spec := range catalog {
 		if !seen[spec.Product] {
 			seen[spec.Product] = true
 			products = append(products, string(spec.Product))
 		}
 	}
 
-	resDocs := make([]ResourceDoc, 0, len(cat))
-	for _, spec := range cat {
+	resDocs := make([]ResourceDoc, 0, len(catalog))
+	for _, spec := range catalog {
 		ops := readOperationNames(spec)
 		fields := spec.FieldOrder(redact.ModeStandard)
 		resDocs = append(resDocs, ResourceDoc{

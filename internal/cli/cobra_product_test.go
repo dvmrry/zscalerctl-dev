@@ -35,11 +35,12 @@ type recordCall struct {
 	op       string // "list", "get", or "show"
 	product  resources.Product
 	resource string
+	id       string // populated for Get calls
 }
 
 // recordingResourceReader wraps fakeResourceReader and records each call so
 // tests can assert that the Cobra product routing passed the correct
-// (product, resource) pair. Follows the fakeURLLookupReader recording pattern.
+// (product, resource, id) tuple. Follows the fakeURLLookupReader recording pattern.
 type recordingResourceReader struct {
 	fakeResourceReader
 	calls []recordCall
@@ -51,8 +52,7 @@ func (r *recordingResourceReader) List(_ context.Context, product resources.Prod
 }
 
 func (r *recordingResourceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
-	r.calls = append(r.calls, recordCall{op: "get", product: product, resource: resource})
-	_ = id
+	r.calls = append(r.calls, recordCall{op: "get", product: product, resource: resource, id: id})
 	return r.fakeResourceReader.get, nil
 }
 
@@ -208,6 +208,39 @@ func TestProductCmd_Get_JSON(t *testing.T) {
 	}
 	if reader.calls[0].op != "get" || reader.calls[0].product != resources.ProductZIA || reader.calls[0].resource != "locations" {
 		t.Errorf("reader call = %+v, want {get, zia, locations}", reader.calls[0])
+	}
+}
+
+// TestProductCmd_Get_DashPrefixedIDAfterTerminator verifies that the global
+// parser preserves "--" when dispatching into Cobra, so a dash-prefixed ID is
+// passed to runProduct instead of being parsed as an unknown flag.
+func TestProductCmd_Get_DashPrefixedIDAfterTerminator(t *testing.T) {
+	t.Parallel()
+
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			get: resources.NewSourceRecord(map[string]any{
+				"id":   "--dash-id",
+				"name": "DashID",
+			}),
+		},
+	}
+	a, out, errBuf := newProductApp(t, reader)
+	err := a.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "--", "--dash-id"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations get -- --dash-id) error = %v, want nil", err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("stdout is empty, want projected record")
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	if reader.calls[0].id != "--dash-id" {
+		t.Errorf("reader id = %q, want --dash-id", reader.calls[0].id)
 	}
 }
 
@@ -783,5 +816,39 @@ func TestProductCmd_ValidArgsFunction_UnknownResource(t *testing.T) {
 		if c == "list" || c == "get" || c == "show" {
 			t.Errorf("completions for unknown resource = %v, unexpected op %q", completions, c)
 		}
+	}
+}
+
+// TestProductCmd_DashPrefixedID_Terminator confirms that
+// "zia locations get -- --dash-id" treats --dash-id as the resource ID, not as
+// an unknown flag. The reader must receive a Get call with id="--dash-id".
+func TestProductCmd_DashPrefixedID_Terminator(t *testing.T) {
+	t.Parallel()
+
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			get: resources.NewSourceRecord(map[string]any{
+				"id":   "--dash-id",
+				"name": "HQ",
+			}),
+		},
+	}
+	a, out, errBuf := newProductApp(t, reader)
+	err := a.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "--", "--dash-id"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations get -- --dash-id) error = %v, want nil", err)
+	}
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	call := reader.calls[0]
+	if call.op != "get" || call.product != resources.ProductZIA || call.resource != "locations" || call.id != "--dash-id" {
+		t.Errorf("reader call = %+v, want {get, zia, locations, --dash-id}", call)
+	}
+	if !strings.Contains(out.String(), "--dash-id") {
+		t.Errorf("App.Run(zia locations get -- --dash-id) stdout = %q, want '--dash-id' in output", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(zia locations get -- --dash-id) stderr = %q, want empty", errBuf.String())
 	}
 }

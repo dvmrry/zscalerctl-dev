@@ -38,10 +38,10 @@ func ProductCmdCompletions(t *testing.T, productName string, args []string) ([]s
 
 // KnownProductNames returns the product command names derived from the live
 // catalog, so tests can iterate every product without hardcoding the list
-// (a new product is auto-covered). Test-only; the App arg is unused but kept
-// so call sites read as cli.KnownProductNames(a).
-func KnownProductNames(_ *App) []string {
-	return productNames(knownProducts())
+// (a new product is auto-covered). Test-only; the App arg is used to read the
+// App catalog so tests can also inject empty/narrowed catalogs.
+func KnownProductNames(a *App) []string {
+	return productNames(knownProducts(a.resourceCatalog()))
 }
 
 // ExportedGlobalFlagDefs exposes the internal globalFlagDefs slice so the
