@@ -387,13 +387,13 @@ func unknownCommandMessage(name string, catalog resources.ResourceCatalog) strin
 }
 
 type globalOptions struct {
-	profile      string
-	configPath   string
-	format       output.Format
-	output       string
-	timeout      time.Duration
-	redaction    redact.Mode
-	redactionSet bool
+	profile            string
+	configPath         string
+	format             output.Format
+	output             string
+	timeout            time.Duration
+	redaction          redact.Mode
+	redactionSet       bool
 	noCache            bool
 	colorMode          output.ColorMode
 	logLevel           string
@@ -545,20 +545,20 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		filters = append(filters, filter)
 	}
 	return globalOptions{
-		profile:      *profile,
-		configPath:   *configPath,
-		format:       parsedFormat,
-		output:       *outputPath,
-		timeout:      *timeout,
-		redaction:         parsedRedaction,
-		redactionSet:      redactionSet,
-		noCache:           *noCache,
-		colorMode:         colorMode,
-		logLevel:          *logLevel,
-		fields:            parseFieldsList(*fieldsFlag),
-		filters:           filters,
-		search:            *searchFlag,
-		help:              help,
+		profile:            *profile,
+		configPath:         *configPath,
+		format:             parsedFormat,
+		output:             *outputPath,
+		timeout:            *timeout,
+		redaction:          parsedRedaction,
+		redactionSet:       redactionSet,
+		noCache:            *noCache,
+		colorMode:          colorMode,
+		logLevel:           *logLevel,
+		fields:             parseFieldsList(*fieldsFlag),
+		filters:            filters,
+		search:             *searchFlag,
+		help:               help,
 		argTerminatorIndex: terminatorIndex,
 	}, rest, nil
 }
