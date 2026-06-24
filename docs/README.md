@@ -32,6 +32,10 @@ GitHub security policy.
 - [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md)
 - [cli/tui-import-boundary.md](cli/tui-import-boundary.md) — why the TUI gate
   package and Bubble Tea runtime are separated.
+- [cli/tui-cli-bridge.md](cli/tui-cli-bridge.md) — architecture bridge between the
+  normal CLI and the isolated TUI runtime.
+- [cli/tui-separate-binary.md](cli/tui-separate-binary.md) — the experimental
+  standalone `zscalerctl-tui` binary and the binary-level import boundary.
 - [cli/tui-demo-readback.md](cli/tui-demo-readback.md) — integration-branch
   readback for the isolated TUI demo harness.
 - [cli/tui-static-browser-readback.md](cli/tui-static-browser-readback.md) —
