@@ -289,8 +289,8 @@ func TestColorAlwaysSuppressedForOutputFile(t *testing.T) {
 func TestHelpRoutesToResourceAndProductScope(t *testing.T) {
 	t.Parallel()
 
-	// After the Cobra migration, product commands (zia, zpa, …) are Cobra
-	// subcommands. This changes two help surfaces:
+	// Product commands (zia, zpa, ...) are Cobra subcommands. This gives two help
+	// surfaces:
 	//
 	//  - "zia --help" now shows Cobra-formatted help (short description + global
 	//    flags) instead of the legacy resource-list. The product name appears in

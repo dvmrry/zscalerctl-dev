@@ -1,14 +1,14 @@
 package cli
 
-// root.go — Cobra root command, redacting execute helper, and error-mapping
-// utilities for the phased Cobra migration.
+// root.go - Cobra root command, redacting execute helper, and error-mapping
+// utilities for the current CLI command tree.
 //
 // # Architecture note
 //
-// This file does NOT wire the root command into App.Run. That is Task 1.4.
-// Today, App.Run still delegates entirely to the legacy flag-based dispatch.
-// newRootCmd + executeRoot exist so the root can be constructed and tested in
-// isolation before the App.Run plumbing lands.
+// App.Run parses global flags with parseGlobal, applies pre-dispatch safety
+// gates, and routes recognized commands through this Cobra root. The root is
+// still constructible on its own for help, completion, docs, introspection, and
+// focused in-process tests.
 //
 // # No-leak contract
 //
@@ -34,9 +34,9 @@ func init() {
 	cobra.EnablePrefixMatching = false
 }
 
-// newRootCmd constructs the Cobra root command with the §8 settings required by
-// the migration spec. It does not add any product subcommands; those are added
-// by later phases.
+// newRootCmd constructs the Cobra root command with the settings required by
+// the CLI boundary contract. Product and utility subcommands are attached by
+// buildCommandTree.
 func newRootCmd(a *App) *cobra.Command {
 	root := &cobra.Command{
 		// Use is intentionally empty — the root is never invoked directly.
@@ -47,7 +47,7 @@ func newRootCmd(a *App) *cobra.Command {
 		SilenceErrors: true,
 
 		// SilenceUsage: prevent Cobra dumping the usage block on every RunE error.
-		// Usage is emitted selectively by the legacy App.writeUsageForHumans path.
+		// Usage is emitted selectively by App.writeUsageForHumans.
 		SilenceUsage: true,
 
 		// TraverseChildren: allows the mirrored global persistent flags (--format,
@@ -69,8 +69,8 @@ func newRootCmd(a *App) *cobra.Command {
 		// it exits 2 via UsageError (M-9 from the adversarial review).
 		//
 		// INVARIANT: this must NOT change any current behaviour. Bare "zscalerctl"
-		// (empty args) goes through the legacy empty-rest path in runParsed and never
-		// reaches Cobra. Unknown commands exit 2 via the legacy isKnownCommand path.
+		// (empty args) goes through the empty-rest path in runParsed and never reaches
+		// this guard. Unknown commands exit 2 via runParsed's isKnownCommand gate.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
@@ -116,9 +116,9 @@ func newRootCmd(a *App) *cobra.Command {
 // Unknown-command wrapping (NOT done here):
 //
 //	When Cobra cannot find a subcommand, ExecuteContext returns a plain string
-//	error ("unknown command X for Y"). That error is NOT a UsageError here —
-//	wrapping it into UsageError (exit 2) must happen at the App.Run call site
-//	(Task 1.4) by inspecting the returned error string after executeRoot returns.
+//	error ("unknown command X for Y"). That error is NOT a UsageError here.
+//	runParsed keeps normal unknown top-level commands out of Cobra so the
+//	domain-specific unknownCommandMessage path can produce product/resource hints.
 func (a *App) executeRoot(ctx context.Context, root *cobra.Command, args []string) (err error) {
 	outW := redact.NewWriter(a.out, redact.ModeStandard)
 	errW := redact.NewWriter(a.err, redact.ModeStandard)

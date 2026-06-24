@@ -1,6 +1,6 @@
 package cli_test
 
-// cobra_dump_test.go — Tests for the Cobra-migrated dump command (Phase 3a).
+// cobra_dump_test.go - Tests for the Cobra dump command.
 //
 // Tests here verify:
 //  1. dump --out <dir> with a fake reader writes files; stdout empty; exit 0.
@@ -300,8 +300,8 @@ func TestCobraDump_HelpCobraFormatted(t *testing.T) {
 	}
 }
 
-// TestCobraDump_ConfigError confirms that the migrated dump command surfaces a config
-// load error (ErrInvalidConfig → exit 2) when --config points to a nonexistent path.
+// TestCobraDump_ConfigError confirms that dump surfaces a config load error
+// (ErrInvalidConfig -> exit 2) when --config points to a nonexistent path.
 func TestCobraDump_ConfigError(t *testing.T) {
 	t.Parallel()
 

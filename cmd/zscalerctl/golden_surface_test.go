@@ -1,10 +1,10 @@
 package main
 
-// golden_surface_test.go — Task 0.3 of the Cobra migration.
+// golden_surface_test.go - Boundary golden tests for the CLI surface.
 //
-// Freezes the CURRENT (pre-Cobra) CLI surface by exec-ing the real binary through
+// Freezes the current CLI surface by exec-ing the real binary through
 // the cmd/zscalerctl boundary, capturing stdout+stderr+exit-code, and comparing
-// against committed golden files.  It does NOT call internal functions — the whole
+// against committed golden files. It does NOT call internal functions - the whole
 // point is to snapshot what the boundary itself emits.
 //
 // Usage:
@@ -264,12 +264,12 @@ type surfaceCase struct {
 	note string
 }
 
-// TestGoldenSurface freezes the pre-Cobra CLI surface by running each case
-// through the real binary and comparing scrubbed stdout+stderr to golden files.
+// TestGoldenSurface freezes the CLI surface by running each case through the
+// real binary and comparing scrubbed stdout+stderr to golden files.
 //
 // Exit codes are asserted directly in Go; golden files capture the human/machine
-// readable output shape. During the Cobra migration, each intentional change that
-// causes a golden diff must be recorded in testdata/surface/surface_changes.md.
+// readable output shape. Each intentional change that causes a golden diff must
+// be recorded in testdata/surface/surface_changes.md.
 //
 // NOTE: testdata/surface/surface_changes.md is a human-maintained convention —
 // the test suite does NOT enforce that it is updated when goldens change.
@@ -340,14 +340,14 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "usage-error",
 		},
-		// ── version --help (Cobra help surface; frozen after Task 1.5 migration) ──
+		// ── version --help (Cobra help surface) ──────────────────────────────────
 		{
 			name:     "version-help",
 			args:     []string{"version", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── doctor --help (Cobra help surface; frozen after Task 1.5.2 migration) ─
+		// ── doctor --help (Cobra help surface) ───────────────────────────────────
 		{
 			name:     "doctor-help",
 			args:     []string{"doctor", "--help"},
@@ -361,14 +361,14 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "product-help",
 		},
-		// ── url-lookup help (Phase 2b: DisableFlagParsing subcommand) ────────────
+		// ── url-lookup help (DisableFlagParsing subcommand) ──────────────────────
 		{
 			name:     "zia-url-lookup-help",
 			args:     []string{"zia", "url-lookup", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── resource help (Phase 2c: SetHelpFunc restores legacy resource-specific help) ──
+		// ── resource help (SetHelpFunc resource-specific help) ───────────────────
 		{
 			name:     "zia-locations-help",
 			args:     []string{"zia", "locations", "--help"},
@@ -402,7 +402,7 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "catalog-enumeration",
 		},
-		// ── completion bash (will change in Phase 5; documented) ─────────────────
+		// ── completion bash ──────────────────────────────────────────────────────
 		{
 			name:     "completion-bash",
 			args:     []string{"--format", "table", "completion", "bash"},
@@ -417,21 +417,21 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── dump --help (Cobra help surface; frozen after Phase 3a migration) ─────
+		// ── dump --help (Cobra help surface) ─────────────────────────────────────
 		{
 			name:     "dump-help",
 			args:     []string{"dump", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── diff --help (Cobra help surface; frozen after Phase 3b migration) ────
+		// ── diff --help (Cobra help surface) ─────────────────────────────────────
 		{
 			name:     "diff-help",
 			args:     []string{"diff", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
 		},
-		// ── Phase 4: config command group ────────────────────────────────────────
+		// ── config command group ─────────────────────────────────────────────────
 		// config init: path on stdout, exit 0; temp HOME is scrubbed to <TMPDIR>.
 		{
 			name:     "config-init",
@@ -467,7 +467,7 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "bare-parent-usage-error",
 		},
-		// ── Phase 4: schema command group ────────────────────────────────────────
+		// ── schema command group ─────────────────────────────────────────────────
 		// schema --help: Cobra parent help.
 		{
 			name:     "schema-help",
@@ -489,7 +489,7 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "bare-parent-usage-error",
 		},
-		// ── Phase 4: auth command group ──────────────────────────────────────────
+		// ── auth command group ───────────────────────────────────────────────────
 		// auth --help: Cobra parent help.
 		{
 			name:     "auth-help",
@@ -511,7 +511,7 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 2,
 			note:     "bare-parent-usage-error",
 		},
-		// ── Task 1.4: introspect command ──────────────────────────────────────────
+		// ── introspect command ───────────────────────────────────────────────────
 		// introspect (default JSON; stdout is not a TTY in the hermetic env so
 		// FormatAuto resolves to JSON — the machine-first default).
 		{
@@ -602,15 +602,15 @@ func TestParseErrorsExitTwo(t *testing.T) {
 
 	cases := []exitCase{
 		// ── Unknown command ───────────────────────────────────────────────────────
-		// Source: runParsed legacy switch → UsageError → exit 2.
+		// Source: runParsed unknown-command path -> UsageError -> exit 2.
 		{
 			name:       "unknown-command",
 			args:       []string{"frobnicate"},
-			source:     "legacy-dispatch",
+			source:     "unknown-command-dispatch",
 			alsoGolden: true, // covered by TestGoldenSurface/unknown-command
 		},
 
-		// ── Unknown flag on migrated commands (Cobra SetFlagErrorFunc) ────────────
+		// ── Unknown flag on Cobra commands (Cobra SetFlagErrorFunc) ───────────────
 		// Source: Cobra SetFlagErrorFunc wraps the error in UsageError → exit 2.
 		{
 			name:       "version-unknown-flag",
@@ -683,7 +683,7 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			alsoGolden: false,
 		},
 
-		// ── ndjson on migrated commands (rejectUnsupportedFormat) ─────────────────
+		// ── ndjson on Cobra commands (rejectUnsupportedFormat) ────────────────────
 		// Source: runVersion / runDoctor check opts.format == output.FormatNDJSON →
 		// rejectUnsupportedFormat → UsageError → exit 2.
 		{
@@ -714,7 +714,7 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			alsoGolden: false,
 		},
 
-		// ── dump ndjson / no --out (Phase 3a — dump migrated to Cobra) ────────────
+		// ── dump ndjson / no --out ───────────────────────────────────────────────
 		// Source: newDumpCmd RunE rejects ndjson before config load → UsageError → exit 2.
 		{
 			name:       "ndjson-dump",
@@ -730,7 +730,7 @@ func TestParseErrorsExitTwo(t *testing.T) {
 			alsoGolden: false,
 		},
 
-		// ── Phase 4: config/schema/auth ndjson rejection ──────────────────────────
+		// ── config/schema/auth ndjson rejection ──────────────────────────────────
 		// config init is format-agnostic (exit 0), so it is NOT in this table.
 		// config show rejects ndjson → exit 2.
 		{

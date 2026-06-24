@@ -235,7 +235,8 @@ func TestCatalogSourceOfTruth(t *testing.T) {
 		},
 	}
 
-	a := NewWithOptions(&bytes.Buffer{}, &bytes.Buffer{}, nil, Options{
+	var out, errBuf bytes.Buffer
+	a := NewWithOptions(&out, &errBuf, nil, Options{
 		Catalog: catalog,
 	})
 
@@ -271,6 +272,14 @@ func TestCatalogSourceOfTruth(t *testing.T) {
 	msg := unknownCommandMessage("widgets", catalog)
 	if !strings.Contains(msg, "is a resource") {
 		t.Errorf("unknownCommandMessage for injected resource = %q, want resource hint", msg)
+	}
+
+	err := a.Run(context.Background(), []string{"widgets"})
+	if err == nil {
+		t.Fatal("App.Run(widgets) error = nil, want usage error with resource hint")
+	}
+	if !strings.Contains(err.Error(), "is a resource") || !strings.Contains(err.Error(), "<product> widgets") {
+		t.Errorf("App.Run(widgets) error = %q, want injected resource hint", err)
 	}
 }
 

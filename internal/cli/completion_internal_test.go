@@ -52,7 +52,7 @@ func TestCompletionScriptsExposeSameGeneratedSurface(t *testing.T) {
 }
 
 // TestCompletionScriptsIncludeURLLookup guards the zia-only url-lookup
-// diagnostic verb. It is registered as a Cobra subcommand of "zia" (Phase 2b),
+// diagnostic verb. It is registered as a Cobra subcommand of "zia",
 // so __complete zia ” must offer it alongside catalog resources.
 func TestCompletionScriptsIncludeURLLookup(t *testing.T) {
 	t.Parallel()

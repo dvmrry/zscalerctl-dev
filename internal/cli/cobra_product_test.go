@@ -400,11 +400,11 @@ func TestProductCmd_NoCreds(t *testing.T) {
 	}
 }
 
-// -- url-lookup (Cobra subcommand -- Phase 2b) ---------------------------------
+// -- url-lookup (Cobra subcommand) ---------------------------------------------
 
 // TestProductCmd_URLLookup_ReachesRunURLLookup verifies that "zia url-lookup
 // example.com" via the Cobra subcommand path calls the URLLookupReader capability.
-// Phase 2b: url-lookup is now a real Cobra subcommand of zia (DisableFlagParsing).
+// url-lookup is a real Cobra subcommand of zia with DisableFlagParsing.
 func TestProductCmd_URLLookup_ReachesRunURLLookup(t *testing.T) {
 	t.Parallel()
 
@@ -625,7 +625,7 @@ func TestProductCmd_Help_Cobra(t *testing.T) {
 }
 
 // TestProductCmd_AuthGoesViaCobra verifies that "auth status" is now handled by
-// the Cobra path (Phase 4 migration). With no credentials the command succeeds
+// the Cobra path. With no credentials the command succeeds
 // (auth status does not require live creds) and the output contains the
 // "credentials" field emitted by runAuth / newAuthStatus.
 func TestProductCmd_AuthGoesViaCobra(t *testing.T) {
@@ -645,7 +645,7 @@ func TestProductCmd_AuthGoesViaCobra(t *testing.T) {
 	}
 }
 
-// -- Phase 2c: resource-specific --help (SetHelpFunc) -------------------------
+// -- resource-specific --help (SetHelpFunc) ------------------------------------
 
 // TestProductCmd_ResourceHelp_WithHelp verifies that "zia locations --help"
 // prints the resource-specific field/usage block (resourceUsage) rather than
@@ -679,7 +679,7 @@ func TestProductCmd_ResourceHelp_WithHelp(t *testing.T) {
 
 // TestProductCmd_ResourceHelp_WithOpAndHelp verifies that "zia locations list --help"
 // produces the same resource-specific help as "zia locations --help", restoring
-// the legacy behaviour where an explicit op before --help still shows the fields.
+// the contract where an explicit op before --help still shows the fields.
 func TestProductCmd_ResourceHelp_WithOpAndHelp(t *testing.T) {
 	t.Parallel()
 
@@ -729,7 +729,7 @@ func TestProductCmd_ProductHelp_NoResource(t *testing.T) {
 	}
 }
 
-// -- Phase 2c: catalog ValidArgsFunction (tab completion) ---------------------
+// -- catalog ValidArgsFunction (tab completion) --------------------------------
 
 // TestProductCmd_ValidArgsFunction_FirstArg verifies that the ValidArgsFunction
 // returns the product's catalog resource names as first-arg completions.

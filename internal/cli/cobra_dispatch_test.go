@@ -30,10 +30,10 @@ func testVersionApp(t *testing.T) (*cli.App, *bytes.Buffer, *bytes.Buffer) {
 	return a, &out, &errBuf
 }
 
-// TestHybridRouting_VersionGoesViaCobra confirms that "version" produces output
-// indistinguishable from the legacy path (same keys, no extra Cobra noise), proving
-// it is correctly dispatched through Cobra and runVersion is called.
-func TestHybridRouting_VersionGoesViaCobra(t *testing.T) {
+// TestCobraRouting_VersionGoesViaCobra confirms that "version" produces the
+// expected output with no extra Cobra noise, proving it is dispatched through
+// Cobra and runVersion is called.
+func TestCobraRouting_VersionGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
 	a, out, errBuf := testVersionApp(t)
@@ -54,12 +54,11 @@ func TestHybridRouting_VersionGoesViaCobra(t *testing.T) {
 	}
 }
 
-// TestHybridRouting_ZiaGoesViaCobra confirms that "zia" IS migrated (Phase 2a)
-// and routes through Cobra. "zia locations list" with no credentials must fail
-// with the missing-credentials sentinel (exit 3 path), NOT with any
-// Cobra unknown-command error, which would indicate the product was not
-// registered in the Cobra tree.
-func TestHybridRouting_ZiaGoesViaCobra(t *testing.T) {
+// TestCobraRouting_ZiaGoesViaCobra confirms that "zia" routes through Cobra.
+// "zia locations list" with no credentials must fail with the
+// missing-credentials sentinel, NOT with any Cobra unknown-command error, which
+// would indicate the product was not registered in the Cobra tree.
+func TestCobraRouting_ZiaGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
 	a, _, _ := testVersionApp(t)
@@ -103,7 +102,7 @@ func TestVersionHelp_CobraRenderedHelp(t *testing.T) {
 	}
 }
 
-// TestVersionOutputFile confirms that the migrated "version" command runs inside
+// TestVersionOutputFile confirms that the Cobra "version" command runs inside
 // the --output wrapper: when --output is set, the version table is written to the
 // file and stdout is empty. This proves execCobra runs AFTER App.Run swaps a.out
 // to the buffer.
@@ -140,8 +139,8 @@ func TestVersionOutputFile(t *testing.T) {
 	}
 }
 
-// TestVersionFormatNDJSON_Rejected confirms that --format ndjson on the migrated
-// version command still returns UsageError (exit 2), via runVersion's format check.
+// TestVersionFormatNDJSON_Rejected confirms that --format ndjson on the version
+// command returns UsageError (exit 2), via runVersion's format check.
 func TestVersionFormatNDJSON_Rejected(t *testing.T) {
 	t.Parallel()
 
@@ -156,8 +155,8 @@ func TestVersionFormatNDJSON_Rejected(t *testing.T) {
 }
 
 // TestVersionExtraArg_UsageError confirms that extra positional args to the
-// migrated version command still return UsageError (exit 2) via requireNoArgs.
-// The error message must match the legacy "usage: zscalerctl version" shape.
+// version command return UsageError (exit 2) via requireNoArgs.
+// The error message must match the canonical "usage: zscalerctl version" shape.
 func TestVersionExtraArg_UsageError(t *testing.T) {
 	t.Parallel()
 
@@ -174,7 +173,7 @@ func TestVersionExtraArg_UsageError(t *testing.T) {
 	}
 }
 
-// ── doctor Cobra dispatch tests (Task 1.5.2) ────────────────────────────────
+// ── doctor Cobra dispatch tests ─────────────────────────────────────────────
 
 // testDoctorApp returns an App with no env (hermetic: no credentials, no config file).
 func testDoctorApp(t *testing.T) (*cli.App, *bytes.Buffer, *bytes.Buffer) {
@@ -184,9 +183,9 @@ func testDoctorApp(t *testing.T) (*cli.App, *bytes.Buffer, *bytes.Buffer) {
 	return a, &out, &errBuf
 }
 
-// TestHybridRouting_DoctorGoesViaCobra confirms that "doctor" is dispatched
-// through Cobra and produces output identical to the legacy path (same key rows).
-func TestHybridRouting_DoctorGoesViaCobra(t *testing.T) {
+// TestCobraRouting_DoctorGoesViaCobra confirms that "doctor" is dispatched
+// through Cobra and produces the expected key rows.
+func TestCobraRouting_DoctorGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
 	a, out, errBuf := testDoctorApp(t)
@@ -229,7 +228,7 @@ func TestDoctorHelp_CobraRenderedHelp(t *testing.T) {
 	}
 }
 
-// TestDoctorOutputFile confirms that the migrated "doctor" command runs inside
+// TestDoctorOutputFile confirms that the Cobra "doctor" command runs inside
 // the --output wrapper: when --output is set, the table is written to the file
 // and stdout is empty.
 func TestDoctorOutputFile(t *testing.T) {
@@ -263,7 +262,7 @@ func TestDoctorOutputFile(t *testing.T) {
 	}
 }
 
-// TestDoctorUnknownFlag_UsageError confirms that an unknown flag on the migrated
+// TestDoctorUnknownFlag_UsageError confirms that an unknown flag on the Cobra
 // doctor command returns UsageError (exit 2) via Cobra's flag parsing.
 func TestDoctorUnknownFlag_UsageError(t *testing.T) {
 	t.Parallel()
@@ -278,8 +277,8 @@ func TestDoctorUnknownFlag_UsageError(t *testing.T) {
 	}
 }
 
-// TestDoctorFormatNDJSON_Rejected confirms that --format ndjson on the migrated
-// doctor command returns UsageError (exit 2) via runDoctor's format check.
+// TestDoctorFormatNDJSON_Rejected confirms that --format ndjson on the doctor
+// command returns UsageError (exit 2) via runDoctor's format check.
 func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
 	t.Parallel()
 
@@ -294,8 +293,8 @@ func TestDoctorFormatNDJSON_Rejected(t *testing.T) {
 }
 
 // TestDoctorExtraArg_UsageError confirms that extra positional args to the
-// migrated doctor command return UsageError (exit 2) via requireNoArgs.
-// The error message must match the legacy "usage: zscalerctl doctor" shape.
+// doctor command return UsageError (exit 2) via requireNoArgs.
+// The error message must match the canonical "usage: zscalerctl doctor" shape.
 func TestDoctorExtraArg_UsageError(t *testing.T) {
 	t.Parallel()
 
@@ -313,7 +312,7 @@ func TestDoctorExtraArg_UsageError(t *testing.T) {
 }
 
 // TestDoctorConfigError_NonexistentPath confirms that the config-lazy RunE in
-// the migrated doctor command surfaces a config load error (ErrInvalidConfig →
+// the doctor command surfaces a config load error (ErrInvalidConfig ->
 // exit 2) when --config points to a nonexistent path.
 func TestDoctorConfigError_NonexistentPath(t *testing.T) {
 	t.Parallel()
@@ -328,7 +327,7 @@ func TestDoctorConfigError_NonexistentPath(t *testing.T) {
 	}
 }
 
-// TestDoctorRedactionFollowsConfig confirms that the migrated doctor uses
+// TestDoctorRedactionFollowsConfig confirms that doctor uses
 // a.renderer(cfg, opts) — which reads cfg.Defaults.Redaction — rather than
 // hardcoding ModeStandard. Setting a non-standard redaction mode via env must be
 // reflected in the doctor output.
@@ -356,7 +355,7 @@ func TestDoctorRedactionFollowsConfig(t *testing.T) {
 	}
 }
 
-// ── Finding 1: --help must precede global narrowing/format gates for migrated cmds ──
+// ── Finding 1: --help must precede global narrowing/format gates for Cobra cmds ──
 //
 // Pre-fix bug: "--filter name=x version --help", "--fields id zia locations --help",
 // and "--format ndjson completion --help" returned exit 2 (gate fired before Cobra
@@ -441,11 +440,11 @@ func TestNonHelpFormatGate_CompletionNDJSON(t *testing.T) {
 	}
 }
 
-// TestHybridRouting_AuthGoesViaCobra confirms that "auth" is now dispatched
-// through Cobra (Phase 4 migration) and produces its status output via runAuth.
+// TestCobraRouting_AuthGoesViaCobra confirms that "auth" is dispatched through
+// Cobra and produces its status output via runAuth.
 // With no credentials the config loads without error (no-creds is not an
 // ErrInvalidConfig), so auth status succeeds in the hermetic env.
-func TestHybridRouting_AuthGoesViaCobra(t *testing.T) {
+func TestCobraRouting_AuthGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
 	a, out, errBuf := testDoctorApp(t)

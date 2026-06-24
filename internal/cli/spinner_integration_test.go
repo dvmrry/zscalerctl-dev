@@ -1,7 +1,7 @@
 package cli_test
 
 // spinner_integration_test.go — End-to-end gating + no-leak tests for the
-// progress spinner (Task 2.4).
+// progress spinner.
 //
 // These tests drive real App.Run calls with a fake ResourceReader to verify:
 //
@@ -13,9 +13,9 @@ package cli_test
 //     appears in stderr; only catalog identifiers and spinner literals do.
 //  4. Stdout contains only data output (no braille/spinner text).
 //
-// Product routing: commands like "zia locations list" go through Cobra because
-// "zia" is a migrated product command. We inject a fake reader into App so no
-// network calls are made. The dump tests narrow to "--products zia" to avoid
+// Product routing: commands like "zia locations list" go through Cobra. We
+// inject a fake reader into App so no network calls are made. The dump tests
+// narrow to "--products zia" to avoid
 // the constraint that parseProducts() iterates knownProducts() (the static
 // catalog), not the injected catalog.
 

@@ -7,7 +7,8 @@ package main
 // These tests run only on Windows (GOOS=windows). They call run() directly with
 // the three most basic cases — version, --help, and an unknown command — and
 // assert exit codes only. There is NO golden-file diffing because the POSIX path
-// scrubbing in scrub() is not wired for Windows path separators.
+// scrubbing in scrub() is POSIX-oriented and does not normalize Windows path
+// separators.
 //
 // On POSIX platforms the golden surface tests (TestGoldenSurface) cover these
 // cases with full output comparison; this file exists solely to ensure the
