@@ -228,9 +228,12 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 
 ## Status
 
-The first experimental wiring (`zscalerctl browse --tui`) is implemented on
-`feature/tui` as a fixture-backed command. It validates the launch gates, stream
-ownership, and exit behavior without config, credentials, or live network.
+The experimental wiring (`zscalerctl browse --tui`) is implemented on `feature/tui`
+and now exercises the full real CLI path: gate → config → credentials → reader
+→ collector → BrowserData → launcher → Bubble Tea. The implementation is fully
+hermetic: tests inject fake readers to prove the success path, and missing
+credentials or invalid config are verified to prevent Bubble Tea from launching.
+No live tenant demo is required.
 
 ## Decision table
 

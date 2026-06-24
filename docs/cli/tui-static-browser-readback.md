@@ -359,13 +359,13 @@ zia / locations · 2/10 · 3 records
 | `?` | Help overlay appears; `q` or `esc` dismisses it and quits. |
 | `q` / `esc` / `ctrl+c` | Demo exits cleanly with status 0. |
 
-## Experimental `browse --tui` command
+## Fixture demo readback (`scripts/tui-browser-demo.go --collector-fixture`)
 
-The hidden `zscalerctl browse --tui` command wires the same Bubble Tea browser
-through the real Cobra command tree and `internal/tui/launcher`. It is
-fixture-backed, so it still loads no config, resolves no credentials, and contacts
-no Zscaler tenant. The readbacks below were produced by spawning the built
-`zscalerctl` binary in a real PTY and pressing the exit key.
+The standalone demo script remains the fastest way to exercise the browser shape
+without config or credentials. With `--collector-fixture` it runs the same
+`internal/tui/browserdata.Collector` path used by the hidden command, but backed
+by a fake reader. The readbacks below were produced by spawning the built demo
+binary in a real PTY and pressing `q`.
 
 ### 80x24 — initial frame
 
@@ -415,6 +415,16 @@ zia · 1/9
 ↑/↓ move · tab switch · enter select · ? help · esc/q quit
 ```
 
+## Experimental `browse --tui` command
+
+The hidden `zscalerctl browse --tui` command now wires the same Bubble Tea browser
+through the real Cobra command tree, `internal/tui/launcher`, and the real
+config/credential/reader path. The TUI gate is evaluated before any config,
+credential, or reader work, so `--format json`, `--output`, and non-TTY
+invocations fail with a usage error before secrets are touched. When the gate
+passes, the command loads config, builds the reader (injected fake reader in
+hermetic tests), and runs the collector before launching the TUI.
+
 ### Exit keys
 
 | Key | Result |
@@ -426,7 +436,7 @@ zia · 1/9
 ### Rejection readbacks (TTY context)
 
 The launch gate was exercised with a real PTY so the TTY checks pass, allowing
-each non-TTY rejection to surface on its own.
+each non-TTY rejection to surface on its own before any config or reader work.
 
 | Invocation | Error |
 | --- | --- |
@@ -449,7 +459,8 @@ These sequences are emitted only by `scripts/tui-browser-demo.go`. Normal
 The following commands were run from a non-TTY pipe and their stdout/stderr
 were inspected for terminal escape sequences. None contained any `ESC` bytes,
 OSC, DSR, bracketed-paste, mouse, or cursor hide/show sequences. `browse --tui`
-rejected at the TTY gate before any Bubble Tea program was constructed.
+rejected at the TTY gate before any config, credential, reader, or Bubble Tea
+program was constructed.
 
 - `zscalerctl version --format json`
 - `zscalerctl version --format pretty --color never`
@@ -466,6 +477,9 @@ and the gate-only `internal/tui` package do not import Bubble Tea.
 **Continue.** The fake-data browser is usable at 80x24, 60x16, and 120x32, shows
 explicit empty/error states, supports a help overlay, and keeps the TUI
 isolated behind the import boundary. The hidden experimental `browse --tui`
-command now proves the full Cobra → launcher → Bubble Tea path without loading
-config, credentials, or network data. The next step can replace the fixture
-data with a real reader-backed collection path.
+command now proves the full Cobra → gate → config → credentials → reader →
+collector → BrowserData → launcher → Bubble Tea path. The implementation is
+hermetically testable with injected fake readers, and missing credentials or
+config errors prevent the TUI from launching. The remaining work is to promote
+the command from experimental to supported, optionally with a live-tenant
+readback once credentials are available.

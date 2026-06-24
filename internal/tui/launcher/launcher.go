@@ -1,7 +1,7 @@
 // Package launcher is the bridge that evaluates TUI eligibility, collects
-// fixture BrowserData, and launches the Bubble Tea runtime. It does not import
-// github.com/charmbracelet/bubbletea directly; terminal program construction is
-// delegated to internal/tui/tea.
+// BrowserData from a caller-supplied collector, and launches the Bubble Tea
+// runtime. It does not import github.com/charmbracelet/bubbletea directly;
+// terminal program construction is delegated to internal/tui/tea.
 package launcher
 
 import (
@@ -20,16 +20,18 @@ import (
 // stdin/stdout/stderr are interactive TTYs and for supplying the terminal
 // streams that Bubble Tea will own.
 type Config struct {
-	Requested  bool
-	StdinTTY   bool
-	StdoutTTY  bool
-	StderrTTY  bool
-	Format     output.Format
-	ColorMode  output.ColorMode
-	OutputPath string
-	Env        []string
-	Input      io.Reader
-	Output     io.Writer
+	Requested      bool
+	StdinTTY       bool
+	StdoutTTY      bool
+	StderrTTY      bool
+	Format         output.Format
+	ColorMode      output.ColorMode
+	OutputPath     string
+	Env            []string
+	Input          io.Reader
+	Output         io.Writer
+	Collector      *browserdata.Collector
+	CollectOptions browserdata.CollectOptions
 }
 
 // LaunchError reports that the TUI was disabled by a launch gate. It carries the
@@ -42,12 +44,8 @@ func (e LaunchError) Error() string {
 	return fmt.Sprintf("tui disabled: %s", e.Reason)
 }
 
-// LaunchBrowser evaluates the TUI launch gates, collects a fixture BrowserData,
-// and runs the Bubble Tea browser. If a gate disables the TUI, it returns a
-// LaunchError (which the caller can wrap as a usage error). It does not load
-// config, resolve credentials, or contact Zscaler.
-func LaunchBrowser(ctx context.Context, cfg Config) error {
-	opts := tui.LaunchOptions{
+func launchOptions(cfg Config) tui.LaunchOptions {
+	return tui.LaunchOptions{
 		Requested:  cfg.Requested,
 		StdinTTY:   cfg.StdinTTY,
 		StdoutTTY:  cfg.StdoutTTY,
@@ -57,13 +55,35 @@ func LaunchBrowser(ctx context.Context, cfg Config) error {
 		OutputPath: cfg.OutputPath,
 		Env:        cfg.Env,
 	}
-	decision := tui.DecideLaunch(opts)
+}
+
+// CheckGate evaluates the TUI launch eligibility gates for the supplied config.
+// It returns a LaunchError if the TUI should not launch. Callers can use this
+// to reject --format json/ndjson, --output, non-TTY, and color-disabled
+// invocations before any config, credential, or reader work.
+func CheckGate(cfg Config) error {
+	decision := tui.DecideLaunch(launchOptions(cfg))
 	if !decision.Enabled {
 		return LaunchError{Reason: decision.Reason}
 	}
+	return nil
+}
 
-	collector := browserdata.NewCollectorFixture()
-	browserData, err := collector.Collect(ctx, browserdata.CollectOptions{ContinueOnError: true})
+// LaunchBrowser evaluates the TUI launch gates, collects BrowserData from the
+// supplied collector, and runs the Bubble Tea browser. If a gate disables the
+// TUI, it returns a LaunchError (which the caller can wrap as a usage error).
+func LaunchBrowser(ctx context.Context, cfg Config) error {
+	if err := CheckGate(cfg); err != nil {
+		return err
+	}
+
+	collector := cfg.Collector
+	collectOpts := cfg.CollectOptions
+	if collector == nil {
+		collector = browserdata.NewCollectorFixture()
+		collectOpts = browserdata.CollectOptions{ContinueOnError: true}
+	}
+	browserData, err := collector.Collect(ctx, collectOpts)
 	if err != nil {
 		return err
 	}
