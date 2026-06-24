@@ -4,12 +4,12 @@
 //
 // Usage:
 //
-//	go run ./scripts/tui-browser-demo.go [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
+//	go run ./scripts/tui-browser-demo.go [--projected-fixture] [--color auto|always|never] [--format auto|table|pretty|json|ndjson]
 //
 // This harness intentionally does not load zscalerctl config, resolve
 // credentials, contact Zscaler, run subprocesses, write files, or add CLI
-// command surface. It uses only hard-coded fake data to prove the product
-// browser shape on the feature/tui integration branch.
+// command surface. It uses either hard-coded fake data or a projected fixture
+// to prove the product browser shape on the feature/tui integration branch.
 package main
 
 import (
@@ -22,6 +22,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui"
+	"github.com/dvmrry/zscalerctl/internal/tui/browserdata"
 	tui_tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
 )
 
@@ -35,6 +36,7 @@ func main() {
 func run(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("tui-browser-demo", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
+	projectedFlag := flags.Bool("projected-fixture", false, "use the projected resource fixture via the browserdata adapter")
 	colorFlag := flags.String("color", string(output.ColorAuto), "color mode: auto, always, never")
 	formatFlag := flags.String("format", string(output.FormatAuto), "output format gate: auto, table, pretty, json, ndjson")
 	if err := flags.Parse(args); err != nil {
@@ -76,8 +78,19 @@ func run(ctx context.Context, args []string) error {
 	)
 	style.Width = output.TerminalWidth(os.Stdout)
 
+	var browserData tui_tea.BrowserData
+	if *projectedFlag {
+		var err error
+		browserData, err = browserdata.Build(browserdata.DemoCatalog(), browserdata.ProjectedFixtureSource{})
+		if err != nil {
+			return err
+		}
+	} else {
+		browserData = tui_tea.NewFakeBrowserData()
+	}
+
 	program := tea.NewProgram(
-		tui_tea.NewBrowserModel(style, tui_tea.NewFakeBrowserData()),
+		tui_tea.NewBrowserModel(style, browserData),
 		tea.WithContext(ctx),
 		tea.WithInput(os.Stdin),
 		tea.WithOutput(os.Stdout),

@@ -31,7 +31,7 @@ registered path exists.
 | `scripts/test-verify-semver-label.sh` | test | `make verify-release-automation` | Self-contained verifier test |
 | `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-tui-import-boundary.sh` | test | `make verify-tui-import-boundary` | Self-contained verifier test |
-| `scripts/tui-browser-demo.go` | dev | Manual `go run` on `feature/tui`; isolated static TUI browser demo | `go test ./internal/tui/...` |
+| `scripts/tui-browser-demo.go` | dev | Manual `go run` on `feature/tui`; isolated static TUI browser demo; supports `--projected-fixture` | `go test ./internal/tui/...` |
 | `scripts/tui-demo.go` | dev | Manual `go run` on `feature/tui`; isolated TUI demo harness | `go test ./internal/tui/...` |
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
