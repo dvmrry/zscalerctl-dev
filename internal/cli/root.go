@@ -75,7 +75,7 @@ func newRootCmd(a *App) *cobra.Command {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			return UsageError{Message: unknownCommandMessage(args[0])}
+			return UsageError{Message: unknownCommandMessage(args[0], a.resourceCatalog())}
 		},
 	}
 

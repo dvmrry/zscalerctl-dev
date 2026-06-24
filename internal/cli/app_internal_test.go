@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -159,7 +161,7 @@ func TestWriteUsageCoversAllCobraCommands(t *testing.T) {
 	root.InitDefaultCompletionCmd()
 
 	productSet := make(map[string]struct{})
-	for _, product := range knownProducts() {
+	for _, product := range knownProducts(a.resourceCatalog()) {
 		productSet[string(product)] = struct{}{}
 	}
 
@@ -180,7 +182,7 @@ func TestWriteUsageCoversAllCobraCommands(t *testing.T) {
 	})
 
 	var b bytes.Buffer
-	a.writeUsage(&b)
+	a.writeUsage(&b, a.resourceCatalog())
 	usage := b.String()
 
 	containsCommand := func(usage, name string) bool {
@@ -205,4 +207,121 @@ func TestWriteUsageCoversAllCobraCommands(t *testing.T) {
 			t.Errorf("coverage check spuriously accepted fake command %q", "auth-status")
 		}
 	})
+}
+
+// TestCatalogSourceOfTruth verifies that an injected catalog is the single source
+// of truth for the command tree, introspection output, and shell completion.
+func TestCatalogSourceOfTruth(t *testing.T) {
+	t.Parallel()
+
+	product := resources.Product("testp")
+	catalog := resources.ResourceCatalog{
+		{
+			Product:    product,
+			Name:       "widgets",
+			Operations: resources.ReadOperations(),
+			Fields: []resources.FieldSpec{
+				{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+				{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			},
+		},
+		{
+			Product:    product,
+			Name:       "gadgets",
+			Operations: []resources.Operation{{Name: "show", Capability: resources.CapabilityRead}},
+			Fields: []resources.FieldSpec{
+				{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			},
+		},
+	}
+
+	a := NewWithOptions(&bytes.Buffer{}, &bytes.Buffer{}, nil, Options{
+		Catalog: catalog,
+	})
+
+	// Command tree should contain exactly the product from the injected catalog.
+	root := a.buildCommandTree(globalOptions{})
+	var productNames []string
+	for _, cmd := range root.Commands() {
+		if !cmd.Hidden {
+			productNames = append(productNames, cmd.Name())
+		}
+	}
+	if !contains(productNames, string(product)) {
+		t.Errorf("command tree missing product %q; got commands %v", product, productNames)
+	}
+
+	// Introspection catalog should match the injected catalog.
+	doc := IntrospectTree(a)
+	if len(doc.Catalog.Products) != 1 || doc.Catalog.Products[0] != string(product) {
+		t.Errorf("introspect products = %v, want [%s]", doc.Catalog.Products, product)
+	}
+	if len(doc.Catalog.Resources) != 2 {
+		t.Errorf("introspect resources count = %d, want 2", len(doc.Catalog.Resources))
+	}
+
+	// Completion should use the injected catalog.
+	resources := a.completionResourceNames(product)
+	wantResources := []string{"gadgets", "widgets"}
+	if strings.Join(resources, ",") != strings.Join(wantResources, ",") {
+		t.Errorf("completion resources = %v, want %v", resources, wantResources)
+	}
+
+	// Resource hints in usage errors should use the injected catalog.
+	msg := unknownCommandMessage("widgets", catalog)
+	if !strings.Contains(msg, "is a resource") {
+		t.Errorf("unknownCommandMessage for injected resource = %q, want resource hint", msg)
+	}
+}
+
+// TestEmptyCatalogProducesConsistentSurface verifies that an injected empty
+// catalog does not panic and produces a consistent, empty surface.
+func TestEmptyCatalogProducesConsistentSurface(t *testing.T) {
+	t.Parallel()
+
+	var out, errBuf bytes.Buffer
+	a := NewWithOptions(&out, &errBuf, nil, Options{
+		Catalog: resources.ResourceCatalog{},
+	})
+
+	// Command tree should contain no product commands.
+	root := a.buildCommandTree(globalOptions{})
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "testp" {
+			t.Errorf("command tree contains product %q from empty catalog", cmd.Name())
+		}
+	}
+
+	// Introspection should report an empty catalog.
+	doc := IntrospectTree(a)
+	if len(doc.Catalog.Products) != 0 {
+		t.Errorf("introspect products from empty catalog = %v, want []", doc.Catalog.Products)
+	}
+	if len(doc.Catalog.Resources) != 0 {
+		t.Errorf("introspect resources from empty catalog = %d, want 0", len(doc.Catalog.Resources))
+	}
+
+	// Bare invocation with no args should still exit 2 without panicking.
+	if err := a.Run(context.Background(), nil); err == nil {
+		t.Error("Run with empty args and empty catalog error = nil, want usage error")
+	} else if !errors.Is(err, ErrUsage) {
+		t.Errorf("Run with empty args and empty catalog error = %v, want ErrUsage", err)
+	}
+
+	// Help should still render without panicking.
+	if err := a.Run(context.Background(), []string{"--help"}); err != nil {
+		t.Errorf("Run --help with empty catalog error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), "zscalerctl") {
+		t.Errorf("Run --help output = %q, want zscalerctl help", out.String())
+	}
+}
+
+func contains(names []string, want string) bool {
+	for _, n := range names {
+		if n == want {
+			return true
+		}
+	}
+	return false
 }

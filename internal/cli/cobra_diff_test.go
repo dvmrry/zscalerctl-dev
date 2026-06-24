@@ -444,3 +444,42 @@ func TestCobraDiff_HelpCobraFormatted(t *testing.T) {
 		t.Errorf("App.Run(diff --help) stderr = %q, want empty", errBuf.String())
 	}
 }
+
+// TestCobraDiff_DashPrefixedPositionals_TerminatorBeforeBoth confirms that
+// "diff -- -old-dump new-dump" treats -old-dump as a positional directory, not
+// as an unknown flag. The command should reach diff validation (invalid dump)
+// rather than fail with a Cobra flag-parsing error.
+func TestCobraDiff_DashPrefixedPositionals_TerminatorBeforeBoth(t *testing.T) {
+	t.Parallel()
+
+	app, _, _ := newDiffApp(t, nil, nil)
+	err := app.Run(context.Background(), []string{"diff", "--", "-old-dump", "new-dump"})
+	if err == nil {
+		t.Fatal("App.Run(diff -- -old-dump new-dump) error = nil, want error")
+	}
+	if strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "unknown shorthand") {
+		t.Errorf("App.Run(diff -- -old-dump new-dump) error = %q, want not a flag error", err.Error())
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(diff -- -old-dump new-dump) error = %v, want ErrUsage (invalid dump)", err)
+	}
+}
+
+// TestCobraDiff_DashPrefixedPositionals_TerminatorBetween confirms that
+// "diff old-dump -- -new-dump" treats -new-dump as a positional directory, not
+// as an unknown flag.
+func TestCobraDiff_DashPrefixedPositionals_TerminatorBetween(t *testing.T) {
+	t.Parallel()
+
+	app, _, _ := newDiffApp(t, nil, nil)
+	err := app.Run(context.Background(), []string{"diff", "old-dump", "--", "-new-dump"})
+	if err == nil {
+		t.Fatal("App.Run(diff old-dump -- -new-dump) error = nil, want error")
+	}
+	if strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "unknown shorthand") {
+		t.Errorf("App.Run(diff old-dump -- -new-dump) error = %q, want not a flag error", err.Error())
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(diff old-dump -- -new-dump) error = %v, want ErrUsage (invalid dump)", err)
+	}
+}

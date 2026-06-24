@@ -181,7 +181,7 @@ func TestSplitGlobalArgsBoolFlag(t *testing.T) {
 	t.Run("global bool flag is extracted", func(t *testing.T) {
 		t.Parallel()
 		// --no-cache is a bool flag: it needs no following value.
-		globalArgs, rest, help, err := splitGlobalArgs([]string{"--no-cache", "version"})
+		globalArgs, rest, help, _, err := splitGlobalArgs([]string{"--no-cache", "version"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -199,7 +199,7 @@ func TestSplitGlobalArgsBoolFlag(t *testing.T) {
 	t.Run("unknown flag passes through to rest", func(t *testing.T) {
 		t.Parallel()
 		// --nope is not a global flag; it should be left for the subcommand.
-		globalArgs, rest, help, err := splitGlobalArgs([]string{"--nope", "version"})
+		globalArgs, rest, help, _, err := splitGlobalArgs([]string{"--nope", "version"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

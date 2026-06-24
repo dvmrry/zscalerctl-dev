@@ -81,9 +81,9 @@ func (a *App) resourceNames(product resources.Product) []string {
 	return names
 }
 
-func allResourceNames() []string {
+func allResourceNames(catalog resources.ResourceCatalog) []string {
 	seen := map[string]struct{}{}
-	for _, spec := range resources.Catalog() {
+	for _, spec := range catalog {
 		seen[spec.Name] = struct{}{}
 	}
 	names := make([]string, 0, len(seen))
