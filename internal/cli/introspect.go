@@ -130,8 +130,8 @@ var globalFlagEnums = map[string][]string{
 // The real Cobra commands are enumerated by calling WalkCobraTree — the same
 // shared depth-first walk used by scripts/gen-cli-docs.go for markdown
 // generation. Virtual "{product} {resource} {op}" entries (e.g. "zia locations
-// list") are sourced separately from resources.Catalog(), which is already the
-// single source of truth for resources.
+// list") are sourced from the App's resolved catalog, so an injected or empty
+// catalog produces consistent introspection output.
 //
 // CLIVersion is intentionally left empty. The caller (e.g. newIntrospectCmd in
 // Task 1.2) is responsible for setting it from version.Current().
@@ -141,13 +141,14 @@ func IntrospectTree(a *App) IntrospectDoc {
 	// subcommand is included in both the docs and the introspect output.
 	root.InitDefaultCompletionCmd()
 
+	catalog := a.resourceCatalog()
 	doc := IntrospectDoc{
 		Schema:            schemaURL,
 		IntrospectVersion: "1",
 		CLIVersion:        "",
 		ReadOnly:          true,
 		GlobalFlags:       buildGlobalFlags(),
-		Catalog:           buildCatalog(),
+		Catalog:           buildCatalog(catalog),
 		ExitCodes:         buildExitCodes(),
 	}
 
@@ -161,11 +162,11 @@ func IntrospectTree(a *App) IntrospectDoc {
 	WalkCobraTree(root, func(cmd *cobra.Command, path string) {
 		// A command is a product group node if it is a direct child of root
 		// (no space in path) and its name is a known product in the catalog.
-		if !strings.Contains(path, " ") && knownProductCommand(cmd.Name()) {
+		if !strings.Contains(path, " ") && knownProductCommand(cmd.Name(), catalog) {
 			// Do not emit a CommandDoc for the bare "zia" / "zpa" / … node.
 			// Synthesize virtual entries for each {product} {resource} {op}
 			// triple from the catalog instead.
-			cmds = append(cmds, buildProductResourceDocs(cmd, path)...)
+			cmds = append(cmds, buildProductResourceDocs(cmd, path, catalog)...)
 			return
 		}
 		cmds = append(cmds, buildSingleCommandDoc(cmd, path))
@@ -196,24 +197,22 @@ func buildGlobalFlags() []FlagDoc {
 	return docs
 }
 
-// buildCatalog converts resources.Catalog() into a CatalogDoc. Fields are the
+// buildCatalog converts a ResourceCatalog into a CatalogDoc. Fields are the
 // standard-mode projected field names (what an agent can use with --fields /
 // --filter). Secret and standard-excluded fields are omitted.
-func buildCatalog() CatalogDoc {
-	cat := resources.Catalog()
-
+func buildCatalog(catalog resources.ResourceCatalog) CatalogDoc {
 	// Collect ordered, deduplicated product list.
 	seen := make(map[resources.Product]bool)
 	products := make([]string, 0)
-	for _, spec := range cat {
+	for _, spec := range catalog {
 		if !seen[spec.Product] {
 			seen[spec.Product] = true
 			products = append(products, string(spec.Product))
 		}
 	}
 
-	resDocs := make([]ResourceDoc, 0, len(cat))
-	for _, spec := range cat {
+	resDocs := make([]ResourceDoc, 0, len(catalog))
+	for _, spec := range catalog {
 		ops := readOperationNames(spec)
 		fields := spec.FieldOrder(redact.ModeStandard)
 		resDocs = append(resDocs, ResourceDoc{
@@ -304,14 +303,13 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 // {product} {resource} {op} triple in the catalog. The product Cobra command
 // provides inherited flag context (the globals); each virtual entry gets the
 // inherited flag names from it.
-func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []CommandDoc {
+func buildProductResourceDocs(productCmd *cobra.Command, productPath string, catalog resources.ResourceCatalog) []CommandDoc {
 	product := resources.Product(productCmd.Name())
-	cat := resources.Catalog()
 
 	inheritedNames := buildInheritedFlagNames(productCmd)
 
 	var docs []CommandDoc
-	for _, spec := range cat {
+	for _, spec := range catalog {
 		if spec.Product != product {
 			continue
 		}
@@ -460,7 +458,7 @@ func buildInheritedFlagNames(cmd *cobra.Command) []string {
 //     responsibility.
 //   - IntrospectTree (JSON agent map): drives the real-command entries. Virtual
 //     "{product} {resource} {op}" entries (e.g. "zia locations list") are NOT
-//     produced here; they are sourced separately from resources.Catalog() by
+//     produced here; they are sourced from the App's resolved catalog by
 //     IntrospectTree.
 //
 // Walking from the same function ensures that the generated markdown and the

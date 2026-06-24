@@ -60,21 +60,23 @@ func newRootCmd(a *App) *cobra.Command {
 		// suggestions. 2 is the cobra default (set here explicitly for clarity).
 		SuggestionsMinimumDistance: 2,
 
-		// RunE: latent guard against unknown top-level commands. Today execCobra is
-		// only called when isMigrated(rest[0]) is true, so this RunE cannot fire for
-		// any valid dispatch path — it is a forward-compatibility guard for the moment
-		// Cobra owns the full root. TraverseChildren=true means that without this, an
-		// unknown command would fall through to the root and print help (exit 0);
-		// with this, it exits 2 via UsageError (M-9 from the adversarial review).
+		// RunE: latent guard against unknown top-level commands. After the hybrid
+		// collapse, execCobra is called for all recognized commands, so this RunE
+		// is a defensive safety net rather than the primary unknown-command handler.
+		// runParsed still filters unknown commands to unknownCommandMessage before
+		// dispatch, preserving the CLI's product/resource hints. TraverseChildren=true
+		// means that without this, an unknown command would fall through to the root
+		// and print help (exit 0); with this, it exits 2 via UsageError (M-9 from the
+		// adversarial review).
 		//
 		// INVARIANT: this must NOT change any current behaviour. Bare "zscalerctl"
-		// (empty args) goes through the legacy empty-rest path in runParsed and never
-		// reaches Cobra. Unknown commands exit 2 via the legacy isKnownCommand path.
+		// (empty args) goes through the empty-rest path in runParsed and never
+		// reaches Cobra. Unknown commands exit 2 via the isKnownCommand path.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
 			}
-			return UsageError{Message: unknownCommandMessage(args[0])}
+			return UsageError{Message: unknownCommandMessage(args[0], a.resourceCatalog())}
 		},
 	}
 

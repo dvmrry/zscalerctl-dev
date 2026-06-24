@@ -319,6 +319,63 @@ func TestCobraDump_ConfigError(t *testing.T) {
 	}
 }
 
+// TestCobraDump_DashPrefixedOutValue_Terminator confirms that
+// "dump --out -- -weird-path" treats -weird-path as the value of --out, not as
+// an unknown flag. The dump should proceed to the output directory named
+// literally -weird-path.
+func TestCobraDump_DashPrefixedOutValue_Terminator(t *testing.T) {
+	t.Parallel()
+
+	reader := dumpFakeReader{
+		list: []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+			"id":   "1",
+			"name": "test",
+		})},
+	}
+	outDir := "-weird-path"
+	app, out, errBuf := newDumpApp(t, reader, nil)
+
+	// Use an absolute path so the dump creates the literal -weird-path directory
+	// inside a temp dir without changing the process working directory (this test
+	// runs in parallel with other tests).
+	outDir = filepath.Join(t.TempDir(), outDir)
+
+	err := app.Run(context.Background(), []string{"dump", "--out", "--", outDir})
+	if err != nil {
+		t.Fatalf("App.Run(dump --out -- -weird-path) error = %v, want nil", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(dump --out -- -weird-path) stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errBuf.String(), "dump written: "+outDir) {
+		t.Errorf("App.Run(dump --out -- -weird-path) stderr = %q, want 'dump written: %s'", errBuf.String(), outDir)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "manifest.json")); err != nil {
+		t.Errorf("os.Stat(%s/manifest.json) = %v, want nil", outDir, err)
+	}
+}
+
+// TestCobraDump_BoolFlag_TerminatorStillProtectsPositionals confirms that when
+// the token before "--" is a boolean local flag (e.g. --force), the terminator
+// is still reinserted so the following dash-prefixed token is treated as a
+// positional, not a flag. The command should fail with an extra-positional usage
+// error, not an unknown flag error.
+func TestCobraDump_BoolFlag_TerminatorStillProtectsPositionals(t *testing.T) {
+	t.Parallel()
+
+	app, _, _ := newDumpApp(t, nil, nil)
+	err := app.Run(context.Background(), []string{"dump", "--force", "--", "-extra"})
+	if err == nil {
+		t.Fatal("App.Run(dump --force -- -extra) error = nil, want UsageError")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(dump --force -- -extra) error = %v, want ErrUsage (extra positional)", err)
+	}
+	if strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "unknown shorthand") {
+		t.Errorf("App.Run(dump --force -- -extra) error = %q, want not a flag error", err.Error())
+	}
+}
+
 // ── local fake readers for cobra_dump_test.go ────────────────────────────────
 
 // dumpFakeReader implements cli.ResourceReader for dump tests.

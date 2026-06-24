@@ -465,3 +465,117 @@ func TestHybridRouting_AuthGoesViaCobra(t *testing.T) {
 		t.Errorf("App.Run(auth status) stderr = %q, want empty", errBuf.String())
 	}
 }
+
+// TestLeadingTerminator_VersionNotReinserted confirms the deliberate contract
+// for "zscalerctl -- version": a leading "--" after the program name is NOT
+// reinserted before Cobra dispatch, so the command behaves exactly like
+// "zscalerctl version" (exit 0, version output).
+func TestLeadingTerminator_VersionNotReinserted(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--format", "table", "--", "version"})
+	if err != nil {
+		t.Fatalf("App.Run(--format table -- version) error = %v, want nil", err)
+	}
+	got := out.String()
+	for _, key := range []string{"Version", "Commit", "Date", "Go", "Platform"} {
+		if !strings.Contains(got, key) {
+			t.Errorf("App.Run(--format table -- version) stdout = %q, want key %q", got, key)
+		}
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(-- version) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// ── Bare invocation contract lock (pre-#14 collapse guardrail) ───────────────
+
+// TestBareInvocation_NoArgs_ExitTwo confirms that "zscalerctl" with no arguments
+// returns ErrUsage (exit 2) and the "missing command" message in a non-TTY
+// context. This is the critical pre-collapse guard: bare invocation must NOT
+// accidentally route through the Cobra root and exit 0.
+func TestBareInvocation_NoArgs_ExitTwo(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testVersionApp(t)
+	err := a.Run(context.Background(), nil)
+	if err == nil {
+		t.Fatal("App.Run(nil) error = nil, want ErrUsage")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(nil) error = %v, want ErrUsage (exit 2)", err)
+	}
+	if !strings.Contains(err.Error(), "missing command") {
+		t.Errorf("App.Run(nil) error = %q, want 'missing command'", err.Error())
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(nil) stdout = %q, want empty", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(nil) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestBareInvocation_HelpFlag_ExitZero confirms that "zscalerctl --help" exits 0
+// and renders the root usage help.
+func TestBareInvocation_HelpFlag_ExitZero(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"--help"})
+	if err != nil {
+		t.Fatalf("App.Run(--help) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "usage: zscalerctl") {
+		t.Errorf("App.Run(--help) stdout = %q, want usage header", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(--help) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestBareInvocation_HelpCommand_ExitZero confirms that "zscalerctl help" exits 0
+// and renders the root usage help.
+func TestBareInvocation_HelpCommand_ExitZero(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"help"})
+	if err != nil {
+		t.Fatalf("App.Run(help) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "usage: zscalerctl") {
+		t.Errorf("App.Run(help) stdout = %q, want usage header", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(help) stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestBareInvocation_HelpUnknownTopic_ExitTwo captures the current deliberate
+// contract for "zscalerctl help <unknown>": it returns ErrUsage (exit 2) with an
+// "unknown help topic" message.
+func TestBareInvocation_HelpUnknownTopic_ExitTwo(t *testing.T) {
+	t.Parallel()
+
+	a, out, errBuf := testVersionApp(t)
+	err := a.Run(context.Background(), []string{"help", "frobnicate"})
+	if err == nil {
+		t.Fatal("App.Run(help frobnicate) error = nil, want ErrUsage")
+	}
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("App.Run(help frobnicate) error = %v, want ErrUsage (exit 2)", err)
+	}
+	if !strings.Contains(err.Error(), "unknown help topic") {
+		t.Errorf("App.Run(help frobnicate) error = %q, want 'unknown help topic'", err.Error())
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(help frobnicate) stdout = %q, want empty", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(help frobnicate) stderr = %q, want empty", errBuf.String())
+	}
+}

@@ -12,7 +12,7 @@ package cli_test
 //     bogus resource -> ResourceNotFoundError (exit 4 sentinel).
 //  3. No-creds path: missing reader -> ErrMissingCredentials (exit 3 sentinel).
 //  4. url-lookup: zia url-lookup reaches runURLLookup via the Cobra path.
-//  5. isMigrated gate: product commands go through Cobra, not legacy path.
+//  5. Cobra routing: product commands go through Cobra.
 //  6. Phase 2c: resource-specific --help (SetHelpFunc) and catalog completion.
 
 import (
@@ -569,12 +569,12 @@ func TestProductCmd_ZIALocations_StillRoutesToProductRunE(t *testing.T) {
 	}
 }
 
-// -- isMigrated gate / hybrid routing -----------------------------------------
+// -- Cobra routing ------------------------------------------------------------
 
-// TestProductCmd_GoesViaCobra verifies that product commands are now routed
-// through Cobra (not the legacy path). The positive signal is that a credential
-// error is NOT a Cobra unknown-command error -- confirming the Cobra root
-// registered the product command and attempted to execute it.
+// TestProductCmd_GoesViaCobra verifies that product commands are routed through
+// Cobra. The positive signal is that a credential error is NOT a Cobra
+// unknown-command error -- confirming the Cobra root registered the product
+// command and attempted to execute it.
 //
 // Uses cli.KnownProductNames() (derived from the live catalog) so a future 6th
 // product is automatically covered without touching this test.
@@ -842,5 +842,39 @@ func TestProductCmd_ValidArgsFunction_UnknownResource(t *testing.T) {
 		if c == "list" || c == "get" || c == "show" {
 			t.Errorf("completions for unknown resource = %v, unexpected op %q", completions, c)
 		}
+	}
+}
+
+// TestProductCmd_DashPrefixedID_Terminator confirms that
+// "zia locations get -- --dash-id" treats --dash-id as the resource ID, not as
+// an unknown flag. The reader must receive a Get call with id="--dash-id".
+func TestProductCmd_DashPrefixedID_Terminator(t *testing.T) {
+	t.Parallel()
+
+	reader := &recordingResourceReader{
+		fakeResourceReader: fakeResourceReader{
+			get: resources.NewSourceRecord(map[string]any{
+				"id":   "--dash-id",
+				"name": "HQ",
+			}),
+		},
+	}
+	a, out, errBuf := newProductApp(t, reader)
+	err := a.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "--", "--dash-id"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations get -- --dash-id) error = %v, want nil", err)
+	}
+	if len(reader.calls) != 1 {
+		t.Fatalf("reader.calls = %d, want 1", len(reader.calls))
+	}
+	call := reader.calls[0]
+	if call.op != "get" || call.product != resources.ProductZIA || call.resource != "locations" || call.id != "--dash-id" {
+		t.Errorf("reader call = %+v, want {get, zia, locations, --dash-id}", call)
+	}
+	if !strings.Contains(out.String(), "--dash-id") {
+		t.Errorf("App.Run(zia locations get -- --dash-id) stdout = %q, want '--dash-id' in output", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(zia locations get -- --dash-id) stderr = %q, want empty", errBuf.String())
 	}
 }

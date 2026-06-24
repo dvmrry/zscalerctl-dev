@@ -23,11 +23,13 @@ func completionShellNames() string {
 }
 
 // completionCommandNames returns the top-level command names for the man-page
-// drift gate and agent-docs drift gate. It must stay in sync with the actual
-// command tree.
+// drift gate and agent-docs drift gate. It is intentionally static: it mirrors
+// the released CLI surface documented by the man page, which is derived from
+// the full static catalog. The live command tree is built from App.catalog and
+// may differ in tests that inject a smaller catalog.
 func completionCommandNames() []string {
 	commands := []string{"doctor", "auth", "config", "schema", "dump", "diff", "completion", "version", "help", "introspect"}
-	commands = append(commands, productNames(knownProducts())...)
+	commands = append(commands, productNames(knownProducts(resources.Catalog()))...)
 	sort.Strings(commands)
 	return commands
 }
@@ -52,9 +54,9 @@ func (a *App) resourceNames(product resources.Product) []string {
 	return names
 }
 
-func allResourceNames() []string {
+func allResourceNames(catalog resources.ResourceCatalog) []string {
 	seen := map[string]struct{}{}
-	for _, spec := range resources.Catalog() {
+	for _, spec := range catalog {
 		seen[spec.Name] = struct{}{}
 	}
 	names := make([]string, 0, len(seen))
