@@ -7,7 +7,16 @@ cd "$repo_root"
 module="github.com/charmbracelet/bubbletea"
 tea_pkg="github.com/dvmrry/zscalerctl/internal/tui/tea"
 
-for target in ./cmd/zscalerctl ./internal/cli ./internal/tui; do
+targets=(
+  ./cmd/zscalerctl
+  ./internal/cli
+  ./internal/tui
+  ./internal/tui/data
+  ./internal/tui/browserdata
+  ./internal/tui/launcher
+)
+
+for target in "${targets[@]}"; do
   if [[ ! -d "$target" ]]; then
     continue
   fi

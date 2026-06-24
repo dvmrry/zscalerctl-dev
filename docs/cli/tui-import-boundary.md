@@ -25,7 +25,8 @@ layer (`internal/tui/browserdata`, `internal/tui/launcher`) but must not
 (`internal/tui/tea`).
 
 Bubble Tea imports are allowed only in isolated TUI entrypoints such as
-`internal/tui/tea`, `scripts/tui-demo.go`, and `scripts/tui-browser-demo.go`.
+`internal/tui/tea`, `cmd/zscalerctl-tui`, `scripts/tui-demo.go`, and
+`scripts/tui-browser-demo.go`.
 
 ## Package Shape
 
@@ -35,7 +36,8 @@ Bubble Tea imports are allowed only in isolated TUI entrypoints such as
 | `internal/tui/data` | No | Neutral `BrowserData` view model shared by collector and TUI. |
 | `internal/tui/browserdata` | No | Catalog filtering, reader coordination, projection, `BrowserData` conversion. |
 | `internal/tui/launcher` | No | Gate evaluation and `BrowserData` collection; Bubble-free bridge. |
-| `internal/tui/tea` | Yes | Bubble Tea `tea.Model` implementation used by isolated demos. |
+| `internal/tui/tea` | Yes | Bubble Tea `tea.Model` implementation used by isolated TUI entrypoints. |
+| `cmd/zscalerctl-tui` | Yes | Experimental standalone TUI binary. |
 | `scripts/tui-demo.go` | Yes (via `internal/tui/tea`) | Explicit, development-only demo harness. |
 | `scripts/tui-browser-demo.go` | Yes (via `internal/tui/tea`) | Explicit, development-only static browser demo. |
 | `cmd/zscalerctl` | No | Normal CLI entry point. |

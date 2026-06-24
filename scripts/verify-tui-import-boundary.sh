@@ -3,9 +3,10 @@ set -euo pipefail
 
 # Enforce the TUI import boundary: Bubble Tea and the Bubble Tea runtime package
 # (internal/tui/tea) must not be transitively imported by normal CLI startup
-# packages (cmd/zscalerctl, internal/cli) or by the gate-only internal/tui
-# package. They are allowed only in isolated TUI entrypoints such as
-# scripts/tui-demo.go and scripts/tui-browser-demo.go.
+# packages (cmd/zscalerctl, internal/cli) or by the Bubble-free TUI packages
+# (internal/tui, internal/tui/data, internal/tui/browserdata, internal/tui/launcher).
+# They are allowed only in isolated TUI entrypoints such as cmd/zscalerctl-tui,
+# scripts/tui-demo.go, and scripts/tui-browser-demo.go.
 #
 # This script uses `go list -deps` rather than a textual import scan so that a
 # transitive dependency through any intermediate package is caught. The boundary
@@ -21,9 +22,18 @@ cd "$repo_root"
 module="${ZSCALERCTL_TUI_BUBBLETEA_MODULE:-github.com/charmbracelet/bubbletea}"
 tea_pkg="${ZSCALERCTL_TUI_TEA_PKG:-github.com/dvmrry/zscalerctl/internal/tui/tea}"
 
+targets=(
+  ./cmd/zscalerctl
+  ./internal/cli
+  ./internal/tui
+  ./internal/tui/data
+  ./internal/tui/browserdata
+  ./internal/tui/launcher
+)
+
 fail=0
 
-for target in ./cmd/zscalerctl ./internal/cli ./internal/tui; do
+for target in "${targets[@]}"; do
   if [[ ! -d "$target" ]]; then
     continue
   fi

@@ -2,12 +2,13 @@
 
 This readback belongs to the `feature/tui` integration line. It records the
 visual behavior of the static/fake-data product browser demo
-(`scripts/tui-browser-demo.go`) and confirms that normal `zscalerctl` CLI
-paths remain free of TUI terminal sequences.
+(`scripts/tui-browser-demo.go` and `cmd/zscalerctl-tui`) and confirms that normal
+`zscalerctl` CLI paths remain free of TUI terminal sequences.
 
 ## Scope
 
 - Browser demo: `go run -mod=vendor ./scripts/tui-browser-demo.go` (default), or with `--projected-fixture`, or with `--collector-fixture`.
+- Standalone binary: `go run -mod=vendor ./cmd/zscalerctl-tui` (default), or with `--fixture`, or with `--collector-fixture`.
 - Model: `internal/tui/tea.BrowserModel`.
 - Default data: hard-coded fake products, resources, and records via `NewFakeBrowserData()`.
 - Projected data: `internal/tui/browserdata.Build` adapts fake projected records into `BrowserData`.
@@ -361,9 +362,10 @@ zia / locations · 2/10 · 3 records
 
 ## Fixture demo readback (`scripts/tui-browser-demo.go --collector-fixture`)
 
-The standalone demo script remains the fastest way to exercise the browser shape
-without config or credentials. With `--collector-fixture` it runs the same
-`internal/tui/browserdata.Collector` path used by the hidden command, but backed
+The standalone binary (`cmd/zscalerctl-tui`) and the standalone demo script are
+the fastest ways to exercise the browser shape without config or credentials.
+With `--collector-fixture` they run the same `internal/tui/browserdata.Collector`
+path used by the removed `browse --tui` command, but backed
 by a fake reader. The readbacks below were produced by spawning the built demo
 binary in a real PTY and pressing `q`.
 
@@ -422,7 +424,7 @@ command tree. Bubble Tea v1.x runs package-init terminal probing that can emit
 OSC/DSR sequences before `main()`, so the TUI runtime must not be linked into the
 normal `zscalerctl` binary. The gate/collector path (`internal/tui/launcher`)
 remains available, but the actual Bubble Tea launch is restricted to isolated TUI
-entrypoints such as `scripts/tui-browser-demo.go` or a future `cmd/zscalerctl-tui`.
+entrypoints such as `cmd/zscalerctl-tui` or `scripts/tui-browser-demo.go`.
 
 Rejection readbacks were captured before the command was removed; they now live
 only in the integration history. The important invariant is that no normal
@@ -463,8 +465,8 @@ and the gate-only `internal/tui` package do not import Bubble Tea.
 overlay, and keeps the TUI isolated behind the import boundary. The Bubble Tea
 runtime must remain outside the normal `zscalerctl` binary because Bubble Tea
 v1.x package-init probing can corrupt interactive JSON output. The hidden
-`browse --tui` command has been removed; a future TUI should be exposed only
-through an isolated entrypoint (e.g. `scripts/tui-browser-demo.go` or a
-`cmd/zscalerctl-tui` subprocess) that imports `internal/tui/tea` and Bubble Tea.
-The remaining work is to design and approve that isolation mechanism before any
-user-facing TUI launch.
+`browse --tui` command has been removed; the TUI is now exposed only through an
+isolated entrypoint (`cmd/zscalerctl-tui` or `scripts/tui-browser-demo.go`) that
+imports `internal/tui/tea` and Bubble Tea. The remaining work is to add live
+config, credential, and reader support to `cmd/zscalerctl-tui` and capture a
+live-tenant readback.
