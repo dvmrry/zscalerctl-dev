@@ -576,10 +576,10 @@ func parseFieldsList(raw string) []string {
 	return out
 }
 
-// RequestedFormatRaw returns the --format value as parsed (auto/table/json/
-// pretty), defaulting to auto, without resolving auto against a TTY. The error
-// renderer in main uses it so error output follows the same format the data
-// path will use.
+// RequestedFormatRaw returns the --format value as parsed
+// (auto/table/json/ndjson/pretty), defaulting to auto, without resolving auto
+// against a TTY. The error renderer in main uses it so error output follows the
+// same format the data path will use.
 func RequestedFormatRaw(args []string) output.Format {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -603,31 +603,6 @@ func RequestedFormatRaw(args []string) output.Format {
 		return output.FormatAuto
 	}
 	return output.FormatAuto
-}
-
-func RequestedFormat(args []string) output.Format {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			return output.FormatTable
-		}
-		name, hasValue := flagName(arg)
-		if name != "format" {
-			continue
-		}
-		value := ""
-		if hasValue {
-			_, after, _ := strings.Cut(arg, "=")
-			value = after
-		} else if i+1 < len(args) {
-			value = args[i+1]
-		}
-		if output.Format(strings.ToLower(strings.TrimSpace(value))) == output.FormatJSON {
-			return output.FormatJSON
-		}
-		return output.FormatTable
-	}
-	return output.FormatTable
 }
 
 func splitGlobalArgs(args []string) ([]string, []string, bool, int, error) {
@@ -2065,7 +2040,11 @@ func (a *App) writeProjectedRecords(
 	if err != nil {
 		return err
 	}
-	warnUnknownFilterKeys(a.err, spec, opts.filters)
+	errW := redact.NewWriter(a.err, cfg.Defaults.Redaction)
+	warnUnknownFilterKeys(errW, spec, opts.filters)
+	if err := errW.Close(); err != nil {
+		return err
+	}
 	// Narrow rows before --fields narrows columns, so a filter may reference
 	// any projected field even when it is not selected for display. An empty
 	// match is success: every format renders its empty form and exits 0.

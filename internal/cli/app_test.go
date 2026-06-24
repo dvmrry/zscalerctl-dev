@@ -1366,6 +1366,36 @@ func TestResourceListWarnsUnknownFilterKeyButKeepsStdoutClean(t *testing.T) {
 	}
 }
 
+func TestResourceListRedactsUnknownFilterKeyWarning(t *testing.T) {
+	t.Parallel()
+
+	const secretKey = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz"
+	reader := fakeResourceReader{
+		list: []resources.SourceRecord{
+			resources.NewSourceRecord(map[string]any{"id": "1", "name": "HQ"}),
+		},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Reader:  reader,
+		Catalog: filterWarningCatalog(),
+	})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list", "--filter", secretKey + "=HQ"})
+	if err != nil {
+		t.Fatalf("App.Run(list --filter secret-like unknown key) error = %v, want nil", err)
+	}
+	if strings.Contains(errOut.String(), "abcdefghijklmnopqrstuvwxyz") {
+		t.Errorf("App.Run(list --filter secret-like unknown key) stderr = %q, want bearer token redacted", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "<REDACTED:SECRET>") {
+		t.Errorf("App.Run(list --filter secret-like unknown key) stderr = %q, want redaction marker", errOut.String())
+	}
+	if strings.Contains(out.String(), "warning:") {
+		t.Errorf("App.Run(list --filter secret-like unknown key) stdout = %q, want no warning", out.String())
+	}
+}
+
 func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
 	t.Parallel()
 
