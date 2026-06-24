@@ -77,7 +77,7 @@ func run(ctx context.Context, args []string) error {
 	style.Width = output.TerminalWidth(os.Stdout)
 
 	program := tea.NewProgram(
-		tui_tea.NewBrowserModel(style),
+		tui_tea.NewBrowserModel(style, tui_tea.NewFakeBrowserData()),
 		tea.WithContext(ctx),
 		tea.WithInput(os.Stdin),
 		tea.WithOutput(os.Stdout),
