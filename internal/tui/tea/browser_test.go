@@ -2,11 +2,13 @@ package tea
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui/data"
@@ -317,7 +319,7 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 	if len(loader.calls) != 0 {
 		t.Fatalf("loader calls before command execution = %v, want none", loader.calls)
 	}
-	if got := loading.items[loading.idx].effectiveState(); got != data.ResourceStateLoading {
+	if got := loading.selectedItem().effectiveState(); got != data.ResourceStateLoading {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoading)
 	}
 	if view := loading.View(); !strings.Contains(view, "Loading resource") {
@@ -333,7 +335,7 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 		t.Fatalf("BrowserModel.Update(resourceLoadedMsg) command = %v, want nil", cmd)
 	}
 	loaded := updated.(BrowserModel)
-	if got := loaded.items[loaded.idx].effectiveState(); got != data.ResourceStateLoaded {
+	if got := loaded.selectedItem().effectiveState(); got != data.ResourceStateLoaded {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoaded)
 	}
 	if view := loaded.View(); !strings.Contains(view, "HQ") {
@@ -403,7 +405,7 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 	}
 	updated, _ = updated.(BrowserModel).Update(cmd())
 	errored := updated.(BrowserModel)
-	if got := errored.items[errored.idx].effectiveState(); got != data.ResourceStateError {
+	if got := errored.selectedItem().effectiveState(); got != data.ResourceStateError {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
 	}
 	view := errored.View()
@@ -428,11 +430,258 @@ func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
 
 	updated, _ = loading.Update(cmd())
 	errored := updated.(BrowserModel)
-	if got := errored.items[errored.idx].effectiveState(); got != data.ResourceStateError {
+	if got := errored.selectedItem().effectiveState(); got != data.ResourceStateError {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
 	}
 	if view := errored.View(); !strings.Contains(view, context.DeadlineExceeded.Error()) {
 		t.Errorf("timeout View() = %q, want context deadline exceeded", view)
+	}
+}
+
+func TestBrowserModelLeftViewportKeepsSelectionVisibleWithLongList(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, browserDataWithResources(200))
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+
+	if got, want := m.SelectedIndex(), len(m.items)-1; got != want {
+		t.Fatalf("SelectedIndex() = %d, want %d", got, want)
+	}
+	assertViewportSelectionVisible(t, "left viewport", m.left, len(m.items), m.leftViewportHeight())
+	view := m.View()
+	if !strings.Contains(view, "resource-199") {
+		t.Errorf("View() = %q, want selected resource visible", view)
+	}
+	if strings.Count(view, "resource-") > 20 {
+		t.Errorf("View() rendered %d resource rows, want bounded visible rows", strings.Count(view, "resource-"))
+	}
+}
+
+func TestBrowserModelLeftViewportPageHomeEnd(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, browserDataWithResources(200))
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
+	pageSize := m.leftViewportHeight()
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	if got := m.SelectedIndex(); got != pageSize {
+		t.Fatalf("SelectedIndex() after pgdown = %d, want %d", got, pageSize)
+	}
+	assertViewportSelectionVisible(t, "left viewport after pgdown", m.left, len(m.items), pageSize)
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgUp})
+	if got := m.SelectedIndex(); got != 0 {
+		t.Fatalf("SelectedIndex() after pgup = %d, want 0", got)
+	}
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	if got, want := m.SelectedIndex(), len(m.items)-1; got != want {
+		t.Fatalf("SelectedIndex() after end = %d, want %d", got, want)
+	}
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyHome})
+	if got := m.SelectedIndex(); got != 0 {
+		t.Fatalf("SelectedIndex() after home = %d, want 0", got)
+	}
+}
+
+func TestBrowserModelRightViewportBoundsLongRecordList(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+
+	if got := m.RecordIndex(); got != 999 {
+		t.Fatalf("RecordIndex() after end = %d, want 999", got)
+	}
+	if got := m.ScrollOffset(); got <= 0 {
+		t.Fatalf("ScrollOffset() after end = %d, want > 0", got)
+	}
+	assertViewportSelectionVisible(t, "right viewport", m.right, len(m.selectedRecords()), m.rightViewportHeight())
+	view := m.View()
+	if !strings.Contains(view, "rec-0999") {
+		t.Errorf("View() = %q, want selected record visible", view)
+	}
+	if strings.Contains(view, "rec-0000") {
+		t.Errorf("View() = %q, want first record outside bounded viewport", view)
+	}
+	if strings.Count(view, "rec-") > 40 {
+		t.Errorf("View() rendered %d records, want bounded visible records", strings.Count(view, "rec-"))
+	}
+	assertViewLineWidths(t, view, 120)
+}
+
+func TestBrowserModelRightViewportPageHomeEnd(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	pageSize := m.rightViewportHeight()
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	if got := m.RecordIndex(); got != pageSize {
+		t.Fatalf("RecordIndex() after pgdown = %d, want %d", got, pageSize)
+	}
+	assertViewportSelectionVisible(t, "right viewport after pgdown", m.right, len(m.selectedRecords()), pageSize)
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	if got, want := m.RecordIndex(), pageSize*2; got != want {
+		t.Fatalf("RecordIndex() after second pgdown = %d, want %d", got, want)
+	}
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgUp})
+	if got := m.RecordIndex(); got != pageSize {
+		t.Fatalf("RecordIndex() after pgup = %d, want %d", got, pageSize)
+	}
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	if got := m.RecordIndex(); got != 999 {
+		t.Fatalf("RecordIndex() after end = %d, want 999", got)
+	}
+
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyHome})
+	if got := m.RecordIndex(); got != 0 {
+		t.Fatalf("RecordIndex() after home = %d, want 0", got)
+	}
+}
+
+func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
+	longValue := strings.Repeat("tenant-value-", 80)
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "long-values",
+						Records: []data.RecordSummary{
+							{
+								ID:     "1",
+								Name:   "record-with-a-very-long-display-name",
+								Status: "active",
+								Fields: []data.KV{{Key: "description", Value: longValue}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+
+	view := m.View()
+	assertViewLineWidths(t, view, 60)
+	if !strings.Contains(view, "...") {
+		t.Errorf("View() = %q, want long field truncation marker", view)
+	}
+	if !strings.Contains(view, "esc/q quit") {
+		t.Errorf("View() = %q, want footer visible", view)
+	}
+}
+
+func TestBrowserModelResizeClampsViewports(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+
+	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
+	assertViewportSelectionVisible(t, "right viewport after resize", m.right, len(m.selectedRecords()), m.rightViewportHeight())
+	assertViewLineWidths(t, m.View(), 60)
+}
+
+func TestBrowserModelSmallGeometryRendersResourceStates(t *testing.T) {
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{Product: "zia", Name: "unloaded", State: data.ResourceStateUnloaded},
+					{Product: "zia", Name: "loading", State: data.ResourceStateLoading},
+					{Product: "zia", Name: "errored", State: data.ResourceStateError, Error: "sanitized failure"},
+				},
+			},
+		},
+	}
+	tests := []struct {
+		name       string
+		moves      int
+		wantString string
+	}{
+		{name: "unloaded", moves: 1, wantString: "Resource not loaded"},
+		{name: "loading", moves: 2, wantString: "Loading resource"},
+		{name: "error", moves: 3, wantString: "Error loading resource"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewBrowserModel(output.Style{}, browserData)
+			m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
+			for i := 0; i < tt.moves; i++ {
+				m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+			}
+			view := m.View()
+			if !strings.Contains(view, tt.wantString) {
+				t.Errorf("View() = %q, want %q", view, tt.wantString)
+			}
+			assertViewLineWidths(t, view, 60)
+		})
+	}
+}
+
+func TestLazyBrowserModelViewportLoadsOnlySelectedResourceAndCaches(t *testing.T) {
+	loader := &recordingResourceLoader{
+		nodes: map[string]data.ResourceNode{
+			"zia/resource-199": {
+				Product: "zia",
+				Name:    "resource-199",
+				State:   data.ResourceStateLoaded,
+				Records: []data.RecordSummary{{ID: "199", Name: "selected"}},
+			},
+		},
+	}
+	m := NewLazyBrowserModel(output.Style{}, browserDataWithResources(200), loader, time.Second)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+
+	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("BrowserModel.Update(enter on selected unloaded resource) command = nil, want load command")
+	}
+	if got := loader.calls; len(got) != 0 {
+		t.Fatalf("loader calls before command = %v, want none", got)
+	}
+	loading := updated.(BrowserModel)
+	if got := loading.selectedItem().effectiveState(); got != data.ResourceStateLoading {
+		t.Fatalf("selected resource state after enter = %s, want %s", got, data.ResourceStateLoading)
+	}
+
+	updated, _ = loading.Update(cmd())
+	loaded := updated.(BrowserModel)
+	if got := len(loader.calls); got != 1 {
+		t.Fatalf("loader calls after load = %d, want 1", got)
+	}
+	if got, want := loader.calls[0], "zia/resource-199"; got != want {
+		t.Fatalf("loader call after load = %q, want %q", got, want)
+	}
+
+	updated, cmd = loaded.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("BrowserModel.Update(enter on cached resource) command = %v, want nil", cmd)
+	}
+	if got := len(loader.calls); got != 1 {
+		t.Fatalf("loader calls after cached enter = %d, want 1", got)
+	}
+
+	updated, cmd = updated.(BrowserModel).Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'r'}})
+	if cmd == nil {
+		t.Fatal("BrowserModel.Update(r on cached resource) command = nil, want refresh command")
+	}
+	_, _ = updated.(BrowserModel).Update(cmd())
+	if got := len(loader.calls); got != 2 {
+		t.Fatalf("loader calls after refresh = %d, want 2", got)
 	}
 }
 
@@ -458,6 +707,7 @@ func TestBrowserModelLongRecordScroll(t *testing.T) {
 		},
 	}
 	m := NewBrowserModel(output.Style{}, data)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 10})
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown}) // select resource
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})  // focus right pane
 	initialScroll := m.ScrollOffset()
@@ -471,6 +721,70 @@ func TestBrowserModelLongRecordScroll(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "Second") {
 		t.Errorf("View() = %q, want second record name", view)
+	}
+}
+
+func browserDataWithResources(count int) data.BrowserData {
+	resources := make([]data.ResourceNode, count)
+	for i := range resources {
+		name := fmt.Sprintf("resource-%03d", i)
+		resources[i] = data.ResourceNode{
+			Product: "zia",
+			Name:    name,
+			State:   data.ResourceStateUnloaded,
+		}
+	}
+	return data.BrowserData{
+		Products: []data.ProductNode{
+			{Name: "zia", Resources: resources},
+		},
+	}
+}
+
+func browserDataWithRecords(count int) data.BrowserData {
+	records := make([]data.RecordSummary, count)
+	for i := range records {
+		records[i] = data.RecordSummary{
+			ID:     fmt.Sprintf("%d", i),
+			Name:   fmt.Sprintf("rec-%04d", i),
+			Status: "active",
+			Fields: []data.KV{
+				{Key: "index", Value: fmt.Sprintf("%d", i)},
+			},
+		}
+	}
+	return data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{Product: "zia", Name: "locations", Records: records},
+				},
+			},
+		},
+	}
+}
+
+func assertViewportSelectionVisible(t *testing.T, label string, viewport viewportState, total, height int) {
+	t.Helper()
+	start, end := viewport.VisibleRange(total, height)
+	if total == 0 {
+		if viewport.Selected != 0 || viewport.Offset != 0 {
+			t.Fatalf("%s = %+v for empty list, want zero selection and offset", label, viewport)
+		}
+		return
+	}
+	if viewport.Selected < start || viewport.Selected >= end {
+		t.Fatalf("%s selected index = %d outside visible range [%d,%d) for height %d", label, viewport.Selected, start, end, height)
+	}
+}
+
+func assertViewLineWidths(t *testing.T, view string, width int) {
+	t.Helper()
+	for lineNumber, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("View() line %d width = %d, want <= %d: %q", lineNumber+1, got, width, line)
+		}
 	}
 }
 

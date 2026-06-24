@@ -35,9 +35,11 @@ Expected: both launch the TUI and exit cleanly with `q`/`esc`/`ctrl+c`.
 ./zscalerctl-tui --live --verbose
 ```
 
-Expected: the TUI launches and shows at least one product/resource tree. The
-verbose output should print milestones through "launching TUI" with no
-secret values.
+Expected: the TUI launches quickly and shows at least one product/resource tree
+with resources in an unloaded state. The verbose output should print milestones
+through "launching TUI" with no secret values. Pressing enter on one resource
+should show a loading state and then records or a sanitized error for that
+resource only.
 
 ### Live filtering
 
@@ -47,16 +49,21 @@ secret values.
 ./zscalerctl-tui --live --products zia,zpa --resources locations,application-segments
 ```
 
-Expected: only the selected products and resources appear in the left pane.
+Expected: only the selected products and resources appear in the left pane. A
+broad product filter such as `--products zia` must not preload all ZIA records
+before first paint. A targeted resource filter such as `--resources locations`
+should limit the visible catalog and still load on selection.
 
-### Live continue-on-error
+### Live resource errors
 
 ```sh
 ./zscalerctl-tui --live --continue-on-error
 ```
 
-Expected: the TUI launches even if some resources fail (e.g. entitlement-gated
-or unsupported). Failing resources should show an error node instead of records.
+Expected: the TUI launches with unloaded resources. If a selected resource fails
+(for example, because it is entitlement-gated or unsupported), that resource
+should show a sanitized error state instead of records. The failure must not
+force a broad prelaunch collection step.
 
 ### Failure paths
 
@@ -76,7 +83,7 @@ For each of the following, confirm the program exits with a non-zero status and
 # Missing credentials (unset ZSCALERCTL_*)
 env -u ZSCALERCTL_CLIENT_SECRET -u ZSCALERCTL_CLIENT_ID ./zscalerctl-tui --live
 
-# Collection timeout
+# Selected resource timeout
 ./zscalerctl-tui --live --timeout 1s --profile prod
 ```
 
@@ -108,10 +115,11 @@ While running live mode, verify:
 ## Sign-off
 
 - [ ] Fixture modes still work.
-- [ ] Live mode launches on a scratch tenant.
-- [ ] Product/resource filters work.
-- [ ] Continue-on-error launches with error nodes.
-- [ ] Non-TTY, machine format, missing-credential, and timeout failures exit before the TUI.
+- [ ] Live mode launches quickly on a scratch tenant with unloaded resources.
+- [ ] Product/resource filters work without broad prelaunch collection.
+- [ ] Selecting one resource loads only that resource.
+- [ ] Resource failures and selected-resource timeouts render sanitized error states.
+- [ ] Non-TTY, machine format, and missing-credential failures exit before the TUI.
 - [ ] `--verbose` live output shows milestones without secret values.
 - [ ] Normal `zscalerctl` remains Bubble Tea-free.
 - [ ] Normal JSON output remains ESC-clean in a PTY.

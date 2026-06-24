@@ -40,10 +40,9 @@ type BrowserModel struct {
 	height      int
 	data        data.BrowserData
 	items       []browserItem
-	idx         int
+	left        viewportState
 	active      string // "left" or "right"
-	rIdx        int
-	scroll      int
+	right       viewportState
 	showHelp    bool
 	exitKey     string
 	loader      ResourceLoader
@@ -86,7 +85,6 @@ func NewBrowserModel(style output.Style, browserData data.BrowserData) BrowserMo
 		style:  style,
 		data:   browserData,
 		items:  flattenBrowserData(browserData),
-		idx:    0,
 		active: "left",
 	}
 }
@@ -131,37 +129,44 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = true
 		case "up":
 			if m.active == "left" {
-				if m.idx > 0 {
-					m.idx--
-					m.rIdx = 0
-					m.scroll = 0
-				}
+				m.moveLeft(-1)
 			} else {
-				if m.rIdx > 0 {
-					m.rIdx--
-					m.adjustScrollToRecord()
-				}
+				m.moveRight(-1)
 			}
 		case "down":
 			if m.active == "left" {
-				if m.idx < len(m.items)-1 {
-					m.idx++
-					m.rIdx = 0
-					m.scroll = 0
-				}
+				m.moveLeft(1)
 			} else {
-				if m.rIdx < len(m.items[m.idx].records)-1 {
-					m.rIdx++
-					m.adjustScrollToRecord()
-				}
+				m.moveRight(1)
+			}
+		case "pgup", "pageup":
+			if m.active == "left" {
+				m.pageLeft(-1)
+			} else {
+				m.pageRight(-1)
+			}
+		case "pgdown", "pagedown":
+			if m.active == "left" {
+				m.pageLeft(1)
+			} else {
+				m.pageRight(1)
+			}
+		case "home":
+			if m.active == "left" {
+				m.homeLeft()
+			} else {
+				m.homeRight()
+			}
+		case "end":
+			if m.active == "left" {
+				m.endLeft()
+			} else {
+				m.endRight()
 			}
 		case "tab":
 			if m.active == "left" {
 				m.active = "right"
-				if m.rIdx >= len(m.items[m.idx].records) {
-					m.rIdx = 0
-				}
-				m.adjustScrollToRecord()
+				m.clampViewports()
 			} else {
 				m.active = "left"
 			}
@@ -181,15 +186,16 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampViewports()
 	}
 	return m, nil
 }
 
 func (m BrowserModel) selectedItem() browserItem {
-	if len(m.items) == 0 || m.idx < 0 || m.idx >= len(m.items) {
+	if len(m.items) == 0 || m.left.Selected < 0 || m.left.Selected >= len(m.items) {
 		return browserItem{}
 	}
-	return m.items[m.idx]
+	return m.items[m.left.Selected]
 }
 
 func (m BrowserModel) startResourceLoad(refresh bool) (BrowserModel, tea.Cmd) {
@@ -268,12 +274,7 @@ func (m *BrowserModel) applyResourceNode(node data.ResourceNode) {
 			if m.data.Products[pIdx].Resources[rIdx].Name == node.Name {
 				m.data.Products[pIdx].Resources[rIdx] = node
 				m.items = flattenBrowserData(m.data)
-				if m.idx >= len(m.items) {
-					m.idx = len(m.items) - 1
-				}
-				if m.idx < 0 {
-					m.idx = 0
-				}
+				m.clampViewports()
 				return
 			}
 		}
@@ -281,87 +282,157 @@ func (m *BrowserModel) applyResourceNode(node data.ResourceNode) {
 }
 
 func (m *BrowserModel) resetRecordSelection() {
-	m.rIdx = 0
-	m.scroll = 0
+	m.right = viewportState{}
+	m.clampViewports()
 }
 
-func (m *BrowserModel) adjustScrollToRecord() {
-	records := m.items[m.idx].records
-	if m.rIdx < 0 {
-		m.rIdx = 0
+func (m *BrowserModel) moveLeft(delta int) {
+	before := m.left.Selected
+	m.left.Move(delta, len(m.items), m.leftViewportHeight())
+	if m.left.Selected != before {
+		m.resetRecordSelection()
 	}
-	if len(records) == 0 {
-		m.rIdx = 0
-		m.scroll = 0
+}
+
+func (m *BrowserModel) pageLeft(delta int) {
+	before := m.left.Selected
+	m.left.Page(delta, len(m.items), m.leftViewportHeight())
+	if m.left.Selected != before {
+		m.resetRecordSelection()
+	}
+}
+
+func (m *BrowserModel) homeLeft() {
+	before := m.left.Selected
+	m.left.Home(len(m.items), m.leftViewportHeight())
+	if m.left.Selected != before {
+		m.resetRecordSelection()
+	}
+}
+
+func (m *BrowserModel) endLeft() {
+	before := m.left.Selected
+	m.left.End(len(m.items), m.leftViewportHeight())
+	if m.left.Selected != before {
+		m.resetRecordSelection()
+	}
+}
+
+func (m *BrowserModel) moveRight(delta int) {
+	m.right.Move(delta, len(m.selectedRecords()), m.rightViewportHeight())
+	m.ensureRightSelectionVisible()
+}
+
+func (m *BrowserModel) pageRight(delta int) {
+	m.right.Page(delta, len(m.selectedRecords()), m.rightViewportHeight())
+	m.ensureRightSelectionVisible()
+}
+
+func (m *BrowserModel) homeRight() {
+	m.right.Home(len(m.selectedRecords()), m.rightViewportHeight())
+	m.ensureRightSelectionVisible()
+}
+
+func (m *BrowserModel) endRight() {
+	m.right.End(len(m.selectedRecords()), m.rightViewportHeight())
+	m.ensureRightSelectionVisible()
+}
+
+func (m *BrowserModel) clampViewports() {
+	m.left.Clamp(len(m.items), m.leftViewportHeight())
+	m.right.Clamp(len(m.selectedRecords()), m.rightViewportHeight())
+	m.ensureRightSelectionVisible()
+}
+
+func (m BrowserModel) selectedRecords() []data.RecordSummary {
+	item := m.selectedItem()
+	if item.kind != "resource" {
+		return nil
+	}
+	return item.records
+}
+
+func (m *BrowserModel) ensureRightSelectionVisible() {
+	item := m.selectedItem()
+	if item.kind != "resource" || len(item.records) == 0 {
+		m.right = viewportState{}
 		return
 	}
-	if m.rIdx >= len(records) {
-		m.rIdx = len(records) - 1
+	m.right.Clamp(len(item.records), m.rightViewportHeight())
+	budget := m.rightRecordLineBudget()
+	if budget <= 0 || m.right.Offset >= m.right.Selected {
+		return
 	}
-	m.scroll = m.recordStartLine(m.rIdx)
+	for m.right.Offset < m.right.Selected &&
+		recordBlockLineCount(item.records, m.right.Offset, m.right.Selected) > budget {
+		m.right.Offset++
+	}
 }
 
-func (m BrowserModel) recordStartLine(rIdx int) int {
-	item := m.items[m.idx]
-	if item.kind != "resource" || rIdx < 0 || rIdx >= len(item.records) {
+func (m BrowserModel) leftViewportHeight() int {
+	return leftViewportHeight(m.geometry().leftHeight)
+}
+
+func (m BrowserModel) rightViewportHeight() int {
+	return rightViewportHeight(m.geometry().rightHeight)
+}
+
+func (m BrowserModel) rightRecordLineBudget() int {
+	return rightRecordLineBudget(m.geometry().rightHeight)
+}
+
+func recordBlockLineCount(records []data.RecordSummary, start, end int) int {
+	if start < 0 {
+		start = 0
+	}
+	if end >= len(records) {
+		end = len(records) - 1
+	}
+	if start > end || len(records) == 0 {
 		return 0
 	}
-	start := 2 // title + blank line
-	for i := 0; i < rIdx && i < len(item.records); i++ {
-		rec := item.records[i]
-		start++ // record header
-		if rec.Detail != "" {
-			start++
-		}
-		start += len(rec.Fields)
+	count := 0
+	for i := start; i <= end; i++ {
+		count += recordLineCount(records[i])
 	}
-	return start
+	return count
+}
+
+func recordLineCount(rec data.RecordSummary) int {
+	count := 1
+	if rec.Detail != "" {
+		count++
+	}
+	count += len(rec.Fields)
+	return count
 }
 
 func (m BrowserModel) View() string {
-	width, height := m.dimensions()
+	g := m.geometry()
 	r := browserRenderer(m.style)
 
-	statusHeight := 1
-	footerHeight := 2
-	bodyHeight := height - statusHeight - footerHeight
-	if bodyHeight < 6 {
-		bodyHeight = 6
-	}
-
-	leftWidth, rightWidth, stacked := browserPaneWidths(width)
-
 	var leftPane, rightPane string
-	if stacked {
-		leftHeight := bodyHeight / 2
-		if leftHeight < 5 {
-			leftHeight = 5
-		}
-		rightHeight := bodyHeight - leftHeight
-		if rightHeight < 4 {
-			rightHeight = 4
-			leftHeight = bodyHeight - rightHeight
-		}
-		leftPane = m.renderLeftPane(r, leftWidth, leftHeight)
-		rightPane = m.renderRightPane(r, rightWidth, rightHeight)
+	if g.stacked {
+		leftPane = m.renderLeftPane(r, g.leftWidth, g.leftHeight)
+		rightPane = m.renderRightPane(r, g.rightWidth, g.rightHeight)
 	} else {
-		leftPane = m.renderLeftPane(r, leftWidth, bodyHeight)
-		rightPane = m.renderRightPane(r, rightWidth, bodyHeight)
+		leftPane = m.renderLeftPane(r, g.leftWidth, g.leftHeight)
+		rightPane = m.renderRightPane(r, g.rightWidth, g.rightHeight)
 	}
 
 	var body string
-	if stacked {
+	if g.stacked {
 		body = lipgloss.JoinVertical(lipgloss.Top, leftPane, rightPane)
 	} else {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 	}
 
 	if m.showHelp {
-		body = m.renderHelpOverlay(r, width, height-statusHeight-1)
+		body = m.renderHelpOverlay(r, g.width, g.bodyHeight)
 	}
 
-	status := m.renderStatus(r, width)
-	footer := m.renderFooter(r, width)
+	status := m.renderStatus(r, g.width)
+	footer := m.renderFooter(r, g.width)
 	return body + "\n" + status + "\n" + footer + "\n"
 }
 
@@ -372,17 +443,17 @@ func (m BrowserModel) ActivePane() string {
 
 // SelectedIndex reports the selected left-pane index.
 func (m BrowserModel) SelectedIndex() int {
-	return m.idx
+	return m.left.Selected
 }
 
 // RecordIndex reports the selected right-pane record index.
 func (m BrowserModel) RecordIndex() int {
-	return m.rIdx
+	return m.right.Selected
 }
 
-// ScrollOffset reports the right-pane line scroll offset.
+// ScrollOffset reports the right-pane record viewport offset.
 func (m BrowserModel) ScrollOffset() int {
-	return m.scroll
+	return m.right.Offset
 }
 
 // ShowingHelp reports whether the help overlay is visible.
@@ -412,27 +483,67 @@ func (m BrowserModel) dimensions() (int, int) {
 	return width, height
 }
 
+type browserGeometry struct {
+	width       int
+	height      int
+	bodyHeight  int
+	leftWidth   int
+	rightWidth  int
+	leftHeight  int
+	rightHeight int
+	stacked     bool
+}
+
+func (m BrowserModel) geometry() browserGeometry {
+	width, height := m.dimensions()
+	bodyHeight := height - 3
+	if bodyHeight < 0 {
+		bodyHeight = 0
+	}
+	leftWidth, rightWidth, stacked := browserPaneWidths(width)
+	g := browserGeometry{
+		width:      width,
+		height:     height,
+		bodyHeight: bodyHeight,
+		leftWidth:  leftWidth,
+		rightWidth: rightWidth,
+		stacked:    stacked,
+	}
+	if stacked {
+		g.leftHeight = bodyHeight / 2
+		g.rightHeight = bodyHeight - g.leftHeight
+	} else {
+		g.leftHeight = bodyHeight
+		g.rightHeight = bodyHeight
+	}
+	return g
+}
+
 func (m BrowserModel) renderLeftPane(r *lipgloss.Renderer, width, height int) string {
+	contentWidth := paneContentWidth(width)
+	contentHeight := paneContentHeight(height)
 	style := r.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(browserBorderColor(m.style, m.active == "left")).
 		Padding(0, 1).
-		Width(width - 2).
-		Height(height - 2)
+		Width(contentWidth).
+		Height(contentHeight)
 
 	var lines []string
-	title := r.NewStyle().Bold(true).Render("Products / Resources")
-	lines = append(lines, title, "")
+	appendStyledLine(&lines, contentHeight, contentWidth, r.NewStyle().Bold(true), "Products / Resources")
+	appendFittedLine(&lines, contentHeight, contentWidth, "")
 
-	for i, item := range m.items {
+	start, end := m.left.VisibleRange(len(m.items), leftViewportHeight(height))
+	for i := start; i < end; i++ {
+		item := m.items[i]
 		prefix := strings.Repeat("  ", item.depth)
 		label := prefix + item.name
 		if item.kind == "product" {
-			label = r.NewStyle().Bold(true).Render(label)
+			label = r.NewStyle().Bold(true).Render(fitText(label, contentWidth))
 		} else {
-			label = r.NewStyle().Render(label)
+			label = r.NewStyle().Render(fitText(label, contentWidth))
 		}
-		if i == m.idx {
+		if i == m.left.Selected {
 			label = browserSelectedStyle(m.style).Render(label)
 		}
 		lines = append(lines, label)
@@ -442,79 +553,84 @@ func (m BrowserModel) renderLeftPane(r *lipgloss.Renderer, width, height int) st
 }
 
 func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) string {
+	contentWidth := paneContentWidth(width)
+	contentHeight := paneContentHeight(height)
 	style := r.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(browserBorderColor(m.style, m.active == "right")).
 		Padding(0, 1).
-		Width(width - 2).
-		Height(height - 2)
+		Width(contentWidth).
+		Height(contentHeight)
 
-	content := m.rightPaneContent(r)
-	visible := m.visibleLines(content, height-2)
+	content := m.rightPaneContent(r, contentWidth, contentHeight)
 
-	return style.Render(strings.Join(visible, "\n"))
+	return style.Render(strings.Join(content, "\n"))
 }
 
-func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer) []string {
+func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer, width, maxLines int) []string {
 	if len(m.items) == 0 {
-		return []string{
-			r.NewStyle().Bold(true).Render("No resources"),
-			"",
-			browserEmptyStyle(m.style).Render("No resources match the current filters."),
-		}
+		var lines []string
+		appendStyledLine(&lines, maxLines, width, r.NewStyle().Bold(true), "No resources")
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "No resources match the current filters.")
+		return lines
 	}
-	item := m.items[m.idx]
+	item := m.items[m.left.Selected]
 	var lines []string
 
-	title := r.NewStyle().Bold(true).Render(item.name)
-	lines = append(lines, title, "")
+	appendStyledLine(&lines, maxLines, width, r.NewStyle().Bold(true), item.name)
+	appendFittedLine(&lines, maxLines, width, "")
 
 	switch {
 	case item.kind == "product":
 		resourceCount := 0
-		for i := m.idx + 1; i < len(m.items) && m.items[i].depth > 0; i++ {
+		for i := m.left.Selected + 1; i < len(m.items) && m.items[i].depth > 0; i++ {
 			resourceCount++
 		}
-		lines = append(lines, fmt.Sprintf("Product: %s", item.name))
-		lines = append(lines, fmt.Sprintf("Resources: %d", resourceCount))
+		appendFittedLine(&lines, maxLines, width, fmt.Sprintf("Product: %s", item.name))
+		appendFittedLine(&lines, maxLines, width, fmt.Sprintf("Resources: %d", resourceCount))
 
 	case item.effectiveState() == data.ResourceStateUnloaded:
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Resource not loaded"))
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to load this resource."))
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "Resource not loaded")
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "Press enter to load this resource.")
 
 	case item.effectiveState() == data.ResourceStateLoading:
-		lines = append(lines, "")
-		lines = append(lines, browserLoadingStyle(m.style).Render("Loading resource..."))
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("The API call is running for this resource only."))
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserLoadingStyle(m.style), "Loading resource...")
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "The API call is running for this resource only.")
 
 	case item.effectiveState() == data.ResourceStateError:
-		lines = append(lines, "")
-		lines = append(lines, browserErrorStyle(m.style).Render("Error loading resource"))
-		lines = append(lines, browserErrorStyle(m.style).Render(item.err))
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Press enter to retry or r to refresh."))
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserErrorStyle(m.style), "Error loading resource")
+		appendStyledLine(&lines, maxLines, width, browserErrorStyle(m.style), item.err)
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "Press enter to retry or r to refresh.")
 
 	case item.empty || len(item.records) == 0:
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("No records for this resource"))
-		lines = append(lines, "")
-		lines = append(lines, browserEmptyStyle(m.style).Render("Press r to refresh or select a different resource."))
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "No records for this resource")
+		appendFittedLine(&lines, maxLines, width, "")
+		appendStyledLine(&lines, maxLines, width, browserEmptyStyle(m.style), "Press r to refresh or select a different resource.")
 
 	default:
-		for i, rec := range item.records {
+		start := m.rightVisibleRecordStart(item, maxLines)
+		for i := start; i < len(item.records) && len(lines) < maxLines; i++ {
+			rec := item.records[i]
 			recLine := fmt.Sprintf("  %s (id=%s, status=%s)", rec.Name, rec.ID, rec.Status)
-			if i == m.rIdx && m.active == "right" {
-				recLine = browserSelectedStyle(m.style).Render(recLine)
+			if i == m.right.Selected && m.active == "right" {
+				recLine = browserSelectedStyle(m.style).Render(fitText(recLine, width))
+			} else {
+				recLine = fitText(recLine, width)
 			}
-			lines = append(lines, recLine)
+			appendLine(&lines, maxLines, recLine)
 			if rec.Detail != "" {
-				lines = append(lines, "    "+rec.Detail)
+				appendFittedLine(&lines, maxLines, width, "    "+rec.Detail)
 			}
 			for _, f := range rec.Fields {
-				lines = append(lines, fmt.Sprintf("    %s: %s", f.Key, f.Value))
+				appendFittedLine(&lines, maxLines, width, fmt.Sprintf("    %s: %s", f.Key, f.Value))
 			}
 		}
 	}
@@ -522,40 +638,38 @@ func (m BrowserModel) rightPaneContent(r *lipgloss.Renderer) []string {
 	return lines
 }
 
-func (m BrowserModel) visibleLines(lines []string, maxLines int) []string {
-	if maxLines <= 0 {
-		return []string{}
+func (m BrowserModel) rightVisibleRecordStart(item browserItem, maxLines int) int {
+	start, _ := m.right.VisibleRange(len(item.records), rightViewportHeight(maxLines+2))
+	if start > m.right.Selected {
+		start = m.right.Selected
 	}
-	if m.scroll < 0 {
-		m.scroll = 0
+	budget := maxLines - 2
+	if budget < 1 {
+		budget = maxLines
 	}
-	if m.scroll >= len(lines) {
-		m.scroll = len(lines) - 1
-		if m.scroll < 0 {
-			m.scroll = 0
-		}
+	for start < m.right.Selected && recordBlockLineCount(item.records, start, m.right.Selected) > budget {
+		start++
 	}
-	end := m.scroll + maxLines
-	if end > len(lines) {
-		end = len(lines)
+	if start < 0 {
+		return 0
 	}
-	return lines[m.scroll:end]
+	return start
 }
 
 func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
 	if len(m.items) == 0 {
 		return r.NewStyle().
-			Width(width - 2).
-			Render("no resources")
+			Width(lineWidth(width)).
+			Render(fitText("no resources", lineWidth(width)))
 	}
-	item := m.items[m.idx]
+	item := m.items[m.left.Selected]
 	var selected string
 	if item.kind == "product" {
 		selected = item.name
 	} else {
 		selected = item.Product + " / " + item.name
 	}
-	status := fmt.Sprintf("%s · %d/%d", selected, m.idx+1, len(m.items))
+	status := fmt.Sprintf("%s · %d/%d", selected, m.left.Selected+1, len(m.items))
 	if item.kind == "resource" {
 		switch item.effectiveState() {
 		case data.ResourceStateUnloaded:
@@ -568,29 +682,33 @@ func (m BrowserModel) renderStatus(r *lipgloss.Renderer, width int) string {
 			status += fmt.Sprintf(" · %d records", len(item.records))
 		}
 	}
+	statusWidth := lineWidth(width)
 	return r.NewStyle().
-		Width(width - 2).
-		Render(status)
+		Width(statusWidth).
+		Render(fitText(status, statusWidth))
 }
 
 func (m BrowserModel) renderFooter(r *lipgloss.Renderer, width int) string {
-	help := "↑/↓ move · tab switch · enter load/select · r refresh · ? help · esc/q quit"
+	help := "up/down move · enter load · r refresh · esc/q quit · ? help · pgup/pgdown page · home/end jump · tab switch"
+	footerWidth := lineWidth(width)
 	return r.NewStyle().
-		Width(width - 2).
-		Render(help)
+		Width(footerWidth).
+		Render(fitText(help, footerWidth))
 }
 
 func (m BrowserModel) renderHelpOverlay(r *lipgloss.Renderer, width, height int) string {
 	helpText := strings.Join([]string{
 		"Keyboard help",
 		"",
-		"↑ / down    move selection",
-		"tab         switch active pane",
-		"enter       load selected resource or reset record selection",
-		"r           refresh selected resource",
-		"?           toggle this help",
-		"q / esc     quit",
-		"ctrl+c      quit",
+		"up / down       move selection",
+		"pgup / pgdown   page selection",
+		"home / end      jump to boundary",
+		"tab             switch active pane",
+		"enter           load selected resource or reset record selection",
+		"r               refresh selected resource",
+		"?               toggle this help",
+		"q / esc         quit",
+		"ctrl+c          quit",
 		"",
 		"Press any key to close.",
 	}, "\n")
@@ -599,6 +717,8 @@ func (m BrowserModel) renderHelpOverlay(r *lipgloss.Renderer, width, height int)
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(browserBorderColor(m.style, true)).
 		Padding(1, 2).
+		MaxWidth(maxInt(0, width-2)).
+		MaxHeight(maxInt(0, height)).
 		Render(helpText)
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, panel)
@@ -634,6 +754,77 @@ func browserPaneWidths(width int) (left, right int, stacked bool) {
 	}
 	right = width - left
 	return left, right, false
+}
+
+func paneContentWidth(width int) int {
+	return maxInt(0, width-4)
+}
+
+func paneContentHeight(height int) int {
+	return maxInt(0, height-2)
+}
+
+func leftViewportHeight(paneHeight int) int {
+	return maxInt(0, paneContentHeight(paneHeight)-2)
+}
+
+func rightViewportHeight(paneHeight int) int {
+	return maxInt(1, rightRecordLineBudget(paneHeight))
+}
+
+func rightRecordLineBudget(paneHeight int) int {
+	return maxInt(0, paneContentHeight(paneHeight)-2)
+}
+
+func lineWidth(width int) int {
+	return maxInt(0, width-2)
+}
+
+func appendLine(lines *[]string, maxLines int, line string) bool {
+	if maxLines <= 0 || len(*lines) >= maxLines {
+		return false
+	}
+	*lines = append(*lines, line)
+	return len(*lines) < maxLines
+}
+
+func appendFittedLine(lines *[]string, maxLines, width int, line string) bool {
+	return appendLine(lines, maxLines, fitText(line, width))
+}
+
+func appendStyledLine(lines *[]string, maxLines, width int, style lipgloss.Style, line string) bool {
+	return appendLine(lines, maxLines, style.Render(fitText(line, width)))
+}
+
+func fitText(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	if width <= 3 {
+		return strings.Repeat(".", width)
+	}
+	target := width - 3
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		cellWidth := lipgloss.Width(string(r))
+		if used+cellWidth > target {
+			break
+		}
+		b.WriteRune(r)
+		used += cellWidth
+	}
+	return b.String() + "..."
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func browserRenderer(style output.Style) *lipgloss.Renderer {

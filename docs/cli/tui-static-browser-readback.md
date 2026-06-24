@@ -28,6 +28,19 @@ with `TIOCSWINSZ` before spawning the demo, and the final rendered frame was
 captured after each key sequence. The transcripts below are the ANSI-stripped
 final frames from the captured sessions.
 
+## Viewport stabilization update
+
+The browser model now uses explicit left and right pane viewports. Long resource
+catalogs render only visible left-pane rows, long record lists render only
+visible right-pane records, and `pgup`/`pgdown`/`home`/`end` clamp selection and
+offsets after resize. The code-level readback for this update covers a
+200-resource catalog, a 1000-record resource, 120x32 to 60x16 resize, long field
+value truncation, and unloaded/loading/error states in small geometry.
+
+The static fixture captures below are retained as baseline visual evidence for
+the isolated browser shape. Current footer text includes page/home/end
+navigation and may differ from the older captured footer line.
+
 ## Visual readback
 
 ### 80x24 — product selected

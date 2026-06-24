@@ -99,7 +99,7 @@ func run(ctx context.Context, deps dependencies, args []string, env []string, st
 	collectorFixtureFlag := flags.Bool("collector-fixture", false, "use the fake-reader-backed collector fixture")
 	productsFlag := flags.String("products", "", "comma-separated list of products to include")
 	resourcesFlag := flags.String("resources", "", "comma-separated list of resources to include")
-	continueOnErrorFlag := flags.Bool("continue-on-error", false, "continue collecting after a resource error")
+	continueOnErrorFlag := flags.Bool("continue-on-error", false, "keep resource errors visible in the TUI where supported")
 	profileFlag := flags.String("profile", "", "config profile name")
 	configPathFlag := flags.String("config", "", "config file path")
 	timeoutFlag := flags.Duration("timeout", 30*time.Second, "timeout for each live resource load (e.g. 30s, 2m)")
