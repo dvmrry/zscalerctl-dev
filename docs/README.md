@@ -30,6 +30,14 @@ GitHub security policy.
 - [ZDX_SCOPE_PLAN.md](ZDX_SCOPE_PLAN.md)
 - [VERSIONING.md](VERSIONING.md)
 - [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md)
+- [cli/tui-import-boundary.md](cli/tui-import-boundary.md) — why the TUI gate
+  package and Bubble Tea runtime are separated.
+- [cli/tui-demo-readback.md](cli/tui-demo-readback.md) — integration-branch
+  readback for the isolated TUI demo harness.
+- [cli/tui-static-browser-readback.md](cli/tui-static-browser-readback.md) —
+  integration-branch readback for the static fake-data TUI browser.
+- [cli/tui-promotion-readiness.md](cli/tui-promotion-readiness.md) — release-
+  candidate audit of the TUI branch before promotion to `main`.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
 - [schema/](schema/) — published JSON Schemas for machine-readable artifacts.
 - [SCRIPTS.md](SCRIPTS.md) — registry of `scripts/` ownership and validation.
