@@ -13,13 +13,14 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/output"
 )
 
-// BrowserModel is a static/fake-data product/resource browser used to prove the
-// TUI product shape before connecting to real CLI data. It contains no config,
-// credential, network, or live reader dependencies.
+// BrowserModel is a product/resource browser that renders a neutral
+// BrowserData view model. It contains no config, credential, network, or live
+// reader dependencies.
 type BrowserModel struct {
 	style   output.Style
 	width   int
 	height  int
+	data    BrowserData
 	items   []browserItem
 	idx     int
 	active  string // "left" or "right"
@@ -32,29 +33,27 @@ type browserItem struct {
 	name    string
 	kind    string // "product" or "resource"
 	depth   int
-	records []browserRecord
+	records []RecordSummary
 	empty   bool
 	err     string
 }
 
-// browserRecord is a fake record shown in the right pane.
-type browserRecord struct {
-	name   string
-	id     string
-	status string
-	detail string
-}
-
 var _ tea.Model = BrowserModel{}
 
-// NewBrowserModel returns a static browser model with fake data.
-func NewBrowserModel(style output.Style) BrowserModel {
+// NewBrowserModel returns a browser model that renders the supplied BrowserData.
+func NewBrowserModel(style output.Style, data BrowserData) BrowserModel {
 	return BrowserModel{
 		style:  style,
-		items:  fakeBrowserItems(),
+		data:   data,
+		items:  flattenBrowserData(data),
 		idx:    0,
 		active: "left",
 	}
+}
+
+// Data returns the BrowserData currently being rendered.
+func (m BrowserModel) Data() BrowserData {
+	return m.data
 }
 
 func (m BrowserModel) Init() tea.Cmd {
@@ -254,13 +253,16 @@ func (m BrowserModel) renderRightPane(r *lipgloss.Renderer, width, height int) s
 
 	default:
 		for i, rec := range item.records {
-			recLine := fmt.Sprintf("  %s (id=%s, status=%s)", rec.name, rec.id, rec.status)
+			recLine := fmt.Sprintf("  %s (id=%s, status=%s)", rec.Name, rec.ID, rec.Status)
 			if i == m.rIdx && m.active == "right" {
 				recLine = browserSelectedStyle(m.style).Render(recLine)
 			}
 			lines = append(lines, recLine)
-			if rec.detail != "" {
-				lines = append(lines, "    "+rec.detail)
+			if rec.Detail != "" {
+				lines = append(lines, "    "+rec.Detail)
+			}
+			for _, f := range rec.Fields {
+				lines = append(lines, fmt.Sprintf("    %s: %s", f.Key, f.Value))
 			}
 		}
 	}
@@ -275,33 +277,22 @@ func (m BrowserModel) renderFooter(r *lipgloss.Renderer, width int) string {
 		Render(help)
 }
 
-func fakeBrowserItems() []browserItem {
-	return []browserItem{
-		{name: "zia", kind: "product", depth: 0},
-		{
-			name:    "locations",
-			kind:    "resource",
-			depth:   1,
-			records: []browserRecord{{name: "HQ", id: "123", status: "active", detail: "US East"}, {name: "Branch", id: "124", status: "active", detail: "EU West"}, {name: "Remote", id: "125", status: "inactive", detail: "APAC"}},
-		},
-		{
-			name:    "url-filtering-rules",
-			kind:    "resource",
-			depth:   1,
-			records: []browserRecord{{name: "Social", id: "501", status: "active", detail: "block social"}, {name: "Streaming", id: "502", status: "active", detail: "allow streaming"}},
-		},
-		{name: "forwarding-rules", kind: "resource", depth: 1, empty: true},
-		{name: "zpa", kind: "product", depth: 0},
-		{
-			name:    "app-segments",
-			kind:    "resource",
-			depth:   1,
-			records: []browserRecord{{name: "Engineering", id: "901", status: "active", detail: "10 apps"}, {name: "Finance", id: "902", status: "active", detail: "5 apps"}},
-		},
-		{name: "connectors", kind: "resource", depth: 1, err: "connector list unavailable"},
-		{name: "zcc", kind: "product", depth: 0},
-		{name: "devices", kind: "resource", depth: 1, empty: true},
+func flattenBrowserData(data BrowserData) []browserItem {
+	var items []browserItem
+	for _, p := range data.Products {
+		items = append(items, browserItem{name: p.Name, kind: "product", depth: 0})
+		for _, r := range p.Resources {
+			items = append(items, browserItem{
+				name:    r.Name,
+				kind:    "resource",
+				depth:   1,
+				records: r.Records,
+				empty:   r.Empty,
+				err:     r.Error,
+			})
+		}
 	}
+	return items
 }
 
 func browserPaneWidths(width int) (left, right int, stacked bool) {

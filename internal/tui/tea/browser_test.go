@@ -10,7 +10,7 @@ import (
 )
 
 func TestBrowserModelInitialSelection(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	if got := m.SelectedIndex(); got != 0 {
 		t.Errorf("initial selected index = %d, want 0", got)
 	}
@@ -20,7 +20,7 @@ func TestBrowserModelInitialSelection(t *testing.T) {
 }
 
 func TestBrowserModelDownMovesSelection(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'j'}})
 	// 'j' is not bound, so no change.
 	m2, ok := updated.(BrowserModel)
@@ -39,7 +39,7 @@ func TestBrowserModelDownMovesSelection(t *testing.T) {
 }
 
 func TestBrowserModelUpStopsAtTop(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyUp})
 	m2 := updated.(BrowserModel)
 	if got := m2.SelectedIndex(); got != 0 {
@@ -48,7 +48,7 @@ func TestBrowserModelUpStopsAtTop(t *testing.T) {
 }
 
 func TestBrowserModelDownStopsAtBottom(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	for i := 0; i < len(m.items)+2; i++ {
 		updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 		m = updated.(BrowserModel)
@@ -59,7 +59,7 @@ func TestBrowserModelDownStopsAtBottom(t *testing.T) {
 }
 
 func TestBrowserModelTabSwitchesPane(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyTab})
 	m2 := updated.(BrowserModel)
 	if got := m2.ActivePane(); got != "right" {
@@ -73,7 +73,7 @@ func TestBrowserModelTabSwitchesPane(t *testing.T) {
 }
 
 func TestBrowserModelRightPaneNavigation(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	// Select locations (index 1), then tab, then down twice.
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
@@ -94,7 +94,7 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 		{Type: bubbletea.KeyEsc},
 		{Type: bubbletea.KeyCtrlC},
 	} {
-		m := NewBrowserModel(output.Style{})
+		m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 		updated, cmd := m.Update(key)
 		if cmd == nil {
 			t.Fatalf("Update(%q) command = nil, want quit command", key.String())
@@ -110,7 +110,7 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	view := m.View()
 	if !strings.Contains(view, "locations") {
@@ -122,7 +122,7 @@ func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsEmptyState(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	// Select forwarding-rules (index 3).
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
 	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
@@ -137,7 +137,7 @@ func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 }
 
 func TestBrowserModelViewContainsErrorState(t *testing.T) {
-	m := NewBrowserModel(output.Style{})
+	m := NewBrowserModel(output.Style{}, NewFakeBrowserData())
 	// Select connectors (index 6): zia, locations, url-filtering-rules, forwarding-rules, zpa, app-segments, connectors.
 	for i := 0; i < 6; i++ {
 		m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
@@ -148,6 +148,98 @@ func TestBrowserModelViewContainsErrorState(t *testing.T) {
 	}
 	if !strings.Contains(view, "connector list unavailable") {
 		t.Errorf("View() = %q, want error message", view)
+	}
+}
+
+func TestBrowserDataFakeFixture(t *testing.T) {
+	data := NewFakeBrowserData()
+	if len(data.Products) != 3 {
+		t.Errorf("len(Products) = %d, want 3", len(data.Products))
+	}
+	var zia, zpa, zcc bool
+	for _, p := range data.Products {
+		switch p.Name {
+		case "zia":
+			zia = true
+			if len(p.Resources) != 3 {
+				t.Errorf("zia resources = %d, want 3", len(p.Resources))
+			}
+		case "zpa":
+			zpa = true
+			if len(p.Resources) != 2 {
+				t.Errorf("zpa resources = %d, want 2", len(p.Resources))
+			}
+		case "zcc":
+			zcc = true
+			if len(p.Resources) != 1 {
+				t.Errorf("zcc resources = %d, want 1", len(p.Resources))
+			}
+		}
+	}
+	if !zia || !zpa || !zcc {
+		t.Errorf("missing expected products: zia=%v zpa=%v zcc=%v", zia, zpa, zcc)
+	}
+}
+
+func TestBrowserDataContractStates(t *testing.T) {
+	data := BrowserData{
+		Products: []ProductNode{
+			{
+				Name: "test",
+				Resources: []ResourceNode{
+					{Name: "normal", Product: "test", Records: []RecordSummary{{ID: "1", Name: "A"}}},
+					{Name: "empty", Product: "test", Empty: true},
+					{Name: "error", Product: "test", Error: "boom"},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, data)
+
+	// normal
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	view := m.View()
+	if !strings.Contains(view, "A") {
+		t.Errorf("normal view = %q, want record name A", view)
+	}
+
+	// empty
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	view = m.View()
+	if !strings.Contains(view, "No records") {
+		t.Errorf("empty view = %q, want No records", view)
+	}
+
+	// error
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	view = m.View()
+	if !strings.Contains(view, "boom") {
+		t.Errorf("error view = %q, want error message", view)
+	}
+}
+
+func TestBrowserModelRendersDataFields(t *testing.T) {
+	data := BrowserData{
+		Products: []ProductNode{
+			{
+				Name: "test",
+				Resources: []ResourceNode{
+					{
+						Name:    "fields",
+						Product: "test",
+						Records: []RecordSummary{
+							{ID: "1", Name: "A", Fields: []KV{{Key: "region", Value: "us-east"}}},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, data)
+	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	view := m.View()
+	if !strings.Contains(view, "region: us-east") {
+		t.Errorf("view = %q, want generic field", view)
 	}
 }
 
