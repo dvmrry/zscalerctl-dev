@@ -91,6 +91,28 @@ Two properties keep them low-risk and must hold on upgrade:
   upgrade, re-confirm no reachable call to `colorprofile.Detect`, `.Env`, or
   `.Tmux`, and that `termenv` still imports no `os/exec` or `net`.
 
+## Interactive TUI Import Boundary
+
+The TUI foundation adds `github.com/charmbracelet/bubbletea` as a pinned,
+vendored dependency. It is kept behind a strict import boundary:
+
+- `internal/tui` holds the eligibility gate and shared types. It must not
+  import Bubble Tea.
+- `internal/tui/tea` is the only package that may implement Bubble Tea models.
+- `scripts/tui-demo.go` is the only entry point that may start a Bubble Tea
+  program.
+- `cmd/zscalerctl` and `internal/cli` must not import Bubble Tea.
+
+This boundary exists because Bubble Tea v1.x runs package-initialization
+terminal probing (via Lip Gloss background detection) that can emit
+OSC/cursor-position queries before the CLI evaluates its own TUI eligibility
+gate. If a normal startup package imported Bubble Tea, every `zscalerctl`
+invocation could probe the terminal, even when the user requested JSON/NDJSON
+output or ran non-interactively.
+
+See [cli/tui-import-boundary.md](cli/tui-import-boundary.md) for the full
+finding and enforcement details.
+
 ## Renovate Policy
 
 Renovate keeps Go dependencies and GitHub Actions current, but it does not
