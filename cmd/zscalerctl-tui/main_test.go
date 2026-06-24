@@ -214,6 +214,37 @@ func TestConfigFailureNoProgram(t *testing.T) {
 	}
 }
 
+func TestLiveBroadCollectionDisabledNoReaderNoProgram(t *testing.T) {
+	prog := &fakeProgram{}
+	loadConfigCalls := 0
+	deps := dependencies{
+		gateChecker: alwaysEnabledGate,
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			loadConfigCalls++
+			return oneAPIConfig(), nil
+		},
+		newReader: func(context.Context, zscaler.ReaderConfig) (browserdata.RecordReader, error) {
+			t.Fatal("newReader should not be called for broad live collection")
+			return nil, nil
+		},
+		newProgram: fakeProgramFactory(prog),
+	}
+
+	err := runTest(t, deps, []string{"--live", "--products", "zia"})
+	if !errors.Is(err, errLiveBroadCollectionDisabled) {
+		t.Fatalf("runTest(--live --products zia) error = %v, want %v", err, errLiveBroadCollectionDisabled)
+	}
+	if got, want := err.Error(), errLiveBroadCollectionDisabled.Error(); got != want {
+		t.Errorf("runTest(--live --products zia) error message = %q, want %q", got, want)
+	}
+	if loadConfigCalls != 1 {
+		t.Errorf("loadConfig calls = %d, want 1", loadConfigCalls)
+	}
+	if prog.called {
+		t.Error("program should not be launched when broad live collection is disabled")
+	}
+}
+
 func TestCredentialFailureNoProgram(t *testing.T) {
 	prog := &fakeProgram{}
 	cfg := oneAPIConfig()
@@ -228,7 +259,7 @@ func TestCredentialFailureNoProgram(t *testing.T) {
 		newProgram: fakeProgramFactory(prog),
 	}
 
-	err := runTest(t, deps, []string{"--live"})
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
 	if err == nil {
 		t.Fatal("expected credential error, got nil")
 	}
@@ -250,7 +281,7 @@ func TestReaderFailureNoProgram(t *testing.T) {
 		newProgram: fakeProgramFactory(prog),
 	}
 
-	err := runTest(t, deps, []string{"--live"})
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
 	if err == nil || err.Error() != "reader creation failed" {
 		t.Fatalf("expected reader error, got %v", err)
 	}
@@ -497,7 +528,7 @@ func TestLegacyZIAMissingPasswordFailsBeforeTUI(t *testing.T) {
 		newProgram: fakeProgramFactory(prog),
 	}
 
-	err := runTest(t, deps, []string{"--live"})
+	err := runTest(t, deps, []string{"--live", "--products", "zia", "--resources", "locations"})
 	if err == nil {
 		t.Fatal("expected credential error, got nil")
 	}
