@@ -93,7 +93,7 @@ After live-smoke runs, confirm that the normal `zscalerctl` binary still has no
 Bubble Tea in its dependency graph:
 
 ```sh
-go list -deps ./cmd/zscalerctl | grep -E 'github.com/charmbracelet/bubbletea|internal/tui/tea'
+go list -deps ./cmd/zscalerctl | grep -E 'charm.land/(bubbletea|bubbles)/v2|internal/tui/tea'
 # should produce no output
 ```
 

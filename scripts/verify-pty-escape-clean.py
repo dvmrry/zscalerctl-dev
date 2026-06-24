@@ -3,9 +3,8 @@
 
 Runs the built zscalerctl binary in a real pseudo-terminal and checks that
 `version --format json` and `introspect --format json` emit no ESC bytes and
-produce valid JSON. This is a regression guard against Bubble Tea v1.x package-init
-terminal probing, which can emit OSC/DSR sequences before main() when linked into
-the normal binary.
+produce valid JSON. This is a regression guard against TUI runtime behavior
+leaking into the normal binary.
 
 The child environment is sanitized (CI removed, TERM set to a color-capable
 value) so that termenv does not short-circuit TTY detection in CI environments.

@@ -203,16 +203,16 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 | `internal/tui` | Pure, Bubble-free launch eligibility and decision helpers. |
 | `internal/tui/data` | Neutral `BrowserData` view model types shared by collector and TUI. Bubble-free. |
 | `internal/tui/browserdata` | Catalog filtering, reader coordination, projection, `BrowserData` conversion. Bubble-free. |
-| `internal/tui/launcher` | Bubble-free gate evaluation and `BrowserData` collection. Does not import `internal/tui/tea` or Bubble Tea. |
-| `internal/tui/tea` | Bubble Tea model, view, and update loop. Consumes `internal/tui/data` only. |
-| `cmd/zscalerctl` or `internal/cli` | Normal Cobra command tree. Must not import Bubble Tea or `internal/tui/tea` (verified by `go list -deps`). |
-| Isolated TUI entrypoint | `cmd/zscalerctl-tui` (experimental), `scripts/tui-demo.go`, or `scripts/tui-browser-demo.go`. May import Bubble Tea and `internal/tui/tea`. |
+| `internal/tui/launcher` | Bubble-free gate evaluation and `BrowserData` collection. Does not import `internal/tui/tea`, Bubble Tea, or Bubbles. |
+| `internal/tui/tea` | Bubble Tea model, Bubbles components, view, and update loop. Consumes `internal/tui/data` only. |
+| `cmd/zscalerctl` or `internal/cli` | Normal Cobra command tree. Must not import Bubble Tea, Bubbles, or `internal/tui/tea` (verified by `go list -deps`). |
+| Isolated TUI entrypoint | `cmd/zscalerctl-tui` (experimental), `scripts/tui-demo.go`, or `scripts/tui-browser-demo.go`. May import Bubble Tea, Bubbles, and `internal/tui/tea`. |
 
 ## Implementation order for the isolated TUI entrypoint
 
 1. Add an isolated TUI entrypoint (`cmd/zscalerctl-tui` or `scripts/tui-browser-demo.go`).
-   This entrypoint is the only place that may import `github.com/charmbracelet/bubbletea`
-   and `internal/tui/tea`.
+   This entrypoint is the only place that may import `charm.land/bubbletea/v2`,
+   `charm.land/bubbles/v2`, and `internal/tui/tea`.
 2. In the entrypoint, call `tui.DecideLaunch(opts)` before any heavy work.
 3. If disabled, print the reason and exit `2`.
 4. If enabled, load config, resolve credentials, build the reader (or use a fake
@@ -223,14 +223,14 @@ The TUI itself does not introduce new exit codes beyond the normal CLI set.
 8. Return the program exit code.
 
 The normal `cmd/zscalerctl` and `internal/cli` packages must never import
-Bubble Tea or `internal/tui/tea`; this is enforced by `go list -deps` in
+Bubble Tea, Bubbles, or `internal/tui/tea`; this is enforced by `go list -deps` in
 `scripts/verify-tui-import-boundary.sh`.
 
 ## Foundation promotion criteria (now satisfied)
 
 - Isolated TUI entrypoint exists as `cmd/zscalerctl-tui`; no Bubble Tea in `cmd/zscalerctl` or `internal/cli`.
 - `go list -deps ./cmd/zscalerctl` and `go list -deps ./internal/cli` must not
-  include `github.com/charmbracelet/bubbletea` or `internal/tui/tea`.
+  include `charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, or `internal/tui/tea`.
 - Real TTY readbacks for `80x24`, `60x16`, and `120x32` from the isolated entrypoint.
 - Evidence that normal CLI paths (non-TTY, `--format json`, `NO_COLOR`) still
   produce no Bubble Tea sequences; verified in a PTY by
@@ -251,13 +251,14 @@ The experimental `zscalerctl browse --tui` command was implemented on `feature/t
 and exercised the full real CLI path: gate → config → credentials → reader →
 collector → BrowserData → launcher → Bubble Tea. However, that path transitively
 linked Bubble Tea into the normal `zscalerctl` binary (`cmd/zscalerctl` and
-`internal/cli`), which violates the TUI import boundary because Bubble Tea v1.x
-runs package-init terminal probing that can emit OSC/DSR sequences before `main()`.
+`internal/cli`), which violates the TUI import boundary. Normal JSON/NDJSON,
+completion, introspection, and machine error paths must remain independent of
+TUI runtime behavior.
 
 The blocker fix removed the hidden `browse` command from the normal command tree
 and made `internal/tui/launcher` Bubble-free. An isolated experimental TUI entrypoint
-now exists as `cmd/zscalerctl-tui`. It may import `internal/tui/tea` and Bubble Tea,
-while the normal `zscalerctl` binary and `internal/cli` remain Bubble-free. The
+now exists as `cmd/zscalerctl-tui`. It may import `internal/tui/tea`, Bubble Tea,
+and Bubbles, while the normal `zscalerctl` binary and `internal/cli` remain Bubble-free. The
 binary supports both fixture-only modes and a `--live` mode that loads config, resolves
 credentials, builds a real Zscaler reader, and collects tenant data before launching
 the TUI. Future work is to capture live-tenant readback evidence and decide whether

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	bubbletea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	bubbletea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	tea "github.com/dvmrry/zscalerctl/internal/tui/tea"
@@ -26,9 +26,9 @@ func TestDemoModelViewTracksWindowSize(t *testing.T) {
 		t.Errorf("DemoModel.Size() = (%d, %d), want (60, 16)", gotWidth, gotHeight)
 	}
 
-	view := sized.View()
+	view := sized.View().Content
 	if !strings.Contains(view, "terminal: 60x16") {
-		t.Errorf("DemoModel.View() = %q, want terminal dimensions", view)
+		t.Errorf("DemoModel.View().Content = %q, want terminal dimensions", view)
 	}
 	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
 		if got := lipgloss.Width(line); got > 60 {
@@ -38,29 +38,29 @@ func TestDemoModelViewTracksWindowSize(t *testing.T) {
 }
 
 func TestDemoModelColorRendering(t *testing.T) {
-	colorView := tea.NewDemoModel(output.Style{Color: true, Color256: true}).View()
+	colorView := tea.NewDemoModel(output.Style{Color: true, Color256: true}).View().Content
 	if !strings.Contains(colorView, "\x1b[") {
-		t.Errorf("DemoModel.View() with color = %q, want ANSI escape", colorView)
+		t.Errorf("DemoModel.View().Content with color = %q, want ANSI escape", colorView)
 	}
 
-	plainView := tea.NewDemoModel(output.Style{}).View()
+	plainView := tea.NewDemoModel(output.Style{}).View().Content
 	if strings.Contains(plainView, "\x1b[") {
-		t.Errorf("DemoModel.View() without color = %q, want no ANSI escape", plainView)
+		t.Errorf("DemoModel.View().Content without color = %q, want no ANSI escape", plainView)
 	}
 	if !strings.Contains(plainView, "style: monochrome render") {
-		t.Errorf("DemoModel.View() without color = %q, want monochrome label", plainView)
+		t.Errorf("DemoModel.View().Content without color = %q, want monochrome label", plainView)
 	}
 }
 
 func TestDemoModelQuitKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		msg  bubbletea.KeyMsg
+		msg  bubbletea.Msg
 		want string
 	}{
-		{name: "q", msg: bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'q'}}, want: "q"},
-		{name: "esc", msg: bubbletea.KeyMsg{Type: bubbletea.KeyEsc}, want: "esc"},
-		{name: "ctrl c", msg: bubbletea.KeyMsg{Type: bubbletea.KeyCtrlC}, want: "ctrl+c"},
+		{name: "q", msg: keyText("q"), want: "q"},
+		{name: "esc", msg: keyCode(bubbletea.KeyEsc), want: "esc"},
+		{name: "ctrl c", msg: keyCtrlC(), want: "ctrl+c"},
 	}
 
 	for _, tt := range tests {
@@ -83,4 +83,21 @@ func TestDemoModelQuitKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+func keyText(s string) bubbletea.KeyPressMsg {
+	runes := []rune(s)
+	code := rune(0)
+	if len(runes) > 0 {
+		code = runes[0]
+	}
+	return bubbletea.KeyPressMsg(bubbletea.Key{Text: s, Code: code})
+}
+
+func keyCode(code rune) bubbletea.KeyPressMsg {
+	return bubbletea.KeyPressMsg(bubbletea.Key{Code: code})
+}
+
+func keyCtrlC() bubbletea.KeyPressMsg {
+	return bubbletea.KeyPressMsg(bubbletea.Key{Code: 'c', Mod: bubbletea.ModCtrl})
 }

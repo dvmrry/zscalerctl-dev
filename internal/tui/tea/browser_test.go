@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	bubbletea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	bubbletea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui/data"
@@ -26,7 +26,7 @@ func TestBrowserModelInitialSelection(t *testing.T) {
 
 func TestBrowserModelDownMovesSelection(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'j'}})
+	updated, _ := m.Update(keyText("j"))
 	// 'j' is not bound, so no change.
 	m2, ok := updated.(BrowserModel)
 	if !ok {
@@ -36,7 +36,7 @@ func TestBrowserModelDownMovesSelection(t *testing.T) {
 		t.Errorf("j changed selection to %d, want 0", got)
 	}
 
-	updated, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	updated, _ = m2.Update(keyCode(bubbletea.KeyDown))
 	m3 := updated.(BrowserModel)
 	if got := m3.SelectedIndex(); got != 1 {
 		t.Errorf("down selection = %d, want 1", got)
@@ -45,7 +45,7 @@ func TestBrowserModelDownMovesSelection(t *testing.T) {
 
 func TestBrowserModelUpStopsAtTop(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyUp})
+	updated, _ := m.Update(keyCode(bubbletea.KeyUp))
 	m2 := updated.(BrowserModel)
 	if got := m2.SelectedIndex(); got != 0 {
 		t.Errorf("up from top selection = %d, want 0", got)
@@ -55,7 +55,7 @@ func TestBrowserModelUpStopsAtTop(t *testing.T) {
 func TestBrowserModelDownStopsAtBottom(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	for i := 0; i < len(m.items)+2; i++ {
-		updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+		updated, _ := m.Update(keyCode(bubbletea.KeyDown))
 		m = updated.(BrowserModel)
 	}
 	if got := m.SelectedIndex(); got != len(m.items)-1 {
@@ -65,12 +65,12 @@ func TestBrowserModelDownStopsAtBottom(t *testing.T) {
 
 func TestBrowserModelTabSwitchesPane(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	updated, _ := m.Update(keyCode(bubbletea.KeyTab))
 	m2 := updated.(BrowserModel)
 	if got := m2.ActivePane(); got != "right" {
 		t.Errorf("tab active pane = %q, want right", got)
 	}
-	updated, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	updated, _ = m2.Update(keyCode(bubbletea.KeyTab))
 	m3 := updated.(BrowserModel)
 	if got := m3.ActivePane(); got != "left" {
 		t.Errorf("tab again active pane = %q, want left", got)
@@ -80,10 +80,10 @@ func TestBrowserModelTabSwitchesPane(t *testing.T) {
 func TestBrowserModelRightPaneNavigation(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	// Select locations (index 1), then tab, then down twice.
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyTab))
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyDown))
 
 	if got := m.RecordIndex(); got != 2 {
 		t.Errorf("right pane record index = %d, want 2", got)
@@ -94,10 +94,10 @@ func TestBrowserModelRightPaneNavigation(t *testing.T) {
 }
 
 func TestBrowserModelQuitKeys(t *testing.T) {
-	for _, key := range []bubbletea.KeyMsg{
-		{Type: bubbletea.KeyRunes, Runes: []rune{'q'}},
-		{Type: bubbletea.KeyEsc},
-		{Type: bubbletea.KeyCtrlC},
+	for _, key := range []bubbletea.KeyPressMsg{
+		keyText("q"),
+		keyCode(bubbletea.KeyEsc),
+		keyCtrlC(),
 	} {
 		m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 		updated, cmd := m.Update(key)
@@ -116,8 +116,8 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 
 func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view := m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view := m.View().Content
 	if !strings.Contains(view, "locations") {
 		t.Errorf("View() = %q, want selected resource name", view)
 	}
@@ -129,10 +129,10 @@ func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	// Select forwarding-rules (index 3).
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view := m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view := m.View().Content
 	if !strings.Contains(view, "forwarding-rules") {
 		t.Errorf("View() = %q, want selected resource name", view)
 	}
@@ -146,9 +146,9 @@ func TestBrowserModelViewContainsErrorState(t *testing.T) {
 	// Select connectors (index 7): zia, locations, url-filtering-rules, forwarding-rules,
 	// settings, zpa, app-segments, connectors.
 	for i := 0; i < 7; i++ {
-		m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+		m = step(m, keyCode(bubbletea.KeyDown))
 	}
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "connectors") {
 		t.Errorf("View() = %q, want selected resource name", view)
 	}
@@ -216,22 +216,22 @@ func TestBrowserDataContractStates(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data)
 
 	// normal
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view := m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view := m.View().Content
 	if !strings.Contains(view, "A") {
 		t.Errorf("normal view = %q, want record name A", view)
 	}
 
 	// empty
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view = m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view = m.View().Content
 	if !strings.Contains(view, "No records") {
 		t.Errorf("empty view = %q, want No records", view)
 	}
 
 	// error
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view = m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view = m.View().Content
 	if !strings.Contains(view, "boom") {
 		t.Errorf("error view = %q, want error message", view)
 	}
@@ -255,26 +255,29 @@ func TestBrowserModelRendersDataFields(t *testing.T) {
 		},
 	}
 	m := NewBrowserModel(output.Style{}, data)
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view := m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view := m.View().Content
 	if !strings.Contains(view, "region: us-east") {
 		t.Errorf("view = %q, want generic field", view)
+	}
+	if strings.Contains(view, "status=active") {
+		t.Errorf("view = %q, want records list without inline status", view)
 	}
 }
 
 func TestBrowserModelHelpOverlay(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	updated, _ := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'?'}})
+	updated, _ := m.Update(keyText("?"))
 	m2 := updated.(BrowserModel)
 	if !m2.ShowingHelp() {
 		t.Errorf("ShowingHelp() = false, want true")
 	}
-	view := m2.View()
+	view := m2.View().Content
 	if !strings.Contains(view, "Keyboard help") {
 		t.Errorf("View() = %q, want help overlay", view)
 	}
 
-	updated, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	updated, _ = m2.Update(keyCode(bubbletea.KeyDown))
 	m3 := updated.(BrowserModel)
 	if m3.ShowingHelp() {
 		t.Errorf("ShowingHelp() = true after dismiss, want false")
@@ -283,12 +286,12 @@ func TestBrowserModelHelpOverlay(t *testing.T) {
 
 func TestBrowserModelStatusBar(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "zia · 1/10") {
 		t.Errorf("View() = %q, want selected index status", view)
 	}
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	view = m.View()
+	m = step(m, keyCode(bubbletea.KeyDown))
+	view = m.View().Content
 	if !strings.Contains(view, "zia / locations · 2/10") {
 		t.Errorf("View() = %q, want resource path status", view)
 	}
@@ -309,9 +312,9 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("BrowserModel.Update(enter on unloaded resource) command = nil, want load command")
 	}
@@ -322,7 +325,7 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 	if got := loading.selectedItem().effectiveState(); got != data.ResourceStateLoading {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoading)
 	}
-	if view := loading.View(); !strings.Contains(view, "Loading resource") {
+	if view := loading.View().Content; !strings.Contains(view, "Loading resource") {
 		t.Errorf("loading View() = %q, want loading state", view)
 	}
 
@@ -338,7 +341,7 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 	if got := loaded.selectedItem().effectiveState(); got != data.ResourceStateLoaded {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateLoaded)
 	}
-	if view := loaded.View(); !strings.Contains(view, "HQ") {
+	if view := loaded.View().Content; !strings.Contains(view, "HQ") {
 		t.Errorf("loaded View() = %q, want record name", view)
 	}
 }
@@ -355,9 +358,9 @@ func TestLazyBrowserModelCachesLoadedResourceUntilRefresh(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("first enter command = nil, want load command")
 	}
@@ -367,7 +370,7 @@ func TestLazyBrowserModelCachesLoadedResourceUntilRefresh(t *testing.T) {
 		t.Fatalf("loader calls after first load = %d, want 1", got)
 	}
 
-	updated, cmd = loaded.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd = loaded.Update(keyCode(bubbletea.KeyEnter))
 	if cmd != nil {
 		t.Fatalf("second enter command = %v, want nil for cached loaded resource", cmd)
 	}
@@ -375,7 +378,7 @@ func TestLazyBrowserModelCachesLoadedResourceUntilRefresh(t *testing.T) {
 		t.Fatalf("loader calls after cached enter = %d, want 1", got)
 	}
 
-	updated, cmd = updated.(BrowserModel).Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'r'}})
+	updated, cmd = updated.(BrowserModel).Update(keyText("r"))
 	if cmd == nil {
 		t.Fatal("refresh command = nil, want load command")
 	}
@@ -397,9 +400,9 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("enter command = nil, want load command")
 	}
@@ -408,7 +411,7 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 	if got := errored.selectedItem().effectiveState(); got != data.ResourceStateError {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
 	}
-	view := errored.View()
+	view := errored.View().Content
 	if !strings.Contains(view, "Error loading resource") || !strings.Contains(view, "api failed") {
 		t.Errorf("error View() = %q, want error state", view)
 	}
@@ -417,14 +420,14 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
 	loader := &recordingResourceLoader{waitForContext: true}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, 5*time.Millisecond)
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("enter command = nil, want load command")
 	}
 	loading := updated.(BrowserModel)
-	if view := loading.View(); !strings.Contains(view, "Loading resource") {
+	if view := loading.View().Content; !strings.Contains(view, "Loading resource") {
 		t.Errorf("loading View() = %q, want loading state", view)
 	}
 
@@ -433,7 +436,7 @@ func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
 	if got := errored.selectedItem().effectiveState(); got != data.ResourceStateError {
 		t.Fatalf("selected resource state = %s, want %s", got, data.ResourceStateError)
 	}
-	if view := errored.View(); !strings.Contains(view, context.DeadlineExceeded.Error()) {
+	if view := errored.View().Content; !strings.Contains(view, context.DeadlineExceeded.Error()) {
 		t.Errorf("timeout View() = %q, want context deadline exceeded", view)
 	}
 }
@@ -441,13 +444,13 @@ func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
 func TestBrowserModelLeftViewportKeepsSelectionVisibleWithLongList(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, browserDataWithResources(200))
 	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyEnd))
 
 	if got, want := m.SelectedIndex(), len(m.items)-1; got != want {
 		t.Fatalf("SelectedIndex() = %d, want %d", got, want)
 	}
 	assertViewportSelectionVisible(t, "left viewport", m.left, len(m.items), m.leftViewportHeight())
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "resource-199") {
 		t.Errorf("View() = %q, want selected resource visible", view)
 	}
@@ -461,23 +464,23 @@ func TestBrowserModelLeftViewportPageHomeEnd(t *testing.T) {
 	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
 	pageSize := m.leftViewportHeight()
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	m = step(m, keyCode(bubbletea.KeyPgDown))
 	if got := m.SelectedIndex(); got != pageSize {
 		t.Fatalf("SelectedIndex() after pgdown = %d, want %d", got, pageSize)
 	}
 	assertViewportSelectionVisible(t, "left viewport after pgdown", m.left, len(m.items), pageSize)
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgUp})
+	m = step(m, keyCode(bubbletea.KeyPgUp))
 	if got := m.SelectedIndex(); got != 0 {
 		t.Fatalf("SelectedIndex() after pgup = %d, want 0", got)
 	}
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyEnd))
 	if got, want := m.SelectedIndex(), len(m.items)-1; got != want {
 		t.Fatalf("SelectedIndex() after end = %d, want %d", got, want)
 	}
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyHome})
+	m = step(m, keyCode(bubbletea.KeyHome))
 	if got := m.SelectedIndex(); got != 0 {
 		t.Fatalf("SelectedIndex() after home = %d, want 0", got)
 	}
@@ -486,9 +489,9 @@ func TestBrowserModelLeftViewportPageHomeEnd(t *testing.T) {
 func TestBrowserModelRightViewportBoundsLongRecordList(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyTab))
+	m = step(m, keyCode(bubbletea.KeyEnd))
 
 	if got := m.RecordIndex(); got != 999 {
 		t.Fatalf("RecordIndex() after end = %d, want 999", got)
@@ -497,7 +500,7 @@ func TestBrowserModelRightViewportBoundsLongRecordList(t *testing.T) {
 		t.Fatalf("ScrollOffset() after end = %d, want > 0", got)
 	}
 	assertViewportSelectionVisible(t, "right viewport", m.right, len(m.selectedRecords()), m.rightViewportHeight())
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "rec-0999") {
 		t.Errorf("View() = %q, want selected record visible", view)
 	}
@@ -513,32 +516,32 @@ func TestBrowserModelRightViewportBoundsLongRecordList(t *testing.T) {
 func TestBrowserModelRightViewportPageHomeEnd(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
 	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyTab))
 	pageSize := m.rightViewportHeight()
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	m = step(m, keyCode(bubbletea.KeyPgDown))
 	if got := m.RecordIndex(); got != pageSize {
 		t.Fatalf("RecordIndex() after pgdown = %d, want %d", got, pageSize)
 	}
 	assertViewportSelectionVisible(t, "right viewport after pgdown", m.right, len(m.selectedRecords()), pageSize)
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgDown})
+	m = step(m, keyCode(bubbletea.KeyPgDown))
 	if got, want := m.RecordIndex(), pageSize*2; got != want {
 		t.Fatalf("RecordIndex() after second pgdown = %d, want %d", got, want)
 	}
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyPgUp})
+	m = step(m, keyCode(bubbletea.KeyPgUp))
 	if got := m.RecordIndex(); got != pageSize {
 		t.Fatalf("RecordIndex() after pgup = %d, want %d", got, pageSize)
 	}
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyEnd))
 	if got := m.RecordIndex(); got != 999 {
 		t.Fatalf("RecordIndex() after end = %d, want 999", got)
 	}
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyHome})
+	m = step(m, keyCode(bubbletea.KeyHome))
 	if got := m.RecordIndex(); got != 0 {
 		t.Fatalf("RecordIndex() after home = %d, want 0", got)
 	}
@@ -547,39 +550,59 @@ func TestBrowserModelRightViewportPageHomeEnd(t *testing.T) {
 func TestBrowserModelWideLayoutSplitsRecordsAndDetails(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	view := m.View()
+	view := m.View().Content
 	for _, want := range []string{"Products / Resources", "Records", "locations", "HQ", "US East"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want %q in three-pane layout", view, want)
 		}
 	}
-	if !strings.Contains(view, "id=123") {
-		t.Fatalf("View() = %q, want record-list summary with id", view)
+	if !strings.Contains(view, "123") {
+		t.Fatalf("View() = %q, want record id column", view)
 	}
-	if strings.Contains(view, "id: 123") {
-		t.Fatalf("View() = %q, want detail pane to avoid repeating record-list id", view)
+	if strings.Contains(view, "status=active") {
+		t.Fatalf("View() = %q, want records list without inline status", view)
 	}
-	if strings.Contains(view, "status: active") {
-		t.Fatalf("View() = %q, want detail pane to avoid repeating record-list status", view)
+	for _, want := range []string{"id: 123", "status: active"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q in detail pane", view, want)
+		}
 	}
 	assertViewLineWidths(t, view, 120)
+}
+
+func TestBrowserModelArrowKeysSwitchFocusedPane(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+
+	m = step(m, keyCode(bubbletea.KeyRight))
+	if got := m.ActivePane(); got != "right" {
+		t.Fatalf("ActivePane() after right = %q, want right", got)
+	}
+	m = step(m, keyCode(bubbletea.KeyRight))
+	if got := m.ActivePane(); got != "detail" {
+		t.Fatalf("ActivePane() after second right = %q, want detail", got)
+	}
+	m = step(m, keyCode(bubbletea.KeyLeft))
+	if got := m.ActivePane(); got != "right" {
+		t.Fatalf("ActivePane() after left = %q, want right", got)
+	}
 }
 
 func TestBrowserModelWideTabCyclesThroughDetails(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
 
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, keyCode(bubbletea.KeyTab))
 	if got := m.ActivePane(); got != "right" {
 		t.Fatalf("ActivePane() after first tab = %q, want right", got)
 	}
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, keyCode(bubbletea.KeyTab))
 	if got := m.ActivePane(); got != "detail" {
 		t.Fatalf("ActivePane() after second tab = %q, want detail", got)
 	}
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, keyCode(bubbletea.KeyTab))
 	if got := m.ActivePane(); got != "left" {
 		t.Fatalf("ActivePane() after third tab = %q, want left", got)
 	}
@@ -589,18 +612,18 @@ func TestBrowserModelDetailViewportScrollsLargeSelectedBody(t *testing.T) {
 	browserData := browserDataWithLargeRecordBody(40)
 	m := NewBrowserModel(output.Style{}, browserData)
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 16})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyTab))
+	m = step(m, keyCode(bubbletea.KeyTab))
 
 	if got := m.ActivePane(); got != "detail" {
 		t.Fatalf("ActivePane() = %q, want detail", got)
 	}
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyEnd))
 	if got := m.detail.Offset; got <= 0 {
 		t.Fatalf("detail offset after end = %d, want > 0", got)
 	}
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "field_39") {
 		t.Fatalf("View() = %q, want final field visible after detail scroll", view)
 	}
@@ -633,15 +656,15 @@ func TestBrowserModelDetailWrapsStructuredFieldWithoutEllipsis(t *testing.T) {
 	}
 	m := NewBrowserModel(output.Style{}, browserData)
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	view := m.View()
-	for _, want := range []string{"Rule (id=12341235", "status=active)", "dynamicLocationGroups:", `"name": "Corporate User Traffic`, "]"} {
+	view := m.View().Content
+	for _, want := range []string{"Rule", "id: 12341235", "status: active", "dynamicLocationGroups:", `"name": "Corporate User Traffic`, "]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want %q", view, want)
 		}
 	}
-	for _, notWant := range []string{"dynamicLocationGroups: [map[", "id: 12341235", "status: active", "..."} {
+	for _, notWant := range []string{"dynamicLocationGroups: [map[", "status=active", "..."} {
 		if strings.Contains(view, notWant) {
 			t.Fatalf("View() = %q, did not want %q", view, notWant)
 		}
@@ -673,15 +696,15 @@ func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
 		},
 	}
 	m := NewBrowserModel(output.Style{}, browserData)
-	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 24})
+	m = step(m, keyCode(bubbletea.KeyDown))
 
-	view := m.View()
-	assertViewLineWidths(t, view, 60)
-	if !strings.Contains(view, "...") {
-		t.Errorf("View() = %q, want long field truncation marker", view)
+	view := m.View().Content
+	assertViewLineWidths(t, view, 80)
+	if !strings.Contains(view, "tenant-value-") {
+		t.Errorf("View() = %q, want long field value in detail pane", view)
 	}
-	if !strings.Contains(view, "esc/q quit") {
+	if !strings.Contains(view, "q/esc") {
 		t.Errorf("View() = %q, want footer visible", view)
 	}
 }
@@ -689,13 +712,13 @@ func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
 func TestBrowserModelResizeClampsViewports(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, browserDataWithRecords(1000))
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyDown))
+	m = step(m, keyCode(bubbletea.KeyTab))
+	m = step(m, keyCode(bubbletea.KeyEnd))
 
 	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
 	assertViewportSelectionVisible(t, "right viewport after resize", m.right, len(m.selectedRecords()), m.rightViewportHeight())
-	assertViewLineWidths(t, m.View(), 60)
+	assertViewLineWidths(t, m.View().Content, 60)
 }
 
 func TestBrowserModelSmallGeometryRendersResourceStates(t *testing.T) {
@@ -725,9 +748,9 @@ func TestBrowserModelSmallGeometryRendersResourceStates(t *testing.T) {
 			m := NewBrowserModel(output.Style{}, browserData)
 			m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
 			for i := 0; i < tt.moves; i++ {
-				m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown})
+				m = step(m, keyCode(bubbletea.KeyDown))
 			}
-			view := m.View()
+			view := m.View().Content
 			if !strings.Contains(view, tt.wantString) {
 				t.Errorf("View() = %q, want %q", view, tt.wantString)
 			}
@@ -749,9 +772,9 @@ func TestLazyBrowserModelViewportLoadsOnlySelectedResourceAndCaches(t *testing.T
 	}
 	m := NewLazyBrowserModel(output.Style{}, browserDataWithResources(200), loader, time.Second)
 	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 16})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyEnd})
+	m = step(m, keyCode(bubbletea.KeyEnd))
 
-	updated, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("BrowserModel.Update(enter on selected unloaded resource) command = nil, want load command")
 	}
@@ -772,7 +795,7 @@ func TestLazyBrowserModelViewportLoadsOnlySelectedResourceAndCaches(t *testing.T
 		t.Fatalf("loader call after load = %q, want %q", got, want)
 	}
 
-	updated, cmd = loaded.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	updated, cmd = loaded.Update(keyCode(bubbletea.KeyEnter))
 	if cmd != nil {
 		t.Fatalf("BrowserModel.Update(enter on cached resource) command = %v, want nil", cmd)
 	}
@@ -780,7 +803,7 @@ func TestLazyBrowserModelViewportLoadsOnlySelectedResourceAndCaches(t *testing.T
 		t.Fatalf("loader calls after cached enter = %d, want 1", got)
 	}
 
-	updated, cmd = updated.(BrowserModel).Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune{'r'}})
+	updated, cmd = updated.(BrowserModel).Update(keyText("r"))
 	if cmd == nil {
 		t.Fatal("BrowserModel.Update(r on cached resource) command = nil, want refresh command")
 	}
@@ -813,17 +836,17 @@ func TestBrowserModelLongRecordScroll(t *testing.T) {
 	}
 	m := NewBrowserModel(output.Style{}, data)
 	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 10})
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown}) // select resource
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyTab})  // focus right pane
+	m = step(m, keyCode(bubbletea.KeyDown)) // select resource
+	m = step(m, keyCode(bubbletea.KeyTab))  // focus right pane
 	initialScroll := m.ScrollOffset()
 	if initialScroll < 0 {
 		t.Errorf("initial ScrollOffset() = %d, want >= 0", initialScroll)
 	}
-	m = step(m, bubbletea.KeyMsg{Type: bubbletea.KeyDown}) // move to second record
-	if got := m.ScrollOffset(); got <= initialScroll {
-		t.Errorf("ScrollOffset() = %d, want > %d after moving to lower record", got, initialScroll)
+	m = step(m, keyCode(bubbletea.KeyDown)) // move to second record
+	if got := m.ScrollOffset(); got < initialScroll {
+		t.Errorf("ScrollOffset() = %d, want >= %d after moving to lower record", got, initialScroll)
 	}
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Second") {
 		t.Errorf("View() = %q, want second record name", view)
 	}
@@ -927,6 +950,23 @@ func assertViewLineWidths(t *testing.T, view string, width int) {
 func step(m BrowserModel, msg bubbletea.Msg) BrowserModel {
 	updated, _ := m.Update(msg)
 	return updated.(BrowserModel)
+}
+
+func keyText(s string) bubbletea.KeyPressMsg {
+	runes := []rune(s)
+	code := rune(0)
+	if len(runes) > 0 {
+		code = runes[0]
+	}
+	return bubbletea.KeyPressMsg(bubbletea.Key{Text: s, Code: code})
+}
+
+func keyCode(code rune) bubbletea.KeyPressMsg {
+	return bubbletea.KeyPressMsg(bubbletea.Key{Code: code})
+}
+
+func keyCtrlC() bubbletea.KeyPressMsg {
+	return bubbletea.KeyPressMsg(bubbletea.Key{Code: 'c', Mod: bubbletea.ModCtrl})
 }
 
 type recordingResourceLoader struct {

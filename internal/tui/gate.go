@@ -1,12 +1,10 @@
 // Package tui contains the disabled-by-default terminal UI eligibility gate.
 //
-// This package must not import github.com/charmbracelet/bubbletea. Bubble Tea
-// v1.x runs package-init terminal probing (Lip Gloss background detection) that
-// can emit OSC/cursor queries before the CLI has a chance to evaluate this
-// gate. Keeping the gate free of Bubble Tea imports lets normal zscalerctl
-// startup paths load and evaluate eligibility without side effects. The actual
-// Bubble Tea model lives in the sibling internal/tui/tea package and is only
-// reached from explicit demo/runtime entry points.
+// This package must not import charm.land/bubbletea/v2 or charm.land/bubbles/v2.
+// Keeping the gate free of TUI runtime imports lets normal zscalerctl startup
+// paths load and evaluate eligibility without side effects. The actual Bubble
+// Tea model lives in the sibling internal/tui/tea package and is only reached
+// from explicit demo/runtime entry points.
 package tui
 
 import (

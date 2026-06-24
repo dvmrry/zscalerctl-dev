@@ -11,8 +11,8 @@ an invalid-profile live invocation:
 
 The child environment is sanitized (CI variables removed, TERM set to a
 color-capable value) so that the TUI gate does not short-circuit in CI
-environments. This is a regression guard against Bubble Tea v1.x package-init
-terminal probing that previously caused failure paths to hang before main().
+environments. This is a regression guard against startup terminal probes that
+could cause failure paths to hang before main().
 """
 
 import atexit
@@ -102,7 +102,7 @@ def main() -> int:
     if "Products / Resources" in text or "↑/↓" in text or "tab switch" in text:
         errors.append("full-screen TUI appears to have launched")
     if exit_code == -1:
-        errors.append("process timed out (possible Bubble Tea init probe hang)")
+        errors.append("process timed out (possible TUI startup probe hang)")
 
     if errors:
         print("zscalerctl-tui live failure-path check FAILED:", file=sys.stderr)

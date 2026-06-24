@@ -72,18 +72,16 @@ is required for that resource and the review explicitly covers both changes.
 
 ## Presentation Dependencies
 
-The `pretty` output renderer uses `github.com/charmbracelet/lipgloss` (with its
-transitive `muesli/termenv`, `charmbracelet/colorprofile`, and `charmbracelet/x`
-modules). These are terminal-styling libraries, not part of the credentialed
-network path: they receive no credentials, perform no network or filesystem I/O,
-and only style strings that have already been allow-list projected and redacted.
+The `pretty` output renderer uses `charm.land/lipgloss/v2` and its transitive
+terminal-layout dependencies. These are terminal-styling libraries, not part of
+the credentialed network path: they receive no credentials, perform no network
+or filesystem I/O from zscalerctl's usage, and only style strings that have
+already been allow-list projected and redacted.
 
 Two properties keep them low-risk and must hold on upgrade:
 
-- The renderer pins its color profile explicitly (`SetColorProfile`) and renders
-  through an `io.Discard`-backed renderer, so lipgloss/termenv never auto-detect
-  the terminal or probe it with escape sequences. Color is driven solely by the
-  existing `--color` / `NO_COLOR` / TTY logic.
+- The renderer does not call Lip Gloss terminal/background detection APIs. Color
+  is driven solely by the existing `--color` / `NO_COLOR` / TTY logic.
 - `colorprofile` contains the one subprocess path in this dependency set (it
   shells out to `tmux info` in `colorprofile.Tmux`/`Detect`). That path is
   unreachable from our usage: the only consumer, `charmbracelet/x/cellbuf`, uses
@@ -93,54 +91,49 @@ Two properties keep them low-risk and must hold on upgrade:
 
 ## Interactive TUI Import Boundary
 
-The TUI foundation adds `github.com/charmbracelet/bubbletea` as a pinned,
-vendored dependency. It is kept behind a strict import boundary:
+The TUI foundation adds `charm.land/bubbletea/v2` and `charm.land/bubbles/v2`
+as pinned, vendored dependencies. They are kept behind a strict import boundary:
 
 - `internal/tui` holds the eligibility gate and shared types. It must not
-  import Bubble Tea.
-- `internal/tui/tea` is the only package that may implement Bubble Tea models.
-- `scripts/tui-demo.go` is the only entry point that may start a Bubble Tea
+  import Bubble Tea or Bubbles.
+- `internal/tui/tea` is the only package that may implement Bubble Tea models
+  and Bubbles components.
+- `scripts/tui-demo.go`, `scripts/tui-browser-demo.go`, and
+  `cmd/zscalerctl-tui` are the only entry points that may start a Bubble Tea
   program.
-- `cmd/zscalerctl` and `internal/cli` must not import Bubble Tea.
+- `cmd/zscalerctl` and `internal/cli` must not import Bubble Tea, Bubbles, or
+  `internal/tui/tea`.
 
-This boundary exists because Bubble Tea v1.x runs package-initialization
-terminal probing (via Lip Gloss background detection) that can emit
-OSC/cursor-position queries before the CLI evaluates its own TUI eligibility
-gate. If a normal startup package imported Bubble Tea, every `zscalerctl`
-invocation could probe the terminal, even when the user requested JSON/NDJSON
-output or ran non-interactively.
+This boundary keeps TUI runtime behavior out of normal CLI startup. Normal
+`zscalerctl` JSON/NDJSON, completion, introspection, and machine error paths
+must stay Bubble Tea-free even while the standalone experimental TUI evolves.
 
-Because `cmd/zscalerctl-tui` is allowed to import Bubble Tea, the vendored
-`github.com/charmbracelet/bubbletea/tea_init.go` is patched to remove the
-`lipgloss.HasDarkBackground()` call from `init()`. The unpatched init emits
-OSC/DSR probes before `main()` and causes `zscalerctl-tui --live --profile
-<invalid>` to hang instead of returning a config/profile error. The patch is
-acceptable because:
+Bubble Tea v2 does not vendor the v1 `tea_init.go` background-detection probe,
+so there is no local Bubble Tea patch to restore after `go mod vendor`. The
+guard remains because the old failure mode was serious: startup terminal probes
+can emit OSC/DSR bytes or hang before `main()` reaches zscalerctl's own gate.
+The current policy is:
 
 - `zscalerctl` (the normal binary) still never imports Bubble Tea, so the
-  patch has no effect on normal CLI output.
-- `zscalerctl-tui` does not rely on Bubble Tea's startup background-color
-  detection; color is driven by the existing `output.ShouldColor` gate after
-  `main()` runs.
-- The patch is guarded by `scripts/verify-bubbletea-vendor-patch.sh`, which
-  fails if `go mod vendor` reintroduces the probe. A PTY regression verifier
-  (`scripts/verify-zscalerctl-tui-live-failure.sh`) proves the failure path
-  returns promptly with no ESC bytes.
+-  standalone TUI stack has no effect on normal CLI output.
+- `zscalerctl-tui` does not rely on startup background-color detection; color is
+  driven by the existing `output.ShouldColor` gate after `main()` runs.
+- `scripts/verify-bubbletea-vendor-patch.sh` fails if the vendored Bubble Tea
+  v2 tree gains package `init()` functions or `HasDarkBackground` references.
+- PTY regression verifiers prove invalid live startup paths return promptly with
+  no ESC bytes.
 
 ### Patch-aware vendor verification
 
-`make verify-vendor` runs `go mod vendor`, restores the approved Bubble Tea
-patch from the repository with `git checkout --
-vendor/github.com/charmbracelet/bubbletea/tea_init.go`, runs the patch guard,
-and then checks `git diff --exit-code -- go.mod go.sum vendor`. This makes the
-intentional patch part of the integrity contract instead of an exception:
-any remaining vendor diff after the patch is restored is real drift and fails
-the check. `make release-check` depends on `verify-vendor`, so releases can
-pass honestly without requiring tribal knowledge about one expected diff.
+`make verify-vendor` runs `go mod vendor`, runs the Bubble Tea startup-probe
+guard, and then checks `git diff --exit-code -- go.mod go.sum vendor`. Any
+remaining vendor diff is real drift and fails the check. `make release-check`
+depends on `verify-vendor`, so releases can pass without expected vendor
+exceptions.
 
-After a dependency refresh, if the Bubble Tea init file changed upstream, the
-patch guard will fail and a human must review whether the new upstream code
-still needs the patch and update the vendored file accordingly.
+After a dependency refresh, if the Bubble Tea v2 vendor tree gains package
+initializers or background-detection calls, the guard fails and a human must
+review whether the new upstream code is safe for zscalerctl-tui startup.
 
 See [cli/tui-import-boundary.md](cli/tui-import-boundary.md) for the full
 finding and enforcement details.

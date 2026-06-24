@@ -1,22 +1,21 @@
 // Package tea holds the Bubble Tea runtime model for the isolated TUI demo.
 //
 // This package is the only place in the project that may import
-// github.com/charmbracelet/bubbletea. Normal CLI startup packages (cmd/,
+// charm.land/bubbletea/v2. Normal CLI startup packages (cmd/,
 // internal/cli/) and the gate-only internal/tui package must not import it,
-// because Bubble Tea's package initialization can emit terminal probes before
-// the TUI eligibility gate is evaluated. The demo entry point in
+// so TUI runtime behavior cannot leak into normal JSON/NDJSON, completion,
+// introspection, or command startup paths. The demo entry point in
 // scripts/tui-demo.go imports this package and starts a program only after the
 // gate has explicitly allowed it.
 package tea
 
 import (
 	"fmt"
-	"io"
+	"image/color"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 )
@@ -44,7 +43,7 @@ func (m DemoModel) Init() tea.Cmd {
 
 func (m DemoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc", "q":
 			m.exitKey = msg.String()
@@ -57,16 +56,15 @@ func (m DemoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m DemoModel) View() string {
+func (m DemoModel) View() tea.View {
 	width, height := m.dimensions()
-	r := demoRenderer(m.style)
 
-	titleStyle := r.NewStyle().Bold(true)
-	keyStyle := r.NewStyle().Bold(true)
+	titleStyle := lipgloss.NewStyle()
+	keyStyle := lipgloss.NewStyle()
 	status := "Bubble Tea running"
 	if m.style.Color {
-		titleStyle = titleStyle.Foreground(demoAccent(m.style))
-		keyStyle = keyStyle.Foreground(demoAccent(m.style))
+		titleStyle = titleStyle.Bold(true).Foreground(demoAccent(m.style))
+		keyStyle = keyStyle.Bold(true).Foreground(demoAccent(m.style))
 		status = m.style.Value("success", status)
 	}
 
@@ -84,14 +82,14 @@ func (m DemoModel) View() string {
 		),
 	}
 
-	panel := r.NewStyle().
+	panel := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(demoBorderColor(m.style)).
 		Padding(0, 1).
 		Width(demoContentWidth(width)).
 		Render(strings.Join(lines, "\n"))
 
-	return panel + "\n"
+	return tea.NewView(panel + "\n")
 }
 
 // Size returns the most recent terminal dimensions reported by Bubble Tea.
@@ -140,29 +138,16 @@ func demoStyleLabel(style output.Style) string {
 	return "basic-color render"
 }
 
-func demoRenderer(style output.Style) *lipgloss.Renderer {
-	r := lipgloss.NewRenderer(io.Discard)
-	switch {
-	case !style.Color:
-		r.SetColorProfile(termenv.Ascii)
-	case style.Color256:
-		r.SetColorProfile(termenv.ANSI256)
-	default:
-		r.SetColorProfile(termenv.ANSI)
-	}
-	return r
-}
-
-func demoAccent(style output.Style) lipgloss.Color {
+func demoAccent(style output.Style) color.Color {
 	if style.Color256 {
 		return lipgloss.Color("45")
 	}
 	return lipgloss.Color("6")
 }
 
-func demoBorderColor(style output.Style) lipgloss.Color {
+func demoBorderColor(style output.Style) color.Color {
 	if !style.Color {
-		return ""
+		return nil
 	}
 	if style.Color256 {
 		return lipgloss.Color("240")

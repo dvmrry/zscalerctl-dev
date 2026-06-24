@@ -4,6 +4,11 @@ Release-candidate audit for the `feature/tui` integration branch. This document
 records the architecture, command surface, dependency changes, validation
 evidence, and remaining risks before `feature/tui` can be promoted to `main`.
 
+> **Historical audit:** this readback predates the Charm v2 spike. Current TUI
+dependency and import-boundary policy is maintained in
+`docs/DEPENDENCY_POLICY.md`, `docs/cli/tui-import-boundary.md`, and
+`docs/cli/tui-separate-binary.md`.
+
 > **Post-blocker-fix update:** the hidden `zscalerctl browse --tui` command
 described in this audit has been removed because it transitively linked Bubble
 Tea into the normal `zscalerctl` binary via `internal/cli -> internal/tui/launcher

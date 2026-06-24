@@ -176,7 +176,7 @@ func TestGatePackageDoesNotImportBubbleTea(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list internal/tui: %v\n%s", err, out)
 	}
-	if strings.Contains(string(out), "github.com/charmbracelet/bubbletea") {
-		t.Fatalf("internal/tui imports github.com/charmbracelet/bubbletea; the gate package must stay independent\n%s", out)
+	if strings.Contains(string(out), "charm.land/bubbletea/v2") {
+		t.Fatalf("internal/tui imports charm.land/bubbletea/v2; the gate package must stay independent\n%s", out)
 	}
 }

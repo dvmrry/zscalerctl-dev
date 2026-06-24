@@ -1,8 +1,8 @@
 // Command zscalerctl-tui is an experimental standalone TUI browser binary.
 //
 // It is intentionally separate from the normal zscalerctl binary so that
-// Bubble Tea (which runs terminal probing at package init) is never linked into
-// the main CLI. This binary may import internal/tui/tea and Bubble Tea freely.
+// TUI runtime behavior is never linked into the main CLI. This binary may
+// import internal/tui/tea and Bubble Tea freely.
 //
 // Modes:
 //
@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/output"
