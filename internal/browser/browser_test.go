@@ -154,6 +154,52 @@ func TestLoadShowBackedResourceUsesShowReader(t *testing.T) {
 	}
 }
 
+func TestLoadProjectedReturnsProjectedRecords(t *testing.T) {
+	const canary = "abc123abc123abc123abc123abc123abc123"
+	reader := &fakeReader{
+		list: map[resourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, name: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id":          "123",
+					"name":        "HQ",
+					"description": "api_key=" + canary,
+					"apiKey":      canary,
+				}),
+			},
+		},
+	}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	got, err := service.LoadProjected(context.Background(), "zia", "locations")
+	if err != nil {
+		t.Fatalf("Service.LoadProjected(zia, locations) error = %v, want nil", err)
+	}
+	if wantCalls := []string{"list:zia/locations"}; !reflect.DeepEqual(reader.calls, wantCalls) {
+		t.Fatalf("Service.LoadProjected(zia, locations) calls = %#v, want %#v", reader.calls, wantCalls)
+	}
+	records := got.Records()
+	if len(records) != 1 {
+		t.Fatalf("Service.LoadProjected(zia, locations) records length = %d, want 1", len(records))
+	}
+	fields := records[0].Fields()
+	if _, ok := fields["apiKey"]; ok {
+		t.Fatalf("Service.LoadProjected(zia, locations) fields = %#v, want dropped apiKey", fields)
+	}
+	body, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("json.Marshal(Service.LoadProjected(zia, locations).Fields()) error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), canary) {
+		t.Fatalf("Service.LoadProjected(zia, locations) fields JSON = %s, want canary redacted", body)
+	}
+}
+
 func TestLoadUnknownResourceReturnsCleanErrorBeforeReader(t *testing.T) {
 	reader := &fakeReader{}
 	service := browser.Service{

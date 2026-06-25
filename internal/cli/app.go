@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvmrry/zscalerctl/internal/browser"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
@@ -1212,19 +1213,6 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if err != nil {
 		return err
 	}
-	if op == "show" {
-		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
-			return reader.Show(ctx, product, resource)
-		})
-		if err != nil {
-			return err
-		}
-		projected, _, err := resources.ProjectRecordAndVerify(spec, cfg.Defaults.Redaction, record)
-		if err != nil {
-			return err
-		}
-		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
-	}
 	if op == "get" {
 		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
 			return reader.Get(ctx, product, resource, args[2])
@@ -1238,13 +1226,27 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		}
 		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
 	}
-	records, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]resources.SourceRecord, error) {
-		return reader.List(ctx, product, resource)
-	})
-	if err != nil {
-		return err
+	browserService := browser.Service{
+		Catalog: catalog,
+		Reader:  reader,
+		Mode:    cfg.Defaults.Redaction,
 	}
-	projected, _, err := resources.ProjectRecordsAndVerify(spec, cfg.Defaults.Redaction, records)
+	if op == "show" {
+		projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
+			return browserService.LoadProjected(ctx, string(product), resource)
+		})
+		if err != nil {
+			return err
+		}
+		records := projected.Records()
+		if len(records) != 1 {
+			return fmt.Errorf("resource show %s/%s returned %d projected records, want 1", product, resource, len(records))
+		}
+		return a.writeProjectedRecord(cfg, opts, spec, records[0], op)
+	}
+	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
+		return browserService.LoadProjected(ctx, string(product), resource)
+	})
 	if err != nil {
 		return err
 	}
