@@ -592,6 +592,59 @@
       ]
     },
     {
+      "path": "machine",
+      "short": "inspect machine-readable capability contracts",
+      "aliases": [],
+      "hidden": false,
+      "mutating": false,
+      "args": {
+        "policy": "none"
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
+      "path": "machine manifest",
+      "short": "print the machine capability manifest",
+      "long": "Print the catalog-derived machine capability manifest as JSON.\n\nThis command is config-free and never contacts Zscaler.",
+      "aliases": [],
+      "hidden": false,
+      "mutating": false,
+      "args": {
+        "policy": "none"
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
       "path": "schema",
       "short": "inspect the resource catalog schema",
       "aliases": [],

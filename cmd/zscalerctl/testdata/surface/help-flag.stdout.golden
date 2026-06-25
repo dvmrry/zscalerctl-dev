@@ -11,6 +11,7 @@ Available Commands:
   dump        write a full or filtered resource dump to a directory
   help        Help about any command
   introspect  print a machine-readable map of all commands, flags, and resources (JSON)
+  machine     inspect machine-readable capability contracts
   schema      inspect the resource catalog schema
   version     print version, commit, build date, and runtime info
   zcc         read zcc resources

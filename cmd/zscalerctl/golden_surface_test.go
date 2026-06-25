@@ -409,6 +409,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "catalog-enumeration",
 		},
+		// ── machine manifest ────────────────────────────────────────────────────
+		{
+			name:     "machine-manifest-json",
+			args:     []string{"--format", "json", "machine", "manifest"},
+			wantCode: 0,
+			note:     "machine-capability-contract",
+		},
 		// ── completion bash ──────────────────────────────────────────────────────
 		{
 			name:     "completion-bash",

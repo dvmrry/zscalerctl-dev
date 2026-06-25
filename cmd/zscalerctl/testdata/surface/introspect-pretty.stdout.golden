@@ -18,7 +18,7 @@ Global flags (13):
   --search (string)  narrow list results to records whose rendered values contain term (case-insensitive)
   --timeout (duration, default "30s")  request timeout
 
-Commands (290):
+Commands (292):
   auth                                      inspect authentication configuration
   auth status                               show authentication status for the active profile
   completion                                Generate the autocompletion script for the specified shell
@@ -50,6 +50,8 @@ Commands (290):
       --resources (string)
   help                                      Help about any command
   introspect                                print a machine-readable map of all commands, flags, and resources (JSON)
+  machine                                   inspect machine-readable capability contracts
+  machine manifest                          print the machine capability manifest
   schema                                    inspect the resource catalog schema
   schema list                               list all catalog resources and their supported operations
   version                                   print version, commit, build date, and runtime info
