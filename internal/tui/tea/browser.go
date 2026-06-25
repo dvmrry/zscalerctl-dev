@@ -3,8 +3,13 @@ package tea
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image/color"
+	"io"
+	"math"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +19,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/tui/data"
@@ -25,6 +31,8 @@ const (
 	paneLeft   = "left"
 	paneRight  = "right"
 	paneDetail = "detail"
+
+	recordStatusPlaceholder = "-"
 )
 
 // ResourceLoader loads one resource on demand for lazy live browsing.
@@ -435,14 +443,15 @@ func (m *BrowserModel) rebuildComponents(resetRecords bool) {
 		m.detail = viewportState{}
 	}
 
-	m.catalog.SetColumns([]table.Column{{Title: "Products / Resources", Width: paneContentWidth(g.leftWidth)}})
+	m.catalog.SetColumns([]table.Column{{Title: "Products / Resources", Width: tableColumnWidth(paneContentWidth(g.leftWidth))}})
 	m.catalog.SetRows(m.catalogRows())
 	m.catalog.SetWidth(paneContentWidth(g.leftWidth))
 	m.catalog.SetHeight(paneContentHeight(g.leftHeight))
 	m.catalog.SetCursor(m.left.Selected)
 
-	m.records.SetColumns(recordColumns(layout.recordsWidth))
-	m.records.SetRows(m.recordRows())
+	recordCols := recordColumns(tableColumnWidth(layout.recordsWidth))
+	m.records.SetColumns(recordCols)
+	m.records.SetRows(m.recordRows(recordCols))
 	m.records.SetWidth(layout.recordsWidth)
 	m.records.SetHeight(layout.recordsHeight)
 	m.records.SetCursor(m.right.Selected)
@@ -498,65 +507,97 @@ func catalogLabel(item browserItem) string {
 	if item.kind == "product" {
 		return item.name
 	}
-	label := strings.Repeat("  ", item.depth) + item.name
-	switch item.effectiveState() {
-	case data.ResourceStateUnloaded:
-		return label + " [unloaded]"
-	case data.ResourceStateLoading:
-		return label + " [loading]"
-	case data.ResourceStateError:
-		return label + " [error]"
-	default:
-		return label
-	}
+	return strings.Repeat("  ", item.depth) + item.name
 }
 
-func (m BrowserModel) recordRows() []table.Row {
+func (m BrowserModel) recordRows(columns []table.Column) []table.Row {
 	item := m.selectedItem()
 	switch {
 	case len(m.items) == 0:
-		return []table.Row{{"No resources", ""}}
+		return noticeRecordRows(columns, "No resources")
 	case item.kind == "product":
-		return []table.Row{{"Select a resource", ""}}
+		return noticeRecordRows(columns, "Select a resource")
 	case item.effectiveState() == data.ResourceStateUnloaded:
-		return []table.Row{{"Resource not loaded", ""}, {"Press enter to load", ""}}
+		return noticeRecordRows(columns, "Resource not loaded", "Press enter to load")
 	case item.effectiveState() == data.ResourceStateLoading:
-		return []table.Row{{"Loading resource...", ""}}
+		return noticeRecordRows(columns, "Loading resource...")
 	case item.effectiveState() == data.ResourceStateError:
-		return []table.Row{{"Error loading resource", ""}, {item.err, ""}}
+		return noticeRecordRows(columns, "Error loading resource", item.err)
 	case item.empty || len(item.records) == 0:
-		return []table.Row{{"No records", ""}}
+		return noticeRecordRows(columns, "No records")
 	}
 
 	rows := make([]table.Row, 0, len(item.records))
 	for _, rec := range item.records {
-		rows = append(rows, table.Row{recordTitle(rec), rec.ID})
+		rows = append(rows, table.Row{
+			recordTitle(rec),
+			rec.ID,
+			recordStatus(rec.Status),
+		})
+	}
+	return rows
+}
+
+func noticeRecordRows(columns []table.Column, messages ...string) []table.Row {
+	rows := make([]table.Row, 0, len(messages))
+	for _, message := range messages {
+		row := make(table.Row, len(columns))
+		if len(row) == 0 {
+			row = table.Row{message}
+		} else {
+			row[0] = message
+		}
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return []table.Row{{""}}
 	}
 	return rows
 }
 
 func recordColumns(width int) []table.Column {
+	width = maxInt(0, width)
 	if width < 22 {
 		return []table.Column{
 			{Title: "Records", Width: maxInt(0, width)},
 			{Title: "ID", Width: 0},
+			{Title: "Status", Width: 0},
 		}
 	}
-	idWidth := 14
-	if width < 40 {
+	idWidth := 12
+	if width < 42 {
 		idWidth = 10
 	}
-	if idWidth > width/3 {
-		idWidth = width / 3
+	statusWidth := 8
+	if width < 34 {
+		statusWidth = 0
 	}
-	nameWidth := width - idWidth
+	const minRecordNameWidth = 12
+	if width < minRecordNameWidth+idWidth+statusWidth {
+		statusWidth = 0
+	}
+	if width < minRecordNameWidth+idWidth {
+		idWidth = 0
+	}
+	nameWidth := width - idWidth - statusWidth
 	if nameWidth < 1 {
-		nameWidth = 1
+		nameWidth = width
+		idWidth = 0
+		statusWidth = 0
 	}
 	return []table.Column{
 		{Title: "Records", Width: nameWidth},
 		{Title: "ID", Width: idWidth},
+		{Title: "Status", Width: statusWidth},
 	}
+}
+
+func recordStatus(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return recordStatusPlaceholder
+	}
+	return status
 }
 
 func (m BrowserModel) detailContent(width int) string {
@@ -623,28 +664,34 @@ func (m BrowserModel) detailContent(width int) string {
 
 	var lines []string
 	lines = append(lines, recordTitle(rec), "")
-	appendRecordField(&lines, "id", rec.ID)
-	appendRecordField(&lines, "status", rec.Status)
-	appendRecordField(&lines, "description", rec.Detail)
+	appendRecordField(&lines, "id", rec.ID, width)
+	appendRecordField(&lines, "status", rec.Status, width)
+	appendRecordField(&lines, "description", rec.Detail, width)
 	for _, f := range rec.Fields {
-		appendRecordField(&lines, f.Key, f.Value)
+		appendRecordField(&lines, f.Key, f.Value, width)
 	}
 	if len(lines) == 2 {
 		lines = append(lines, "No additional fields.")
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(wrapDetailOutput(lines, width), "\n")
 }
 
-func appendRecordField(lines *[]string, keyName, value string) {
+func appendRecordField(lines *[]string, keyName, value string, width int) {
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return
 	}
-	if !strings.Contains(value, "\n") {
-		*lines = append(*lines, keyName+": "+value)
+	valueLines := formatDetailValue(value, detailValueWidth(width))
+	if len(valueLines) == 1 && !isStructuredDetailValue(value) && ansi.StringWidth(keyName+": "+valueLines[0]) <= width {
+		*lines = append(*lines, keyName+": "+valueLines[0])
 		return
 	}
 	*lines = append(*lines, keyName+":")
-	for _, line := range strings.Split(value, "\n") {
+	for _, line := range valueLines {
+		if line == "" {
+			*lines = append(*lines, "")
+			continue
+		}
 		*lines = append(*lines, "  "+line)
 	}
 }
@@ -692,12 +739,13 @@ func (m BrowserModel) View() tea.View {
 func (m BrowserModel) renderPane(content, pane string, width, height int) string {
 	contentWidth := paneContentWidth(width)
 	contentHeight := paneContentHeight(height)
+	content = boundBlock(content, contentWidth, contentHeight)
 
 	style := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		Padding(0, 1).
-		Width(contentWidth).
-		Height(contentHeight)
+		Width(maxInt(0, width)).
+		Height(maxInt(0, height))
 	if m.style.Color {
 		style = style.BorderForeground(browserBorderColor(m.style, m.active == pane))
 	}
@@ -960,6 +1008,13 @@ func paneContentHeight(height int) int {
 	return maxInt(0, height-2)
 }
 
+func tableColumnWidth(width int) int {
+	if width <= 1 {
+		return maxInt(0, width)
+	}
+	return width - 1
+}
+
 func lineWidth(width int) int {
 	return maxInt(0, width-2)
 }
@@ -968,24 +1023,470 @@ func fitText(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if lipgloss.Width(s) <= width {
+	if ansi.StringWidth(s) <= width {
 		return s
 	}
-	if width <= 3 {
-		return strings.Repeat(".", width)
+	return ansi.Truncate(s, width, "...")
+}
+
+func boundBlock(content string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
 	}
-	target := width - 3
+	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for i, line := range lines {
+		lines[i] = fitText(line, width)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func detailValueWidth(width int) int {
+	return maxInt(1, width-2)
+}
+
+func formatDetailValue(value string, width int) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if lines, ok := formatJSONDetailValue(trimmed, width); ok {
+		return lines
+	}
+	if lines, ok := formatGoMapDetailValue(trimmed, width); ok {
+		return lines
+	}
+	return wrapDetailText(trimmed, width)
+}
+
+func isStructuredDetailValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "{") ||
+		strings.HasPrefix(trimmed, "[") ||
+		strings.HasPrefix(trimmed, "map[")
+}
+
+func formatJSONDetailValue(value string, width int) ([]string, bool) {
+	if !strings.HasPrefix(value, "{") && !strings.HasPrefix(value, "[") {
+		return nil, false
+	}
+	decoder := json.NewDecoder(strings.NewReader(value))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, false
+	}
+	return formatStructuredValue(decoded, width), true
+}
+
+func formatStructuredValue(value any, width int) []string {
+	switch v := value.(type) {
+	case []any:
+		if len(v) == 0 {
+			return []string{"[]"}
+		}
+		var lines []string
+		for _, item := range v {
+			lines = append(lines, formatListItem(item, width)...)
+		}
+		return lines
+	case map[string]any:
+		if len(v) == 0 {
+			return []string{"{}"}
+		}
+		return formatMapFields(v, width, nil)
+	default:
+		return wrapDetailText(formatScalar(v), width)
+	}
+}
+
+func formatListItem(value any, width int) []string {
+	switch v := value.(type) {
+	case map[string]any:
+		if summary := mapSummary(v); summary != "" {
+			lines := wrapDetailText("- "+summary, width)
+			extra := formatMapFields(v, detailValueWidth(width), summaryKeys())
+			if len(extra) > 0 {
+				lines = append(lines, indentDetailLines(extra)...)
+			}
+			return lines
+		}
+	case []any:
+		lines := formatStructuredValue(v, detailValueWidth(width))
+		if len(lines) == 0 {
+			return []string{"- []"}
+		}
+		return prefixFirstAndIndent(lines, "- ", "  ", width)
+	default:
+		if isScalar(v) {
+			return wrapDetailText("- "+formatScalar(v), width)
+		}
+	}
+	lines := formatStructuredValue(value, detailValueWidth(width))
+	if len(lines) == 0 {
+		return []string{"-"}
+	}
+	return prefixFirstAndIndent(lines, "- ", "  ", width)
+}
+
+func formatMapFields(m map[string]any, width int, skip map[string]bool) []string {
+	keys := sortedMapKeys(m)
+	var lines []string
+	for _, keyName := range keys {
+		if skipSummaryField(skip, keyName) {
+			continue
+		}
+		fieldValue := m[keyName]
+		if isScalar(fieldValue) {
+			lines = append(lines, wrapDetailText(keyName+": "+formatScalar(fieldValue), width)...)
+			continue
+		}
+		lines = append(lines, keyName+":")
+		lines = append(lines, indentDetailLines(formatStructuredValue(fieldValue, detailValueWidth(width)))...)
+	}
+	return lines
+}
+
+func mapSummary(m map[string]any) string {
+	return summaryFromLookup(func(keyName string) (string, bool) {
+		v, ok := m[keyName]
+		if !ok || !isScalar(v) {
+			return "", false
+		}
+		return formatScalar(v), true
+	}, sortedMapKeys(m))
+}
+
+func sortedMapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func formatGoMapDetailValue(value string, width int) ([]string, bool) {
+	if !strings.HasPrefix(value, "map[") && !strings.HasPrefix(value, "[map[") {
+		return nil, false
+	}
+	chunks := goMapChunks(value)
+	if len(chunks) == 0 {
+		return nil, false
+	}
+	lines := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		fields := parseGoMapFields(chunk)
+		if len(fields) == 0 {
+			return nil, false
+		}
+		summary := summaryFromLookup(func(keyName string) (string, bool) {
+			v, ok := fields[keyName]
+			return v, ok
+		}, sortedStringMapKeys(fields))
+		if summary == "" {
+			var parts []string
+			for _, keyName := range sortedStringMapKeys(fields) {
+				parts = append(parts, keyName+"="+fields[keyName])
+			}
+			summary = strings.Join(parts, ", ")
+		}
+		lines = append(lines, wrapDetailText("- "+summary, width)...)
+		for _, line := range stringMapExtraLines(fields, detailValueWidth(width), summaryKeys()) {
+			lines = append(lines, "  "+line)
+		}
+	}
+	return lines, true
+}
+
+func goMapChunks(value string) []string {
+	var chunks []string
+	for start := strings.Index(value, "map["); start >= 0; {
+		contentStart := start + len("map[")
+		depth := 1
+		end := contentStart
+		for end < len(value) && depth > 0 {
+			switch value[end] {
+			case '[':
+				depth++
+			case ']':
+				depth--
+			}
+			end++
+		}
+		if depth != 0 {
+			return nil
+		}
+		chunks = append(chunks, value[contentStart:end-1])
+		next := strings.Index(value[end:], "map[")
+		if next < 0 {
+			break
+		}
+		start = end + next
+	}
+	return chunks
+}
+
+var goMapKeyPattern = regexp.MustCompile(`(?:^| )([A-Za-z_][A-Za-z0-9_]*):`)
+
+func parseGoMapFields(chunk string) map[string]string {
+	matches := goMapKeyPattern.FindAllStringSubmatchIndex(chunk, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	fields := make(map[string]string, len(matches))
+	for i, match := range matches {
+		keyName := chunk[match[2]:match[3]]
+		valueStart := match[1]
+		valueEnd := len(chunk)
+		if i+1 < len(matches) {
+			valueEnd = matches[i+1][0]
+		}
+		fields[keyName] = strings.TrimSpace(chunk[valueStart:valueEnd])
+	}
+	return fields
+}
+
+func sortedStringMapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func stringMapExtraLines(m map[string]string, width int, skip map[string]bool) []string {
+	var lines []string
+	for _, keyName := range sortedStringMapKeys(m) {
+		if skipSummaryField(skip, keyName) {
+			continue
+		}
+		lines = append(lines, wrapDetailText(keyName+": "+m[keyName], width)...)
+	}
+	return lines
+}
+
+func summaryKeys() map[string]bool {
+	return map[string]bool{
+		"id":     true,
+		"name":   true,
+		"status": true,
+	}
+}
+
+func skipSummaryField(skip map[string]bool, keyName string) bool {
+	if len(skip) == 0 {
+		return false
+	}
+	return skip[strings.ToLower(keyName)]
+}
+
+func summaryFromLookup(lookup func(string) (string, bool), fallbackKeys []string) string {
+	name, hasName := firstLookupValue(lookup, "name", "Name")
+	id, hasID := firstLookupValue(lookup, "id", "ID")
+	status, hasStatus := firstLookupValue(lookup, "status", "Status")
+
+	label := name
+	if !hasName && hasID {
+		label = id
+	}
+	var attrs []string
+	if hasName && hasID {
+		attrs = append(attrs, "id="+id)
+	}
+	if hasStatus {
+		attrs = append(attrs, "status="+status)
+	}
+	if label != "" {
+		if len(attrs) > 0 {
+			return label + " (" + strings.Join(attrs, ", ") + ")"
+		}
+		return label
+	}
+
+	var parts []string
+	for _, keyName := range fallbackKeys {
+		if value, ok := lookup(keyName); ok {
+			parts = append(parts, keyName+"="+value)
+		}
+		if len(parts) == 3 {
+			break
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func firstLookupValue(lookup func(string) (string, bool), keys ...string) (string, bool) {
+	for _, keyName := range keys {
+		value, ok := lookup(keyName)
+		if ok {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				return value, true
+			}
+		}
+	}
+	return "", false
+}
+
+func isScalar(value any) bool {
+	switch value.(type) {
+	case nil, string, bool, json.Number, float64, float32, int, int64, int32, uint, uint64, uint32:
+		return true
+	default:
+		return false
+	}
+}
+
+func formatScalar(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return "null"
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	case float64:
+		if math.Trunc(v) == v {
+			return fmt.Sprintf("%.0f", v)
+		}
+		return fmt.Sprintf("%g", v)
+	case float32:
+		f := float64(v)
+		if math.Trunc(f) == f {
+			return fmt.Sprintf("%.0f", f)
+		}
+		return fmt.Sprintf("%g", f)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func indentDetailLines(lines []string) []string {
+	return prefixFirstAndIndent(lines, "  ", "  ", 0)
+}
+
+func prefixFirstAndIndent(lines []string, firstPrefix, restPrefix string, width int) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(lines))
+	for i, line := range lines {
+		prefix := restPrefix
+		if i == 0 {
+			prefix = firstPrefix
+		}
+		if width > 0 {
+			out = append(out, wrapDetailText(prefix+line, width)...)
+			continue
+		}
+		out = append(out, prefix+line)
+	}
+	return out
+}
+
+func wrapDetailOutput(lines []string, width int) []string {
+	if width <= 0 {
+		return nil
+	}
+	var out []string
+	for _, line := range lines {
+		if ansi.StringWidth(line) <= width {
+			out = append(out, line)
+			continue
+		}
+		indent := leadingWhitespace(line)
+		wrapped := wrapDetailText(strings.TrimSpace(line), maxInt(1, width-ansi.StringWidth(indent)))
+		for _, wrappedLine := range wrapped {
+			out = append(out, indent+wrappedLine)
+		}
+	}
+	return out
+}
+
+func leadingWhitespace(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r != ' ' && r != '\t' {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func wrapDetailText(value string, width int) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return []string{""}
+	}
+	width = maxInt(1, width)
+	var out []string
+	for _, part := range strings.Split(value, "\n") {
+		words := strings.Fields(part)
+		if len(words) == 0 {
+			out = append(out, "")
+			continue
+		}
+		line := ""
+		for _, word := range words {
+			if ansi.StringWidth(word) > width {
+				if line != "" {
+					out = append(out, line)
+					line = ""
+				}
+				chunks := splitWideWord(word, width)
+				if len(chunks) == 0 {
+					continue
+				}
+				out = append(out, chunks[:len(chunks)-1]...)
+				line = chunks[len(chunks)-1]
+				continue
+			}
+			if line == "" {
+				line = word
+				continue
+			}
+			if ansi.StringWidth(line)+1+ansi.StringWidth(word) <= width {
+				line += " " + word
+				continue
+			}
+			out = append(out, line)
+			line = word
+		}
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func splitWideWord(word string, width int) []string {
+	width = maxInt(1, width)
+	var chunks []string
 	var b strings.Builder
 	used := 0
-	for _, r := range s {
-		cellWidth := lipgloss.Width(string(r))
-		if used+cellWidth > target {
-			break
+	for _, r := range word {
+		cellWidth := ansi.StringWidth(string(r))
+		if used > 0 && used+cellWidth > width {
+			chunks = append(chunks, b.String())
+			b.Reset()
+			used = 0
 		}
 		b.WriteRune(r)
 		used += cellWidth
 	}
-	return b.String() + "..."
+	if b.Len() > 0 {
+		chunks = append(chunks, b.String())
+	}
+	return chunks
 }
 
 func maxInt(a, b int) int {

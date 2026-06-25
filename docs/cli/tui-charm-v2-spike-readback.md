@@ -32,19 +32,19 @@ JSON output has zero ESC bytes.
 ## 120x32
 
 ```text
-┌────────────────────────┐┌──────────────────────────────────┐┌────────────────────────────────────────────┐
-│ Products / Resources   ││ Records                   ID     ││ zia                                        │
-│ zia                    ││ Select a resource                ││                                            │
-│   locations            ││                                  ││ Product: zia                               │
-│   url-filtering-rules  ││                                  ││ Resources: 4                               │
-│   forwarding-rules     ││                                  ││                                            │
-│   settings             ││                                  ││                                            │
-│ zpa                    ││                                  ││                                            │
-│   app-segments         ││                                  ││                                            │
-│   connectors [error]   ││                                  ││                                            │
-│ zcc                    ││                                  ││                                            │
-│   devices              ││                                  ││                                            │
-└────────────────────────┘└──────────────────────────────────┘└────────────────────────────────────────────┘
+┌────────────────────────────┐┌──────────────────────────────────────┐┌────────────────────────────────────────────────┐
+│ Products / Resources       ││ Records          ID        Status    ││ zia                                            │
+│ zia                        ││ Select a resource                    ││                                                │
+│   locations                ││                                      ││ Product: zia                                   │
+│   url-filtering-rules      ││                                      ││ Resources: 4                                   │
+│   forwarding-rules         ││                                      ││                                                │
+│   settings                 ││                                      ││                                                │
+│ zpa                        ││                                      ││                                                │
+│   app-segments             ││                                      ││                                                │
+│   connectors               ││                                      ││                                                │
+│ zcc                        ││                                      ││                                                │
+│   devices                  ││                                      ││                                                │
+└────────────────────────────┘└──────────────────────────────────────┘└────────────────────────────────────────────────┘
 zia · 1/10
 ↑ move • ↓ move • ← pane • → pane • q/esc quit • enter open • ? help
 ```
@@ -52,22 +52,20 @@ zia · 1/10
 ## 80x24
 
 ```text
-┌────────────────────┐┌────────────────────────────────────────────────┐
-│ Products /         ││ Records                             ID         │
-│ Resources          ││ Select a resource                              │
-│ zia                ││                                                │
-│   locations        ││                                                │
-│   url-filtering-   ││                                                │
-│ rules              ││                                                │
-│   forwarding-rules ││                                                │
-│   settings         ││                                                │
-│ zpa                ││ zia                                            │
-│   app-segments     ││                                                │
-│   connectors       ││ Product: zia                                   │
-│ [error]            ││ Resources: 4                                   │
-│ zcc                ││                                                │
-│   devices          ││                                                │
-└────────────────────┘└────────────────────────────────────────────────┘
+┌────────────────────────┐┌────────────────────────────────────────────────────┐
+│ Products / Resources   ││ Records                      ID          Status    │
+│ zia                    ││ Select a resource                                  │
+│   locations            ││                                                    │
+│   url-filtering-rules  ││                                                    │
+│   forwarding-rules     ││                                                    │
+│   settings             ││                                                    │
+│ zpa                    ││                                                    │
+│   app-segments         ││                                                    │
+│   connectors           ││ zia                                                │
+│ zcc                    ││                                                    │
+│   devices              ││ Product: zia                                       │
+│                        ││ Resources: 4                                       │
+└────────────────────────┘└────────────────────────────────────────────────────┘
 zia · 1/10
 ↑ move • ↓ move • ← pane • → pane • q/esc quit • enter open • ? help
 ```
@@ -82,7 +80,7 @@ zia · 1/10
 │   url-filtering-rules                                │
 └──────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────┐
-│ Records                                   ID         │
+│ Records                            ID          Status    │
 │ Select a resource                                    │
 │                                                      │
 │                                                      │
@@ -97,7 +95,12 @@ zia · 1/10
 - Wide terminals use three panes: resources, records, detail.
 - Medium terminals keep resources left and combine records/detail on the right.
 - Narrow terminals stack resources over records.
-- Records show name plus ID; status is not rendered in the records list.
+- Records show name, ID, and compact Status columns; missing status renders as
+  `-`.
+- Left resource rows omit verbose state tags such as `[unloaded]`; the selected
+  resource state remains in the status line and detail pane.
 - Details own record body fields and use a Bubbles viewport for vertical scroll.
+- Structured projected/redacted fields render as readable lists where possible
+  rather than raw JSON or Go `map[...]` dumps.
 - Left/right switch focused pane; up/down, page up/down, home/end act inside the
   focused pane.

@@ -265,6 +265,89 @@ func TestBrowserModelRendersDataFields(t *testing.T) {
 	}
 }
 
+func TestBrowserModelRecordsTableIncludesStatusColumn(t *testing.T) {
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "locations",
+						Records: []data.RecordSummary{
+							{ID: "123", Name: "HQ", Status: "active"},
+							{ID: "124", Name: "Branch"},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+	m = step(m, keyCode(bubbletea.KeyDown))
+
+	columns := m.records.Columns()
+	if got, want := len(columns), 3; got != want {
+		t.Fatalf("records.Columns() length = %d, want %d", got, want)
+	}
+	if got := columns[2].Title; got != "Status" {
+		t.Fatalf("records status column title = %q, want Status", got)
+	}
+	if got := columns[2].Width; got <= 0 {
+		t.Fatalf("records status column width = %d, want > 0", got)
+	}
+
+	rows := m.records.Rows()
+	if got, want := len(rows), 2; got != want {
+		t.Fatalf("records.Rows() length = %d, want %d", got, want)
+	}
+	if got := rows[0][2]; got != "active" {
+		t.Errorf("records row 0 status = %q, want active", got)
+	}
+	if got := rows[1][2]; got != "-" {
+		t.Errorf("records row 1 status = %q, want -", got)
+	}
+
+	view := m.View().Content
+	if !strings.Contains(view, "Status") {
+		t.Errorf("View() = %q, want Status column header", view)
+	}
+	if strings.Contains(view, "status=active") {
+		t.Errorf("View() = %q, want status in its own column, not appended to name", view)
+	}
+}
+
+func TestBrowserModelRecordsTableTruncatesLongNames(t *testing.T) {
+	longName := strings.Repeat("record-name-", 20)
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "url-categories",
+						Records: []data.RecordSummary{
+							{ID: "1234567890", Name: longName, Status: "active"},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 24})
+	m = step(m, keyCode(bubbletea.KeyDown))
+
+	recordsView := m.records.View()
+	assertViewLineWidths(t, recordsView, m.records.Width())
+	if strings.Contains(recordsView, longName) {
+		t.Fatalf("records.View() = %q, want long record name truncated", recordsView)
+	}
+	assertViewBounds(t, m.View().Content, 80, 24)
+}
+
 func TestBrowserModelHelpOverlay(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	updated, _ := m.Update(keyText("?"))
@@ -553,7 +636,7 @@ func TestBrowserModelWideLayoutSplitsRecordsAndDetails(t *testing.T) {
 	m = step(m, keyCode(bubbletea.KeyDown))
 
 	view := m.View().Content
-	for _, want := range []string{"Products / Resources", "Records", "locations", "HQ", "US East"} {
+	for _, want := range []string{"Products / Resources", "Records", "Status", "locations", "HQ", "US East"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want %q in three-pane layout", view, want)
 		}
@@ -645,7 +728,7 @@ func TestBrowserModelDetailWrapsStructuredFieldWithoutEllipsis(t *testing.T) {
 								Name:   "Rule",
 								Status: "active",
 								Fields: []data.KV{
-									{Key: "dynamicLocationGroups", Value: "[\n  {\n    \"id\": \"1132433111\",\n    \"name\": \"Corporate User Traffic With A Long Name That Wraps\"\n  }\n]"},
+									{Key: "dynamicLocationGroups", Value: "[\n  {\n    \"id\": \"1132433111\",\n    \"name\": \"Corporate User Traffic With A Long Name That Wraps\",\n    \"type\": \"DYNAMIC\"\n  }\n]"},
 								},
 							},
 						},
@@ -659,17 +742,59 @@ func TestBrowserModelDetailWrapsStructuredFieldWithoutEllipsis(t *testing.T) {
 	m = step(m, keyCode(bubbletea.KeyDown))
 
 	view := m.View().Content
-	for _, want := range []string{"Rule", "id: 12341235", "status: active", "dynamicLocationGroups:", `"name": "Corporate User Traffic`, "]"} {
+	for _, want := range []string{"Rule", "id: 12341235", "status: active", "dynamicLocationGroups:", "- Corporate User Traffic", "(id=1132433111)", "type: DYNAMIC"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want %q", view, want)
 		}
 	}
-	for _, notWant := range []string{"dynamicLocationGroups: [map[", "status=active", "..."} {
+	for _, notWant := range []string{"dynamicLocationGroups: [", "dynamicLocationGroups: [map[", `"name":`, "{", "status=active", "..."} {
 		if strings.Contains(view, notWant) {
 			t.Fatalf("View() = %q, did not want %q", view, notWant)
 		}
 	}
 	assertViewLineWidths(t, view, 120)
+}
+
+func TestBrowserModelDetailFormatsGoMapListFallback(t *testing.T) {
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{
+						Product: "zia",
+						Name:    "rules",
+						Records: []data.RecordSummary{
+							{
+								ID:     "1",
+								Name:   "Rule",
+								Status: "active",
+								Fields: []data.KV{
+									{Key: "dynamicLocationGroups", Value: "[map[id:1132433111 name:Corporate User Traffic status:active type:DYNAMIC]]"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 80, Height: 24})
+	m = step(m, keyCode(bubbletea.KeyDown))
+
+	view := m.View().Content
+	for _, want := range []string{"dynamicLocationGroups:", "- Corporate User Traffic", "id=1132433111", "status=active", "type: DYNAMIC"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q", view, want)
+		}
+	}
+	for _, notWant := range []string{"[map[", "dynamicLocationGroups: [", "..."} {
+		if strings.Contains(view, notWant) {
+			t.Fatalf("View() = %q, did not want %q", view, notWant)
+		}
+	}
+	assertViewLineWidths(t, view, 80)
 }
 
 func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
@@ -707,6 +832,35 @@ func TestBrowserModelLongFieldValuesFitPaneWidth(t *testing.T) {
 	if !strings.Contains(view, "q/esc") {
 		t.Errorf("View() = %q, want footer visible", view)
 	}
+}
+
+func TestBrowserModelCatalogOmitsVerboseStateTags(t *testing.T) {
+	browserData := data.BrowserData{
+		Products: []data.ProductNode{
+			{
+				Name: "zia",
+				Resources: []data.ResourceNode{
+					{Product: "zia", Name: "url-categories-with-a-long-name", State: data.ResourceStateUnloaded},
+					{Product: "zia", Name: "loading-resource", State: data.ResourceStateLoading},
+					{Product: "zia", Name: "errored-resource", State: data.ResourceStateError, Error: "sanitized failure"},
+				},
+			},
+		},
+	}
+	m := NewBrowserModel(output.Style{}, browserData)
+	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
+	m = step(m, keyCode(bubbletea.KeyDown))
+
+	view := m.View().Content
+	for _, notWant := range []string{"[unloaded]", "[loading]", "[error]"} {
+		if strings.Contains(view, notWant) {
+			t.Fatalf("View() = %q, did not want verbose state tag %q", view, notWant)
+		}
+	}
+	if !strings.Contains(view, "Resource not loaded") {
+		t.Fatalf("View() = %q, want selected unloaded state in detail pane", view)
+	}
+	assertViewBounds(t, view, 60, 16)
 }
 
 func TestBrowserModelResizeClampsViewports(t *testing.T) {
@@ -945,6 +1099,15 @@ func assertViewLineWidths(t *testing.T, view string, width int) {
 			t.Fatalf("View() line %d width = %d, want <= %d: %q", lineNumber+1, got, width, line)
 		}
 	}
+}
+
+func assertViewBounds(t *testing.T, view string, width, height int) {
+	t.Helper()
+	lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
+	if got := len(lines); got > height {
+		t.Fatalf("View() height = %d lines, want <= %d:\n%s", got, height, view)
+	}
+	assertViewLineWidths(t, view, width)
 }
 
 func step(m BrowserModel, msg bubbletea.Msg) BrowserModel {
