@@ -40,11 +40,19 @@ This project should stay shell-native:
 - Deterministic output for dumps and diffs.
 - No interactive prompts in default automation paths.
 
-Polished human output is useful, but `main` remains a CLI product surface.
+Polished human output is useful, but the machine contract is the product floor:
+JSON, NDJSON, error envelopes, exit codes, completion, introspection, and
+generated CLI docs must remain independent from presentation-layer choices.
+The detailed contract split is recorded in
+[cli/machine-contract.md](cli/machine-contract.md).
+
 Experimental TUI work is preserved outside the active CLI branch, not carried as
 runtime or dependency surface. Future TUI, desktop, Wails, or React work should
-consume a deliberately small, UI-agnostic core seam instead of importing
-`internal/cli` or adding UI frameworks to the normal `zscalerctl` binary.
+consume a deliberately small, UI-agnostic core seam or the JSON contract instead
+of importing `internal/cli` or adding UI frameworks to the normal
+`zscalerctl` binary. Those layers should receive narrow capabilities and
+projected/redacted records, not raw credentials, SDK clients, source records, or
+redaction authority.
 
 The dependency direction is:
 
@@ -52,6 +60,8 @@ The dependency direction is:
 CLI -> core
 UI  -> core
 core -> no CLI, no UI, no Cobra, no Bubble Tea, no Wails, no frontend assets
+machine output -> no terminal styling, prompting, or presentation dependencies
+human output -> same projected/redacted records, presentation only
 ```
 
 ## Agent Integration
@@ -356,6 +366,9 @@ The `pretty` renderer is a presentation overlay only: it consumes the same
 already-projected, already-redacted records as every other format and adds no
 new data path. Its output still passes through the final redaction byte-scan
 before stdout, and it is byte-clean (no ANSI escapes) whenever color is off.
+Lip Gloss, Fang, or any future human-CLI presentation dependency may improve
+this overlay only if JSON, NDJSON, machine error envelopes, completion,
+introspection, parsing, and resource routing remain unchanged.
 
 Pretty output remains script-safe:
 
