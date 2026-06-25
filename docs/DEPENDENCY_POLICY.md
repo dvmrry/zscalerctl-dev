@@ -141,10 +141,21 @@ Semgrep is pinned in three places that must stay in sync:
 
 CodeQL, OSV-Scanner, and gosec provide breadth signal on top of the project
 specific gates. They start as advisory workflows instead of merge blockers.
-gosec runs on every pull request and uploads its results as SARIF to the
-Security tab (`continue-on-error`, so a finding surfaces without blocking the
-build). Promote a finding class to a blocking gate only after it is triaged and
-the rule is known to be stable for this repository.
+gosec runs on every pull request and produces SARIF. CodeQL runs its analyzer
+on pull requests and `main`.
+
+Security analyzers and code-scanning upload are separate concerns:
+
+- Scanner execution failure is a workflow failure.
+- Scanner findings are advisory until a rule class is triaged and promoted.
+- SARIF upload is attempted only when the repository exposes GitHub code
+  scanning to the workflow token; upload unavailability is a repository
+  capability warning, not a source-code failure.
+- Development repositories that do not have code scanning enabled still keep
+  SARIF or CodeQL results as short-lived workflow artifacts for review.
+
+Promote a finding class to a blocking gate only after it is triaged and the rule
+is known to be stable for this repository.
 
 ## Finding Remediation Policy
 
