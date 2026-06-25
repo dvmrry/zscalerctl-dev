@@ -28,11 +28,6 @@ jobs:
       - run: go mod verify
       - run: go mod tidy
       - run: go mod vendor
-      # Bubble Tea v1.x is patched to remove the init() terminal probe; restore
-      # the patched file after `go mod vendor` so it is not overwritten by the
-      # upstream module. The patch is guarded by verify-bubbletea-vendor-patch in
-      # verify-gates and `make check`.
-      - run: git checkout -- vendor/github.com/charmbracelet/bubbletea/tea_init.go
       - run: git diff --exit-code -- go.mod go.sum vendor
 
   unit:
@@ -118,10 +113,6 @@ jobs:
       - run: make verify-resource-scaffold
       - run: make verify-sdk-surface-inventory
       - run: make verify-script-registry
-      # TUI regression gates: the vendor patch must be present, and the patched
-      # failure path must return promptly without terminal escape sequences.
-      - run: make verify-bubbletea-vendor-patch
-      - run: make verify-zscalerctl-tui-live-failure
 
   windows-config:
     runs-on: windows-latest

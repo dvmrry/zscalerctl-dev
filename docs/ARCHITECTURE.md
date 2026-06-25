@@ -40,8 +40,19 @@ This project should stay shell-native:
 - Deterministic output for dumps and diffs.
 - No interactive prompts in default automation paths.
 
-Polished human output is useful, but a TUI is not a goal until a concrete
-workflow proves it is needed.
+Polished human output is useful, but `main` remains a CLI product surface.
+Experimental TUI work is preserved outside the active CLI branch, not carried as
+runtime or dependency surface. Future TUI, desktop, Wails, or React work should
+consume a deliberately small, UI-agnostic core seam instead of importing
+`internal/cli` or adding UI frameworks to the normal `zscalerctl` binary.
+
+The dependency direction is:
+
+```text
+CLI -> core
+UI  -> core
+core -> no CLI, no UI, no Cobra, no Bubble Tea, no Wails, no frontend assets
+```
 
 ## Agent Integration
 

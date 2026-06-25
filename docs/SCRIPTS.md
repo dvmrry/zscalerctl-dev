@@ -30,9 +30,6 @@ registered path exists.
 | `scripts/test-verify-script-registry.sh` | test | `make verify-script-registry` | Self-contained verifier test |
 | `scripts/test-verify-semver-label.sh` | test | `make verify-release-automation` | Self-contained verifier test |
 | `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test |
-| `scripts/test-verify-tui-import-boundary.sh` | test | `make verify-tui-import-boundary` | Self-contained verifier test |
-| `scripts/tui-browser-demo.go` | dev | Manual `go run` on `feature/tui`; isolated static TUI browser demo; supports `--projected-fixture` and `--collector-fixture` | `go test ./internal/tui/...` |
-| `scripts/tui-demo.go` | dev | Manual `go run` on `feature/tui`; isolated TUI demo harness | `go test ./internal/tui/...` |
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
 | `scripts/gen-cli-docs.go` | dev | `make gen-cli-docs`; manual CLI-reference regeneration | `scripts/verify-cli-docs.sh` |
@@ -46,25 +43,9 @@ registered path exists.
 | `scripts/verify-surface-changes-manifest.sh` | verify | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | `scripts/test-verify-surface-changes-manifest.sh` |
 | `scripts/verify-pty-escape-clean.py` | dev | `scripts/verify-pty-escape-clean.sh` | PTY helper for escape-sequence regression check |
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
-| `scripts/verify-tui-import-boundary.sh` | verify | `make verify-tui-import-boundary` | `scripts/test-verify-tui-import-boundary.sh` |
-| `scripts/verify-bubbletea-vendor-patch.sh` | verify | `make verify-bubbletea-vendor-patch` | `scripts/test-verify-bubbletea-vendor-patch.sh` |
-| `scripts/test-verify-bubbletea-vendor-patch.sh` | test | `make verify-bubbletea-vendor-patch` | Self-contained verifier test |
-| `scripts/verify-zscalerctl-tui-live-failure.sh` | verify | `make verify-zscalerctl-tui-live-failure` | PTY regression check for `zscalerctl-tui --live --profile <invalid>` |
-| `scripts/verify-zscalerctl-tui-live-failure.py` | dev | `scripts/verify-zscalerctl-tui-live-failure.sh` | Python helper for the zscalerctl-tui live failure-path PTY check |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |
 
 The testdata directory under `scripts/` holds fixtures for script tests and is
 intentionally not a registry entry because the verifier tracks top-level script
 files, not fixture directories.
-
-## Patch-aware vendor verification
-
-`make verify-vendor` refreshes `vendor/` with `go mod vendor`, then restores
-the approved Bubble Tea patch (`vendor/github.com/charmbracelet/bubbletea/tea_init.go`)
-from the repository before running `scripts/verify-bubbletea-vendor-patch.sh` and
-`git diff --exit-code`. This makes the intentional vendor patch part of the
-integrity contract rather than an expected diff. The patch guard and the
-`zscalerctl-tui` live failure-path PTY verifier together ensure the patch is
-present and effective. See [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md) for the
-full vendor-patch policy.

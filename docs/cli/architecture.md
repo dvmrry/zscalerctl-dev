@@ -79,7 +79,8 @@ CLI surface changes are gated by the golden tests under
 help text, exit behavior, or machine-readable envelopes must be recorded in
 `cmd/zscalerctl/testdata/surface/surface_changes.md`.
 
-The current baseline is surface-preserving. Pretty formatting, color policy
-changes, and TUI work should happen only after this baseline is stable because
-they affect TTY detection, stdout/stderr boundaries, redaction, and golden
-output.
+The current baseline is surface-preserving. Pretty formatting and color policy
+changes should remain deliberate because they affect TTY detection,
+stdout/stderr boundaries, redaction, and golden output. Interactive UI work
+belongs outside the normal CLI binary unless a future change deliberately
+introduces a UI-agnostic core boundary first.
