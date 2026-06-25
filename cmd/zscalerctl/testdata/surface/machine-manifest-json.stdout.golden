@@ -1,0 +1,3858 @@
+{
+  "version": "machine.v1",
+  "capabilities": [
+    {
+      "name": "resources.read",
+      "title": "Read zcc/admin-roles",
+      "description": "Read projected and redacted zcc/admin-roles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "admin-roles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "admin-roles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/application-profiles",
+      "description": "Read projected and redacted zcc/application-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "application-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "application-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/company-info",
+      "description": "Read projected and redacted zcc/company-info resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "company-info"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "company-info",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/custom-ip-apps",
+      "description": "Read projected and redacted zcc/custom-ip-apps resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "custom-ip-apps"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "custom-ip-apps",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/devices",
+      "description": "Read projected and redacted zcc/devices resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "devices"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "devices",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/fail-open-policy",
+      "description": "Read projected and redacted zcc/fail-open-policy resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "fail-open-policy"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "fail-open-policy",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/forwarding-profiles",
+      "description": "Read projected and redacted zcc/forwarding-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "forwarding-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "forwarding-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/predefined-ip-apps",
+      "description": "Read projected and redacted zcc/predefined-ip-apps resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "predefined-ip-apps"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "predefined-ip-apps",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/process-based-apps",
+      "description": "Read projected and redacted zcc/process-based-apps resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "process-based-apps"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "process-based-apps",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/trusted-networks",
+      "description": "Read projected and redacted zcc/trusted-networks resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "trusted-networks"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "trusted-networks",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zcc/web-app-services",
+      "description": "Read projected and redacted zcc/web-app-services resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zcc",
+        "resource": "web-app-services"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zcc",
+        "resource": "web-app-services",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/activation-status",
+      "description": "Read projected and redacted zia/activation-status resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "activation-status"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "activation-status",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/admin-roles",
+      "description": "Read projected and redacted zia/admin-roles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "admin-roles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "admin-roles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/admin-users",
+      "description": "Read projected and redacted zia/admin-users resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "admin-users"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "admin-users",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/advanced-settings",
+      "description": "Read projected and redacted zia/advanced-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "advanced-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "advanced-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/advanced-threat-settings",
+      "description": "Read projected and redacted zia/advanced-threat-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "advanced-threat-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "advanced-threat-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/alert-subscriptions",
+      "description": "Read projected and redacted zia/alert-subscriptions resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "alert-subscriptions"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "alert-subscriptions",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/application-service-groups",
+      "description": "Read projected and redacted zia/application-service-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "application-service-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "application-service-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/application-services",
+      "description": "Read projected and redacted zia/application-services resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "application-services"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "application-services",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/atp-malware-inspection",
+      "description": "Read projected and redacted zia/atp-malware-inspection resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "atp-malware-inspection"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "atp-malware-inspection",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/atp-malware-policy",
+      "description": "Read projected and redacted zia/atp-malware-policy resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "atp-malware-policy"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "atp-malware-policy",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/atp-malware-protocols",
+      "description": "Read projected and redacted zia/atp-malware-protocols resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "atp-malware-protocols"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "atp-malware-protocols",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/atp-malware-settings",
+      "description": "Read projected and redacted zia/atp-malware-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "atp-malware-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "atp-malware-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/auth-exempted-urls",
+      "description": "Read projected and redacted zia/auth-exempted-urls resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "auth-exempted-urls"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "auth-exempted-urls",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/auth-settings",
+      "description": "Read projected and redacted zia/auth-settings resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "auth-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "auth-settings",
+        "shape": "singleton",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/bandwidth-classes",
+      "description": "Read projected and redacted zia/bandwidth-classes resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "bandwidth-classes"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "bandwidth-classes",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/bandwidth-control-rules",
+      "description": "Read projected and redacted zia/bandwidth-control-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "bandwidth-control-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "bandwidth-control-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/browser-control-settings",
+      "description": "Read projected and redacted zia/browser-control-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "browser-control-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "browser-control-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/browser-isolation-profiles",
+      "description": "Read projected and redacted zia/browser-isolation-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "browser-isolation-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "browser-isolation-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/c2c-incident-receivers",
+      "description": "Read projected and redacted zia/c2c-incident-receivers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "c2c-incident-receivers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "c2c-incident-receivers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/casb-dlp-rules",
+      "description": "Read projected and redacted zia/casb-dlp-rules resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "casb-dlp-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "casb-dlp-rules",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/casb-email-labels",
+      "description": "Read projected and redacted zia/casb-email-labels resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "casb-email-labels"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "casb-email-labels",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/casb-malware-rules",
+      "description": "Read projected and redacted zia/casb-malware-rules resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "casb-malware-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "casb-malware-rules",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/casb-tenants",
+      "description": "Read projected and redacted zia/casb-tenants resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "casb-tenants"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "casb-tenants",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/casb-tombstone-templates",
+      "description": "Read projected and redacted zia/casb-tombstone-templates resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "casb-tombstone-templates"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "casb-tombstone-templates",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/cloud-app-control",
+      "description": "Read projected and redacted zia/cloud-app-control resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "cloud-app-control"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "cloud-app-control",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/cloud-app-instances",
+      "description": "Read projected and redacted zia/cloud-app-instances resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "cloud-app-instances"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "cloud-app-instances",
+        "shape": "list",
+        "get_key": "instanceId",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/cloud-application-policy",
+      "description": "Read projected and redacted zia/cloud-application-policy resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "cloud-application-policy"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "cloud-application-policy",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/cloud-application-ssl-policy",
+      "description": "Read projected and redacted zia/cloud-application-ssl-policy resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "cloud-application-ssl-policy"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "cloud-application-ssl-policy",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/custom-file-types",
+      "description": "Read projected and redacted zia/custom-file-types resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "custom-file-types"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "custom-file-types",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dc-exclusions",
+      "description": "Read projected and redacted zia/dc-exclusions resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dc-exclusions"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dc-exclusions",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dedicated-ip-gateways",
+      "description": "Read projected and redacted zia/dedicated-ip-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dedicated-ip-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dedicated-ip-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/departments",
+      "description": "Read projected and redacted zia/departments resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "departments"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "departments",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/device-groups",
+      "description": "Read projected and redacted zia/device-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "device-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "device-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/devices",
+      "description": "Read projected and redacted zia/devices resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "devices"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "devices",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-dictionaries",
+      "description": "Read projected and redacted zia/dlp-dictionaries resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-dictionaries"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-dictionaries",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-edm-schemas",
+      "description": "Read projected and redacted zia/dlp-edm-schemas resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-edm-schemas"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-edm-schemas",
+        "shape": "list",
+        "get_key": "schemaId",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-edm-schemas-lite",
+      "description": "Read projected and redacted zia/dlp-edm-schemas-lite resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-edm-schemas-lite"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-edm-schemas-lite",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-engines",
+      "description": "Read projected and redacted zia/dlp-engines resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-engines"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-engines",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-icap-servers",
+      "description": "Read projected and redacted zia/dlp-icap-servers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-icap-servers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-icap-servers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-idm-profile-lite",
+      "description": "Read projected and redacted zia/dlp-idm-profile-lite resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-idm-profile-lite"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-idm-profile-lite",
+        "shape": "list",
+        "get_key": "profileId",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-idm-profiles",
+      "description": "Read projected and redacted zia/dlp-idm-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-idm-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-idm-profiles",
+        "shape": "list",
+        "get_key": "profileId",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-incident-receiver-servers",
+      "description": "Read projected and redacted zia/dlp-incident-receiver-servers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-incident-receiver-servers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-incident-receiver-servers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-notification-templates",
+      "description": "Read projected and redacted zia/dlp-notification-templates resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-notification-templates"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-notification-templates",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dlp-web-rules",
+      "description": "Read projected and redacted zia/dlp-web-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dlp-web-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dlp-web-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/dns-gateways",
+      "description": "Read projected and redacted zia/dns-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "dns-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "dns-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/domain-profiles",
+      "description": "Read projected and redacted zia/domain-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "domain-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "domain-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/email-profiles",
+      "description": "Read projected and redacted zia/email-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "email-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "email-profiles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/end-user-notification-settings",
+      "description": "Read projected and redacted zia/end-user-notification-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "end-user-notification-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "end-user-notification-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/eusa-status",
+      "description": "Read projected and redacted zia/eusa-status resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "eusa-status"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "eusa-status",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/file-type-rules",
+      "description": "Read projected and redacted zia/file-type-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "file-type-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "file-type-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/firewall-dns-rules",
+      "description": "Read projected and redacted zia/firewall-dns-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "firewall-dns-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "firewall-dns-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/firewall-filtering-rules",
+      "description": "Read projected and redacted zia/firewall-filtering-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "firewall-filtering-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "firewall-filtering-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/forwarding-rules",
+      "description": "Read projected and redacted zia/forwarding-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "forwarding-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "forwarding-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ftp-control-policy",
+      "description": "Read projected and redacted zia/ftp-control-policy resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ftp-control-policy"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ftp-control-policy",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/gre-tunnels",
+      "description": "Read projected and redacted zia/gre-tunnels resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "gre-tunnels"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "gre-tunnels",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/groups",
+      "description": "Read projected and redacted zia/groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/intermediate-ca-certificates",
+      "description": "Read projected and redacted zia/intermediate-ca-certificates resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "intermediate-ca-certificates"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "intermediate-ca-certificates",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ip-destination-groups",
+      "description": "Read projected and redacted zia/ip-destination-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ip-destination-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ip-destination-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ip-source-groups",
+      "description": "Read projected and redacted zia/ip-source-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ip-source-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ip-source-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ips-policies",
+      "description": "Read projected and redacted zia/ips-policies resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ips-policies"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ips-policies",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ips-signature-rules",
+      "description": "Read projected and redacted zia/ips-signature-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ips-signature-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ips-signature-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ipv6-config",
+      "description": "Read projected and redacted zia/ipv6-config resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ipv6-config"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ipv6-config",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ipv6-dns64-prefixes",
+      "description": "Read projected and redacted zia/ipv6-dns64-prefixes resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ipv6-dns64-prefixes"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ipv6-dns64-prefixes",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ipv6-nat64-prefixes",
+      "description": "Read projected and redacted zia/ipv6-nat64-prefixes resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ipv6-nat64-prefixes"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ipv6-nat64-prefixes",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/location-groups",
+      "description": "Read projected and redacted zia/location-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "location-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "location-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/locations",
+      "description": "Read projected and redacted zia/locations resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "locations"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "locations",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/malicious-urls",
+      "description": "Read projected and redacted zia/malicious-urls resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "malicious-urls"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "malicious-urls",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/mobile-threat-settings",
+      "description": "Read projected and redacted zia/mobile-threat-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "mobile-threat-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "mobile-threat-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/nat-control-rules",
+      "description": "Read projected and redacted zia/nat-control-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "nat-control-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "nat-control-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/network-application-groups",
+      "description": "Read projected and redacted zia/network-application-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "network-application-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "network-application-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/network-applications",
+      "description": "Read projected and redacted zia/network-applications resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "network-applications"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "network-applications",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/network-service-groups",
+      "description": "Read projected and redacted zia/network-service-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "network-service-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "network-service-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/network-services",
+      "description": "Read projected and redacted zia/network-services resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "network-services"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "network-services",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/nss-feeds",
+      "description": "Read projected and redacted zia/nss-feeds resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "nss-feeds"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "nss-feeds",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/nss-servers",
+      "description": "Read projected and redacted zia/nss-servers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "nss-servers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "nss-servers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/org-information",
+      "description": "Read projected and redacted zia/org-information resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "org-information"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "org-information",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/pac-files",
+      "description": "Read projected and redacted zia/pac-files resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "pac-files"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "pac-files",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/proxies",
+      "description": "Read projected and redacted zia/proxies resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "proxies"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "proxies",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/proxy-gateways",
+      "description": "Read projected and redacted zia/proxy-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "proxy-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "proxy-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/remote-assistance",
+      "description": "Read projected and redacted zia/remote-assistance resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "remote-assistance"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "remote-assistance",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/risk-profiles",
+      "description": "Read projected and redacted zia/risk-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "risk-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "risk-profiles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/rule-labels",
+      "description": "Read projected and redacted zia/rule-labels resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "rule-labels"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "rule-labels",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/sandbox-rules",
+      "description": "Read projected and redacted zia/sandbox-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "sandbox-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "sandbox-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/sandbox-settings",
+      "description": "Read projected and redacted zia/sandbox-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "sandbox-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "sandbox-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/security-exceptions",
+      "description": "Read projected and redacted zia/security-exceptions resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "security-exceptions"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "security-exceptions",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/ssl-inspection-rules",
+      "description": "Read projected and redacted zia/ssl-inspection-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "ssl-inspection-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "ssl-inspection-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/static-ips",
+      "description": "Read projected and redacted zia/static-ips resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "static-ips"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "static-ips",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/sub-clouds",
+      "description": "Read projected and redacted zia/sub-clouds resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "sub-clouds"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "sub-clouds",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/sublocations",
+      "description": "Read projected and redacted zia/sublocations resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "sublocations"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "sublocations",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/supported-browser-versions",
+      "description": "Read projected and redacted zia/supported-browser-versions resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "supported-browser-versions"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "supported-browser-versions",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/tenancy-restriction-profiles",
+      "description": "Read projected and redacted zia/tenancy-restriction-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "tenancy-restriction-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "tenancy-restriction-profiles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/time-intervals",
+      "description": "Read projected and redacted zia/time-intervals resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "time-intervals"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "time-intervals",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/time-windows",
+      "description": "Read projected and redacted zia/time-windows resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "time-windows"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "time-windows",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/url-allow-list",
+      "description": "Read projected and redacted zia/url-allow-list resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "url-allow-list"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "url-allow-list",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/url-categories",
+      "description": "Read projected and redacted zia/url-categories resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "url-categories"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "url-categories",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/url-deny-list",
+      "description": "Read projected and redacted zia/url-deny-list resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "url-deny-list"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "url-deny-list",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/url-filtering-rules",
+      "description": "Read projected and redacted zia/url-filtering-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "url-filtering-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "url-filtering-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/users",
+      "description": "Read projected and redacted zia/users resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "users"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "users",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/vzen-clusters",
+      "description": "Read projected and redacted zia/vzen-clusters resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "vzen-clusters"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "vzen-clusters",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/vzen-nodes",
+      "description": "Read projected and redacted zia/vzen-nodes resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "vzen-nodes"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "vzen-nodes",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/workload-groups",
+      "description": "Read projected and redacted zia/workload-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "workload-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "workload-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/zpa-gateways",
+      "description": "Read projected and redacted zia/zpa-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "zpa-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "zpa-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zidentity/groups",
+      "description": "Read projected and redacted zidentity/groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zidentity",
+        "resource": "groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zidentity",
+        "resource": "groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zidentity/resource-servers",
+      "description": "Read projected and redacted zidentity/resource-servers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zidentity",
+        "resource": "resource-servers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zidentity",
+        "resource": "resource-servers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zidentity/users",
+      "description": "Read projected and redacted zidentity/users resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zidentity",
+        "resource": "users"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zidentity",
+        "resource": "users",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/app-connector-groups",
+      "description": "Read projected and redacted zpa/app-connector-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "app-connector-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "app-connector-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/app-connectors",
+      "description": "Read projected and redacted zpa/app-connectors resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "app-connectors"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "app-connectors",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/app-servers",
+      "description": "Read projected and redacted zpa/app-servers resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "app-servers"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "app-servers",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/application-segments",
+      "description": "Read projected and redacted zpa/application-segments resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "application-segments"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "application-segments",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/branch-connectors",
+      "description": "Read projected and redacted zpa/branch-connectors resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "branch-connectors"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "branch-connectors",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/browser-access",
+      "description": "Read projected and redacted zpa/browser-access resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "browser-access"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "browser-access",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/c2c-ip-ranges",
+      "description": "Read projected and redacted zpa/c2c-ip-ranges resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "c2c-ip-ranges"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "c2c-ip-ranges",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/cbi-zpa-profiles",
+      "description": "Read projected and redacted zpa/cbi-zpa-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "cbi-zpa-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "cbi-zpa-profiles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/client-types",
+      "description": "Read projected and redacted zpa/client-types resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "client-types"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "client-types",
+        "shape": "singleton",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/cloud-connector-groups",
+      "description": "Read projected and redacted zpa/cloud-connector-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "cloud-connector-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "cloud-connector-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/cloud-connectors",
+      "description": "Read projected and redacted zpa/cloud-connectors resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "cloud-connectors"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "cloud-connectors",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/config-overrides",
+      "description": "Read projected and redacted zpa/config-overrides resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "config-overrides"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "config-overrides",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/inspection-app-segments",
+      "description": "Read projected and redacted zpa/inspection-app-segments resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "inspection-app-segments"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "inspection-app-segments",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/isolation-profiles",
+      "description": "Read projected and redacted zpa/isolation-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "isolation-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "isolation-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/machine-groups",
+      "description": "Read projected and redacted zpa/machine-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "machine-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "machine-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/microtenants",
+      "description": "Read projected and redacted zpa/microtenants resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "microtenants"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "microtenants",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/platforms",
+      "description": "Read projected and redacted zpa/platforms resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "platforms"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "platforms",
+        "shape": "singleton",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/posture-profiles",
+      "description": "Read projected and redacted zpa/posture-profiles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "posture-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "posture-profiles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/pra-app-segments",
+      "description": "Read projected and redacted zpa/pra-app-segments resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "pra-app-segments"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "pra-app-segments",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/segment-groups",
+      "description": "Read projected and redacted zpa/segment-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "segment-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "segment-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/server-groups",
+      "description": "Read projected and redacted zpa/server-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "server-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "server-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/service-edge-groups",
+      "description": "Read projected and redacted zpa/service-edge-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "service-edge-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "service-edge-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/service-edges",
+      "description": "Read projected and redacted zpa/service-edges resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "service-edges"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "service-edges",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/trusted-networks",
+      "description": "Read projected and redacted zpa/trusted-networks resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "trusted-networks"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "trusted-networks",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/user-portal-aups",
+      "description": "Read projected and redacted zpa/user-portal-aups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "user-portal-aups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "user-portal-aups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/user-portal-links",
+      "description": "Read projected and redacted zpa/user-portal-links resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "user-portal-links"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "user-portal-links",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/user-portals",
+      "description": "Read projected and redacted zpa/user-portals resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "user-portals"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "user-portals",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zpa/version-profiles",
+      "description": "Read projected and redacted zpa/version-profiles resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zpa",
+        "resource": "version-profiles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zpa",
+        "resource": "version-profiles",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/account-groups",
+      "description": "Read projected and redacted ztw/account-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "account-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "account-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/activation-status",
+      "description": "Read projected and redacted ztw/activation-status resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "activation-status"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "activation-status",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/admin-roles",
+      "description": "Read projected and redacted ztw/admin-roles resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "admin-roles"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "admin-roles",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/admin-users",
+      "description": "Read projected and redacted ztw/admin-users resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "admin-users"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "admin-users",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/dns-gateways",
+      "description": "Read projected and redacted ztw/dns-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "dns-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "dns-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/ec-groups",
+      "description": "Read projected and redacted ztw/ec-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "ec-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "ec-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/forwarding-gateways",
+      "description": "Read projected and redacted ztw/forwarding-gateways resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "forwarding-gateways"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "forwarding-gateways",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/forwarding-rules",
+      "description": "Read projected and redacted ztw/forwarding-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "forwarding-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "forwarding-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/ip-destination-groups",
+      "description": "Read projected and redacted ztw/ip-destination-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "ip-destination-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "ip-destination-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/ip-groups",
+      "description": "Read projected and redacted ztw/ip-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "ip-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "ip-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/ip-source-groups",
+      "description": "Read projected and redacted ztw/ip-source-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "ip-source-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "ip-source-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/location-templates",
+      "description": "Read projected and redacted ztw/location-templates resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "location-templates"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "location-templates",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/locations",
+      "description": "Read projected and redacted ztw/locations resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "locations"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "locations",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/network-service-groups",
+      "description": "Read projected and redacted ztw/network-service-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "network-service-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "network-service-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/network-services",
+      "description": "Read projected and redacted ztw/network-services resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "network-services"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "network-services",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/public-cloud-accounts",
+      "description": "Read projected and redacted ztw/public-cloud-accounts resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "public-cloud-accounts"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "public-cloud-accounts",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/public-cloud-info",
+      "description": "Read projected and redacted ztw/public-cloud-info resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "public-cloud-info"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "public-cloud-info",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/traffic-dns-rules",
+      "description": "Read projected and redacted ztw/traffic-dns-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "traffic-dns-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "traffic-dns-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/traffic-log-rules",
+      "description": "Read projected and redacted ztw/traffic-log-rules resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "traffic-log-rules"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "traffic-log-rules",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/workload-groups",
+      "description": "Read projected and redacted ztw/workload-groups resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "workload-groups"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "workload-groups",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read ztw/zpa-application-segments",
+      "description": "Read projected and redacted ztw/zpa-application-segments resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "ztw",
+        "resource": "zpa-application-segments"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "ztw",
+        "resource": "zpa-application-segments",
+        "shape": "list",
+        "read_only": true
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "name": "projected-records",
+      "version": "1"
+    }
+  ],
+  "meta": {
+    "version": "1",
+    "read_only": true,
+    "count": 165
+  }
+}

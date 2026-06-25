@@ -16,6 +16,7 @@
   dump
   help
   introspect
+  machine manifest
   schema list
   version
   zia url-lookup

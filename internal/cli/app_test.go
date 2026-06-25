@@ -17,6 +17,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
@@ -1110,6 +1111,110 @@ func TestSchemaListJSONIncludesGetKeyForGetResources(t *testing.T) {
 	}
 	if errOut.Len() != 0 {
 		t.Errorf("App.Run(schema list json) stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestMachineManifestJSONIsConfigFree(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+	missingConfig := filepath.Join(t.TempDir(), "missing.yaml")
+
+	err := app.Run(context.Background(), []string{"--config", missingConfig, "--format", "json", "machine", "manifest"})
+	if err != nil {
+		t.Fatalf("App.Run(machine manifest) error = %v, want nil", err)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(machine manifest) stderr = %q, want empty", errOut.String())
+	}
+
+	var manifest machine.Manifest
+	if err := json.Unmarshal(out.Bytes(), &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(machine manifest) error = %v; body = %q", err, out.String())
+	}
+	if manifest.Version != machine.ManifestVersion {
+		t.Fatalf("manifest version = %q, want %q", manifest.Version, machine.ManifestVersion)
+	}
+	if manifest.Meta == nil || !manifest.Meta.ReadOnly || manifest.Meta.Count != len(manifest.Capabilities) {
+		t.Fatalf("manifest meta = %+v, capabilities = %d; want read-only count", manifest.Meta, len(manifest.Capabilities))
+	}
+
+	foundLocations := false
+	for _, capability := range manifest.Capabilities {
+		if capability.Input != nil && capability.Input.Product == "zia" && capability.Input.Resource == "locations" {
+			foundLocations = true
+			break
+		}
+	}
+	if !foundLocations {
+		t.Fatalf("machine manifest did not include zia/locations capability")
+	}
+}
+
+func TestMachineManifestUsesInjectedCatalog(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		{
+			Product:    resources.ProductZIA,
+			Name:       "widgets",
+			Shape:      resources.ShapeList,
+			Operations: resources.ReadOperations(),
+			GetKey:     "id",
+		},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Catalog: catalog,
+		Reader:  failingResourceReader{},
+	})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "machine", "manifest"})
+	if err != nil {
+		t.Fatalf("App.Run(machine manifest injected catalog) error = %v, want nil", err)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(machine manifest injected catalog) stderr = %q, want empty", errOut.String())
+	}
+
+	var manifest machine.Manifest
+	if err := json.Unmarshal(out.Bytes(), &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(machine manifest injected catalog) error = %v; body = %q", err, out.String())
+	}
+	if len(manifest.Capabilities) != 1 {
+		t.Fatalf("manifest capabilities = %d, want 1; body = %q", len(manifest.Capabilities), out.String())
+	}
+	capability := manifest.Capabilities[0]
+	if capability.Input == nil || capability.Input.Product != "zia" || capability.Input.Resource != "widgets" {
+		t.Fatalf("manifest capability input = %+v, want zia/widgets", capability.Input)
+	}
+	if got := fmt.Sprint(capability.Operations); got != "[list get]" {
+		t.Fatalf("manifest operations = %s, want [list get]", got)
+	}
+	if capability.Meta == nil || capability.Meta.GetKey != "id" {
+		t.Fatalf("manifest capability meta = %+v, want get_key id", capability.Meta)
+	}
+}
+
+func TestMachineManifestRejectsNonJSONFormats(t *testing.T) {
+	t.Parallel()
+
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+
+	err := app.Run(context.Background(), []string{"--format", "ndjson", "machine", "manifest"})
+	if err == nil {
+		t.Fatal("App.Run(machine manifest ndjson) error = nil, want usage error")
+	}
+	if !strings.Contains(err.Error(), "machine manifest does not support ndjson output yet") {
+		t.Fatalf("App.Run(machine manifest ndjson) error = %v, want unsupported-format usage", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("App.Run(machine manifest ndjson) stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(machine manifest ndjson) stderr = %q, want empty", errOut.String())
 	}
 }
 

@@ -66,6 +66,11 @@ Column definitions:
 | `introspect-pretty` | `browse` shows only `--tui` | `browse` shows `--tui`, `--products`, `--resources`, `--continue-on-error` | Same real reader-backed collection path as `introspect`. | `help-text` |
 | `introspect` | 291 commands; `browse` shown as hidden with four local flags | 290 commands; no `browse` command | Bubble Tea blocker fix: `browse --tui` transitively linked Bubble Tea into the normal `zscalerctl` binary via `internal/cli -> internal/tui/launcher -> internal/tui/tea`. Bubble Tea v1.x init() can probe the terminal before `main()`, so the hidden command is removed until a subprocess/isolated-entrypoint design is approved. | `command-removed` |
 | `introspect-pretty` | 291 commands; `browse` shown as `[hidden]` with four flags | 290 commands; no `browse` command | Same Bubble Tea blocker fix as `introspect`. | `command-removed` |
+| `machine-manifest-json` | (none — new case) | JSON machine capability manifest derived from the resource catalog: `machine.v1`, `resources.read` capabilities, projected-record schema ref, and read-only metadata. | Exposes a config-free machine discovery surface for agents/pipelines without executing resources or loading credentials. | `new-surface` |
+| `help-flag` | Global command list omitted `machine` | Global command list includes `machine manifest` via the Cobra `machine` command group. | New machine manifest command is part of the top-level utility surface and must be discoverable from global help. | `command-added` |
+| `inventory` | Top-level verb inventory omitted `machine manifest` | Top-level verb inventory includes `machine manifest`. | Command-tree inventory tracks the same new machine manifest surface as the live Cobra tree. | `command-added` |
+| `introspect` | 290 commands | 292 commands; added `machine` and `machine manifest` command docs. | New machine manifest command is enumerated from the live Cobra tree; no catalog/resource execution occurs. | `command-added` |
+| `introspect-pretty` | 290 commands | 292 commands; added `machine` and `machine manifest` in the human tree. | Same live Cobra tree addition as `introspect`, reflected in the pretty introspection view. | `command-added` |
 
 ---
 

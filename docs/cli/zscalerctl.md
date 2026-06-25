@@ -272,6 +272,26 @@ print a machine-readable map of all commands, flags, and resources (JSON)
 zscalerctl introspect
 ```
 
+### machine
+
+inspect machine-readable capability contracts
+
+```
+zscalerctl machine
+```
+
+#### machine manifest
+
+print the machine capability manifest
+
+```
+zscalerctl machine manifest
+```
+
+Print the catalog-derived machine capability manifest as JSON.
+
+This command is config-free and never contacts Zscaler.
+
 ### schema
 
 inspect the resource catalog schema

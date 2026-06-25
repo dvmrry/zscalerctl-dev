@@ -701,7 +701,8 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
-		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts))
+		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
+		a.newMachineCmd(opts))
 	catalog := a.resourceCatalog()
 	for _, p := range knownProducts(catalog) {
 		root.AddCommand(a.newProductCmd(p, opts))
@@ -2126,6 +2127,7 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  introspect")
+	fmt.Fprintln(w, "  machine manifest")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]")
 	fmt.Fprintln(w, "  diff <old-dump-dir> <new-dump-dir> [--products names] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]")
 	fmt.Fprintf(w, "  completion %s\n", completionShellNames())
@@ -2432,7 +2434,7 @@ func isRunnableCommand(name string, catalog resources.ResourceCatalog) bool {
 // instead of the generic --fields usage error.
 func isKnownCommand(name string, catalog resources.ResourceCatalog) bool {
 	switch name {
-	case "help", "version", "completion", "introspect":
+	case "help", "version", "completion", "introspect", "machine":
 		return true
 	}
 	return isRunnableCommand(name, catalog)
