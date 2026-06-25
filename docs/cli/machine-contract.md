@@ -9,6 +9,11 @@ This document defines the contract split. It is not a requirement to split the
 current `zscalerctl` binary. The first boundary is internal: keep the machine
 contract independent from human presentation choices.
 
+The in-process contract types live in `internal/machine`. Adapters may translate
+Cobra argv, future stdio/JSON-RPC messages, or UI events into
+`machine.Request` values and receive `machine.Response` or `machine.MachineError`
+values. Those types are a typed boundary, not an internal JSON transport.
+
 ## Machine Contract
 
 The machine contract is the product floor:
@@ -170,6 +175,7 @@ use:
 config and credentials
   -> reader
   -> core/browser/resource projection
+  -> machine request/response contract types where needed
   -> projected and redacted records
   -> JSON/NDJSON machine renderers
   -> table/pretty human renderers

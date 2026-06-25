@@ -45,4 +45,11 @@ check_package \
   '(^|/)(github\.com/spf13/cobra|github\.com/charmbracelet/(bubbletea|bubbles|lipgloss)|github\.com/wailsapp/wails|internal/cli)(/|$)' \
   "internal/browser must remain UI-agnostic and Cobra-free; future UI code should consume it without reversing the dependency direction."
 
+check_package \
+  "internal/machine" \
+  "./internal/machine" \
+  "ZSCALERCTL_MACHINE_DEPS_FILE" \
+  '(^|/)(github\.com/spf13/cobra|github\.com/charmbracelet/(bubbletea|bubbles|lipgloss)|github\.com/wailsapp/wails|internal/(cli|output)|vite|react)(/|$)' \
+  "internal/machine must remain transport-neutral and free of CLI, UI, and rendering dependencies."
+
 echo "verify-core-boundaries: PASS"
