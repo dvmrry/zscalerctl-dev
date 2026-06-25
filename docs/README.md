@@ -15,6 +15,8 @@ GitHub security policy.
 ## Design And Security
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
+- [cli/core-boundary.md](cli/core-boundary.md) — CLI/core/UI dependency
+  boundary for future UI-safe backend seams.
 - [THREAT_MODEL.md](THREAT_MODEL.md)
 - [DATA_CLASSIFICATION.md](DATA_CLASSIFICATION.md)
 - [FIELD_COVERAGE.md](FIELD_COVERAGE.md) — generated per-resource classified vs
