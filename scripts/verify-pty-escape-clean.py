@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Verify that normal CLI output is clean in an interactive PTY.
+"""Verify that normal CLI machine output is clean in an interactive PTY.
 
 Runs the built zscalerctl binary in a real pseudo-terminal and checks that
 `version --format json` and `introspect --format json` emit no ESC bytes and
-produce valid JSON. This is a regression guard against Bubble Tea v1.x package-init
-terminal probing, which can emit OSC/DSR sequences before main() when linked into
-the normal binary.
+produce valid JSON. This guards the machine-output contract when terminal
+styling dependencies or startup paths change.
 
 The child environment is sanitized (CI removed, TERM set to a color-capable
 value) so that termenv does not short-circuit TTY detection in CI environments.
@@ -35,7 +34,7 @@ def build_binary(repo_root: str) -> str:
 def clean_env() -> dict[str, str]:
     """Return a sanitized environment for the PTY child.
 
-    Remove CI-style variables that can cause termenv/lipgloss to skip TTY
+    Remove CI-style variables that can cause terminal libraries to skip TTY
     detection, and set a color-capable TERM so the terminal is treated as
     interactive.
     """

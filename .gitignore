@@ -19,4 +19,3 @@ coverage.out
 # /scratch is transient scratch space (run output, sandboxes, throwaways); never tracked.
 /scratch/
 .playwright-mcp/
-/zscalerctl-tui
