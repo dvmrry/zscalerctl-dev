@@ -20,6 +20,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -92,6 +93,8 @@ type App struct {
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
+
+	machineReadExecutorFactory machineReadExecutorFactory
 }
 
 // diagLogger returns the diagnostic logger, defaulting to a disabled one so log
@@ -142,6 +145,16 @@ type ResourceReader interface {
 	Show(context.Context, resources.Product, string) (resources.SourceRecord, error)
 }
 
+type machineReadExecutor interface {
+	Execute(context.Context, machine.Request) (machine.Response, error)
+}
+
+type machineReadExecutorFactory func(machine.BrowserLoader) machineReadExecutor
+
+func defaultMachineReadExecutor(loader machine.BrowserLoader) machineReadExecutor {
+	return machine.Executor{Browser: loader}
+}
+
 type resourceSessionProvider interface {
 	Session(context.Context, resources.Product) (zscaler.ResourceSession, error)
 }
@@ -174,6 +187,8 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 		stderrTTY: opts.StderrTTY,
 		reader:    opts.Reader,
 		catalog:   catalog,
+
+		machineReadExecutorFactory: defaultMachineReadExecutor,
 	}
 }
 
@@ -1231,26 +1246,115 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		Reader:  reader,
 		Mode:    cfg.Defaults.Redaction,
 	}
+	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
+		return a.executeMachineRead(ctx, product, resource, op, browserService)
+	})
+	if err != nil {
+		return err
+	}
 	if op == "show" {
-		projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-			return browserService.LoadProjected(ctx, string(product), resource)
-		})
-		if err != nil {
-			return err
-		}
 		records := projected.Records()
 		if len(records) != 1 {
 			return fmt.Errorf("resource show %s/%s returned %d projected records, want 1", product, resource, len(records))
 		}
 		return a.writeProjectedRecord(cfg, opts, spec, records[0], op)
 	}
-	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-		return browserService.LoadProjected(ctx, string(product), resource)
-	})
+	return a.writeProjectedRecords(cfg, opts, spec, projected)
+}
+
+type machineReadBrowserLoader struct {
+	service browser.Service
+	err     error
+}
+
+func (l *machineReadBrowserLoader) LoadProjected(
+	ctx context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.LoadProjected(ctx, product, resource)
 	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+func (a *App) executeMachineRead(
+	ctx context.Context,
+	product resources.Product,
+	resource string,
+	op string,
+	service browser.Service,
+) (resources.ProjectedRecords, error) {
+	loader := &machineReadBrowserLoader{service: service}
+	executor := a.machineReadExecutor(loader)
+	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op))
+	if err != nil {
+		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err, loader.err)
+	}
+	if resp.Error != nil {
+		return resources.ProjectedRecords{}, cliErrorFromMachineRead(resp.Error, loader.err)
+	}
+	return projectedRecordsFromMachineResponse(resp), nil
+}
+
+func (a *App) machineReadExecutor(loader machine.BrowserLoader) machineReadExecutor {
+	if a.machineReadExecutorFactory != nil {
+		return a.machineReadExecutorFactory(loader)
+	}
+	return defaultMachineReadExecutor(loader)
+}
+
+func machineReadRequest(product resources.Product, resource string, op string) machine.Request {
+	return machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.Operation(op),
+		Input: &machine.Input{
+			Product:  string(product),
+			Resource: resource,
+		},
+	}
+}
+
+func cliErrorFromMachineRead(err error, loaderErr error) error {
+	if err == nil {
+		return nil
+	}
+	machineErr, ok := asMachineError(err)
+	if !ok {
 		return err
 	}
-	return a.writeProjectedRecords(cfg, opts, spec, projected)
+	if machineErr.Kind == machine.ErrorKindLiveAccessFailed && loaderErr != nil {
+		return loaderErr
+	}
+	switch machineErr.Kind {
+	case machine.ErrorKindUsage, machine.ErrorKindUnsupportedOperation:
+		return UsageError{Message: machineErr.Error()}
+	default:
+		return err
+	}
+}
+
+func asMachineError(err error) (*machine.MachineError, bool) {
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		return machineErr, true
+	}
+	var machineErrValue machine.MachineError
+	if errors.As(err, &machineErrValue) {
+		return &machineErrValue, true
+	}
+	return nil, false
+}
+
+func projectedRecordsFromMachineResponse(resp machine.Response) resources.ProjectedRecords {
+	records := make([]resources.ProjectedRecord, len(resp.Records))
+	for i, record := range resp.Records {
+		records[i] = resources.NewProjectedRecord(record)
+	}
+	return resources.NewProjectedRecords(records)
 }
 
 // dumpOptions holds the parsed local flags for the dump command. The Cobra RunE

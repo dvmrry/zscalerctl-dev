@@ -206,6 +206,10 @@ type ProjectedRecord struct {
 	fields map[string]any
 }
 
+func NewProjectedRecord(fields map[string]any) ProjectedRecord {
+	return ProjectedRecord{fields: copyMap(fields)}
+}
+
 func (ProjectedRecord) OutputSafe() {}
 
 func (r ProjectedRecord) MarshalJSON() ([]byte, error) {
