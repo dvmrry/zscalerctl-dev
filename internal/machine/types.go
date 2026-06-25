@@ -1,9 +1,9 @@
-// Package machine defines transport-neutral request, response, and manifest
-// types for the machine/core capability API.
+// Package machine defines transport-neutral request, response, manifest, and
+// executor types for the machine/core capability API.
 //
-// The package is intentionally data-only. Cobra, stdio, JSON-RPC, TUI, Wails,
-// or other adapters can translate their own inputs into these structs, but
-// execution, config loading, SDK access, rendering, and process behavior live
+// Cobra, stdio, JSON-RPC, TUI, Wails, or other adapters can translate their own
+// inputs into these structs. Execution is limited to narrow interfaces supplied
+// by callers; config loading, SDK access, rendering, and process behavior live
 // elsewhere.
 package machine
 
