@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
@@ -67,6 +67,10 @@ verify-licenses:
 verify-sdk-boundary:
 	bash scripts/verify-sdk-boundary.sh
 	bash scripts/test-verify-sdk-boundary.sh
+
+verify-core-boundaries:
+	bash scripts/verify-core-boundaries.sh
+	bash scripts/test-verify-core-boundaries.sh
 
 verify-ci-no-live-creds:
 	bash scripts/verify-ci-no-live-creds.sh
@@ -134,6 +138,6 @@ fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzScanRenderedStringRedactsBareHighEntropyCanary -fuzztime=$(FUZZTIME)
 	go test -mod=vendor ./internal/resources -run '^$$' -fuzz FuzzProjectRecordSubsetAndCanaryRedaction -fuzztime=$(FUZZTIME)
 
-check: fmt-check test race vet vuln staticcheck verify-licenses docs-check docs-cli-check semgrep-check secret-scan verify-sdk-boundary verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
+check: fmt-check test race vet vuln staticcheck verify-licenses docs-check docs-cli-check semgrep-check secret-scan verify-sdk-boundary verify-core-boundaries verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
 
 release-check: verify-vendor check

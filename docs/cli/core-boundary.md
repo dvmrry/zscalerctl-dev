@@ -59,5 +59,8 @@ UI  -> core
 core -> no CLI, no UI, no Cobra, no terminal UI/runtime dependencies
 ```
 
+`make verify-core-boundaries` enforces this dependency direction for the
+normal CLI binary and the `internal/browser` seam.
+
 Experimental UI work should stay on a separate branch or in a separate
 application repository until it is deliberately promoted.
