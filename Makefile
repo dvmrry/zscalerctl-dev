@@ -57,15 +57,16 @@ semgrep-check:
 vendor:
 	go mod tidy
 	go mod vendor
+	@if [ -f vendor/charm.land/lipgloss/v2/.goreleaser.yml ]; then \
+		perl -0pi -e 's/\n+\z/\n/' vendor/charm.land/lipgloss/v2/.goreleaser.yml; \
+	fi
 
 verify-vendor: vendor
-	# `go mod vendor` restores the upstream Bubble Tea init file, which contains
-	# the package-init terminal probe that zscalerctl-tui cannot have. Restore the
-	# approved vendor patch from the repository, then verify the probe is absent.
-	git checkout -- vendor/github.com/charmbracelet/bubbletea/tea_init.go
+	# Bubble Tea v2 must remain free of startup terminal probes. The guard keeps
+	# that assumption explicit after dependency refreshes.
 	bash scripts/verify-bubbletea-vendor-patch.sh
-	# After restoring the intentional patch, any remaining vendor diff is real
-	# drift that must be reviewed and committed deliberately.
+	# Any remaining vendor diff is real drift that must be reviewed and committed
+	# deliberately.
 	git diff --exit-code -- go.mod go.sum vendor
 
 verify-licenses:

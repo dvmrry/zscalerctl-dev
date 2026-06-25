@@ -4,7 +4,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-module="github.com/charmbracelet/bubbletea"
+modules=(
+  "charm.land/bubbletea/v2"
+  "charm.land/bubbles/v2"
+)
 tea_pkg="github.com/dvmrry/zscalerctl/internal/tui/tea"
 
 targets=(
@@ -23,10 +26,12 @@ for target in "${targets[@]}"; do
 
   deps=$(go list -deps "$target" 2>/dev/null || true)
 
-  if printf '%s\n' "$deps" | grep -qxF "$module"; then
-    echo "unexpected transitive dependency: $target -> $module" >&2
-    exit 1
-  fi
+  for module in "${modules[@]}"; do
+    if printf '%s\n' "$deps" | grep -qxF "$module"; then
+      echo "unexpected transitive dependency: $target -> $module" >&2
+      exit 1
+    fi
+  done
 
   if printf '%s\n' "$deps" | grep -qxF "$tea_pkg"; then
     echo "unexpected transitive dependency: $target -> $tea_pkg" >&2

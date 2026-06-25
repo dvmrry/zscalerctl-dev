@@ -1,11 +1,10 @@
 package output
 
 import (
-	"io"
+	"image/color"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 )
 
 // The pretty renderer is a presentation overlay over data that has already been
@@ -15,41 +14,19 @@ import (
 // it reaches stdout. When color is disabled the output is byte-clean (no ANSI
 // escapes), so it stays safe to capture or diff.
 
-// prettyRenderer builds a lipgloss renderer whose color profile is pinned from
-// the resolved Style instead of lipgloss auto-detecting the environment. This
-// keeps pretty output deterministic and honors --color / NO_COLOR / TTY exactly
-// as the rest of the tool does.
-func prettyRenderer(style Style) *lipgloss.Renderer {
-	r := lipgloss.NewRenderer(io.Discard)
-	r.SetColorProfile(prettyProfile(style))
-	return r
-}
-
-func prettyProfile(style Style) termenv.Profile {
-	switch {
-	case !style.Color:
-		return termenv.Ascii
-	case style.Color256:
-		return termenv.ANSI256
-	default:
-		return termenv.ANSI
-	}
-}
-
 // RenderRecordsPretty renders a list of records as a bordered table. headers and
 // each row share the same column order; callers pass values already formatted to
 // strings.
 func RenderRecordsPretty(headers []string, rows [][]string, style Style) SafeText {
-	r := prettyRenderer(style)
-	headerStyle := r.NewStyle().Bold(true).Padding(0, 1)
-	cellStyle := r.NewStyle().Padding(0, 1)
+	headerStyle := lipgloss.NewStyle().Padding(0, 1)
+	cellStyle := lipgloss.NewStyle().Padding(0, 1)
 	if style.Color {
-		headerStyle = headerStyle.Foreground(prettyAccent(style))
+		headerStyle = headerStyle.Bold(true).Foreground(prettyAccent(style))
 	}
 
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(prettyBorderStyle(r, style)).
+		BorderStyle(prettyBorderStyle(style)).
 		Headers(headers...).
 		Rows(rows...).
 		StyleFunc(func(row, _ int) lipgloss.Style {
@@ -70,13 +47,12 @@ func RenderRecordPretty(rows []KV, style Style) SafeText {
 
 // RenderKeyValuesPretty renders general key/value rows as a bordered table.
 func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
-	r := prettyRenderer(style)
-	headerStyle := r.NewStyle().Bold(true).Padding(0, 1)
-	keyStyle := r.NewStyle().Bold(true).Padding(0, 1)
-	cellStyle := r.NewStyle().Padding(0, 1)
+	headerStyle := lipgloss.NewStyle().Padding(0, 1)
+	keyStyle := lipgloss.NewStyle().Padding(0, 1)
+	cellStyle := lipgloss.NewStyle().Padding(0, 1)
 	if style.Color {
-		headerStyle = headerStyle.Foreground(prettyAccent(style))
-		keyStyle = keyStyle.Foreground(prettyAccent(style))
+		headerStyle = headerStyle.Bold(true).Foreground(prettyAccent(style))
+		keyStyle = keyStyle.Bold(true).Foreground(prettyAccent(style))
 	}
 
 	tableRows := make([][]string, 0, len(rows))
@@ -89,7 +65,7 @@ func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
 
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
-		BorderStyle(prettyBorderStyle(r, style)).
+		BorderStyle(prettyBorderStyle(style)).
 		Headers("field", "value").
 		Rows(tableRows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
@@ -105,15 +81,15 @@ func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
 	return renderPrettyTable(t, style)
 }
 
-func prettyAccent(style Style) lipgloss.Color {
+func prettyAccent(style Style) color.Color {
 	if style.Color256 {
 		return lipgloss.Color("45")
 	}
 	return lipgloss.Color("6")
 }
 
-func prettyBorderStyle(r *lipgloss.Renderer, style Style) lipgloss.Style {
-	s := r.NewStyle()
+func prettyBorderStyle(style Style) lipgloss.Style {
+	s := lipgloss.NewStyle()
 	if !style.Color {
 		return s
 	}

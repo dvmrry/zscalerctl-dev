@@ -6,22 +6,22 @@ TUI eligibility gate and collection layer from the Bubble Tea runtime on the
 
 ## Finding
 
-Bubble Tea v1.x performs package-initialization work in
-`github.com/charmbracelet/bubbletea` that calls Lip Gloss background detection.
-That detection can emit terminal OSC/cursor-position queries before
-`main` runs and before `zscalerctl` can evaluate its own TUI eligibility gate.
+The standalone TUI uses `charm.land/bubbletea/v2` and `charm.land/bubbles/v2`.
+Those runtime/widget packages must stay out of the normal `zscalerctl` startup
+path. A textual import scan is not enough: the boundary must be checked at the
+dependency level so transitive imports are caught.
 
-A concrete symptom is that transitively importing Bubble Tea from a normal CLI
-execution path can probe the terminal even when the user never requested a TUI,
-is not on a TTY, or asked for machine-readable output. A textual import scan is
-therefore not enough: the boundary must be checked at the dependency level.
+The historical blocker was Bubble Tea v1 package-initialization terminal
+probing. The v2 spike removes the local v1 vendor patch, but preserves the
+boundary because normal JSON/NDJSON, completion, introspection, and machine
+error paths must remain independent of any TUI runtime behavior.
 
 ## Rule
 
 Normal CLI startup packages may import the TUI eligibility gate
 (`github.com/dvmrry/zscalerctl/internal/tui`) and the Bubble-free collection
 layer (`internal/tui/browserdata`, `internal/tui/launcher`) but must not
-*transitively* import Bubble Tea or the Bubble Tea runtime package
+*transitively* import Bubble Tea, Bubbles, or the Bubble Tea runtime package
 (`internal/tui/tea`).
 
 Bubble Tea imports are allowed only in isolated TUI entrypoints such as
@@ -47,7 +47,7 @@ Bubble Tea imports are allowed only in isolated TUI entrypoints such as
 
 `scripts/verify-tui-import-boundary.sh` uses `go list -deps` to verify that
 `./cmd/zscalerctl`, `./internal/cli`, and `./internal/tui` do not transitively
-depend on `github.com/charmbracelet/bubbletea` or
+depend on `charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, or
 `github.com/dvmrry/zscalerctl/internal/tui/tea`. The script is exercised by
 `scripts/test-verify-tui-import-boundary.sh` and is included in `make check`
 via `make verify-tui-import-boundary`.
@@ -55,18 +55,14 @@ via `make verify-tui-import-boundary`.
 A PTY regression verifier, `scripts/verify-pty-escape-clean.sh`, runs the built
 `zscalerctl version --format json` inside a real pseudo-terminal and confirms
 that the output contains zero `ESC` bytes and parses as valid JSON. This guards
-against Bubble Tea package-init probing leaking into normal interactive CLI paths.
+against TUI runtime behavior leaking into normal interactive CLI paths.
 
-Because the standalone `cmd/zscalerctl-tui` binary is allowed to import Bubble
-Tea, its vendored `github.com/charmbracelet/bubbletea/tea_init.go` is patched
-to remove the `lipgloss.HasDarkBackground()` call from `init()`. The unpatched
-code emits OSC/DSR terminal probes before `main()` and hangs failure paths such
-as `zscalerctl-tui --live --profile <invalid>`. The patch is guarded by
-`scripts/verify-bubbletea-vendor-patch.sh` and is exercised by a failure-path
-PTY verifier, `scripts/verify-zscalerctl-tui-live-failure.sh`, which proves the
-invalid-profile invocation returns promptly, emits zero `ESC` bytes, and exits
-with a config/profile error without opening the full-screen TUI. Both verifiers
-are part of `make check`.
+`scripts/verify-bubbletea-vendor-patch.sh` now guards the vendored Bubble Tea
+v2 tree by failing if package `init()` functions or `HasDarkBackground`
+references appear. The failure-path PTY verifier,
+`scripts/verify-zscalerctl-tui-live-failure.sh`, proves invalid live startup
+returns promptly, emits zero `ESC` bytes, and exits with a config/profile error
+without opening the full-screen TUI. Both verifiers are part of `make check`.
 
 ## Non-Goals
 

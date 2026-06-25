@@ -1,6 +1,6 @@
 // Package launcher is the bridge that evaluates TUI eligibility and collects
 // BrowserData from a caller-supplied collector. It is intentionally Bubble-free:
-// it does not import github.com/charmbracelet/bubbletea or internal/tui/tea.
+// it does not import charm.land/bubbletea/v2 or internal/tui/tea.
 // Terminal program construction is delegated to isolated TUI entrypoints (e.g.
 // scripts/tui-demo.go, scripts/tui-browser-demo.go, or a future cmd/zscalerctl-tui).
 package launcher
