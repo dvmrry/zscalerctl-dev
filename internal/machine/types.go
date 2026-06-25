@@ -138,5 +138,10 @@ type Meta struct {
 	Version     string `json:"version,omitempty"`
 	RequestID   string `json:"request_id,omitempty"`
 	GeneratedAt string `json:"generated_at,omitempty"`
+	Product     string `json:"product,omitempty"`
+	Resource    string `json:"resource,omitempty"`
+	Shape       string `json:"shape,omitempty"`
+	GetKey      string `json:"get_key,omitempty"`
+	ReadOnly    bool   `json:"read_only,omitempty"`
 	Count       int    `json:"count,omitempty"`
 }
