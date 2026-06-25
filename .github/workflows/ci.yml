@@ -96,6 +96,7 @@ jobs:
       - run: make fmt-check
       - run: bash scripts/verify-sdk-boundary.sh
       - run: bash scripts/test-verify-sdk-boundary.sh
+      - run: make verify-core-boundaries
       - run: bash scripts/verify-ci-no-live-creds.sh
       - run: bash scripts/test-verify-ci-no-live-creds.sh
       - run: bash scripts/verify-actions-pinned.sh
