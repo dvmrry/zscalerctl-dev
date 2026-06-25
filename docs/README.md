@@ -15,6 +15,8 @@ GitHub security policy.
 ## Design And Security
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
+- [cli/machine-contract.md](cli/machine-contract.md) — machine-first contract
+  and human/UI presentation-layer boundaries.
 - [cli/core-boundary.md](cli/core-boundary.md) — CLI/core/UI dependency
   boundary for future UI-safe backend seams.
 - [THREAT_MODEL.md](THREAT_MODEL.md)

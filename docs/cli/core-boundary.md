@@ -1,8 +1,13 @@
 # CLI/Core/UI Boundary
 
-`zscalerctl` keeps `main` as a CLI product surface. Future interactive or
-desktop UI work should consume a small backend seam instead of importing CLI
-command plumbing or adding UI frameworks to the normal `zscalerctl` binary.
+`zscalerctl` keeps `main` as a CLI product surface with a machine-first product
+floor. The contract split is documented in
+[machine-contract.md](machine-contract.md): machine JSON/NDJSON/error behavior
+is independent from human CLI and UI presentation layers.
+
+Future interactive or desktop UI work should consume a small backend seam
+instead of importing CLI command plumbing or adding UI frameworks to the normal
+`zscalerctl` binary.
 
 ## CLI Responsibilities
 
@@ -28,6 +33,7 @@ Core packages own UI-agnostic backend behavior:
 - product/resource filtering
 - list/show resource loading abstractions
 - allow-list projection and redaction
+- secret/config/SDK/client boundaries when those capabilities are in scope
 - structured, already-safe records that callers can render
 
 Core packages return data and errors. They do not decide terminal layout,
@@ -50,6 +56,11 @@ Core packages must not import or use:
 A future TUI, Wails, or React desktop application may consume the core seam, but
 it must own its UI/product/support burden separately from the CLI. It must not
 import `internal/cli` or rely on CLI rendering internals.
+
+UI layers should receive narrow capabilities such as projected resource loading,
+not raw config, credentials, SDK clients, source records, or redaction authority.
+The core security boundary is described in
+[machine-contract.md](machine-contract.md#core-security-boundary).
 
 The dependency direction is:
 
