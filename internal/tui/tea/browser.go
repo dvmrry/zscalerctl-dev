@@ -58,9 +58,10 @@ type BrowserModel struct {
 	data   data.BrowserData
 	items  []browserItem
 
-	active   string
-	showHelp bool
-	exitKey  string
+	active        string
+	activeProduct int
+	showHelp      bool
+	exitKey       string
 
 	catalog    table.Model
 	records    table.Model
@@ -114,7 +115,6 @@ func NewBrowserModel(style output.Style, browserData data.BrowserData) BrowserMo
 	m := BrowserModel{
 		style:      style,
 		data:       browserData,
-		items:      flattenBrowserData(browserData),
 		active:     paneLeft,
 		catalog:    newBrowserTable(style),
 		records:    newBrowserTable(style),
@@ -180,6 +180,14 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "shift+tab":
 			m.focusPreviousColumn(true)
+			m.rebuildComponents(false)
+			return m, nil
+		case "[":
+			m.switchProduct(-1)
+			m.rebuildComponents(false)
+			return m, nil
+		case "]":
+			m.switchProduct(1)
 			m.rebuildComponents(false)
 			return m, nil
 		case "enter":
@@ -368,7 +376,7 @@ func (m *BrowserModel) applyResourceNode(node data.ResourceNode) {
 		for rIdx := range m.data.Products[pIdx].Resources {
 			if m.data.Products[pIdx].Resources[rIdx].Name == node.Name {
 				m.data.Products[pIdx].Resources[rIdx] = node
-				m.items = flattenBrowserData(m.data)
+				m.items = flattenBrowserData(m.data, m.activeProduct)
 				return
 			}
 		}
@@ -384,6 +392,27 @@ func (m *BrowserModel) resetRecordSelection() {
 func (m *BrowserModel) resetDetailScroll() {
 	m.detail = viewportState{}
 	m.detailView.GotoTop()
+}
+
+func (m *BrowserModel) switchProduct(delta int) {
+	if len(m.data.Products) <= 1 || delta == 0 {
+		return
+	}
+	next := m.activeProduct + delta
+	if next < 0 {
+		next = len(m.data.Products) - 1
+	}
+	if next >= len(m.data.Products) {
+		next = 0
+	}
+	if next == m.activeProduct {
+		return
+	}
+	m.activeProduct = next
+	m.left = viewportState{}
+	m.catalog.SetCursor(0)
+	m.resetRecordSelection()
+	m.active = paneLeft
 }
 
 func (m *BrowserModel) focusNextColumn(wrap bool) {
@@ -427,7 +456,8 @@ func paneIndex(panes []string, active string) int {
 }
 
 func (m *BrowserModel) rebuildComponents(resetRecords bool) {
-	m.items = flattenBrowserData(m.data)
+	m.clampActiveProduct()
+	m.items = flattenBrowserData(m.data, m.activeProduct)
 	g := m.geometry()
 	layout := m.componentLayout(g)
 	if m.active == paneDetail && !g.splitDetails {
@@ -443,7 +473,7 @@ func (m *BrowserModel) rebuildComponents(resetRecords bool) {
 		m.detail = viewportState{}
 	}
 
-	m.catalog.SetColumns([]table.Column{{Title: "Products / Resources", Width: tableColumnWidth(paneContentWidth(g.leftWidth))}})
+	m.catalog.SetColumns([]table.Column{{Title: "Resources", Width: tableColumnWidth(paneContentWidth(g.leftWidth))}})
 	m.catalog.SetRows(m.catalogRows())
 	m.catalog.SetWidth(paneContentWidth(g.leftWidth))
 	m.catalog.SetHeight(paneContentHeight(g.leftHeight))
@@ -464,6 +494,19 @@ func (m *BrowserModel) rebuildComponents(resetRecords bool) {
 	m.help.SetWidth(lineWidth(g.width))
 	m.setFocus()
 	m.syncLegacyViewports()
+}
+
+func (m *BrowserModel) clampActiveProduct() {
+	if len(m.data.Products) == 0 {
+		m.activeProduct = 0
+		return
+	}
+	if m.activeProduct < 0 {
+		m.activeProduct = 0
+	}
+	if m.activeProduct >= len(m.data.Products) {
+		m.activeProduct = len(m.data.Products) - 1
+	}
 }
 
 func (m *BrowserModel) setFocus() {
@@ -504,9 +547,6 @@ func (m BrowserModel) catalogRows() []table.Row {
 }
 
 func catalogLabel(item browserItem) string {
-	if item.kind == "product" {
-		return item.name
-	}
 	return strings.Repeat("  ", item.depth) + item.name
 }
 
@@ -515,8 +555,6 @@ func (m BrowserModel) recordRows(columns []table.Column) []table.Row {
 	switch {
 	case len(m.items) == 0:
 		return noticeRecordRows(columns, "No resources")
-	case item.kind == "product":
-		return noticeRecordRows(columns, "Select a resource")
 	case item.effectiveState() == data.ResourceStateUnloaded:
 		return noticeRecordRows(columns, "Resource not loaded", "Press enter to load")
 	case item.effectiveState() == data.ResourceStateLoading:
@@ -600,28 +638,40 @@ func recordStatus(status string) string {
 	return status
 }
 
+func (m BrowserModel) activeProductName() string {
+	if len(m.data.Products) == 0 {
+		return ""
+	}
+	activeProduct := m.activeProduct
+	if activeProduct < 0 {
+		activeProduct = 0
+	}
+	if activeProduct >= len(m.data.Products) {
+		activeProduct = len(m.data.Products) - 1
+	}
+	return m.data.Products[activeProduct].Name
+}
+
 func (m BrowserModel) detailContent(width int) string {
 	if len(m.items) == 0 {
+		product := m.activeProductName()
+		if product == "" {
+			return strings.Join([]string{
+				"No resource",
+				"",
+				"No resources match the current filters.",
+			}, "\n")
+		}
 		return strings.Join([]string{
-			"No resource",
+			product,
 			"",
-			"No resources match the current filters.",
+			fmt.Sprintf("Product: %s", product),
+			"No resources for this product.",
 		}, "\n")
 	}
 
 	item := m.selectedItem()
 	switch {
-	case item.kind == "product":
-		resourceCount := 0
-		for i := m.left.Selected + 1; i < len(m.items) && m.items[i].depth > 0; i++ {
-			resourceCount++
-		}
-		return strings.Join([]string{
-			item.name,
-			"",
-			fmt.Sprintf("Product: %s", item.name),
-			fmt.Sprintf("Resources: %d", resourceCount),
-		}, "\n")
 	case item.effectiveState() == data.ResourceStateUnloaded:
 		return strings.Join([]string{
 			item.name,
@@ -730,6 +780,9 @@ func (m BrowserModel) View() tea.View {
 	if m.showHelp {
 		body = m.renderHelpOverlay(g.width, g.bodyHeight)
 	}
+	if tabs := m.renderProductTabs(g.width); tabs != "" {
+		body = tabs + "\n" + body
+	}
 
 	status := m.renderStatus(g.width)
 	footer := m.renderFooter(g.width)
@@ -754,17 +807,16 @@ func (m BrowserModel) renderPane(content, pane string, width, height int) string
 
 func (m BrowserModel) renderStatus(width int) string {
 	if len(m.items) == 0 {
+		product := m.activeProductName()
+		if product == "" {
+			product = "no resources"
+		}
 		return lipgloss.NewStyle().
 			Width(lineWidth(width)).
-			Render(fitText("no resources", lineWidth(width)))
+			Render(fitText(product+" · no resources", lineWidth(width)))
 	}
 	item := m.selectedItem()
-	var selected string
-	if item.kind == "product" {
-		selected = item.name
-	} else {
-		selected = item.Product + " / " + item.name
-	}
+	selected := item.Product + " / " + item.name
 	status := fmt.Sprintf("%s · %d/%d", selected, m.left.Selected+1, len(m.items))
 	if item.kind == "resource" {
 		switch item.effectiveState() {
@@ -782,6 +834,27 @@ func (m BrowserModel) renderStatus(width int) string {
 	return lipgloss.NewStyle().
 		Width(statusWidth).
 		Render(fitText(status, statusWidth))
+}
+
+func (m BrowserModel) renderProductTabs(width int) string {
+	if len(m.data.Products) <= 1 {
+		return ""
+	}
+	tabWidth := lineWidth(width)
+	if tabWidth <= 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(m.data.Products))
+	for i, product := range m.data.Products {
+		label := strings.ToUpper(product.Name)
+		if i == m.activeProduct {
+			label = "[" + label + "]"
+		}
+		parts = append(parts, label)
+	}
+	return lipgloss.NewStyle().
+		Width(tabWidth).
+		Render(fitText(strings.Join(parts, "  "), tabWidth))
 }
 
 func (m BrowserModel) renderFooter(width int) string {
@@ -873,6 +946,9 @@ type browserGeometry struct {
 func (m BrowserModel) geometry() browserGeometry {
 	width, height := m.dimensions()
 	bodyHeight := height - 3
+	if len(m.data.Products) > 1 {
+		bodyHeight--
+	}
 	if bodyHeight < 0 {
 		bodyHeight = 0
 	}
@@ -954,22 +1030,32 @@ func (m BrowserModel) componentLayout(g browserGeometry) componentLayout {
 	}
 }
 
-func flattenBrowserData(browserData data.BrowserData) []browserItem {
+func flattenBrowserData(browserData data.BrowserData, activeProduct int) []browserItem {
+	if len(browserData.Products) == 0 {
+		return nil
+	}
+	if activeProduct < 0 {
+		activeProduct = 0
+	}
+	if activeProduct >= len(browserData.Products) {
+		activeProduct = len(browserData.Products) - 1
+	}
 	var items []browserItem
-	for _, p := range browserData.Products {
-		items = append(items, browserItem{name: p.Name, kind: "product", depth: 0})
-		for _, r := range p.Resources {
-			items = append(items, browserItem{
-				name:    r.Name,
-				kind:    "resource",
-				depth:   1,
-				state:   r.EffectiveState(),
-				records: r.Records,
-				empty:   r.Empty,
-				err:     r.Error,
-				Product: r.Product,
-			})
+	p := browserData.Products[activeProduct]
+	for _, r := range p.Resources {
+		productName := r.Product
+		if productName == "" {
+			productName = p.Name
 		}
+		items = append(items, browserItem{
+			name:    r.Name,
+			kind:    "resource",
+			state:   r.EffectiveState(),
+			records: r.Records,
+			empty:   r.Empty,
+			err:     r.Error,
+			Product: productName,
+		})
 	}
 	return items
 }
@@ -1603,6 +1689,7 @@ type browserKeyMap struct {
 	End     key.Binding
 	Left    key.Binding
 	Right   key.Binding
+	Product key.Binding
 	Enter   key.Binding
 	Refresh key.Binding
 	Help    key.Binding
@@ -1619,6 +1706,7 @@ func newBrowserKeyMap() browserKeyMap {
 		End:     key.NewBinding(key.WithKeys("end"), key.WithHelp("end", "bottom")),
 		Left:    key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←", "pane")),
 		Right:   key.NewBinding(key.WithKeys("right", "tab"), key.WithHelp("→", "pane")),
+		Product: key.NewBinding(key.WithKeys("[", "]"), key.WithHelp("[/]", "product")),
 		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -1627,12 +1715,12 @@ func newBrowserKeyMap() browserKeyMap {
 }
 
 func (k browserKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.Quit, k.Enter, k.Help}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.Product, k.Quit, k.Enter, k.Help}
 }
 
 func (k browserKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.PageUp, k.PageDn, k.Home, k.End},
-		{k.Left, k.Right, k.Enter, k.Refresh, k.Help, k.Quit},
+		{k.Left, k.Right, k.Product, k.Enter, k.Refresh, k.Help, k.Quit},
 	}
 }

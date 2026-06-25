@@ -79,8 +79,7 @@ func TestBrowserModelTabSwitchesPane(t *testing.T) {
 
 func TestBrowserModelRightPaneNavigation(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	// Select locations (index 1), then tab, then down twice.
-	m = step(m, keyCode(bubbletea.KeyDown))
+	// locations is selected by default; focus records, then move down twice.
 	m = step(m, keyCode(bubbletea.KeyTab))
 	m = step(m, keyCode(bubbletea.KeyDown))
 	m = step(m, keyCode(bubbletea.KeyDown))
@@ -116,7 +115,6 @@ func TestBrowserModelQuitKeys(t *testing.T) {
 
 func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	m = step(m, keyCode(bubbletea.KeyDown))
 	view := m.View().Content
 	if !strings.Contains(view, "locations") {
 		t.Errorf("View() = %q, want selected resource name", view)
@@ -128,8 +126,7 @@ func TestBrowserModelViewContainsSelectedResource(t *testing.T) {
 
 func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	// Select forwarding-rules (index 3).
-	m = step(m, keyCode(bubbletea.KeyDown))
+	// Select forwarding-rules (index 2).
 	m = step(m, keyCode(bubbletea.KeyDown))
 	m = step(m, keyCode(bubbletea.KeyDown))
 	view := m.View().Content
@@ -143,11 +140,8 @@ func TestBrowserModelViewContainsEmptyState(t *testing.T) {
 
 func TestBrowserModelViewContainsErrorState(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
-	// Select connectors (index 7): zia, locations, url-filtering-rules, forwarding-rules,
-	// settings, zpa, app-segments, connectors.
-	for i := 0; i < 7; i++ {
-		m = step(m, keyCode(bubbletea.KeyDown))
-	}
+	m = step(m, keyText("]"))               // zpa tab
+	m = step(m, keyCode(bubbletea.KeyDown)) // connectors
 	view := m.View().Content
 	if !strings.Contains(view, "connectors") {
 		t.Errorf("View() = %q, want selected resource name", view)
@@ -216,7 +210,6 @@ func TestBrowserDataContractStates(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data)
 
 	// normal
-	m = step(m, keyCode(bubbletea.KeyDown))
 	view := m.View().Content
 	if !strings.Contains(view, "A") {
 		t.Errorf("normal view = %q, want record name A", view)
@@ -370,16 +363,53 @@ func TestBrowserModelHelpOverlay(t *testing.T) {
 func TestBrowserModelStatusBar(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	view := m.View().Content
-	if !strings.Contains(view, "zia · 1/10") {
+	if !strings.Contains(view, "zia / locations · 1/4") {
 		t.Errorf("View() = %q, want selected index status", view)
 	}
 	m = step(m, keyCode(bubbletea.KeyDown))
 	view = m.View().Content
-	if !strings.Contains(view, "zia / locations · 2/10") {
+	if !strings.Contains(view, "zia / url-filtering-rules · 2/4") {
 		t.Errorf("View() = %q, want resource path status", view)
 	}
-	if !strings.Contains(view, "3 records") {
+	if !strings.Contains(view, "2 records") {
 		t.Errorf("View() = %q, want record count", view)
+	}
+}
+
+func TestBrowserModelProductTabsSwitchResourceCatalog(t *testing.T) {
+	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
+	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
+
+	view := m.View().Content
+	for _, want := range []string{"[ZIA]", "ZPA", "ZCC", "locations"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q", view, want)
+		}
+	}
+	if strings.Contains(view, "app-segments") {
+		t.Fatalf("View() = %q, did not want inactive product resource", view)
+	}
+
+	m = step(m, keyText("]"))
+	view = m.View().Content
+	for _, want := range []string{"ZIA", "[ZPA]", "ZCC", "app-segments", "connectors"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() after product switch = %q, want %q", view, want)
+		}
+	}
+	if strings.Contains(view, "locations") {
+		t.Fatalf("View() after product switch = %q, did not want inactive product resource", view)
+	}
+	if got := m.SelectedIndex(); got != 0 {
+		t.Fatalf("SelectedIndex() after product switch = %d, want 0", got)
+	}
+	if got := m.RecordIndex(); got != 0 {
+		t.Fatalf("RecordIndex() after product switch = %d, want 0", got)
+	}
+
+	m = step(m, keyText("["))
+	if view := m.View().Content; !strings.Contains(view, "[ZIA]") {
+		t.Fatalf("View() after previous product = %q, want [ZIA]", view)
 	}
 }
 
@@ -395,7 +425,6 @@ func TestLazyBrowserModelLoadsSelectedResource(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
@@ -441,7 +470,6 @@ func TestLazyBrowserModelCachesLoadedResourceUntilRefresh(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
@@ -483,7 +511,6 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 		},
 	}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, time.Second)
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
@@ -503,7 +530,6 @@ func TestLazyBrowserModelFailedResourceBecomesErrorState(t *testing.T) {
 func TestLazyBrowserModelSlowResourceTimesOut(t *testing.T) {
 	loader := &recordingResourceLoader{waitForContext: true}
 	m := NewLazyBrowserModel(output.Style{}, lazyBrowserData(), loader, 5*time.Millisecond)
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	updated, cmd := m.Update(keyCode(bubbletea.KeyEnter))
 	if cmd == nil {
@@ -633,10 +659,9 @@ func TestBrowserModelRightViewportPageHomeEnd(t *testing.T) {
 func TestBrowserModelWideLayoutSplitsRecordsAndDetails(t *testing.T) {
 	m := NewBrowserModel(output.Style{}, data.NewFakeBrowserData())
 	m = step(m, bubbletea.WindowSizeMsg{Width: 120, Height: 32})
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	view := m.View().Content
-	for _, want := range []string{"Products / Resources", "Records", "Status", "locations", "HQ", "US East"} {
+	for _, want := range []string{"Resources", "Records", "Status", "locations", "HQ", "US East"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want %q in three-pane layout", view, want)
 		}
@@ -849,7 +874,6 @@ func TestBrowserModelCatalogOmitsVerboseStateTags(t *testing.T) {
 	}
 	m := NewBrowserModel(output.Style{}, browserData)
 	m = step(m, bubbletea.WindowSizeMsg{Width: 60, Height: 16})
-	m = step(m, keyCode(bubbletea.KeyDown))
 
 	view := m.View().Content
 	for _, notWant := range []string{"[unloaded]", "[loading]", "[error]"} {
@@ -893,9 +917,9 @@ func TestBrowserModelSmallGeometryRendersResourceStates(t *testing.T) {
 		moves      int
 		wantString string
 	}{
-		{name: "unloaded", moves: 1, wantString: "Resource not loaded"},
-		{name: "loading", moves: 2, wantString: "Loading resource"},
-		{name: "error", moves: 3, wantString: "Error loading resource"},
+		{name: "unloaded", moves: 0, wantString: "Resource not loaded"},
+		{name: "loading", moves: 1, wantString: "Loading resource"},
+		{name: "error", moves: 2, wantString: "Error loading resource"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

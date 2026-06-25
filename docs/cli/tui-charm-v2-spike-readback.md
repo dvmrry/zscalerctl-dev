@@ -32,62 +32,56 @@ JSON output has zero ESC bytes.
 ## 120x32
 
 ```text
+[ZIA]  ZPA  ZCC
 ┌────────────────────────────┐┌──────────────────────────────────────┐┌────────────────────────────────────────────────┐
-│ Products / Resources       ││ Records          ID        Status    ││ zia                                            │
-│ zia                        ││ Select a resource                    ││                                                │
-│   locations                ││                                      ││ Product: zia                                   │
-│   url-filtering-rules      ││                                      ││ Resources: 4                                   │
-│   forwarding-rules         ││                                      ││                                                │
-│   settings                 ││                                      ││                                                │
-│ zpa                        ││                                      ││                                                │
-│   app-segments             ││                                      ││                                                │
-│   connectors               ││                                      ││                                                │
-│ zcc                        ││                                      ││                                                │
-│   devices                  ││                                      ││                                                │
+│ Resources                  ││ Records          ID        Status    ││ HQ                                             │
+│ locations                  ││ HQ               123       active    ││                                                │
+│ url-filtering-rules        ││ Branch           124       active    ││ id: 123                                        │
+│ forwarding-rules           ││ Remote           125       inactive  ││ status: active                                 │
+│ settings                   ││                                      ││ description: US East                           │
 └────────────────────────────┘└──────────────────────────────────────┘└────────────────────────────────────────────────┘
-zia · 1/10
-↑ move • ↓ move • ← pane • → pane • q/esc quit • enter open • ? help
+zia / locations · 1/4 · 3 records
+↑ move • ↓ move • ← pane • → pane • [/] product • q/esc quit • enter open • ? help
 ```
 
 ## 80x24
 
 ```text
+[ZIA]  ZPA  ZCC
 ┌────────────────────────┐┌────────────────────────────────────────────────────┐
-│ Products / Resources   ││ Records                      ID          Status    │
-│ zia                    ││ Select a resource                                  │
-│   locations            ││                                                    │
-│   url-filtering-rules  ││                                                    │
-│   forwarding-rules     ││                                                    │
-│   settings             ││                                                    │
-│ zpa                    ││                                                    │
-│   app-segments         ││                                                    │
-│   connectors           ││ zia                                                │
-│ zcc                    ││                                                    │
-│   devices              ││ Product: zia                                       │
-│                        ││ Resources: 4                                       │
+│ Resources              ││ Records                      ID          Status    │
+│ locations              ││ HQ                           123         active    │
+│ url-filtering-rules    ││ Branch                       124         active    │
+│ forwarding-rules       ││ Remote                       125         inactive  │
+│ settings               ││                                                    │
+│                        ││ HQ                                                 │
+│                        ││                                                    │
+│                        ││ id: 123                                            │
+│                        ││ status: active                                     │
+│                        ││ description: US East                               │
 └────────────────────────┘└────────────────────────────────────────────────────┘
-zia · 1/10
-↑ move • ↓ move • ← pane • → pane • q/esc quit • enter open • ? help
+zia / locations · 1/4 · 3 records
+↑ move • ↓ move • ← pane • → pane • [/] product • q/esc quit • enter open …
 ```
 
 ## 60x16
 
 ```text
+[ZIA]  ZPA  ZCC
 ┌──────────────────────────────────────────────────────┐
-│ Products / Resources                                 │
-│ zia                                                  │
-│   locations                                          │
-│   url-filtering-rules                                │
+│ Resources                                            │
+│ locations                                            │
+│ url-filtering-rules                                  │
+│ forwarding-rules                                     │
 └──────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────┐
 │ Records                            ID          Status    │
-│ Select a resource                                    │
-│                                                      │
-│                                                      │
-│                                                      │
+│ HQ                                 123         active    │
+│ Branch                             124         active    │
+│ Remote                             125         inactive  │
 └──────────────────────────────────────────────────────┘
-zia · 1/10
-↑ move • ↓ move • ← pane • → pane • q/esc quit …
+zia / locations · 1/4 · 3 records
+↑ move • ↓ move • ← pane • → pane • [/] product …
 ```
 
 ## UX Notes
@@ -95,6 +89,9 @@ zia · 1/10
 - Wide terminals use three panes: resources, records, detail.
 - Medium terminals keep resources left and combine records/detail on the right.
 - Narrow terminals stack resources over records.
+- Multiple products render as a tab strip. The active tab scopes the resource
+  list, so large ZIA catalogs no longer bury ZPA/ZCC resources in the same pane.
+- `[` and `]` switch product tabs while left/right remains pane navigation.
 - Records show name, ID, and compact Status columns; missing status renders as
   `-`.
 - Left resource rows omit verbose state tags such as `[unloaded]`; the selected
