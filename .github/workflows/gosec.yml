@@ -28,14 +28,50 @@ jobs:
           go-version: '1.26.4'
           cache: true
 
-      # Advisory, not a merge blocker: gosec findings surface in the Security tab
-      # via SARIF rather than failing the build (continue-on-error keeps a finding
-      # from blocking while still publishing it).
-      - run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -fmt sarif -out gosec.sarif ./...
-        continue-on-error: true
+      - name: Detect code scanning upload capability
+        id: code-scanning
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          body="$(mktemp)"
+          status="$(
+            curl -sS -o "$body" -w "%{http_code}" \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/code-scanning/analyses?per_page=1" || true
+          )"
+          if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+            echo "available=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "available=false" >>"$GITHUB_OUTPUT"
+            first_line="$(tr '\n' ' ' <"$body" | cut -c1-240)"
+            echo "::notice::Code scanning SARIF upload is unavailable for ${GITHUB_REPOSITORY} (HTTP ${status}); gosec will still run and upload SARIF as an artifact. ${first_line}"
+          fi
+
+      # Advisory, not a merge blocker: findings surface through SARIF when the
+      # repository supports code scanning. Scanner execution remains blocking:
+      # if gosec cannot run or cannot produce SARIF, this job fails.
+      - name: Run gosec
+        run: |
+          set +e
+          go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -fmt sarif -out gosec.sarif ./...
+          status="$?"
+          set -e
+          if [[ ! -s gosec.sarif ]]; then
+            echo "gosec did not produce SARIF; treating scanner execution as failed" >&2
+            if [[ "$status" -eq 0 ]]; then
+              exit 1
+            fi
+            exit "$status"
+          fi
+          if [[ "$status" -ne 0 ]]; then
+            echo "::notice::gosec exited with status ${status}; findings are advisory and recorded in gosec.sarif"
+          fi
 
       - uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
-        if: always()
+        if: always() && steps.code-scanning.outputs.available == 'true'
+        continue-on-error: true
         with:
           sarif_file: gosec.sarif
 
