@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -20,7 +21,10 @@ var (
 	// the service catalog.
 	ErrUnknownResource = errors.New("unknown browser resource")
 
-	// ErrUnsupportedLoad reports that a catalog entry has no list or show
+	// ErrMissingID reports that an ID-backed load was requested without an ID.
+	ErrMissingID = errors.New("browser resource id is required")
+
+	// ErrUnsupportedLoad reports that a catalog entry has no list, show, or get
 	// operation suitable for browser loading.
 	ErrUnsupportedLoad = errors.New("unsupported browser load operation")
 )
@@ -42,6 +46,7 @@ func (e UnknownResourceError) Unwrap() error { return ErrUnknownResource }
 type RecordReader interface {
 	List(context.Context, resources.Product, string) ([]resources.SourceRecord, error)
 	Show(context.Context, resources.Product, string) (resources.SourceRecord, error)
+	Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error)
 }
 
 // Filter narrows catalog resources returned by Service.Resources.
@@ -128,6 +133,46 @@ func (s Service) LoadProjected(ctx context.Context, product, resource string) (r
 		return resources.ProjectedRecords{}, err
 	}
 	return projected, nil
+}
+
+// LoadProjectedByID returns projected and redacted records for one ID-backed
+// resource read without choosing a presentation shape.
+func (s Service) LoadProjectedByID(
+	ctx context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return resources.ProjectedRecords{}, ErrMissingID
+	}
+	if s.Reader == nil {
+		return resources.ProjectedRecords{}, ErrMissingReader
+	}
+	spec, ok := s.catalog().FindSpec(resources.Product(product), resource)
+	if !ok {
+		return resources.ProjectedRecords{}, UnknownResourceError{
+			Product:  product,
+			Resource: resource,
+		}
+	}
+	if err := resources.AssertReadOnly(spec); err != nil {
+		return resources.ProjectedRecords{}, err
+	}
+	if !spec.SupportsReadOperation("get") {
+		return resources.ProjectedRecords{},
+			fmt.Errorf("%w: %s/%s get", ErrUnsupportedLoad, spec.Product, spec.Name)
+	}
+	record, err := s.Reader.Get(ctx, spec.Product, spec.Name, id)
+	if err != nil {
+		return resources.ProjectedRecords{}, err
+	}
+	projected, _, err := resources.ProjectRecordAndVerify(spec, redact.EffectiveMode(s.Mode), record)
+	if err != nil {
+		return resources.ProjectedRecords{}, err
+	}
+	return resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
 }
 
 func (s Service) loadProjected(

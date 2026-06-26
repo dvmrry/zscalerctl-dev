@@ -33,6 +33,13 @@ type BrowserLoader interface {
 	LoadProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error)
 }
 
+// ProjectedRecordGetter is the projected-record loading surface for ID-backed
+// reads. Implementations own catalog lookup, live reads, projection, and
+// redaction.
+type ProjectedRecordGetter interface {
+	LoadProjectedByID(ctx context.Context, product, resource, id string) (resources.ProjectedRecords, error)
+}
+
 // Executor executes supported machine requests through projected-record
 // loaders without owning CLI routing, config loading, SDK clients, or rendering.
 type Executor struct {
