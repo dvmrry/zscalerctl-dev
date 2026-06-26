@@ -32,9 +32,13 @@ bash scripts/test-verify-sdk-boundary.sh
 ```
 
 `make vuln` runs govulncheck at the version pinned by `GOVULNCHECK_VERSION` in
-the Makefile, so local runs and CI scan with the same tool version.
-`govulncheck` must report no reachable vulnerabilities. Non-reachable findings
-in required modules require a written review note before release.
+the Makefile, so local runs and CI scan with the same tool version. It scans
+both the root module and the nested `tools/` module. The tools scan resolves
+the executable tool packages declared in `tools/go.mod`, so release tooling is
+covered even though `tools/` is not vendored and does not define product
+packages. `govulncheck` must report no reachable vulnerabilities in either
+module. Non-reachable findings in required modules require a written review
+note before release.
 
 ## SDK Upgrade Runbook
 
@@ -126,6 +130,12 @@ and Renovate's `gomod` manager auto-discovers `tools/go.mod` to keep the
 version current. GitHub Action SHA pinning does not apply to that dependency
 path.
 
+The `tools/` module is a release-executable surface. Tools declared with the Go
+`tool` directive are not linked into `zscalerctl`, but release automation runs
+them to create artifacts such as SBOMs and license reports. For that reason,
+`make vuln` treats reachable vulnerabilities in `tools/` tool packages as
+blocking for merge and `make release-check`.
+
 The Zscaler SDK package is handled separately from routine dependency updates.
 Renovate requires dependency dashboard approval for SDK bumps and annotates those
 PRs with the SDK upgrade runbook requirement.
@@ -136,7 +146,8 @@ PRs with the SDK upgrade runbook requirement.
 - `tools/` module: Renovate-managed for routine bumps but intentionally not
   vendored; a `renovate.json` package rule skips vendoring so no `tools/vendor`
   directory is created. GitHub Dependabot security alerts may also open PRs
-  against it.
+  against it. Because this module is release-executable, updates must keep
+  `make vuln` green for both root and tools modules.
 - Semver labels: dependency PRs that touch only `tools/` get `semver:none`;
   root-module bumps get `semver:patch`.
 
@@ -175,15 +186,16 @@ These thresholds are enforced by CI, not aspirational:
 
 - **Dependency vulnerabilities (SCA):** zero tolerance in called code paths —
   any `govulncheck` finding blocks merge and release (`make vuln` runs in PR CI
-  and in `make release-check`). Advisories in uncalled build tooling are
-  remediated by version bump at the next opportunity.
+  and in `make release-check`). This includes the root module and executable
+  release tools from the nested `tools/` module. Advisories in uncalled
+  non-release tooling are remediated by version bump at the next opportunity.
 - **Dependency integrity and licensing:** dependencies are hash-verified
   (`go.sum`), vendored for review, and must carry an Apache-2.0-compatible
   license. `make verify-licenses` enforces the shipped binary's dependency
   license allow-list with `go-licenses`; incompatible licenses block CI.
 - **Non-exploitable advisories (VEX):** when an advisory affects a declared
-  dependency but not the shipped binary (for example, build-only tooling in
-  `tools/`), a `not_affected` statement is recorded in the repository's
+  dependency but not the shipped binary or release-executable tooling, a
+  `not_affected` statement is recorded in the repository's
   [.openvex.json](../.openvex.json) (OpenVEX format) alongside the remediating
   bump. Statements are reviewed like code.
 - **Static analysis (SAST):** blocking tools (`go vet`, staticcheck, semgrep,

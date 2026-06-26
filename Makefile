@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln vuln-root vuln-tools staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
@@ -25,8 +25,13 @@ race:
 vet:
 	go vet -mod=vendor ./...
 
-vuln:
+vuln: vuln-root vuln-tools
+
+vuln-root:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+vuln-tools:
+	cd tools && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $$(go list -f '{{.ImportPath}}' tool)
 
 # Scan the working tree for secrets with the same config CI's secret-scan job
 # uses, so a leak (or an allowlist gap) is caught locally before it reaches CI.
