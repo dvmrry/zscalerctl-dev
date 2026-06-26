@@ -156,7 +156,9 @@ make live-smoke   # validate the live-smoke resource manifest (artifacts to a te
 
 Open an issue to discuss a change first, then submit a pull request against
 `main`. Every PR must pass `make check` and carry exactly one `semver:*` label;
-new functionality must include tests. Security-sensitive reports go through
-[SECURITY.md](SECURITY.md), not the public tracker.
+new functionality must include tests. `semver:none` is only for inert changes;
+see [docs/VERSIONING.md](docs/VERSIONING.md#automation) before applying it.
+Security-sensitive reports go through [SECURITY.md](SECURITY.md), not the
+public tracker.
 
 License: [Apache-2.0](LICENSE).

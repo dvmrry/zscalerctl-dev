@@ -66,6 +66,44 @@ Every pull request must have exactly one semver label:
 The semver label check fails if the label is missing or ambiguous. While the
 latest release is `0.x`, `semver:major` also fails.
 
+The label must describe the release consequence of the diff, not the perceived
+size of the implementation. Internal code can still have versioned
+consequences when it changes runtime behavior, security controls, release
+gates, candidate seams, adapters, or machine contracts.
+
+`semver:none` is intentionally narrow. Use it only for inert changes:
+docs-only changes, tests-only changes, comments, formatting, or non-shipped
+metadata. Do not use `semver:none` merely because a change is small, internal,
+or not directly user-visible.
+
+Any runtime behavior, execution path, release gate, security control, candidate
+seam, adapter helper, output behavior, or machine-contract change is at least
+`semver:patch`.
+
+New supported commands, flags, output modes, machine capabilities, or supported
+schema, manifest, or introspection fields are `semver:minor`.
+
+Breaking CLI behavior, JSON, NDJSON, schema, manifest, exit-code, or supported
+command behavior is `semver:major` after `v1.0.0`. While the project is still
+`0.x`, breaking changes use `semver:minor` because `semver:major` is reserved
+for the deliberate `1.0.0` transition.
+
+Examples:
+
+| Change category | Label |
+| --- | --- |
+| Docs-only policy update | `semver:none` |
+| Tests-only harness update with no shipped behavior change | `semver:none` |
+| Comments, formatting, or non-shipped metadata only | `semver:none` |
+| Core runtime routing or execution-path refactor | `semver:patch` |
+| Candidate seam addition, such as a new internal machine adapter helper | `semver:patch` |
+| Security hardening, redaction hardening, or leak-risk reduction | `semver:patch` |
+| Release gate or policy-check hardening that changes merge/release behavior | `semver:patch` |
+| Root-module dependency bump | `semver:patch` |
+| New supported command, flag, output mode, or machine capability | `semver:minor` |
+| Backward-compatible supported schema, manifest, or introspection field | `semver:minor` |
+| Breaking JSON, NDJSON, schema, manifest, exit-code, or command behavior after `v1.0.0` | `semver:major` |
+
 On merge to `main`, the release workflow reads the merged pull request's semver
 label, computes the next tag from the latest `v*` tag, runs release gates, builds
 artifacts, and creates the GitHub release. `semver:none` skips release creation.

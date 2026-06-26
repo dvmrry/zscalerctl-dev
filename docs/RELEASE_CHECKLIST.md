@@ -53,8 +53,9 @@ in required modules require a written review note before release.
 
 Release tags are created by `.github/workflows/release.yml` after merge to
 `main` when the merged pull request has `semver:patch`, `semver:minor`, or
-`semver:major`. `semver:none` intentionally skips release creation. Release
-assets include the platform archives, per-target CycloneDX SBOMs,
+`semver:major`. `semver:none` intentionally skips release creation and is only
+for inert changes as defined in [VERSIONING.md](VERSIONING.md#automation).
+Release assets include the platform archives, per-target CycloneDX SBOMs,
 `SHA256SUMS`, and GitHub provenance attestations for the subjects listed in
 `SHA256SUMS`.
 

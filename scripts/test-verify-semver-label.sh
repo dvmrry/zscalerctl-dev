@@ -10,6 +10,21 @@ run_good() {
 	ZSCALERCTL_PR_LABELS="$labels" "$repo_root/scripts/verify-semver-label.sh"
 }
 
+run_good_stderr_contains() {
+	local labels="$1"
+	local want="$2"
+	if ! ZSCALERCTL_PR_LABELS="$labels" "$repo_root/scripts/verify-semver-label.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then
+		echo "verify-semver-label rejected labels: $labels" >&2
+		cat "$tmp_dir/err" >&2
+		exit 1
+	fi
+	if ! grep -q "$want" "$tmp_dir/err"; then
+		echo "verify-semver-label accepted labels without expected message: $want" >&2
+		cat "$tmp_dir/err" >&2
+		exit 1
+	fi
+}
+
 run_bad() {
 	local labels="$1"
 	local want="$2"
@@ -38,7 +53,7 @@ git tag v0.1.0
 
 run_good "dependencies,semver:patch"
 run_good "semver:minor"
-run_good "semver:none"
+run_good_stderr_contains "semver:none" "semver:none is only for inert changes"
 
 run_bad "" "exactly one semver label"
 run_bad "semver:patch,semver:minor" "exactly one semver label"

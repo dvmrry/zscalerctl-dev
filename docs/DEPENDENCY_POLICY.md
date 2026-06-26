@@ -148,8 +148,12 @@ PRs with the SDK upgrade runbook requirement.
   directory is created. GitHub Dependabot security alerts may also open PRs
   against it. Because this module is release-executable, updates must keep
   `make vuln` green for both root and tools modules.
-- Semver labels: dependency PRs that touch only `tools/` get `semver:none`;
-  root-module bumps get `semver:patch`.
+- Semver labels: dependency PRs that touch only `tools/` may use
+  `semver:none` only when they are inert for shipped binaries, release
+  artifacts, and release gates. Root-module bumps get `semver:patch`, and any
+  dependency update that changes runtime behavior, scanner behavior, release
+  artifacts, or release-gate behavior is at least `semver:patch`. See
+  [VERSIONING.md](VERSIONING.md#automation).
 
 ## Updating Semgrep
 

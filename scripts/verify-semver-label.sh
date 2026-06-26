@@ -8,6 +8,15 @@ normalized="$(printf '%s\n' "$labels" | tr ', ' '\n\n' | sed '/^$/d')"
 semver_labels="$(printf '%s\n' "$normalized" | grep -E '^semver:(patch|minor|major|none)$' || true)"
 count="$(printf '%s\n' "$semver_labels" | sed '/^$/d' | wc -l | tr -d ' ')"
 
+print_policy_note() {
+	cat >&2 <<'EOF'
+SemVer label policy:
+  semver:none is only for inert changes: docs-only, tests-only, comments, formatting, or non-shipped metadata.
+  Runtime behavior, execution paths, release gates, security controls, candidate seams, adapter helpers, output behavior, and machine-contract changes are at least semver:patch.
+  See docs/VERSIONING.md#automation.
+EOF
+}
+
 if [[ "$count" != "1" ]]; then
 	echo "pull request must have exactly one semver label: semver:patch, semver:minor, semver:major, or semver:none" >&2
 	if [[ -n "$semver_labels" ]]; then
@@ -15,10 +24,15 @@ if [[ "$count" != "1" ]]; then
 	else
 		echo "found semver labels: none" >&2
 	fi
+	print_policy_note
 	exit 1
 fi
 
 label="$(printf '%s\n' "$semver_labels" | sed -n '1p')"
+if [[ "$label" == "semver:none" ]]; then
+	print_policy_note
+fi
+
 if [[ "$label" != "semver:major" ]]; then
 	exit 0
 fi

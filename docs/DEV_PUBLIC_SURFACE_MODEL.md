@@ -39,6 +39,8 @@ Current candidate seams include:
 
 These are candidate seams for in-repo overlays and future promotion. They are
 not a public Go module API: the `internal/` layout remains intentional.
+Changes that add, remove, or reshape candidate seams are not inert; label them
+at least `semver:patch` unless they are tests-only or docs-only.
 
 Experimental surfaces include future Fang help/error experiments, Lip Gloss v2
 renderer changes, TUI prototypes, Wails or desktop clients, React frontends,
@@ -150,7 +152,8 @@ Promoting candidate work to supported requires:
 - dependency review for any new root-module package or tool
 - `make check`, `make verify-experiment-boundaries`, `git diff --check`, and
   any targeted boundary checks
-- semver labeling based on the supported surface impact
+- semver labeling based on the supported surface impact and the policy in
+  [VERSIONING.md](VERSIONING.md#automation)
 - removal of prototype markers such as hidden-only command exposure,
   experiment-only target names, or unsupported docs language
 
@@ -166,5 +169,7 @@ Before merging a presentation, UI, or alternate-runtime change, answer these:
   machine-readable output?
 - Does default `make check` include only supported/candidate work?
 - Does the change consume projected records and narrow capabilities?
+- Is `semver:none` being used only for an inert docs-only, tests-only,
+  comments, formatting, or non-shipped metadata change?
 - Could a future public repo promotion carry this safely, or should it stay in
   the dev repo or a separate module?
