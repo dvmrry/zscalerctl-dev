@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,12 +21,21 @@ func newLinuxWithRunner(r runnerFunc) *linuxGetter {
 }
 
 func TestLinuxGetFound(t *testing.T) {
-	g := newLinuxWithRunner(func(context.Context, time.Duration, []string) (string, string, int, error) {
+	var gotArgv []string
+	g := newLinuxWithRunner(func(_ context.Context, _ time.Duration, argv []string) (string, string, int, error) {
+		gotArgv = append([]string(nil), argv...)
 		return "s3cr3t", "", 0, nil
 	})
 	got, err := g.Get(context.Background(), "svc", "k")
 	if err != nil || got != "s3cr3t" {
 		t.Fatalf("Linux Get(success) = %q, %v; want s3cr3t, nil", got, err)
+	}
+	wantArgv := []string{"/usr/bin/secret-tool", "lookup", "service", "svc", "account", "k"}
+	if !reflect.DeepEqual(gotArgv, wantArgv) {
+		t.Fatalf("Linux Get(success) argv = %q, want %q", gotArgv, wantArgv)
+	}
+	if gotArgv[0] == "secret-tool" {
+		t.Fatalf("Linux Get(success) argv[0] = %q, want resolved helper path", gotArgv[0])
 	}
 }
 

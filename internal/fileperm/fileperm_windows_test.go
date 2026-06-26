@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -155,6 +156,66 @@ func TestOpenOwnerOnlyAcceptsLocalOwnerOnlyFile(t *testing.T) {
 		t.Fatalf("OpenOwnerOnly(local owner-only file) returned nil *os.File, want non-nil")
 	}
 	_ = f.Close()
+}
+
+func TestICACLSLockDownCommandUsesSystemDirectory(t *testing.T) {
+	t.Setenv("SystemRoot", `C:\hostile`)
+
+	gotName, gotArgs, err := icaclsLockDownCommand(testPath, `DOMAIN\alice`, func() (string, error) {
+		return `C:\Windows\System32`, nil
+	})
+	if err != nil {
+		t.Fatalf("icaclsLockDownCommand(%q) error = %v, want nil", testPath, err)
+	}
+	if wantName := `C:\Windows\System32\icacls.exe`; gotName != wantName {
+		t.Fatalf("icaclsLockDownCommand(%q) name = %q, want %q", testPath, gotName, wantName)
+	}
+	if gotName == `C:\hostile\System32\icacls.exe` || strings.Contains(gotName, `C:\hostile`) {
+		t.Fatalf("icaclsLockDownCommand(%q) name = %q, want independent of SystemRoot", testPath, gotName)
+	}
+	wantArgs := []string{testPath, "/inheritance:r", "/grant:r", `DOMAIN\alice:F`}
+	if !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("icaclsLockDownCommand(%q) args = %q, want %q", testPath, gotArgs, wantArgs)
+	}
+	if gotName == "cmd" || gotName == "cmd.exe" || gotName == "powershell" || gotName == "powershell.exe" {
+		t.Fatalf("icaclsLockDownCommand(%q) name = %q, want direct helper execution", testPath, gotName)
+	}
+	for _, arg := range gotArgs {
+		if arg == "/c" || arg == "-Command" {
+			t.Fatalf("icaclsLockDownCommand(%q) args = %q, want no shell control arguments", testPath, gotArgs)
+		}
+	}
+}
+
+func TestICACLSLockDownCommandRejectsInvalidSystemDirectory(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name            string
+		systemDirectory func() (string, error)
+	}{
+		{
+			name:            "empty",
+			systemDirectory: func() (string, error) { return "", nil },
+		},
+		{
+			name:            "relative",
+			systemDirectory: func() (string, error) { return `Windows\System32`, nil },
+		},
+		{
+			name:            "api-error",
+			systemDirectory: func() (string, error) { return "", windows.ERROR_PATH_NOT_FOUND },
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := icaclsLockDownCommand(testPath, `DOMAIN\alice`, tc.systemDirectory)
+			if !errors.Is(err, ErrInsecurePermissions) {
+				t.Fatalf("icaclsLockDownCommand(%q, %s) error = %v, want ErrInsecurePermissions", testPath, tc.name, err)
+			}
+		})
+	}
 }
 
 // TestFriendlyNameFallsBackToSIDString verifies friendlyName never panics and
