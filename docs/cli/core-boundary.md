@@ -108,4 +108,6 @@ normal CLI binary, the `internal/browser` seam, and the `internal/machine`
 contract types.
 
 Experimental UI work should stay on a separate branch or in a separate
-application repository until it is deliberately promoted.
+application repository until it is deliberately promoted. The surface classes
+and default build/check exclusion rules for experiments are defined in
+[../DEV_PUBLIC_SURFACE_MODEL.md](../DEV_PUBLIC_SURFACE_MODEL.md).

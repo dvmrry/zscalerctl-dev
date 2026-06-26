@@ -91,6 +91,18 @@ Two properties keep them low-risk and must hold on upgrade:
   upgrade, re-confirm no reachable call to `colorprofile.Detect`, `.Env`, or
   `.Tmux`, and that `termenv` still imports no `os/exec` or `net`.
 
+## Experiment Dependencies
+
+Experiment-only dependencies for Fang, Lip Gloss v2, TUI, Wails, React, MCP, or
+alternate runtimes must not enter the root `go.mod`, `go.sum`, `vendor/`, normal
+`cmd/zscalerctl` binary, or default `make check` path before promotion. Put
+those dependencies in a separate branch, separate repository, or nested module
+as described in [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md).
+
+Promoting an experiment dependency into the root module requires the same
+dependency review as any supported dependency plus a surface-class decision for
+the feature that needs it.
+
 ## Machine Output Terminal Cleanliness
 
 Machine-readable output must stay free of terminal control sequences even when

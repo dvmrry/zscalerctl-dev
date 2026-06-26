@@ -53,6 +53,8 @@ of importing `internal/cli` or adding UI frameworks to the normal
 `zscalerctl` binary. Those layers should receive narrow capabilities and
 projected/redacted records, not raw credentials, SDK clients, source records, or
 redaction authority.
+The supported/candidate/experimental promotion model is recorded in
+[DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md).
 
 The dependency direction is:
 
@@ -70,8 +72,8 @@ The supported agent interface is the CLI contract plus the repository guidance
 in [AGENTS.md](../AGENTS.md) and the installable skill at
 [skills/zscalerctl/](../skills/zscalerctl/SKILL.md). That combination is
 deliberate: it keeps the production surface to one audited read-only binary,
-while agents discover resources through `schema list`, parse deterministic
-JSON, and branch on stable exit codes.
+while agents start from `machine manifest`, use `schema list` for field
+metadata, parse deterministic JSON or NDJSON, and branch on stable exit codes.
 
 An MCP sidecar is not planned for the v1 surface. Revisit it only if a concrete
 host cannot consume shell commands, stdout/stderr, exit codes, and the skill
