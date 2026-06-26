@@ -200,6 +200,157 @@ func TestLoadProjectedReturnsProjectedRecords(t *testing.T) {
 	}
 }
 
+func TestLoadProjectedByIDReturnsProjectedRedactedRecord(t *testing.T) {
+	const canary = "abc123abc123abc123abc123abc123abc123"
+	spec := testSpec(resources.ProductZIA, "locations", resources.ReadOperations())
+	spec.Fields = append(spec.Fields,
+		resources.FieldSpec{
+			Name:           "apiKey",
+			Classification: resources.ClassSecret,
+		},
+		resources.FieldSpec{
+			Name:           "password",
+			Classification: resources.ClassSecret,
+		},
+	)
+	reader := &fakeReader{
+		get: map[resourceIDKey]resources.SourceRecord{
+			{product: resources.ProductZIA, name: "locations", id: "123"}: resources.NewSourceRecord(map[string]any{
+				"id":          "123",
+				"name":        "HQ",
+				"status":      "active",
+				"description": "token=" + canary,
+				"apiKey":      canary,
+				"password":    "hunter2",
+				"rawOnly":     canary,
+			}),
+		},
+	}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{spec},
+		Reader:  reader,
+		Mode:    redact.ModeStandard,
+	}
+
+	got, err := service.LoadProjectedByID(context.Background(), "zia", "locations", "123")
+	if err != nil {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) error = %v, want nil", err)
+	}
+	if wantCalls := []string{"get:zia/locations/123"}; !reflect.DeepEqual(reader.calls, wantCalls) {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) calls = %#v, want %#v", reader.calls, wantCalls)
+	}
+	records := got.Records()
+	if len(records) != 1 {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) records length = %d, want 1", len(records))
+	}
+	fields := records[0].Fields()
+	for key, want := range map[string]any{
+		"id":     "123",
+		"name":   "HQ",
+		"status": "active",
+	} {
+		if got := fields[key]; !reflect.DeepEqual(got, want) {
+			t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) field %q = %#v, want %#v", key, got, want)
+		}
+	}
+	for _, key := range []string{"apiKey", "password", "rawOnly"} {
+		if _, ok := fields[key]; ok {
+			t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) fields = %#v, want dropped %q", fields, key)
+		}
+	}
+	body, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal(Service.LoadProjectedByID(zia, locations, 123)) error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), canary) ||
+		strings.Contains(string(body), "apiKey") ||
+		strings.Contains(string(body), "password") ||
+		strings.Contains(string(body), "rawOnly") {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) JSON = %s, want no raw or secret fields", body)
+	}
+}
+
+func TestLoadProjectedByIDRejectsMissingIDBeforeReader(t *testing.T) {
+	for _, id := range []string{"", " \t "} {
+		t.Run("id="+id, func(t *testing.T) {
+			reader := &fakeReader{}
+			service := browser.Service{
+				Catalog: resources.ResourceCatalog{
+					testSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
+				},
+				Reader: reader,
+				Mode:   redact.ModeStandard,
+			}
+
+			_, err := service.LoadProjectedByID(context.Background(), "zia", "locations", id)
+			if !errors.Is(err, browser.ErrMissingID) {
+				t.Fatalf("Service.LoadProjectedByID(zia, locations, %q) error = %v, want errors.Is ErrMissingID", id, err)
+			}
+			if len(reader.calls) != 0 {
+				t.Fatalf("Service.LoadProjectedByID(zia, locations, %q) calls = %#v, want none", id, reader.calls)
+			}
+		})
+	}
+}
+
+func TestLoadProjectedByIDUnknownResourceReturnsCleanErrorBeforeReader(t *testing.T) {
+	reader := &fakeReader{}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	_, err := service.LoadProjectedByID(context.Background(), "zia", "missing", "123")
+	if !errors.Is(err, browser.ErrUnknownResource) {
+		t.Fatalf("Service.LoadProjectedByID(zia, missing, 123) error = %v, want errors.Is ErrUnknownResource", err)
+	}
+	if len(reader.calls) != 0 {
+		t.Fatalf("Service.LoadProjectedByID(zia, missing, 123) calls = %#v, want none", reader.calls)
+	}
+}
+
+func TestLoadProjectedByIDResourceWithoutGetSupportReturnsUsageBoundaryError(t *testing.T) {
+	reader := &fakeReader{}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "advanced-settings", resources.ShowOperation()),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	_, err := service.LoadProjectedByID(context.Background(), "zia", "advanced-settings", "123")
+	if !errors.Is(err, browser.ErrUnsupportedLoad) {
+		t.Fatalf("Service.LoadProjectedByID(zia, advanced-settings, 123) error = %v, want errors.Is ErrUnsupportedLoad", err)
+	}
+	if len(reader.calls) != 0 {
+		t.Fatalf("Service.LoadProjectedByID(zia, advanced-settings, 123) calls = %#v, want none", reader.calls)
+	}
+}
+
+func TestLoadProjectedByIDReturnsReaderGetError(t *testing.T) {
+	backendErr := errors.New("backend failed")
+	reader := &fakeReader{getErr: backendErr}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	_, err := service.LoadProjectedByID(context.Background(), "zia", "locations", "123")
+	if !errors.Is(err, backendErr) {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) error = %v, want errors.Is backendErr", err)
+	}
+	if wantCalls := []string{"get:zia/locations/123"}; !reflect.DeepEqual(reader.calls, wantCalls) {
+		t.Fatalf("Service.LoadProjectedByID(zia, locations, 123) calls = %#v, want %#v", reader.calls, wantCalls)
+	}
+}
+
 func TestLoadUnknownResourceReturnsCleanErrorBeforeReader(t *testing.T) {
 	reader := &fakeReader{}
 	service := browser.Service{
@@ -269,10 +420,18 @@ type resourceKey struct {
 	name    string
 }
 
+type resourceIDKey struct {
+	product resources.Product
+	name    string
+	id      string
+}
+
 type fakeReader struct {
-	list  map[resourceKey][]resources.SourceRecord
-	show  map[resourceKey]resources.SourceRecord
-	calls []string
+	list   map[resourceKey][]resources.SourceRecord
+	show   map[resourceKey]resources.SourceRecord
+	get    map[resourceIDKey]resources.SourceRecord
+	getErr error
+	calls  []string
 }
 
 func (r *fakeReader) List(_ context.Context, product resources.Product, name string) ([]resources.SourceRecord, error) {
@@ -289,6 +448,17 @@ func (r *fakeReader) Show(_ context.Context, product resources.Product, name str
 		return resources.SourceRecord{}, nil
 	}
 	return r.show[resourceKey{product: product, name: name}], nil
+}
+
+func (r *fakeReader) Get(_ context.Context, product resources.Product, name string, id string) (resources.SourceRecord, error) {
+	r.calls = append(r.calls, "get:"+string(product)+"/"+name+"/"+id)
+	if r.getErr != nil {
+		return resources.SourceRecord{}, r.getErr
+	}
+	if r.get == nil {
+		return resources.SourceRecord{}, nil
+	}
+	return r.get[resourceIDKey{product: product, name: name, id: id}], nil
 }
 
 func testSpec(product resources.Product, name string, operations []resources.Operation) resources.ResourceSpec {
