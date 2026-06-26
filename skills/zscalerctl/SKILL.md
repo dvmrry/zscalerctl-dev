@@ -13,11 +13,15 @@ can modify tenant state.
 1. **CLI missing?** If `zscalerctl` is not on `PATH`, ask the operator to
    install it — do not fall back to raw Zscaler APIs or SDK environment
    variables.
-2. **Never guess resource names.** Learn the whole surface first:
-   `zscalerctl introspect` (one-call map of every command, flag, output_fields,
-   exit codes, and the full catalog; JSON when piped). For catalog-only
-   enumeration: `zscalerctl --format json schema list` (products, resources,
-   operations, fields) or `zscalerctl <product> --help` (one product's list).
+2. **Never guess resource names.** Start with the config-free machine
+   capability manifest: `zscalerctl --format json machine manifest`. It lists
+   the `resources.read` product/resource pairs, supported `list`/`get`/`show`
+   operations, projected-record schema refs, and read-only metadata without
+   loading config, resolving credentials, constructing SDK clients, or
+   contacting Zscaler. Use `zscalerctl introspect` when you need the full CLI
+   command/flag surface, `zscalerctl --format json schema list` when you need
+   catalog field metadata, and `zscalerctl <product> --help` only as a syntax
+   fallback after discovery.
 3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
    Profiles and secret providers (`env:`, `file:`, `keyring:`, `cmd:`) are
    operator ergonomics for interactive local workflows; env vars are the right
@@ -30,12 +34,13 @@ can modify tenant state.
    environment-specific; do not invent them or hunt through shell config.
 4. **Read:** `zscalerctl --format json <product> <resource> list | get <id> | show`,
    e.g. `zscalerctl --format json zia locations list`. Pass `--format json`
-   explicitly rather than relying on piped auto-JSON.
+   explicitly rather than relying on piped auto-JSON; use `--format ndjson`
+   for streaming resource `list`/`get`/`show` reads when useful.
 
 ## Contract
 
-- Piped output is deterministic JSON; failures emit a JSON error envelope on
-  stderr with `kind`, `product`, `resource`.
+- Machine consumers use JSON or NDJSON, not `pretty` or `table`. Failures emit
+  a JSON error envelope on stderr with `kind`, `product`, `resource`.
 - Exit codes: 0 ok, 2 usage, 3 credentials missing, 4 not found/unsupported,
   5 live API failure (possibly entitlement), 6 partial dump, 7 drift detected
   when `diff --fail-on-drift` is used.
@@ -78,6 +83,9 @@ semantics) if it is installed.
 
 Full guide: `AGENTS.md` in the repo checkout, or
 https://github.com/dvmrry/zscalerctl/blob/main/AGENTS.md.
+Agent machine workflow:
+`docs/cli/agent-machine-workflow.md` in the repo checkout, or
+https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/agent-machine-workflow.md.
 CLI reference (commands, flags, defaults):
 `docs/cli/zscalerctl.md` in the repo checkout, or
 https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/zscalerctl.md.

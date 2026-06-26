@@ -14,6 +14,9 @@ Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed boundary, not an internal JSON transport.
 
+For the agent-facing command workflow, see
+[agent-machine-workflow.md](agent-machine-workflow.md).
+
 ## Machine Contract
 
 The machine contract is the product floor:
