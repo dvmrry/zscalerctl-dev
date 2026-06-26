@@ -1650,14 +1650,15 @@ func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) ou
 }
 
 func writeDiffDetailRows(body *strings.Builder, resourceName string, resource dumpdiff.ResourceDiff) {
+	resourceName = terminalCell(resourceName)
 	for _, added := range resource.Added {
-		fmt.Fprintf(body, "%s\t+\t%s\t-\t-\n", resourceName, diffRecordRefLabel(added))
+		fmt.Fprintf(body, "%s\t+\t%s\t-\t-\n", resourceName, terminalCell(diffRecordRefLabel(added)))
 	}
 	for _, removed := range resource.Removed {
-		fmt.Fprintf(body, "%s\t-\t%s\t-\t-\n", resourceName, diffRecordRefLabel(removed))
+		fmt.Fprintf(body, "%s\t-\t%s\t-\t-\n", resourceName, terminalCell(diffRecordRefLabel(removed)))
 	}
 	for _, changed := range resource.Changed {
-		fmt.Fprintf(body, "%s\t~\t%s\t%s\t-\n", resourceName, changed.Key, diffFieldNames(changed.Changes))
+		fmt.Fprintf(body, "%s\t~\t%s\t%s\t-\n", resourceName, terminalCell(changed.Key), diffFieldNames(changed.Changes))
 	}
 }
 
@@ -1681,9 +1682,36 @@ func diffRecordRefLabel(ref dumpdiff.RecordRef) string {
 func diffFieldNames(changes []dumpdiff.FieldChange) string {
 	fields := make([]string, len(changes))
 	for i, change := range changes {
-		fields[i] = change.Field
+		fields[i] = terminalCell(change.Field)
 	}
 	return strings.Join(fields, ",")
+}
+
+func terminalCell(value string) string {
+	var out strings.Builder
+	for _, r := range value {
+		switch {
+		case r == '\n':
+			out.WriteString(`\n`)
+		case r == '\r':
+			out.WriteString(`\r`)
+		case r == '\t':
+			out.WriteString(`\t`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&out, `\x%02x`, r)
+		case r >= 0x80 && r <= 0x9f:
+			fmt.Fprintf(&out, `\u%04x`, r)
+		case isBidiControl(r):
+			fmt.Fprintf(&out, `\u%04x`, r)
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
+func isBidiControl(r rune) bool {
+	return (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
 func prepareForcedDumpDir(dir string, force bool) error {
