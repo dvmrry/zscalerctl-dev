@@ -111,7 +111,7 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 	}
 }
 
-func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
+func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 	tests := []struct {
 		name         string
 		args         []string
@@ -119,6 +119,7 @@ func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
 		wantOp       machine.Operation
 		wantProduct  string
 		wantResource string
+		wantRecordID string
 		wantArray    bool
 	}{
 		{
@@ -141,6 +142,18 @@ func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
 			wantOp:       machine.OperationShow,
 			wantProduct:  "zia",
 			wantResource: "advanced-settings",
+			wantArray:    false,
+		},
+		{
+			name: "get",
+			args: []string{"--format", "json", "zia", "locations", "get", "42"},
+			response: machine.Response{
+				Records: []map[string]any{{"id": "42", "name": "From machine get"}},
+			},
+			wantOp:       machine.OperationGet,
+			wantProduct:  "zia",
+			wantResource: "locations",
+			wantRecordID: "42",
 			wantArray:    false,
 		},
 	}
@@ -176,8 +189,10 @@ func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
 				req.Operation != tt.wantOp ||
 				req.Input == nil ||
 				req.Input.Product != tt.wantProduct ||
-				req.Input.Resource != tt.wantResource {
-				t.Fatalf("machine request = %#v, want resources.read %s %s/%s", req, tt.wantOp, tt.wantProduct, tt.wantResource)
+				req.Input.Resource != tt.wantResource ||
+				req.Input.RecordID != tt.wantRecordID {
+				t.Fatalf("machine request = %#v, want resources.read %s %s/%s record_id=%q",
+					req, tt.wantOp, tt.wantProduct, tt.wantResource, tt.wantRecordID)
 			}
 			if errOut.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", errOut.String())
@@ -194,10 +209,10 @@ func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
 			}
 			var decoded map[string]any
 			if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
-				t.Fatalf("json.Unmarshal(show output) error = %v; output = %q", err, out.String())
+				t.Fatalf("json.Unmarshal(%s output) error = %v; output = %q", tt.name, err, out.String())
 			}
 			if decoded["name"] != tt.response.Records[0]["name"] {
-				t.Fatalf("show output = %#v, want machine response record", decoded)
+				t.Fatalf("%s output = %#v, want machine response record", tt.name, decoded)
 			}
 		})
 	}
@@ -223,6 +238,34 @@ func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
 		t.Fatalf("App.Run(machine loader error) error = %#v, want original loader error", machineErr)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestRunProductMachineGetLoaderErrorPreservesOriginalError(t *testing.T) {
+	sentinel := errors.New("backend get sentinel")
+	reader := &machineRouteReader{getErr: sentinel}
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Reader:  reader,
+		Catalog: machineRouteCatalog(),
+	})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("App.Run(machine get loader error) error = %v, want original sentinel", err)
+	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		t.Fatalf("App.Run(machine get loader error) error = %#v, want original loader error", machineErr)
+	}
+	if reader.getCalls != 1 {
+		t.Fatalf("reader get calls = %d, want 1", reader.getCalls)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", out.String())
@@ -260,7 +303,7 @@ func TestRunProductMachineExecutorUsageErrorMapsToCLIUsage(t *testing.T) {
 	}
 }
 
-func TestRunProductGetStillUsesDirectReader(t *testing.T) {
+func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *testing.T) {
 	reader := &machineRouteReader{
 		get: resources.NewSourceRecord(map[string]any{
 			"id":   "42",
@@ -272,29 +315,45 @@ func TestRunProductGetStillUsesDirectReader(t *testing.T) {
 		Reader:  reader,
 		Catalog: machineRouteCatalog(),
 	})
-	app.machineReadExecutorFactory = func(machine.BrowserLoader) machineReadExecutor {
-		return machineReadExecutorFunc(func(context.Context, machine.Request) (machine.Response, error) {
-			t.Fatal("machine executor must not be called for get")
-			return machine.Response{}, nil
-		})
+	executor := &recordingMachineReadExecutor{
+		response: machine.Response{
+			Records: []map[string]any{{"id": "42", "name": "Machine get"}},
+		},
+	}
+	app.machineReadExecutorFactory = func(loader machine.BrowserLoader) machineReadExecutor {
+		if _, ok := loader.(machine.ProjectedRecordGetter); !ok {
+			t.Fatal("machine executor factory loader does not implement ProjectedRecordGetter")
+		}
+		return executor
 	}
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
 	if err != nil {
 		t.Fatalf("App.Run(zia locations get 42) error = %v, want nil", err)
 	}
-	if reader.getCalls != 1 {
-		t.Fatalf("reader get calls = %d, want 1", reader.getCalls)
+	if reader.getCalls != 0 {
+		t.Fatalf("reader get calls = %d, want 0", reader.getCalls)
 	}
 	if reader.listCalls != 0 || reader.showCalls != 0 {
 		t.Fatalf("reader list/show calls = %d/%d, want 0/0", reader.listCalls, reader.showCalls)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+	}
+	req := executor.calls[0]
+	if req.Operation != machine.OperationGet ||
+		req.Input == nil ||
+		req.Input.Product != "zia" ||
+		req.Input.Resource != "locations" ||
+		req.Input.RecordID != "42" {
+		t.Fatalf("machine request = %#v, want get zia/locations record_id=42", req)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
 		t.Fatalf("json.Unmarshal(get output) error = %v; output = %q", err, out.String())
 	}
-	if decoded["name"] != "Direct get" {
-		t.Fatalf("get output = %#v, want direct reader record", decoded)
+	if decoded["name"] != "Machine get" {
+		t.Fatalf("get output = %#v, want machine response record", decoded)
 	}
 	if errOut.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", errOut.String())
@@ -336,12 +395,6 @@ func (e *recordingMachineReadExecutor) Execute(_ context.Context, req machine.Re
 		return machine.Response{}, e.err
 	}
 	return e.response, nil
-}
-
-type machineReadExecutorFunc func(context.Context, machine.Request) (machine.Response, error)
-
-func (f machineReadExecutorFunc) Execute(ctx context.Context, req machine.Request) (machine.Response, error) {
-	return f(ctx, req)
 }
 
 type machineRouteReader struct {

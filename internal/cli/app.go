@@ -1229,34 +1229,25 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if err != nil {
 		return err
 	}
-	if op == "get" {
-		record, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.SourceRecord, error) {
-			return reader.Get(ctx, product, resource, args[2])
-		})
-		if err != nil {
-			return err
-		}
-		projected, _, err := resources.ProjectRecordAndVerify(spec, cfg.Defaults.Redaction, record)
-		if err != nil {
-			return err
-		}
-		return a.writeProjectedRecord(cfg, opts, spec, projected, op)
-	}
 	browserService := browser.Service{
 		Catalog: catalog,
 		Reader:  reader,
 		Mode:    cfg.Defaults.Redaction,
 	}
+	recordID := ""
+	if op == "get" {
+		recordID = args[2]
+	}
 	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-		return a.executeMachineRead(ctx, product, resource, op, browserService)
+		return a.executeMachineRead(ctx, product, resource, op, recordID, browserService)
 	})
 	if err != nil {
 		return err
 	}
-	if op == "show" {
+	if op == "show" || op == "get" {
 		records := projected.Records()
 		if len(records) != 1 {
-			return fmt.Errorf("resource show %s/%s returned %d projected records, want 1", product, resource, len(records))
+			return fmt.Errorf("resource %s %s/%s returned %d projected records, want 1", op, product, resource, len(records))
 		}
 		return a.writeProjectedRecord(cfg, opts, spec, records[0], op)
 	}
@@ -1282,16 +1273,32 @@ func (l *machineReadBrowserLoader) LoadProjected(
 	return projected, nil
 }
 
+func (l *machineReadBrowserLoader) LoadProjectedByID(
+	ctx context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.LoadProjectedByID(ctx, product, resource, id)
+	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
 func (a *App) executeMachineRead(
 	ctx context.Context,
 	product resources.Product,
 	resource string,
 	op string,
+	recordID string,
 	service browser.Service,
 ) (resources.ProjectedRecords, error) {
 	loader := &machineReadBrowserLoader{service: service}
 	executor := a.machineReadExecutor(loader)
-	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op))
+	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op, recordID))
 	if err != nil {
 		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err, loader.err)
 	}
@@ -1308,14 +1315,18 @@ func (a *App) machineReadExecutor(loader machine.BrowserLoader) machineReadExecu
 	return defaultMachineReadExecutor(loader)
 }
 
-func machineReadRequest(product resources.Product, resource string, op string) machine.Request {
+func machineReadRequest(product resources.Product, resource string, op string, recordID string) machine.Request {
+	input := &machine.Input{
+		Product:  string(product),
+		Resource: resource,
+	}
+	if op == string(machine.OperationGet) {
+		input.RecordID = recordID
+	}
 	return machine.Request{
 		Capability: machine.CapabilityResourcesRead,
 		Operation:  machine.Operation(op),
-		Input: &machine.Input{
-			Product:  string(product),
-			Resource: resource,
-		},
+		Input:      input,
 	}
 }
 

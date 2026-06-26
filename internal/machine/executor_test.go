@@ -86,6 +86,41 @@ func TestExecutorExecuteShowCallsLoaderAndReturnsProjectedRecords(t *testing.T) 
 	assertResponseEnvelope(t, got, req, 1)
 }
 
+func TestExecutorExecuteGetCallsGetterAndReturnsProjectedRecord(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		getRecords: projectedRecordsFromFields(t,
+			map[string]any{"id": "123", "name": "HQ"},
+		),
+	}
+	executor := machine.Executor{Browser: loader}
+	req := machine.Request{
+		RequestID:  "req-get",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			RecordID: "123",
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Executor.Execute(get request) error = %v, want nil", err)
+	}
+	wantCalls := []string{"get:zia/locations/123"}
+	if !reflect.DeepEqual(loader.calls, wantCalls) {
+		t.Fatalf("Executor.Execute(get request) loader calls = %#v, want %#v", loader.calls, wantCalls)
+	}
+	wantRecords := []map[string]any{
+		{"id": "123", "name": "HQ"},
+	}
+	if !reflect.DeepEqual(got.Records, wantRecords) {
+		t.Fatalf("Executor.Execute(get request).Records = %#v, want %#v", got.Records, wantRecords)
+	}
+	assertResponseEnvelope(t, got, req, 1)
+}
+
 func TestExecutorRejectsUnsupportedCapabilityBeforeLoader(t *testing.T) {
 	loader := &fakeBrowserLoader{}
 	executor := machine.Executor{Browser: loader}
@@ -111,20 +146,20 @@ func TestExecutorRejectsUnsupportedOperationBeforeLoader(t *testing.T) {
 	loader := &fakeBrowserLoader{}
 	executor := machine.Executor{Browser: loader}
 	req := machine.Request{
-		RequestID:  "req-get",
+		RequestID:  "req-delete",
 		Capability: machine.CapabilityResourcesRead,
-		Operation:  machine.OperationGet,
-		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "123"},
+		Operation:  machine.Operation("delete"),
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
 	}
 
 	got, err := executor.Execute(context.Background(), req)
 	if err == nil {
-		t.Fatal("Executor.Execute(get request) error = nil, want MachineError")
+		t.Fatal("Executor.Execute(delete request) error = nil, want MachineError")
 	}
-	assertMachineError(t, err, machine.ErrorKindUnsupportedOperation, machine.OperationGet, "zia", "locations")
+	assertMachineError(t, err, machine.ErrorKindUnsupportedOperation, machine.Operation("delete"), "zia", "locations")
 	assertResponseError(t, got, machine.ErrorKindUnsupportedOperation)
 	if len(loader.calls) != 0 {
-		t.Fatalf("Executor.Execute(get request) loader calls = %#v, want none", loader.calls)
+		t.Fatalf("Executor.Execute(delete request) loader calls = %#v, want none", loader.calls)
 	}
 }
 
@@ -194,6 +229,48 @@ func TestExecutorRejectsMissingInputBeforeLoader(t *testing.T) {
 	}
 }
 
+func TestExecutorRejectsGetMissingRecordIDBeforeLoader(t *testing.T) {
+	tests := []string{"", " \t "}
+	for _, recordID := range tests {
+		t.Run("record_id="+recordID, func(t *testing.T) {
+			loader := &fakeBrowserLoader{}
+			executor := machine.Executor{Browser: loader}
+			req := machine.Request{
+				RequestID:  "req-get-missing-record-id",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationGet,
+				Input: &machine.Input{
+					Product:  "zia",
+					Resource: "locations",
+					RecordID: recordID,
+				},
+			}
+
+			got, err := executor.Execute(context.Background(), req)
+			if err == nil {
+				t.Fatalf("Executor.Execute(get request record_id=%q) error = nil, want MachineError", recordID)
+			}
+			machineErr := assertMachineError(
+				t,
+				err,
+				machine.ErrorKindUsage,
+				machine.OperationGet,
+				"zia",
+				"locations",
+			)
+			wantMissing := []string{"input.record_id"}
+			if !reflect.DeepEqual(machineErr.Missing, wantMissing) {
+				t.Fatalf("Executor.Execute(get request record_id=%q) missing = %#v, want %#v",
+					recordID, machineErr.Missing, wantMissing)
+			}
+			assertResponseError(t, got, machine.ErrorKindUsage)
+			if len(loader.calls) != 0 {
+				t.Fatalf("Executor.Execute(get request record_id=%q) loader calls = %#v, want none", recordID, loader.calls)
+			}
+		})
+	}
+}
+
 func TestExecutorMapsLoaderErrorToSanitizedMachineError(t *testing.T) {
 	loader := &fakeBrowserLoader{
 		err: errors.New("raw SDK token leaked-token-123 transport failure"),
@@ -238,10 +315,33 @@ func TestExecutorRejectsMissingLoader(t *testing.T) {
 	assertResponseError(t, got, machine.ErrorKindInternal)
 }
 
+func TestExecutorRejectsGetWhenLoaderDoesNotImplementGetter(t *testing.T) {
+	loader := &projectedOnlyLoader{}
+	executor := machine.Executor{Browser: loader}
+	req := machine.Request{
+		RequestID:  "req-get-no-getter",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "123"},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(get request without getter) error = nil, want MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindInternal, machine.OperationGet, "zia", "locations")
+	assertResponseError(t, got, machine.ErrorKindInternal)
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(get request without getter) loader calls = %#v, want none", loader.calls)
+	}
+}
+
 type fakeBrowserLoader struct {
-	records resources.ProjectedRecords
-	err     error
-	calls   []string
+	records    resources.ProjectedRecords
+	getRecords resources.ProjectedRecords
+	err        error
+	getErr     error
+	calls      []string
 }
 
 func (l *fakeBrowserLoader) LoadProjected(
@@ -254,6 +354,32 @@ func (l *fakeBrowserLoader) LoadProjected(
 		return resources.ProjectedRecords{}, l.err
 	}
 	return l.records, nil
+}
+
+func (l *fakeBrowserLoader) LoadProjectedByID(
+	_ context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	l.calls = append(l.calls, "get:"+product+"/"+resource+"/"+id)
+	if l.getErr != nil {
+		return resources.ProjectedRecords{}, l.getErr
+	}
+	return l.getRecords, nil
+}
+
+type projectedOnlyLoader struct {
+	calls []string
+}
+
+func (l *projectedOnlyLoader) LoadProjected(
+	_ context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.calls = append(l.calls, product+"/"+resource)
+	return resources.ProjectedRecords{}, nil
 }
 
 func projectedRecordsFromFields(t *testing.T, rows ...map[string]any) resources.ProjectedRecords {
