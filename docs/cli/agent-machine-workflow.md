@@ -92,12 +92,12 @@ or secret layers.
 
 ## Boundary Expectations
 
-For in-process overlays, consume `internal/machine`, `internal/browser`, and
-already-projected `internal/resources` values. Do not import CLI renderers,
-terminal UI packages, config, credential, secret-reference, or raw SDK adapter
-packages to build an alternate runtime. If an agent, UI, or workflow needs a
-new capability, add a narrow projected seam and keep raw source records inside
-the trusted runtime.
+For in-process overlays, consume `internal/machine`, `internal/machineio` for
+JSON request/response adapters, `internal/browser`, and already-projected
+`internal/resources` values. Do not import CLI renderers, terminal UI packages,
+config, credential, secret-reference, or raw SDK adapter packages to build an
+alternate runtime. If an agent, UI, or workflow needs a new capability, add a
+narrow projected seam and keep raw source records inside the trusted runtime.
 
 See [machine-contract.md](machine-contract.md) and
 [core-boundary.md](core-boundary.md) for the package boundary model.

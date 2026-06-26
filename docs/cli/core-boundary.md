@@ -47,6 +47,7 @@ The shared runtime boundary is split by package ownership:
 | Package | Owner Role | Overlay Posture |
 | --- | --- | --- |
 | `internal/machine` | Transport-neutral request, response, manifest, and executor contracts over already-projected records. | Safe for CLI, agents, and future overlays to consume as the machine API. |
+| `internal/machineio` | JSON request/response helpers over the `internal/machine` contract. | Safe for stdio-style adapters that need to decode requests, execute them, and encode responses without learning CLI rendering. |
 | `internal/browser` | UI-agnostic catalog browsing and projected resource loading over an injected reader. | Safe for overlays to consume as a narrow backend seam. |
 | `internal/resources` | Catalog metadata, source-record projection, projected-record containers, and redaction allow-list enforcement. | Safe for overlays to consume projected records and metadata; raw `SourceRecord` production remains adapter-owned. |
 | `internal/redact` | Redaction modes and value scrubbing primitives used by the projection boundary. | Overlays may pass a mode through a trusted service, but must not widen allow-lists or redact raw SDK records themselves. |
@@ -58,6 +59,7 @@ The intended dependency direction for overlays is therefore:
 
 ```text
 overlay -> internal/machine
+overlay -> internal/machineio for JSON request/response adapters
 overlay -> internal/browser
 overlay -> internal/resources projected records/catalog metadata
 overlay -/-> internal/config, internal/credentials, internal/secretref, internal/secret
@@ -70,8 +72,8 @@ SDK clients, credential-bearing config, secret refs, or raw source records.
 
 ## Forbidden In Core
 
-Overlay-facing core packages such as `internal/machine` and `internal/browser`
-must not import or use:
+Overlay-facing core packages such as `internal/machine`, `internal/machineio`,
+and `internal/browser` must not import or use:
 
 - `internal/cli`
 - `internal/output`
@@ -104,8 +106,8 @@ core -> no CLI, no UI, no Cobra, no terminal UI/runtime dependencies
 ```
 
 `make verify-core-boundaries` enforces this dependency direction for the
-normal CLI binary, the `internal/browser` seam, and the `internal/machine`
-contract types.
+normal CLI binary, the `internal/browser` seam, the `internal/machine`
+contract types, and the `internal/machineio` JSON adapter helpers.
 
 Experimental UI work should stay on a separate branch or in a separate
 application repository until it is deliberately promoted. The surface classes

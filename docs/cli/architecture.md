@@ -80,6 +80,11 @@ construction have already happened. The executor only sees a narrow projected
 loader capability and returns projected machine response records; it does not
 own config, credentials, SDK clients, Cobra commands, or renderers.
 
+`internal/machineio` provides the small JSON request/response adapter helpers
+for stdio-style machine consumers. It decodes `machine.Request`, calls a
+machine executor, and encodes `machine.Response`; it does not own CLI rendering,
+stderr envelopes, exit codes, config, credentials, or SDK clients.
+
 `internal/browser` is the shared projected resource-loading seam below the
 machine executor. It may use an injected reader to call list/show/get, but raw
 `resources.SourceRecord` values must be projected and verified inside that
