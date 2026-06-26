@@ -36,11 +36,24 @@ github.com/charmbracelet/lipgloss
 github.com/spf13/cobra
 EOF
 
+cat >"$tmp_dir/browser-raw-bad.deps" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/browser
+github.com/dvmrry/zscalerctl/internal/config
+github.com/dvmrry/zscalerctl/internal/zscaler
+EOF
+
 cat >"$tmp_dir/machine-bad.deps" <<'EOF'
 github.com/dvmrry/zscalerctl/internal/machine
 github.com/dvmrry/zscalerctl/internal/output
 github.com/charmbracelet/lipgloss
 github.com/spf13/cobra
+EOF
+
+cat >"$tmp_dir/machine-raw-bad.deps" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/machine
+github.com/dvmrry/zscalerctl/internal/credentials
+github.com/dvmrry/zscalerctl/internal/secretref
+github.com/dvmrry/zscalerctl/internal/zscaler
 EOF
 
 ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
@@ -75,12 +88,32 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-raw-bad.deps" \
+  ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
+  "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/browser-raw.out" 2>"$tmp_dir/browser-raw.err"; then
+  echo "verify-core-boundaries accepted browser dependencies on raw runtime packages" >&2
+  cat "$tmp_dir/browser-raw.out" >&2
+  cat "$tmp_dir/browser-raw.err" >&2
+  exit 1
+fi
+
+if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-bad.deps" \
   "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/machine.out" 2>"$tmp_dir/machine.err"; then
   echo "verify-core-boundaries accepted machine dependencies on CLI/UI/rendering packages" >&2
   cat "$tmp_dir/machine.out" >&2
   cat "$tmp_dir/machine.err" >&2
+  exit 1
+fi
+
+if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
+  ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-raw-bad.deps" \
+  "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/machine-raw.out" 2>"$tmp_dir/machine-raw.err"; then
+  echo "verify-core-boundaries accepted machine dependencies on raw runtime packages" >&2
+  cat "$tmp_dir/machine-raw.out" >&2
+  cat "$tmp_dir/machine-raw.err" >&2
   exit 1
 fi
 
@@ -93,5 +126,17 @@ fi
 if ! grep -q "internal/browser imports forbidden dependencies" "$tmp_dir/browser.err"; then
   echo "verify-core-boundaries failed without the expected browser boundary message" >&2
   cat "$tmp_dir/browser.err" >&2
+  exit 1
+fi
+
+if ! grep -q "internal/browser imports forbidden dependencies" "$tmp_dir/browser-raw.err"; then
+  echo "verify-core-boundaries failed without the expected browser raw-runtime boundary message" >&2
+  cat "$tmp_dir/browser-raw.err" >&2
+  exit 1
+fi
+
+if ! grep -q "internal/machine imports forbidden dependencies" "$tmp_dir/machine-raw.err"; then
+  echo "verify-core-boundaries failed without the expected machine raw-runtime boundary message" >&2
+  cat "$tmp_dir/machine-raw.err" >&2
   exit 1
 fi

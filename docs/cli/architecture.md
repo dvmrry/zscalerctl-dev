@@ -72,6 +72,24 @@ They may read the static catalog and command metadata, but they must not load
 operator config, resolve secret refs, construct a live reader, or contact
 Zscaler.
 
+## Resource Read Runtime
+
+Catalog resource `list`, `show`, and `get <id>` commands route through
+`internal/machine.Executor` after CLI parsing, config loading, and reader
+construction have already happened. The executor only sees a narrow projected
+loader capability and returns projected machine response records; it does not
+own config, credentials, SDK clients, Cobra commands, or renderers.
+
+`internal/browser` is the shared projected resource-loading seam below the
+machine executor. It may use an injected reader to call list/show/get, but raw
+`resources.SourceRecord` values must be projected and verified inside that
+seam before machine responses or renderers see them.
+
+Future overlays should reuse the same machine/browser/resources seams. They
+must not import `internal/cli`, `internal/output`, `internal/config`,
+`internal/credentials`, `internal/secretref`, `internal/secret`, or
+`internal/zscaler` to bypass CLI/runtime ownership.
+
 ## Surface Changes
 
 CLI surface changes are gated by the golden tests under
