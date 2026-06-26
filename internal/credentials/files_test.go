@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/credentials"
@@ -40,6 +41,42 @@ func TestReadOwnerOnlySecretFile(t *testing.T) {
 	}
 	if got.Reveal() != "fake-secret" {
 		t.Errorf("ReadOwnerOnlySecretFile(%q).Reveal() = %q, want %q", path, got.Reveal(), "fake-secret")
+	}
+}
+
+func TestReadOwnerOnlySecretFileTrimsTrailingCRLF(t *testing.T) {
+	t.Parallel()
+	skipOwnerOnlySecretFileTestOnWindows(t)
+
+	path := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(path, []byte("fake-secret\r\n\n"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
+	}
+
+	got, err := credentials.ReadOwnerOnlySecretFile(path)
+	if err != nil {
+		t.Fatalf("ReadOwnerOnlySecretFile(%q) error = %v, want nil", path, err)
+	}
+	if got.Reveal() != "fake-secret" {
+		t.Errorf("ReadOwnerOnlySecretFile(%q).Reveal() = %q, want %q", path, got.Reveal(), "fake-secret")
+	}
+}
+
+func TestReadOwnerOnlySecretFileRejectsOversizedFile(t *testing.T) {
+	t.Parallel()
+	skipOwnerOnlySecretFileTestOnWindows(t)
+
+	path := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", 64*1024+1)), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
+	}
+
+	_, err := credentials.ReadOwnerOnlySecretFile(path)
+	if err == nil {
+		t.Fatalf("ReadOwnerOnlySecretFile(%q) error = nil, want oversized credential file error", path)
+	}
+	if !strings.Contains(err.Error(), "credential file exceeds 65536 byte limit") {
+		t.Fatalf("ReadOwnerOnlySecretFile(%q) error = %v, want oversized credential file error", path, err)
 	}
 }
 

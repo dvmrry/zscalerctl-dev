@@ -21,6 +21,9 @@ func validate(path string) error {
 	if info.IsDir() {
 		return fmt.Errorf("%w: %s is a directory", ErrInsecurePermissions, path)
 	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s is not a regular file", ErrInsecurePermissions, path)
+	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %03o", ErrInsecurePermissions, path, info.Mode().Perm())
 	}
@@ -34,6 +37,9 @@ func validateOpenFile(file *os.File) error {
 	}
 	if info.IsDir() {
 		return fmt.Errorf("%w: %s is a directory", ErrInsecurePermissions, file.Name())
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s is not a regular file", ErrInsecurePermissions, file.Name())
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %03o", ErrInsecurePermissions, file.Name(), info.Mode().Perm())
@@ -71,7 +77,7 @@ func writeOwnerOnly(path string, data []byte) error {
 }
 
 func openOwnerOnly(path string) (*os.File, error) {
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, unix.ELOOP) {
 			return nil, fmt.Errorf("%w: %s is a symlink", ErrInsecurePermissions, path)
