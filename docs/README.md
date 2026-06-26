@@ -21,6 +21,8 @@ GitHub security policy.
   and human/UI presentation-layer boundaries.
 - [cli/core-boundary.md](cli/core-boundary.md) — CLI/core/UI dependency
   boundary for future UI-safe backend seams.
+- [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md) — supported,
+  candidate, and experimental surface classes for dev and public promotion.
 - [THREAT_MODEL.md](THREAT_MODEL.md)
 - [DATA_CLASSIFICATION.md](DATA_CLASSIFICATION.md)
 - [FIELD_COVERAGE.md](FIELD_COVERAGE.md) — generated per-resource classified vs
