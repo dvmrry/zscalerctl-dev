@@ -46,7 +46,7 @@ The security win from layering comes from capability boundaries, not package
 names alone. Presentation layers are safer only when they cannot bypass the
 core decisions that make output safe.
 
-Core packages own:
+The trusted runtime owns:
 
 - config loading and precedence
 - credential and secret-reference resolution
@@ -58,6 +58,13 @@ Core packages own:
 - filtering and field narrowing over projected data
 - machine-safe serialization
 - error sanitization
+
+For the current CLI binary, that trusted runtime is assembled by `internal/cli`
+from `internal/config`, credential/secret-reference packages, and the
+`internal/zscaler` SDK adapter. Overlay-facing packages such as
+`internal/machine`, `internal/browser`, and `internal/resources` expose the
+safe side of that assembly: catalog metadata, typed machine envelopes,
+projected records, and narrow loading capabilities.
 
 Presentation layers must not own or receive:
 
@@ -90,6 +97,13 @@ type UI struct {
     Token  string
 }
 ```
+
+Future overlays must consume `internal/machine`, `internal/browser`, or
+already-projected `internal/resources` values. They must not import
+`internal/config`, `internal/credentials`, `internal/secretref`,
+`internal/secret`, or `internal/zscaler` to construct their own raw runtime.
+If an overlay needs a new capability, add a narrow projected seam instead of
+passing raw SDK/config/secret objects through the UI boundary.
 
 If a future Wails or React desktop app exists, the React frontend must never
 receive credentials, secret refs, tokens, SDK clients, or raw source records.

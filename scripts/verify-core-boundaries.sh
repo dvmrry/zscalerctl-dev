@@ -31,25 +31,29 @@ check_package() {
   fi
 }
 
+ui_runtime_re='github\.com/charmbracelet/(bubbletea|bubbles)|github\.com/wailsapp/wails|vite|react|internal/tui'
+cli_rendering_re='github\.com/spf13/cobra|github\.com/charmbracelet/lipgloss|internal/(cli|output)'
+raw_runtime_re='internal/(config|credentials|secret|secretref|zscaler)'
+
 check_package \
   "cmd/zscalerctl" \
   "./cmd/zscalerctl" \
   "ZSCALERCTL_CMD_DEPS_FILE" \
-  '(^|/)(github\.com/charmbracelet/(bubbletea|bubbles)|github\.com/wailsapp/wails|internal/tui|vite|react)(/|$)' \
+  "(^|/)(${ui_runtime_re})(/|$)" \
   "cmd/zscalerctl must remain the normal CLI binary; UI runtimes belong outside this dependency graph."
 
 check_package \
   "internal/browser" \
   "./internal/browser" \
   "ZSCALERCTL_BROWSER_DEPS_FILE" \
-  '(^|/)(github\.com/spf13/cobra|github\.com/charmbracelet/(bubbletea|bubbles|lipgloss)|github\.com/wailsapp/wails|internal/cli)(/|$)' \
-  "internal/browser must remain UI-agnostic and Cobra-free; future UI code should consume it without reversing the dependency direction."
+  "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
+  "internal/browser must remain an overlay-facing projected-record seam: no CLI/UI/rendering packages and no raw config, secret, credential, or SDK adapter packages."
 
 check_package \
   "internal/machine" \
   "./internal/machine" \
   "ZSCALERCTL_MACHINE_DEPS_FILE" \
-  '(^|/)(github\.com/spf13/cobra|github\.com/charmbracelet/(bubbletea|bubbles|lipgloss)|github\.com/wailsapp/wails|internal/(cli|output)|vite|react)(/|$)' \
-  "internal/machine must remain transport-neutral and free of CLI, UI, and rendering dependencies."
+  "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
+  "internal/machine must remain transport-neutral and projected-record only: no CLI/UI/rendering packages and no raw config, secret, credential, or SDK adapter packages."
 
 echo "verify-core-boundaries: PASS"
