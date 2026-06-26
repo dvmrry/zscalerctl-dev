@@ -198,12 +198,32 @@ func lockDownToCurrentUser(path string) error {
 	if err != nil {
 		return err
 	}
-	icacls := filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe")
-	cmd := exec.Command(icacls, path, "/inheritance:r", "/grant:r", user+":F") // #nosec G204 -- absolute system binary, fixed flags; path is caller-supplied and user is derived from the process token.
+	icacls, args, err := icaclsLockDownCommand(path, user, windows.GetSystemDirectory)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(icacls, args...) // #nosec G204 -- absolute system binary from GetSystemDirectory, fixed flags; path is caller-supplied and user is derived from the process token.
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("icacls lock down %s: %w: %s", path, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func icaclsLockDownCommand(path, user string, systemDirectory func() (string, error)) (string, []string, error) {
+	systemDir, err := systemDirectory()
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: cannot determine Windows system directory: %w", ErrInsecurePermissions, err)
+	}
+	systemDir = strings.TrimSpace(systemDir)
+	if systemDir == "" {
+		return "", nil, fmt.Errorf("%w: cannot determine Windows system directory", ErrInsecurePermissions)
+	}
+	if !filepath.IsAbs(systemDir) {
+		return "", nil, fmt.Errorf("%w: Windows system directory %q is not absolute", ErrInsecurePermissions, systemDir)
+	}
+	icacls := filepath.Join(systemDir, "icacls.exe")
+	args := []string{path, "/inheritance:r", "/grant:r", user + ":F"}
+	return icacls, args, nil
 }
 
 // currentUserName returns the account name (DOMAIN\user) for the process token

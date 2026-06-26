@@ -21,10 +21,11 @@ func newBackend() Getter {
 }
 
 func (g *linuxGetter) Get(ctx context.Context, service, key string) (string, error) {
-	if _, err := g.lookPath("secret-tool"); err != nil {
+	secretTool, err := g.lookPath("secret-tool")
+	if err != nil {
 		return "", fmt.Errorf("keyring: secret-tool not found; install libsecret-tools or use env:/file:/cmd: (%w)", ErrUnavailable)
 	}
-	argv := []string{"secret-tool", "lookup", "service", service, "account", key}
+	argv := []string{secretTool, "lookup", "service", service, "account", key}
 	stdout, stderr, code, err := g.run(ctx, g.timeout, argv)
 	if err != nil {
 		return "", err
