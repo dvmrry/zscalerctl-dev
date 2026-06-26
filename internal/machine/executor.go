@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -69,7 +70,7 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 		})
 	}
 
-	product, resource, missing := requiredInputResource(req)
+	product, resource, recordID, missing := requiredInput(req)
 	if len(missing) > 0 {
 		return errorResponse(resp, MachineError{
 			Kind:      ErrorKindUsage,
@@ -93,8 +94,12 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 		})
 	}
 
-	projected, err := e.Browser.LoadProjected(ctx, product, resource)
+	projected, err := e.loadProjected(ctx, req.Operation, product, resource, recordID)
 	if err != nil {
+		var machineErr *MachineError
+		if errors.As(err, &machineErr) {
+			return errorResponse(resp, *machineErr)
+		}
 		return errorResponse(resp, MachineError{
 			Kind:      ErrorKindLiveAccessFailed,
 			Message:   "resource read failed",
@@ -109,14 +114,15 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 }
 
 func isSupportedReadOperation(op Operation) bool {
-	return op == OperationList || op == OperationShow
+	return op == OperationList || op == OperationGet || op == OperationShow
 }
 
-func requiredInputResource(req Request) (string, string, []string) {
+func requiredInput(req Request) (string, string, string, []string) {
 	if req.Input == nil {
-		return "", "", []string{"input"}
+		return "", "", "", []string{"input"}
 	}
 	product, resource := inputResource(req)
+	recordID := inputRecordID(req)
 	var missing []string
 	if product == "" {
 		missing = append(missing, "input.product")
@@ -124,7 +130,10 @@ func requiredInputResource(req Request) (string, string, []string) {
 	if resource == "" {
 		missing = append(missing, "input.resource")
 	}
-	return product, resource, missing
+	if req.Operation == OperationGet && recordID == "" {
+		missing = append(missing, "input.record_id")
+	}
+	return product, resource, recordID, missing
 }
 
 func inputResource(req Request) (string, string) {
@@ -132,6 +141,36 @@ func inputResource(req Request) (string, string) {
 		return "", ""
 	}
 	return strings.TrimSpace(req.Input.Product), strings.TrimSpace(req.Input.Resource)
+}
+
+func inputRecordID(req Request) string {
+	if req.Input == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Input.RecordID)
+}
+
+func (e Executor) loadProjected(
+	ctx context.Context,
+	op Operation,
+	product string,
+	resource string,
+	recordID string,
+) (resources.ProjectedRecords, error) {
+	if op != OperationGet {
+		return e.Browser.LoadProjected(ctx, product, resource)
+	}
+	getter, ok := e.Browser.(ProjectedRecordGetter)
+	if !ok {
+		return resources.ProjectedRecords{}, &MachineError{
+			Kind:      ErrorKindInternal,
+			Message:   "projected record getter is not configured",
+			Operation: op,
+			Product:   product,
+			Resource:  resource,
+		}
+	}
+	return getter.LoadProjectedByID(ctx, product, resource, recordID)
 }
 
 func responseForRequest(req Request) Response {
