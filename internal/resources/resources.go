@@ -206,10 +206,6 @@ type ProjectedRecord struct {
 	fields map[string]any
 }
 
-func NewProjectedRecord(fields map[string]any) ProjectedRecord {
-	return ProjectedRecord{fields: copyMap(fields)}
-}
-
 func (ProjectedRecord) OutputSafe() {}
 
 func (r ProjectedRecord) MarshalJSON() ([]byte, error) {
@@ -249,6 +245,20 @@ type ProjectedRecords struct {
 func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 	out := make([]ProjectedRecord, len(records))
 	copy(out, records)
+	return ProjectedRecords{records: out}
+}
+
+// NewProjectedRecordsFromProjectedFields reconstructs ProjectedRecords from
+// already-projected and already-redacted field maps. It does not project or
+// redact raw source records. Callers with raw records must use
+// ProjectRecordsAndVerify or ProjectRecordAndVerify instead. This helper is
+// only for reconstructing ProjectedRecords from already-projected machine
+// response records.
+func NewProjectedRecordsFromProjectedFields(records []map[string]any) ProjectedRecords {
+	out := make([]ProjectedRecord, len(records))
+	for i, record := range records {
+		out[i] = ProjectedRecord{fields: copyMap(record)}
+	}
 	return ProjectedRecords{records: out}
 }
 

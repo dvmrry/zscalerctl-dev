@@ -1350,11 +1350,7 @@ func asMachineError(err error) (*machine.MachineError, bool) {
 }
 
 func projectedRecordsFromMachineResponse(resp machine.Response) resources.ProjectedRecords {
-	records := make([]resources.ProjectedRecord, len(resp.Records))
-	for i, record := range resp.Records {
-		records[i] = resources.NewProjectedRecord(record)
-	}
-	return resources.NewProjectedRecords(records)
+	return resources.NewProjectedRecordsFromProjectedFields(resp.Records)
 }
 
 // dumpOptions holds the parsed local flags for the dump command. The Cobra RunE
