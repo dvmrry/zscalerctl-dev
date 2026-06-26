@@ -32,6 +32,7 @@ Current supported surfaces include:
 Current candidate seams include:
 
 - `internal/machine` request, response, manifest, executor, and error types
+- `internal/machineio` JSON request/response helpers over the machine contract
 - `internal/browser` projected catalog/resource loading interfaces
 - `internal/resources` projected-record containers and catalog metadata
 - package-boundary checks that keep overlays away from raw runtime packages
@@ -109,8 +110,9 @@ Allowed experiment inputs:
 
 - `zscalerctl --format json` and `--format ndjson`
 - `zscalerctl --format json machine manifest`
-- `internal/machine`, `internal/browser`, and already-projected
-  `internal/resources` values when the experiment lives in this repo
+- `internal/machine`, `internal/machineio`, `internal/browser`, and
+  already-projected `internal/resources` values when the experiment lives in
+  this repo
 
 Forbidden experiment shortcuts:
 

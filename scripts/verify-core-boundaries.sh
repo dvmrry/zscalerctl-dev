@@ -56,4 +56,11 @@ check_package \
   "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
   "internal/machine must remain transport-neutral and projected-record only: no CLI/UI/rendering packages and no raw config, secret, credential, or SDK adapter packages."
 
+check_package \
+  "internal/machineio" \
+  "./internal/machineio" \
+  "ZSCALERCTL_MACHINEIO_DEPS_FILE" \
+  "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
+  "internal/machineio must remain a machine JSON adapter helper: no CLI/UI/rendering packages and no raw config, secret, credential, or SDK adapter packages."
+
 echo "verify-core-boundaries: PASS"

@@ -12,7 +12,9 @@ contract independent from human presentation choices.
 The in-process contract types live in `internal/machine`. Adapters may translate
 Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
-values. Those types are a typed boundary, not an internal JSON transport.
+values. Those types are a typed boundary. Stdio-style adapters that need a
+small JSON transport convention can use `internal/machineio` to decode one
+request, execute it, and encode the response without importing CLI rendering.
 
 For the agent-facing command workflow, see
 [agent-machine-workflow.md](agent-machine-workflow.md).
@@ -65,9 +67,10 @@ The trusted runtime owns:
 For the current CLI binary, that trusted runtime is assembled by `internal/cli`
 from `internal/config`, credential/secret-reference packages, and the
 `internal/zscaler` SDK adapter. Overlay-facing packages such as
-`internal/machine`, `internal/browser`, and `internal/resources` expose the
-safe side of that assembly: catalog metadata, typed machine envelopes,
-projected records, and narrow loading capabilities.
+`internal/machine`, `internal/machineio`, `internal/browser`, and
+`internal/resources` expose the safe side of that assembly: catalog metadata,
+typed machine envelopes, JSON request/response helpers, projected records, and
+narrow loading capabilities.
 
 Presentation layers must not own or receive:
 
@@ -101,8 +104,9 @@ type UI struct {
 }
 ```
 
-Future overlays must consume `internal/machine`, `internal/browser`, or
-already-projected `internal/resources` values. They must not import
+Future overlays must consume `internal/machine`, `internal/machineio`,
+`internal/browser`, or already-projected `internal/resources` values. They must
+not import
 `internal/config`, `internal/credentials`, `internal/secretref`,
 `internal/secret`, or `internal/zscaler` to construct their own raw runtime.
 If an overlay needs a new capability, add a narrow projected seam instead of
