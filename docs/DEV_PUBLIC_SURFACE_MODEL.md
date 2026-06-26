@@ -146,7 +146,8 @@ Promoting candidate work to supported requires:
 - tests for behavior, errors, and security boundaries
 - golden or schema coverage for any machine-readable surface
 - dependency review for any new root-module package or tool
-- `make check`, `git diff --check`, and any targeted boundary checks
+- `make check`, `make verify-experiment-boundaries`, `git diff --check`, and
+  any targeted boundary checks
 - semver labeling based on the supported surface impact
 - removal of prototype markers such as hidden-only command exposure,
   experiment-only target names, or unsupported docs language
