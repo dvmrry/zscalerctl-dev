@@ -248,6 +248,20 @@ func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 	return ProjectedRecords{records: out}
 }
 
+// NewProjectedRecordsFromProjectedFields reconstructs ProjectedRecords from
+// already-projected and already-redacted field maps. It does not project or
+// redact raw source records. Callers with raw records must use
+// ProjectRecordsAndVerify or ProjectRecordAndVerify instead. This helper is
+// only for reconstructing ProjectedRecords from already-projected machine
+// response records.
+func NewProjectedRecordsFromProjectedFields(records []map[string]any) ProjectedRecords {
+	out := make([]ProjectedRecord, len(records))
+	for i, record := range records {
+		out[i] = ProjectedRecord{fields: copyMap(record)}
+	}
+	return ProjectedRecords{records: out}
+}
+
 func (ProjectedRecords) OutputSafe() {}
 
 func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {

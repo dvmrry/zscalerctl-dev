@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/spf13/cobra"
@@ -109,6 +111,196 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 	}
 }
 
+func TestRunProductListShowRouteThroughMachineExecutor(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		response     machine.Response
+		wantOp       machine.Operation
+		wantProduct  string
+		wantResource string
+		wantArray    bool
+	}{
+		{
+			name: "list",
+			args: []string{"--format", "json", "zia", "locations", "list"},
+			response: machine.Response{
+				Records: []map[string]any{{"id": "1", "name": "From machine list"}},
+			},
+			wantOp:       machine.OperationList,
+			wantProduct:  "zia",
+			wantResource: "locations",
+			wantArray:    true,
+		},
+		{
+			name: "show",
+			args: []string{"--format", "json", "zia", "advanced-settings", "show"},
+			response: machine.Response{
+				Records: []map[string]any{{"id": "settings", "name": "From machine show"}},
+			},
+			wantOp:       machine.OperationShow,
+			wantProduct:  "zia",
+			wantResource: "advanced-settings",
+			wantArray:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			app := NewWithOptions(&out, &errOut, nil, Options{
+				Reader:  &machineRouteReader{},
+				Catalog: machineRouteCatalog(),
+			})
+			executor := &recordingMachineReadExecutor{response: tt.response}
+			loaderFactoryCalled := false
+			app.machineReadExecutorFactory = func(loader machine.BrowserLoader) machineReadExecutor {
+				if loader == nil {
+					t.Fatal("machine executor factory received nil loader")
+				}
+				loaderFactoryCalled = true
+				return executor
+			}
+
+			if err := app.Run(context.Background(), tt.args); err != nil {
+				t.Fatalf("App.Run(%s) error = %v, want nil", tt.name, err)
+			}
+			if !loaderFactoryCalled {
+				t.Fatal("machine executor factory was not called")
+			}
+			if len(executor.calls) != 1 {
+				t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+			}
+			req := executor.calls[0]
+			if req.Capability != machine.CapabilityResourcesRead ||
+				req.Operation != tt.wantOp ||
+				req.Input == nil ||
+				req.Input.Product != tt.wantProduct ||
+				req.Input.Resource != tt.wantResource {
+				t.Fatalf("machine request = %#v, want resources.read %s %s/%s", req, tt.wantOp, tt.wantProduct, tt.wantResource)
+			}
+			if errOut.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", errOut.String())
+			}
+			if tt.wantArray {
+				var decoded []map[string]any
+				if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+					t.Fatalf("json.Unmarshal(list output) error = %v; output = %q", err, out.String())
+				}
+				if len(decoded) != 1 || decoded[0]["name"] != tt.response.Records[0]["name"] {
+					t.Fatalf("list output = %#v, want machine response record", decoded)
+				}
+				return
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(show output) error = %v; output = %q", err, out.String())
+			}
+			if decoded["name"] != tt.response.Records[0]["name"] {
+				t.Fatalf("show output = %#v, want machine response record", decoded)
+			}
+		})
+	}
+}
+
+func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
+	sentinel := errors.New("backend sentinel")
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Reader: &machineRouteReader{listErr: sentinel},
+		Catalog: resources.ResourceCatalog{{
+			Product:    resources.ProductZIA,
+			Name:       "locations",
+			Operations: resources.ListOperations(),
+			Fields:     machineRouteFields(),
+		}},
+	})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list"})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("App.Run(machine loader error) error = %v, want original sentinel", err)
+	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		t.Fatalf("App.Run(machine loader error) error = %#v, want original loader error", machineErr)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestRunProductMachineExecutorUsageErrorMapsToCLIUsage(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Reader:  &machineRouteReader{},
+		Catalog: machineRouteCatalog(),
+	})
+	app.machineReadExecutorFactory = func(machine.BrowserLoader) machineReadExecutor {
+		return &recordingMachineReadExecutor{err: &machine.MachineError{
+			Kind:    machine.ErrorKindUsage,
+			Message: "missing required input: input.product",
+		}}
+	}
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list"})
+	if !errors.Is(err, ErrUsage) {
+		t.Fatalf("App.Run(machine executor usage error) error = %v, want ErrUsage", err)
+	}
+	if !strings.Contains(err.Error(), "missing required input: input.product") {
+		t.Fatalf("App.Run(machine executor usage error) error = %q, want machine message", err.Error())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestRunProductGetStillUsesDirectReader(t *testing.T) {
+	reader := &machineRouteReader{
+		get: resources.NewSourceRecord(map[string]any{
+			"id":   "42",
+			"name": "Direct get",
+		}),
+	}
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Reader:  reader,
+		Catalog: machineRouteCatalog(),
+	})
+	app.machineReadExecutorFactory = func(machine.BrowserLoader) machineReadExecutor {
+		return machineReadExecutorFunc(func(context.Context, machine.Request) (machine.Response, error) {
+			t.Fatal("machine executor must not be called for get")
+			return machine.Response{}, nil
+		})
+	}
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
+	if err != nil {
+		t.Fatalf("App.Run(zia locations get 42) error = %v, want nil", err)
+	}
+	if reader.getCalls != 1 {
+		t.Fatalf("reader get calls = %d, want 1", reader.getCalls)
+	}
+	if reader.listCalls != 0 || reader.showCalls != 0 {
+		t.Fatalf("reader list/show calls = %d/%d, want 0/0", reader.listCalls, reader.showCalls)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(get output) error = %v; output = %q", err, out.String())
+	}
+	if decoded["name"] != "Direct get" {
+		t.Fatalf("get output = %#v, want direct reader record", decoded)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestSanitizeCellValueCollapsesControlChars(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +321,101 @@ func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
 	}
 	if got := formatTableValue([]any{"x\ty", "z"}); got != "x y,z" {
 		t.Errorf("formatTableValue([]any with tab) = %q, want %q", got, "x y,z")
+	}
+}
+
+type recordingMachineReadExecutor struct {
+	response machine.Response
+	err      error
+	calls    []machine.Request
+}
+
+func (e *recordingMachineReadExecutor) Execute(_ context.Context, req machine.Request) (machine.Response, error) {
+	e.calls = append(e.calls, req)
+	if e.err != nil {
+		return machine.Response{}, e.err
+	}
+	return e.response, nil
+}
+
+type machineReadExecutorFunc func(context.Context, machine.Request) (machine.Response, error)
+
+func (f machineReadExecutorFunc) Execute(ctx context.Context, req machine.Request) (machine.Response, error) {
+	return f(ctx, req)
+}
+
+type machineRouteReader struct {
+	list      []resources.SourceRecord
+	get       resources.SourceRecord
+	show      resources.SourceRecord
+	listErr   error
+	getErr    error
+	showErr   error
+	listCalls int
+	getCalls  int
+	showCalls int
+}
+
+func (r *machineRouteReader) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	r.listCalls++
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	if r.list != nil {
+		return r.list, nil
+	}
+	return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+		"id":   "1",
+		"name": "Direct list",
+	})}, nil
+}
+
+func (r *machineRouteReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	r.getCalls++
+	if r.getErr != nil {
+		return resources.SourceRecord{}, r.getErr
+	}
+	return r.get, nil
+}
+
+func (r *machineRouteReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	r.showCalls++
+	if r.showErr != nil {
+		return resources.SourceRecord{}, r.showErr
+	}
+	return r.show, nil
+}
+
+func machineRouteCatalog() resources.ResourceCatalog {
+	return resources.ResourceCatalog{
+		{
+			Product:    resources.ProductZIA,
+			Name:       "locations",
+			Operations: resources.ReadOperations(),
+			Fields:     machineRouteFields(),
+		},
+		{
+			Product:    resources.ProductZIA,
+			Name:       "advanced-settings",
+			Operations: resources.ShowOperation(),
+			Fields:     machineRouteFields(),
+		},
+	}
+}
+
+func machineRouteFields() []resources.FieldSpec {
+	allModes := []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+	return []resources.FieldSpec{
+		{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+			AllowedModes:   allModes,
+		},
+		{
+			Name:           "name",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   allModes,
+		},
 	}
 }
 

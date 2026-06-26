@@ -164,6 +164,39 @@ func TestResourceSpecJSONIncludesGetKeyForGetResources(t *testing.T) {
 	}
 }
 
+func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.T) {
+	t.Parallel()
+
+	input := []map[string]any{{
+		"id":     "123",
+		"name":   "HQ",
+		"groups": []any{"admins"},
+	}}
+
+	projected := resources.NewProjectedRecordsFromProjectedFields(input)
+	input[0]["name"] = "mutated"
+	input[0]["groups"].([]any)[0] = "mutated"
+
+	records := projected.Records()
+	if len(records) != 1 {
+		t.Fatalf("NewProjectedRecordsFromProjectedFields records = %d, want 1", len(records))
+	}
+	fields := records[0].Fields()
+	want := map[string]any{
+		"id":     "123",
+		"name":   "HQ",
+		"groups": []any{"admins"},
+	}
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("NewProjectedRecordsFromProjectedFields fields = %#v, want %#v", fields, want)
+	}
+
+	fields["name"] = "changed again"
+	if got, _ := records[0].Value("name"); got != "HQ" {
+		t.Fatalf("ProjectedRecord.Value(name) after mutating Fields copy = %v, want HQ", got)
+	}
+}
+
 func TestResourceSpecEffectiveShapeDefaultsToList(t *testing.T) {
 	t.Parallel()
 
