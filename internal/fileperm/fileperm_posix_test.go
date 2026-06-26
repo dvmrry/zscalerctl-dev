@@ -6,7 +6,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestValidatePOSIXOwnerOnly(t *testing.T) {
@@ -102,5 +106,35 @@ func TestValidatePOSIXRejectsSymlink(t *testing.T) {
 			_ = file.Close()
 		}
 		t.Fatalf("OpenOwnerOnly(symlink) error = %v, want ErrInsecurePermissions", err)
+	}
+}
+
+func TestOpenOwnerOnlyPOSIXRejectsFIFO(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "secret.fifo")
+	if err := unix.Mkfifo(path, 0o600); err != nil {
+		t.Fatalf("unix.Mkfifo(%q) error = %v, want nil", path, err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		file, err := OpenOwnerOnly(path)
+		if err == nil {
+			_ = file.Close()
+		}
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrInsecurePermissions) {
+			t.Fatalf("OpenOwnerOnly(fifo) error = %v, want ErrInsecurePermissions", err)
+		}
+		if !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("OpenOwnerOnly(fifo) error = %v, want non-regular file message", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OpenOwnerOnly(fifo) did not return; want non-regular file rejection")
 	}
 }
