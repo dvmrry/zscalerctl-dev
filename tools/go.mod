@@ -2,6 +2,8 @@ module github.com/dvmrry/zscalerctl/tools
 
 go 1.26
 
+toolchain go1.26.4
+
 tool (
 	github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
 	github.com/google/go-licenses/v2
