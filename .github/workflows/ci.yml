@@ -201,27 +201,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          fail=0
-          check_result() {
-            local job="$1"
-            local result="$2"
-            echo "${job}: ${result}"
-            if [ "${result}" != "success" ]; then
-              echo "::error::${job} did not succeed (${result})"
-              fail=1
-            fi
-          }
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
 
-          check_result "mod-integrity" "${{ needs['mod-integrity'].result }}"
-          check_result "unit" "${{ needs.unit.result }}"
-          check_result "race-cli" "${{ needs['race-cli'].result }}"
-          check_result "race-resources" "${{ needs['race-resources'].result }}"
-          check_result "race-rest" "${{ needs['race-rest'].result }}"
-          check_result "verify-gates" "${{ needs['verify-gates'].result }}"
-          check_result "windows-config" "${{ needs['windows-config'].result }}"
-          check_result "static-analysis" "${{ needs['static-analysis'].result }}"
-          check_result "secret-scan" "${{ needs['secret-scan'].result }}"
-          check_result "surface-manifest" "${{ needs['surface-manifest'].result }}"
-
-          exit "${fail}"
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          failed = False
+          for job, meta in sorted(needs.items()):
+              result = meta.get("result", "")
+              print(f"{job}: {result}")
+              if result != "success":
+                  print(f"::error::{job} did not succeed ({result})")
+                  failed = True
+          sys.exit(1 if failed else 0)
+          PY
