@@ -276,6 +276,54 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 	}
 }
 
+func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
+	formats := []string{"json", "ndjson", "table", "pretty"}
+	for _, format := range formats {
+		t.Run(format, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			app := NewWithOptions(&out, &errOut, nil, Options{
+				Reader:  &machineRouteReader{},
+				Catalog: machineRouteCatalog(),
+			})
+			app.machineReadExecutorFactory = func(
+				loader machine.BrowserLoader,
+				_ resources.ResourceCatalog,
+				_ redact.Mode,
+			) machineReadExecutor {
+				if loader == nil {
+					t.Fatal("machine executor factory received nil loader")
+				}
+				return &recordingMachineReadExecutor{
+					response: machine.Response{
+						Records: []map[string]any{{
+							"id":            "1",
+							"name":          "From machine",
+							"new_sdk_field": "SECRET_VALUE_SHOULD_NOT_RENDER",
+						}},
+					},
+				}
+			}
+
+			args := []string{"--format", format, "zia", "locations", "list"}
+			err := app.Run(context.Background(), args)
+			if !errors.Is(err, resources.ErrUnexpectedField) {
+				t.Fatalf("App.Run(%v) error = %v, want ErrUnexpectedField", args, err)
+			}
+			if strings.Contains(out.String(), "new_sdk_field") ||
+				strings.Contains(out.String(), "SECRET_VALUE_SHOULD_NOT_RENDER") {
+				t.Fatalf("stdout = %q, want no unverified field or value rendered", out.String())
+			}
+			if strings.Contains(errOut.String(), "new_sdk_field") ||
+				strings.Contains(errOut.String(), "SECRET_VALUE_SHOULD_NOT_RENDER") {
+				t.Fatalf("stderr = %q, want no unverified field or value rendered", errOut.String())
+			}
+			if strings.Contains(err.Error(), "SECRET_VALUE_SHOULD_NOT_RENDER") {
+				t.Fatalf("App.Run(%v) error = %q, want no unverified value", args, err.Error())
+			}
+		})
+	}
+}
+
 func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 	sentinel := errors.New("backend sentinel")
 	var out, errOut bytes.Buffer

@@ -197,6 +197,78 @@ func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.
 	}
 }
 
+func TestNewVerifiedProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.T) {
+	t.Parallel()
+
+	spec := verifiedProjectedFieldsSpec()
+	input := []map[string]any{{
+		"id":          "123",
+		"name":        "HQ",
+		"ipAddresses": []any{"192.0.2.10"},
+	}}
+
+	projected, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(spec, redact.ModeStandard, input)
+	if err != nil {
+		t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(valid) error = %v, want nil", err)
+	}
+	input[0]["name"] = "mutated"
+	input[0]["ipAddresses"].([]any)[0] = "mutated"
+
+	records := projected.Records()
+	if len(records) != 1 {
+		t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(valid) records = %d, want 1", len(records))
+	}
+	fields := records[0].Fields()
+	want := map[string]any{
+		"id":          "123",
+		"name":        "HQ",
+		"ipAddresses": []any{"192.0.2.10"},
+	}
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(valid) fields = %#v, want %#v", fields, want)
+	}
+
+	fields["name"] = "changed again"
+	if got, _ := records[0].Value("name"); got != "HQ" {
+		t.Fatalf("ProjectedRecord.Value(name) after mutating Fields copy = %v, want HQ", got)
+	}
+}
+
+func TestNewVerifiedProjectedRecordsFromProjectedFieldsRejectsUnsafeFields(t *testing.T) {
+	t.Parallel()
+
+	spec := verifiedProjectedFieldsSpec()
+	tests := []struct {
+		name    string
+		mode    redact.Mode
+		records []map[string]any
+	}{
+		{
+			name:    "unknown field",
+			mode:    redact.ModeStandard,
+			records: []map[string]any{{"id": "123", "raw_secret": "must-not-render"}},
+		},
+		{
+			name:    "secret field",
+			mode:    redact.ModeStandard,
+			records: []map[string]any{{"id": "123", "token": "must-not-render"}},
+		},
+		{
+			name:    "field excluded by active redaction mode",
+			mode:    redact.ModeShare,
+			records: []map[string]any{{"id": "123", "standardOnly": "internal-only"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(spec, tt.mode, tt.records)
+			if !errors.Is(err, resources.ErrUnexpectedField) {
+				t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%s) error = %v, want ErrUnexpectedField", tt.name, err)
+			}
+		})
+	}
+}
+
 func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 	t.Parallel()
 
@@ -1369,6 +1441,22 @@ func narrowingSpec() resources.ResourceSpec {
 			{Name: "country", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "authRequired", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "token", Classification: resources.ClassSecret},
+		},
+	}
+}
+
+func verifiedProjectedFieldsSpec() resources.ResourceSpec {
+	allModes := []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "verified-response",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: allModes},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
+			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allModes},
+			{Name: "standardOnly", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
 			{Name: "token", Classification: resources.ClassSecret},
 		},
 	}

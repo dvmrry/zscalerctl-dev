@@ -1243,7 +1243,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		recordID = args[2]
 	}
 	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-		return a.executeMachineRead(ctx, product, resource, op, recordID, browserService, opts)
+		return a.executeMachineRead(ctx, spec, op, recordID, browserService, opts)
 	})
 	if err != nil {
 		return err
@@ -1335,8 +1335,7 @@ func (l *machineReadBrowserLoader) GetProjectedByID(
 
 func (a *App) executeMachineRead(
 	ctx context.Context,
-	product resources.Product,
-	resource string,
+	spec resources.ResourceSpec,
 	op string,
 	recordID string,
 	service browser.Service,
@@ -1344,14 +1343,14 @@ func (a *App) executeMachineRead(
 ) (resources.ProjectedRecords, error) {
 	loader := &machineReadBrowserLoader{service: service}
 	executor := a.machineReadExecutor(loader, service.Catalog, service.Mode)
-	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op, recordID, opts))
+	resp, err := executor.Execute(ctx, machineReadRequest(spec.Product, spec.Name, op, recordID, opts))
 	if err != nil {
 		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err, loader.err)
 	}
 	if resp.Error != nil {
 		return resources.ProjectedRecords{}, cliErrorFromMachineRead(resp.Error, loader.err)
 	}
-	return projectedRecordsFromMachineResponse(resp), nil
+	return projectedRecordsFromMachineResponse(spec, service.Mode, resp)
 }
 
 func (a *App) machineReadExecutor(
@@ -1436,8 +1435,16 @@ func asMachineError(err error) (*machine.MachineError, bool) {
 	return nil, false
 }
 
-func projectedRecordsFromMachineResponse(resp machine.Response) resources.ProjectedRecords {
-	return resources.NewProjectedRecordsFromProjectedFields(resp.Records)
+func projectedRecordsFromMachineResponse(
+	spec resources.ResourceSpec,
+	mode redact.Mode,
+	resp machine.Response,
+) (resources.ProjectedRecords, error) {
+	projected, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(spec, mode, resp.Records)
+	if err != nil {
+		return resources.ProjectedRecords{}, fmt.Errorf("machine response verification failed for %s/%s: %w", spec.Product, spec.Name, err)
+	}
+	return projected, nil
 }
 
 // dumpOptions holds the parsed local flags for the dump command. The Cobra RunE

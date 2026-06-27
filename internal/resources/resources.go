@@ -282,17 +282,39 @@ func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 }
 
 // NewProjectedRecordsFromProjectedFields reconstructs ProjectedRecords from
-// already-projected and already-redacted field maps. It does not project or
-// redact raw source records. Callers with raw records must use
-// ProjectRecordsAndVerify or ProjectRecordAndVerify instead. This helper is
-// only for reconstructing ProjectedRecords from already-projected machine
-// response records.
+// trusted, already-projected, and already-redacted field maps. It does not
+// verify those maps against a catalog spec or redaction mode. Callers that
+// accept maps across a trust boundary must use
+// NewVerifiedProjectedRecordsFromProjectedFields instead.
 func NewProjectedRecordsFromProjectedFields(records []map[string]any) ProjectedRecords {
 	out := make([]ProjectedRecord, len(records))
 	for i, record := range records {
 		out[i] = ProjectedRecord{fields: copyMap(record)}
 	}
 	return ProjectedRecords{records: out}
+}
+
+// NewVerifiedProjectedRecordsFromProjectedFields reconstructs ProjectedRecords
+// from already-projected field maps after verifying every field is declared by
+// spec and renderable in mode. It copies each record defensively and returns no
+// ProjectedRecords when validation fails.
+func NewVerifiedProjectedRecordsFromProjectedFields(
+	spec ResourceSpec,
+	mode redact.Mode,
+	records []map[string]any,
+) (ProjectedRecords, error) {
+	if err := spec.Validate(); err != nil {
+		return ProjectedRecords{}, err
+	}
+	out := make([]ProjectedRecord, len(records))
+	for i, record := range records {
+		copied := copyMap(record)
+		if err := assertRenderedSubsetCore(spec, mode, copied); err != nil {
+			return ProjectedRecords{}, err
+		}
+		out[i] = ProjectedRecord{fields: copied}
+	}
+	return ProjectedRecords{records: out}, nil
 }
 
 func (ProjectedRecords) OutputSafe() {}
