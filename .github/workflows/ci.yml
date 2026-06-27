@@ -202,11 +202,26 @@ jobs:
     steps:
       - name: Require all CI jobs to succeed
         run: |
-          results='${{ join(needs.*.result, ' ') }}'
-          echo "job results: ${results}"
-          for r in ${results}; do
-            if [ "${r}" != "success" ]; then
-              echo "::error::a required CI job did not succeed"
-              exit 1
+          fail=0
+          check_result() {
+            local job="$1"
+            local result="$2"
+            echo "${job}: ${result}"
+            if [ "${result}" != "success" ]; then
+              echo "::error::${job} did not succeed (${result})"
+              fail=1
             fi
-          done
+          }
+
+          check_result "mod-integrity" "${{ needs.mod-integrity.result }}"
+          check_result "unit" "${{ needs.unit.result }}"
+          check_result "race-cli" "${{ needs.race-cli.result }}"
+          check_result "race-resources" "${{ needs.race-resources.result }}"
+          check_result "race-rest" "${{ needs.race-rest.result }}"
+          check_result "verify-gates" "${{ needs.verify-gates.result }}"
+          check_result "windows-config" "${{ needs.windows-config.result }}"
+          check_result "static-analysis" "${{ needs.static-analysis.result }}"
+          check_result "secret-scan" "${{ needs.secret-scan.result }}"
+          check_result "surface-manifest" "${{ needs.surface-manifest.result }}"
+
+          exit "${fail}"
