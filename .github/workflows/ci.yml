@@ -201,21 +201,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to succeed
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-
-          needs = json.loads(os.environ["NEEDS_JSON"])
-          failed = False
-          for job, meta in sorted(needs.items()):
-              result = meta.get("result", "")
-              print(f"{job}: {result}")
-              if result != "success":
-                  print(f"::error::{job} did not succeed ({result})")
-                  failed = True
-          sys.exit(1 if failed else 0)
-          PY
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: ${results}"
+          for r in ${results}; do
+            if [ "${r}" != "success" ]; then
+              echo "::error::a required CI job did not succeed"
+              exit 1
+            fi
+          done
