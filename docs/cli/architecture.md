@@ -74,6 +74,12 @@ Zscaler.
 
 ## Resource Read Runtime
 
+`internal/runtime` is the trusted read-only runtime assembly facade for
+machine-oriented adapters. It may load config, resolve secret refs, construct
+Zscaler SDK readers, wire `internal/browser`, and return a machine executor
+facade. It is not a safe seam: lower-level catalog, browser, machine, and
+machineio packages must not import it.
+
 Catalog resource `list`, `show`, and `get <id>` commands route through
 `internal/machine.Executor` after CLI parsing, config loading, and reader
 construction have already happened. The executor only sees a narrow projected
@@ -93,7 +99,10 @@ seam before machine responses or renderers see them.
 Future overlays should reuse the same machine/browser/resources seams. They
 must not import `internal/cli`, `internal/output`, `internal/config`,
 `internal/credentials`, `internal/secretref`, `internal/secret`, or
-`internal/zscaler` to bypass CLI/runtime ownership.
+`internal/zscaler` to bypass CLI/runtime ownership. Adapters that need the live
+machine read path should consume `internal/runtime` instead of assembling config,
+credentials, secrets, SDK clients, browser services, and machine executors
+themselves.
 
 ## Surface Changes
 
