@@ -207,27 +207,93 @@ func TestMachineExecutePreservesOriginalLiveLoadError(t *testing.T) {
 func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	t.Parallel()
 
-	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
-	rt := NewMachineFromReader(&runtimeFakeReader{}, catalog, redact.ModeParanoid)
-	catalog[0].Name = "mutated"
+	catalog := runtimeDeepCopyCatalog()
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"outer": map[string]any{
+						"inner": "value",
+					},
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
 
-	manifest := rt.Manifest()
-	if len(manifest.Capabilities) != 1 {
-		t.Fatalf("Machine.Manifest() capabilities = %d, want 1", len(manifest.Capabilities))
-	}
-	if got := manifest.Capabilities[0].Input.Resource; got != "locations" {
-		t.Fatalf("Machine.Manifest() resource = %q, want locations", got)
-	}
-	if got := rt.Redaction(); got != redact.ModeParanoid {
-		t.Fatalf("Machine.Redaction() = %q, want %q", got, redact.ModeParanoid)
-	}
+	catalog[0].Name = "mutated"
+	catalog[0].Operations[0].Capability = resources.CapabilityWrite
+	catalog[0].Fields[0].Name = "mutated"
+	catalog[0].Fields[0].AllowedModes[0] = redact.ModeShare
+	catalog[0].Fields[0].Fields[0].Name = "mutated-inner"
+	catalog[0].Fields[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+	assertRuntimeCatalogUnchanged(t, rt, "after input catalog mutation")
 
 	gotCatalog := rt.Catalog()
 	gotCatalog[0].Name = "changed"
-	manifest = rt.Manifest()
-	if got := manifest.Capabilities[0].Input.Resource; got != "locations" {
-		t.Fatalf("Machine.Manifest() after Catalog mutation resource = %q, want locations", got)
+	gotCatalog[0].Operations[0].Capability = resources.CapabilityWrite
+	gotCatalog[0].Fields[0].Name = "changed"
+	gotCatalog[0].Fields[0].AllowedModes[0] = redact.ModeShare
+	gotCatalog[0].Fields[0].Fields[0].Name = "changed-inner"
+	gotCatalog[0].Fields[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+	assertRuntimeCatalogUnchanged(t, rt, "after returned catalog mutation")
+}
+
+func assertRuntimeCatalogUnchanged(t *testing.T, rt *Machine, phase string) {
+	t.Helper()
+	manifest := rt.Manifest()
+	if len(manifest.Capabilities) != 1 {
+		t.Fatalf("Machine.Manifest(%s) capabilities = %d, want 1", phase, len(manifest.Capabilities))
 	}
+	if got := manifest.Capabilities[0].Input.Resource; got != "locations" {
+		t.Fatalf("Machine.Manifest(%s) resource = %q, want locations", phase, got)
+	}
+	if got := rt.Redaction(); got != redact.ModeStandard {
+		t.Fatalf("Machine.Redaction(%s) = %q, want %q", phase, got, redact.ModeStandard)
+	}
+	gotCatalog := rt.Catalog()
+	wantCatalog := runtimeDeepCopyCatalog()
+	if !reflect.DeepEqual(gotCatalog, wantCatalog) {
+		t.Fatalf("Machine.Catalog(%s) = %#v, want %#v", phase, gotCatalog, wantCatalog)
+	}
+
+	resp, err := rt.Execute(context.Background(), machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	})
+	if err != nil {
+		t.Fatalf("Machine.Execute(%s) error = %v, want nil", phase, err)
+	}
+	wantRecords := []map[string]any{{
+		"outer": map[string]any{
+			"inner": "value",
+		},
+	}}
+	if !reflect.DeepEqual(resp.Records, wantRecords) {
+		t.Fatalf("Machine.Execute(%s).Records = %#v, want %#v", phase, resp.Records, wantRecords)
+	}
+}
+
+func runtimeDeepCopyCatalog() resources.ResourceCatalog {
+	return resources.ResourceCatalog{{
+		Product: resources.ProductZIA,
+		Name:    "locations",
+		Operations: []resources.Operation{{
+			Name:       "list",
+			Capability: resources.CapabilityRead,
+		}},
+		Fields: []resources.FieldSpec{{
+			Name:           "outer",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+			Fields: []resources.FieldSpec{{
+				Name:           "inner",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			}},
+		}},
+	}}
 }
 
 type runtimeFakeReader struct {
