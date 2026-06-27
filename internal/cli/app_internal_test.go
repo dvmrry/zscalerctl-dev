@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -167,9 +168,19 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 			})
 			executor := &recordingMachineReadExecutor{response: tt.response}
 			loaderFactoryCalled := false
-			app.machineReadExecutorFactory = func(loader machine.BrowserLoader) machineReadExecutor {
+			app.machineReadExecutorFactory = func(
+				loader machine.BrowserLoader,
+				catalog resources.ResourceCatalog,
+				mode redact.Mode,
+			) machineReadExecutor {
 				if loader == nil {
 					t.Fatal("machine executor factory received nil loader")
+				}
+				if len(catalog) == 0 {
+					t.Fatal("machine executor factory received empty catalog")
+				}
+				if mode != redact.ModeStandard {
+					t.Fatalf("machine executor factory mode = %q, want standard default", mode)
 				}
 				loaderFactoryCalled = true
 				return executor
@@ -215,6 +226,53 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				t.Fatalf("%s output = %#v, want machine response record", tt.name, decoded)
 			}
 		})
+	}
+}
+
+func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Reader:  &machineRouteReader{},
+		Catalog: machineRouteCatalog(),
+	})
+	executor := &recordingMachineReadExecutor{
+		response: machine.Response{
+			Records: []map[string]any{{"name": "Branch West"}},
+		},
+	}
+	app.machineReadExecutorFactory = func(
+		loader machine.BrowserLoader,
+		_ resources.ResourceCatalog,
+		_ redact.Mode,
+	) machineReadExecutor {
+		if loader == nil {
+			t.Fatal("machine executor factory received nil loader")
+		}
+		return executor
+	}
+
+	args := []string{
+		"--format", "json",
+		"--fields", "name",
+		"--filter", "country=DE",
+		"--search", "branch",
+		"zia", "locations", "list",
+	}
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+	}
+	req := executor.calls[0]
+	if req.Input == nil {
+		t.Fatalf("machine request = %#v, want input", req)
+	}
+	wantFilters := []machine.Filter{{Field: "country", Operator: "=", Value: "DE"}}
+	if !reflect.DeepEqual(req.Input.Fields, []string{"name"}) ||
+		!reflect.DeepEqual(req.Input.Filters, wantFilters) ||
+		req.Input.Search != "branch" {
+		t.Fatalf("machine request input = %#v, want fields/filter/search", req.Input)
 	}
 }
 
@@ -281,7 +339,7 @@ func TestRunProductMachineExecutorUsageErrorMapsToCLIUsage(t *testing.T) {
 		Reader:  &machineRouteReader{},
 		Catalog: machineRouteCatalog(),
 	})
-	app.machineReadExecutorFactory = func(machine.BrowserLoader) machineReadExecutor {
+	app.machineReadExecutorFactory = func(machine.BrowserLoader, resources.ResourceCatalog, redact.Mode) machineReadExecutor {
 		return &recordingMachineReadExecutor{err: &machine.MachineError{
 			Kind:    machine.ErrorKindUsage,
 			Message: "missing required input: input.product",
@@ -320,7 +378,11 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 			Records: []map[string]any{{"id": "42", "name": "Machine get"}},
 		},
 	}
-	app.machineReadExecutorFactory = func(loader machine.BrowserLoader) machineReadExecutor {
+	app.machineReadExecutorFactory = func(
+		loader machine.BrowserLoader,
+		_ resources.ResourceCatalog,
+		_ redact.Mode,
+	) machineReadExecutor {
 		if _, ok := loader.(machine.ProjectedRecordGetter); !ok {
 			t.Fatal("machine executor factory loader does not implement ProjectedRecordGetter")
 		}

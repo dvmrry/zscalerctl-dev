@@ -35,7 +35,7 @@ func TestExecutorExecuteListCallsLoaderAndReturnsProjectedRecords(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Executor.Execute(list request) error = %v, want nil", err)
 	}
-	wantCalls := []string{"zia/locations"}
+	wantCalls := []string{"list:zia/locations"}
 	if !reflect.DeepEqual(loader.calls, wantCalls) {
 		t.Fatalf("Executor.Execute(list request) loader calls = %#v, want %#v", loader.calls, wantCalls)
 	}
@@ -47,8 +47,8 @@ func TestExecutorExecuteListCallsLoaderAndReturnsProjectedRecords(t *testing.T) 
 		t.Fatalf("Executor.Execute(list request).Records = %#v, want %#v", got.Records, wantRecords)
 	}
 	assertResponseEnvelope(t, got, req, 2)
-	if got.Meta.Version != "client.v1" {
-		t.Fatalf("Executor.Execute(list request).Meta.Version = %q, want client.v1", got.Meta.Version)
+	if got.Meta.Version != "" {
+		t.Fatalf("Executor.Execute(list request).Meta.Version = %q, want empty server-generated metadata", got.Meta.Version)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestExecutorExecuteShowCallsLoaderAndReturnsProjectedRecords(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Executor.Execute(show request) error = %v, want nil", err)
 	}
-	wantCalls := []string{"zia/advanced-settings"}
+	wantCalls := []string{"show:zia/advanced-settings"}
 	if !reflect.DeepEqual(loader.calls, wantCalls) {
 		t.Fatalf("Executor.Execute(show request) loader calls = %#v, want %#v", loader.calls, wantCalls)
 	}
@@ -160,6 +160,32 @@ func TestExecutorRejectsUnsupportedOperationBeforeLoader(t *testing.T) {
 	assertResponseError(t, got, machine.ErrorKindUnsupportedOperation)
 	if len(loader.calls) != 0 {
 		t.Fatalf("Executor.Execute(delete request) loader calls = %#v, want none", loader.calls)
+	}
+}
+
+func TestExecutorExecuteManifestReturnsCatalogManifestWithoutLoader(t *testing.T) {
+	loader := &fakeBrowserLoader{}
+	catalog := resources.ResourceCatalog{
+		testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id", "name"),
+	}
+	executor := machine.Executor{Browser: loader, Catalog: catalog}
+	req := machine.Request{
+		RequestID: "req-manifest",
+		Operation: machine.OperationManifest,
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Executor.Execute(manifest request) error = %v, want nil", err)
+	}
+	if got.Manifest == nil {
+		t.Fatalf("Executor.Execute(manifest request).Manifest = nil, want manifest")
+	}
+	if got.Meta == nil || got.Meta.Count != 1 || !got.Meta.ReadOnly {
+		t.Fatalf("Executor.Execute(manifest request).Meta = %#v, want read-only count 1", got.Meta)
+	}
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(manifest request) loader calls = %#v, want none", loader.calls)
 	}
 }
 
@@ -292,10 +318,207 @@ func TestExecutorMapsLoaderErrorToSanitizedMachineError(t *testing.T) {
 		t.Fatalf("Executor.Execute(loader error) message = %q, want sanitized message", machineErr.Message)
 	}
 	assertResponseError(t, got, machine.ErrorKindLiveAccessFailed)
-	wantCalls := []string{"zia/locations"}
+	wantCalls := []string{"list:zia/locations"}
 	if !reflect.DeepEqual(loader.calls, wantCalls) {
 		t.Fatalf("Executor.Execute(loader error) loader calls = %#v, want %#v", loader.calls, wantCalls)
 	}
+}
+
+func TestExecutorMapsKnownLoaderErrorsToStableMachineKinds(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantKind string
+	}{
+		{name: "unknown_resource", err: resources.ErrUnknownResource, wantKind: machine.ErrorKindUnknownResource},
+		{name: "unsupported_load", err: resources.ErrUnsupportedLoad, wantKind: machine.ErrorKindUnsupportedOperation},
+		{name: "context_canceled", err: context.Canceled, wantKind: machine.ErrorKindCanceled},
+		{name: "deadline_exceeded", err: context.DeadlineExceeded, wantKind: machine.ErrorKindDeadlineExceeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := &fakeBrowserLoader{err: tt.err}
+			executor := machine.Executor{Browser: loader}
+			req := machine.Request{
+				RequestID:  "req-" + tt.name,
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			}
+
+			got, err := executor.Execute(context.Background(), req)
+			if err == nil {
+				t.Fatalf("Executor.Execute(%s loader error) error = nil, want MachineError", tt.name)
+			}
+			assertMachineError(t, err, tt.wantKind, machine.OperationList, "zia", "locations")
+			assertResponseError(t, got, tt.wantKind)
+		})
+	}
+}
+
+func TestExecutorAppliesFieldsFiltersAndSearchAfterProjection(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t,
+			map[string]any{"id": "1", "name": "HQ", "country": "US"},
+			map[string]any{"id": "2", "name": "Branch East", "country": "US"},
+			map[string]any{"id": "3", "name": "Branch West", "country": "DE"},
+		),
+	}
+	executor := machine.Executor{
+		Browser: loader,
+		Catalog: resources.ResourceCatalog{
+			testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id", "name", "country"),
+		},
+		Redaction: redact.ModeStandard,
+	}
+	req := machine.Request{
+		RequestID:  "req-narrow",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			Fields:   []string{"name"},
+			Filters: []machine.Filter{
+				{Field: "country", Operator: "=", Value: "DE"},
+				{Field: "name", Operator: "~", Value: "branch"},
+			},
+			Search: "west",
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Executor.Execute(narrowed list request) error = %v, want nil", err)
+	}
+	wantRecords := []map[string]any{{"name": "Branch West"}}
+	if !reflect.DeepEqual(got.Records, wantRecords) {
+		t.Fatalf("Executor.Execute(narrowed list request).Records = %#v, want %#v", got.Records, wantRecords)
+	}
+}
+
+func TestExecutorRejectsUnsupportedInputSemanticsBeforeLoader(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *machine.Input
+		op    machine.Operation
+	}{
+		{
+			name: "options",
+			op:   machine.OperationList,
+			input: &machine.Input{
+				Product: "zia", Resource: "locations", Options: map[string]string{"raw": "true"},
+			},
+		},
+		{
+			name:  "filter_on_get",
+			op:    machine.OperationGet,
+			input: &machine.Input{Product: "zia", Resource: "locations", RecordID: "123", Filters: []machine.Filter{{Field: "name", Operator: "=", Value: "HQ"}}},
+		},
+		{
+			name:  "search_on_show",
+			op:    machine.OperationShow,
+			input: &machine.Input{Product: "zia", Resource: "advanced-settings", Search: "enabled"},
+		},
+		{
+			name:  "invalid_filter_operator",
+			op:    machine.OperationList,
+			input: &machine.Input{Product: "zia", Resource: "locations", Filters: []machine.Filter{{Field: "name", Operator: "!=", Value: "HQ"}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := &fakeBrowserLoader{}
+			executor := machine.Executor{Browser: loader}
+			req := machine.Request{
+				RequestID:  "req-" + tt.name,
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  tt.op,
+				Input:      tt.input,
+			}
+
+			got, err := executor.Execute(context.Background(), req)
+			if err == nil {
+				t.Fatalf("Executor.Execute(%s) error = nil, want usage MachineError", tt.name)
+			}
+			assertMachineError(t, err, machine.ErrorKindUsage, tt.op, tt.input.Product, tt.input.Resource)
+			assertResponseError(t, got, machine.ErrorKindUsage)
+			if len(loader.calls) != 0 {
+				t.Fatalf("Executor.Execute(%s) loader calls = %#v, want none", tt.name, loader.calls)
+			}
+		})
+	}
+}
+
+func TestExecutorDoesNotEchoClientSuppliedMeta(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123", "name": "HQ"}),
+	}
+	executor := machine.Executor{Browser: loader}
+	req := machine.Request{
+		RequestID:  "req-meta",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+		Meta: &machine.Meta{
+			Version:     "client",
+			RequestID:   "spoofed",
+			GeneratedAt: "yesterday",
+			Product:     "zpa",
+			Resource:    "server-groups",
+			Shape:       "singleton",
+			GetKey:      "externalId",
+			ReadOnly:    false,
+			Count:       99,
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Executor.Execute(client meta request) error = %v, want nil", err)
+	}
+	if got.Meta == nil {
+		t.Fatal("Executor.Execute(client meta request).Meta = nil, want server metadata")
+	}
+	if got.Meta.RequestID != "req-meta" ||
+		got.Meta.Product != "zia" ||
+		got.Meta.Resource != "locations" ||
+		!got.Meta.ReadOnly ||
+		got.Meta.Count != 1 {
+		t.Fatalf("Executor.Execute(client meta request).Meta = %#v, want server-generated values", got.Meta)
+	}
+	if got.Meta.Version != "" || got.Meta.GeneratedAt != "" || got.Meta.Shape != "" || got.Meta.GetKey != "" {
+		t.Fatalf("Executor.Execute(client meta request).Meta = %#v, want no echoed client metadata", got.Meta)
+	}
+}
+
+func TestExecutorUnknownFieldSelectionIsUsageError(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123", "name": "HQ"}),
+	}
+	executor := machine.Executor{
+		Browser: loader,
+		Catalog: resources.ResourceCatalog{
+			testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id", "name"),
+		},
+	}
+	req := machine.Request{
+		RequestID:  "req-unknown-field",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			Fields:   []string{"nope"},
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(unknown field request) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+	assertResponseError(t, got, machine.ErrorKindUsage)
 }
 
 func TestExecutorRejectsMissingLoader(t *testing.T) {
@@ -349,7 +572,27 @@ func (l *fakeBrowserLoader) LoadProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	l.calls = append(l.calls, product+"/"+resource)
+	return l.ListProjected(context.Background(), product, resource)
+}
+
+func (l *fakeBrowserLoader) ListProjected(
+	_ context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.calls = append(l.calls, "list:"+product+"/"+resource)
+	if l.err != nil {
+		return resources.ProjectedRecords{}, l.err
+	}
+	return l.records, nil
+}
+
+func (l *fakeBrowserLoader) ShowProjected(
+	_ context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.calls = append(l.calls, "show:"+product+"/"+resource)
 	if l.err != nil {
 		return resources.ProjectedRecords{}, l.err
 	}
@@ -357,6 +600,15 @@ func (l *fakeBrowserLoader) LoadProjected(
 }
 
 func (l *fakeBrowserLoader) LoadProjectedByID(
+	_ context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	return l.GetProjectedByID(context.Background(), product, resource, id)
+}
+
+func (l *fakeBrowserLoader) GetProjectedByID(
 	_ context.Context,
 	product string,
 	resource string,
@@ -373,12 +625,21 @@ type projectedOnlyLoader struct {
 	calls []string
 }
 
-func (l *projectedOnlyLoader) LoadProjected(
+func (l *projectedOnlyLoader) ListProjected(
 	_ context.Context,
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	l.calls = append(l.calls, product+"/"+resource)
+	l.calls = append(l.calls, "list:"+product+"/"+resource)
+	return resources.ProjectedRecords{}, nil
+}
+
+func (l *projectedOnlyLoader) ShowProjected(
+	_ context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.calls = append(l.calls, "show:"+product+"/"+resource)
 	return resources.ProjectedRecords{}, nil
 }
 
@@ -413,6 +674,28 @@ func projectedRecordsFromFields(t *testing.T, rows ...map[string]any) resources.
 		t.Fatalf("ProjectRecordsAndVerify(test resource, rows=%#v) error = %v, want nil", rows, err)
 	}
 	return projected
+}
+
+func testExecutorSpec(
+	product resources.Product,
+	name string,
+	operations []resources.Operation,
+	fields ...string,
+) resources.ResourceSpec {
+	fieldSpecs := make([]resources.FieldSpec, len(fields))
+	for i, field := range fields {
+		fieldSpecs[i] = resources.FieldSpec{
+			Name:           field,
+			Classification: resources.ClassPublicProjectData,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}
+	}
+	return resources.ResourceSpec{
+		Product:    product,
+		Name:       name,
+		Operations: operations,
+		Fields:     fieldSpecs,
+	}
 }
 
 func assertResponseEnvelope(t *testing.T, got machine.Response, req machine.Request, wantCount int) {
