@@ -1,0 +1,21 @@
+{
+  "request_id": "contract-list-locations",
+  "capability": "resources.read",
+  "operation": "list",
+  "input": {
+    "product": "zia",
+    "resource": "locations",
+    "fields": [
+      "id",
+      "name"
+    ],
+    "filters": [
+      {
+        "field": "status",
+        "operator": "=",
+        "value": "active"
+      }
+    ],
+    "search": "hq"
+  }
+}

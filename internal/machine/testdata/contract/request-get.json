@@ -1,0 +1,14 @@
+{
+  "request_id": "contract-get-location",
+  "capability": "resources.read",
+  "operation": "get",
+  "input": {
+    "product": "zia",
+    "resource": "locations",
+    "record_id": "loc-1",
+    "fields": [
+      "id",
+      "name"
+    ]
+  }
+}

@@ -17,6 +17,12 @@ permissions:
 
 jobs:
   analyze:
+    # Private repositories skip CodeQL by default because code scanning may be
+    # unavailable without GitHub Code Security / billing support. Set the
+    # repository variable ENABLE_PRIVATE_CODEQL=true to opt in. If branch
+    # protection requires this CodeQL check on a private repo, remove or replace
+    # that required check unless private CodeQL is explicitly enabled.
+    if: ${{ !github.event.repository.private || vars.ENABLE_PRIVATE_CODEQL == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read

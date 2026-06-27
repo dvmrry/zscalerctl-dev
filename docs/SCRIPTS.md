@@ -27,6 +27,7 @@ registered path exists.
 | `scripts/test-verify-ci-no-live-creds.sh` | test | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-core-boundaries.sh` | test | `make verify-core-boundaries`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-experiment-boundaries.sh` | test | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | Self-contained verifier test |
+| `scripts/test-verify-machine-contract.sh` | test | `make verify-machine-contract`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-release-artifacts.sh` | test | `make verify-release-artifacts` | Self-contained verifier test |
 | `scripts/test-verify-sdk-boundary.sh` | test | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-script-registry.sh` | test | `make verify-script-registry` | Self-contained verifier test |
@@ -41,6 +42,7 @@ registered path exists.
 | `scripts/verify-docs.sh` | verify | `make docs-check`; `.github/workflows/ci.yml` | No companion test yet; docs secret-pattern gate |
 | `scripts/verify-experiment-boundaries.sh` | verify | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | `scripts/test-verify-experiment-boundaries.sh` |
 | `scripts/verify-licenses.sh` | verify | `make verify-licenses`; `.github/workflows/ci.yml` | `go-licenses` allow-list check for the shipped binary |
+| `scripts/verify-machine-contract.sh` | verify | `make verify-machine-contract`; `.github/workflows/ci.yml` | `scripts/test-verify-machine-contract.sh` |
 | `scripts/verify-release-artifacts.sh` | verify | `make verify-release-artifacts` | `scripts/test-verify-release-artifacts.sh` |
 | `scripts/verify-sdk-boundary.sh` | verify | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | `scripts/test-verify-sdk-boundary.sh` |
 | `scripts/verify-script-registry.sh` | verify | `make verify-script-registry` | `scripts/test-verify-script-registry.sh` |

@@ -1,0 +1,10 @@
+{
+  "kind": "usage",
+  "message": "missing required input: input.record_id",
+  "missing": [
+    "input.record_id"
+  ],
+  "operation": "get",
+  "product": "zia",
+  "resource": "locations"
+}

@@ -1,0 +1,13 @@
+{
+  "request_id": "contract-show-settings",
+  "capability": "resources.read",
+  "operation": "show",
+  "input": {
+    "product": "zia",
+    "resource": "advanced-settings",
+    "fields": [
+      "id",
+      "name"
+    ]
+  }
+}

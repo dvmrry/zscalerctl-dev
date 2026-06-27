@@ -121,6 +121,48 @@ func TestExecuteJSONRejectsInvalidJSONBeforeExecutor(t *testing.T) {
 	}
 }
 
+func TestExecuteJSONRejectsStrictDecodeFailuresBeforeExecutor(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr error
+	}{
+		{
+			name: "trailing JSON value",
+			body: `{"operation":"list"} {"operation":"get"}`,
+		},
+		{
+			name: "unknown field",
+			body: `{"operation":"list","surprise":true}`,
+		},
+		{
+			name:    "oversized request",
+			body:    `{"request_id":"` + strings.Repeat("x", int(machineio.DefaultDecodeMaxBytes)) + `","operation":"list"}`,
+			wantErr: machineio.ErrRequestTooLarge,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &machineIOHarnessExecutor{}
+			var stdout bytes.Buffer
+
+			err := machineio.ExecuteJSON(context.Background(), strings.NewReader(tt.body), &stdout, executor)
+			if err == nil {
+				t.Fatalf("machineio.ExecuteJSON(%s) error = nil, want decode error", tt.name)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("machineio.ExecuteJSON(%s) error = %v, want %v", tt.name, err, tt.wantErr)
+			}
+			if len(executor.calls) != 0 {
+				t.Fatalf("machineio.ExecuteJSON(%s) executor calls = %#v, want none", tt.name, executor.calls)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("machineio.ExecuteJSON(%s) output = %q, want empty output", tt.name, stdout.String())
+			}
+		})
+	}
+}
+
 func TestExecuteJSONReturnsEncodeError(t *testing.T) {
 	req := machine.Request{
 		RequestID:  "req-stdio",
@@ -168,6 +210,51 @@ func TestDecodeRequest(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("machineio.DecodeRequest(valid request) = %#v, want %#v", got, want)
+	}
+}
+
+func TestDecodeRequestStrict(t *testing.T) {
+	want := machine.Request{
+		RequestID:  "req-strict",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+
+	got, err := machineio.DecodeRequestStrict(strings.NewReader(mustJSON(t, want)))
+	if err != nil {
+		t.Fatalf("machineio.DecodeRequestStrict(valid request) error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("machineio.DecodeRequestStrict(valid request) = %#v, want %#v", got, want)
+	}
+}
+
+func TestDecodeRequestStrictRejectsTrailingJSON(t *testing.T) {
+	_, err := machineio.DecodeRequestStrict(strings.NewReader(`{"operation":"list"} {"operation":"get"}`))
+	if !errors.Is(err, machineio.ErrTrailingJSON) {
+		t.Fatalf("machineio.DecodeRequestStrict(trailing JSON) error = %v, want ErrTrailingJSON", err)
+	}
+}
+
+func TestDecodeRequestStrictRejectsUnknownFields(t *testing.T) {
+	_, err := machineio.DecodeRequestStrict(strings.NewReader(`{"operation":"list","surprise":true}`))
+	if err == nil {
+		t.Fatal("machineio.DecodeRequestStrict(unknown field) error = nil, want decode error")
+	}
+}
+
+func TestDecodeRequestWithOptionsRejectsOversizedInput(t *testing.T) {
+	req := machine.Request{
+		RequestID: "req-too-large",
+		Operation: machine.OperationList,
+	}
+
+	_, err := machineio.DecodeRequestWithOptions(strings.NewReader(mustJSON(t, req)), machineio.DecodeOptions{
+		MaxBytes: 8,
+	})
+	if !errors.Is(err, machineio.ErrRequestTooLarge) {
+		t.Fatalf("machineio.DecodeRequestWithOptions(oversized request) error = %v, want ErrRequestTooLarge", err)
 	}
 }
 
