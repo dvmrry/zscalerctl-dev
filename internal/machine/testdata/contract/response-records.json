@@ -1,0 +1,18 @@
+{
+  "request_id": "contract-list-locations",
+  "capability": "resources.read",
+  "operation": "list",
+  "records": [
+    {
+      "id": "loc-1",
+      "name": "HQ"
+    }
+  ],
+  "meta": {
+    "request_id": "contract-list-locations",
+    "product": "zia",
+    "resource": "locations",
+    "read_only": true,
+    "count": 1
+  }
+}

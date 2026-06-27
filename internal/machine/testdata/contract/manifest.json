@@ -1,0 +1,62 @@
+{
+  "version": "machine.v1",
+  "capabilities": [
+    {
+      "name": "resources.read",
+      "title": "Read zia/advanced-settings",
+      "description": "Read projected and redacted zia/advanced-settings resource records.",
+      "operations": [
+        "show"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "advanced-settings"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "advanced-settings",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
+      "title": "Read zia/locations",
+      "description": "Read projected and redacted zia/locations resource records.",
+      "operations": [
+        "list",
+        "get"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "locations"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "locations",
+        "shape": "list",
+        "get_key": "id",
+        "read_only": true
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "name": "projected-records",
+      "version": "1"
+    }
+  ],
+  "meta": {
+    "version": "1",
+    "read_only": true,
+    "count": 2
+  }
+}

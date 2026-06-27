@@ -14,7 +14,9 @@ Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed boundary. Stdio-style adapters that need a
 small JSON transport convention can use `internal/machineio` to decode one
-request, execute it, and encode the response without importing CLI rendering.
+bounded request, execute it, and encode the response without importing CLI
+rendering. `machineio.ExecuteJSON` rejects unknown request fields and trailing
+JSON values before executing.
 
 For the agent-facing command workflow, see
 [agent-machine-workflow.md](agent-machine-workflow.md).
@@ -44,6 +46,9 @@ Changes to JSON, NDJSON, machine error envelopes, exit codes, completion,
 introspection, or generated CLI docs are machine-contract changes. They require
 the same surface review, schema/golden coverage, and semver treatment as any
 other compatibility-affecting change.
+`scripts/verify-machine-contract.sh` keeps the internal machine JSON fixtures,
+strict `machineio` decode behavior, and projected-record reconstruction guard
+together as the mechanical contract gate.
 
 ## Core Security Boundary
 

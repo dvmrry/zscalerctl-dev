@@ -98,6 +98,7 @@ jobs:
       - run: bash scripts/test-verify-sdk-boundary.sh
       - run: make verify-core-boundaries
       - run: make verify-experiment-boundaries
+      - run: make verify-machine-contract
       - run: bash scripts/verify-ci-no-live-creds.sh
       - run: bash scripts/test-verify-ci-no-live-creds.sh
       - run: bash scripts/verify-actions-pinned.sh
