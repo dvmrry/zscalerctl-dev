@@ -373,12 +373,15 @@ func (r *runtimeHarnessReader) Get(
 }
 
 func runtimeHarnessExecutor(reader *runtimeHarnessReader) machine.Executor {
+	catalog := runtimeHarnessCatalog()
 	return machine.Executor{
 		Browser: browser.Service{
-			Catalog: runtimeHarnessCatalog(),
+			Catalog: catalog,
 			Reader:  reader,
 			Mode:    redact.ModeShare,
 		},
+		Catalog:   catalog,
+		Redaction: redact.ModeShare,
 	}
 }
 

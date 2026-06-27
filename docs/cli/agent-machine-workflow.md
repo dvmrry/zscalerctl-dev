@@ -85,10 +85,12 @@ reports. Resource records are governed by the catalog and by the
 `projected-records` schema ref advertised by the machine manifest.
 
 Rendered resource fields are projected and redacted before machine output.
-`--fields` can only narrow the projected field set; it cannot request dropped
-or secret fields. If a field is absent from the projected output, treat that as
-intentional and do not try to recover it through raw SDK, config, credential,
-or secret layers.
+`--fields` and machine request `fields` can only narrow the projected field set;
+they cannot request dropped or secret fields. Machine request `filters` and
+`search` also run after projection, so they can reduce records but cannot match
+raw source-only fields. If a field is absent from the projected output, treat
+that as intentional and do not try to recover it through raw SDK, config,
+credential, or secret layers.
 
 ## Boundary Expectations
 

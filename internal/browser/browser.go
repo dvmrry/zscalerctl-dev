@@ -19,14 +19,14 @@ var (
 
 	// ErrUnknownResource reports that the requested product/resource is not in
 	// the service catalog.
-	ErrUnknownResource = errors.New("unknown browser resource")
+	ErrUnknownResource = resources.ErrUnknownResource
 
 	// ErrMissingID reports that an ID-backed load was requested without an ID.
-	ErrMissingID = errors.New("browser resource id is required")
+	ErrMissingID = resources.ErrMissingID
 
 	// ErrUnsupportedLoad reports that a catalog entry has no list, show, or get
 	// operation suitable for browser loading.
-	ErrUnsupportedLoad = errors.New("unsupported browser load operation")
+	ErrUnsupportedLoad = resources.ErrUnsupportedLoad
 )
 
 // UnknownResourceError describes a product/resource lookup miss.
@@ -135,9 +135,40 @@ func (s Service) LoadProjected(ctx context.Context, product, resource string) (r
 	return projected, nil
 }
 
+// ListProjected returns projected and redacted records for a list-backed
+// resource. It fails instead of falling back to show when list is unsupported.
+func (s Service) ListProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error) {
+	_, projected, err := s.loadProjectedOperation(ctx, product, resource, "list")
+	if err != nil {
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+// ShowProjected returns one projected and redacted singleton record. It fails
+// instead of falling back to list when show is unsupported.
+func (s Service) ShowProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error) {
+	_, projected, err := s.loadProjectedOperation(ctx, product, resource, "show")
+	if err != nil {
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
 // LoadProjectedByID returns projected and redacted records for one ID-backed
 // resource read without choosing a presentation shape.
 func (s Service) LoadProjectedByID(
+	ctx context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	return s.GetProjectedByID(ctx, product, resource, id)
+}
+
+// GetProjectedByID returns projected and redacted records for one ID-backed
+// resource read without choosing a presentation shape.
+func (s Service) GetProjectedByID(
 	ctx context.Context,
 	product string,
 	resource string,
@@ -173,6 +204,61 @@ func (s Service) LoadProjectedByID(
 		return resources.ProjectedRecords{}, err
 	}
 	return resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
+}
+
+func (s Service) loadProjectedOperation(
+	ctx context.Context,
+	product string,
+	resource string,
+	operation string,
+) (resources.ResourceSpec, resources.ProjectedRecords, error) {
+	if s.Reader == nil {
+		return resources.ResourceSpec{}, resources.ProjectedRecords{}, ErrMissingReader
+	}
+	spec, ok := s.catalog().FindSpec(resources.Product(product), resource)
+	if !ok {
+		return resources.ResourceSpec{}, resources.ProjectedRecords{}, UnknownResourceError{
+			Product:  product,
+			Resource: resource,
+		}
+	}
+	if err := resources.AssertReadOnly(spec); err != nil {
+		return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+	}
+	mode := redact.EffectiveMode(s.Mode)
+	switch operation {
+	case "list":
+		if !spec.SupportsReadOperation("list") {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{},
+				fmt.Errorf("%w: %s/%s list", ErrUnsupportedLoad, spec.Product, spec.Name)
+		}
+		records, err := s.Reader.List(ctx, spec.Product, spec.Name)
+		if err != nil {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+		}
+		projected, _, err := resources.ProjectRecordsAndVerify(spec, mode, records)
+		if err != nil {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+		}
+		return spec, projected, nil
+	case "show":
+		if !spec.SupportsReadOperation("show") {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{},
+				fmt.Errorf("%w: %s/%s show", ErrUnsupportedLoad, spec.Product, spec.Name)
+		}
+		record, err := s.Reader.Show(ctx, spec.Product, spec.Name)
+		if err != nil {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+		}
+		projected, _, err := resources.ProjectRecordAndVerify(spec, mode, record)
+		if err != nil {
+			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+		}
+		return spec, resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
+	default:
+		return resources.ResourceSpec{}, resources.ProjectedRecords{},
+			fmt.Errorf("%w: %s/%s %s", ErrUnsupportedLoad, spec.Product, spec.Name, operation)
+	}
 }
 
 func (s Service) loadProjected(

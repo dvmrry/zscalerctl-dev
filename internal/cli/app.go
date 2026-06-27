@@ -149,10 +149,14 @@ type machineReadExecutor interface {
 	Execute(context.Context, machine.Request) (machine.Response, error)
 }
 
-type machineReadExecutorFactory func(machine.BrowserLoader) machineReadExecutor
+type machineReadExecutorFactory func(machine.BrowserLoader, resources.ResourceCatalog, redact.Mode) machineReadExecutor
 
-func defaultMachineReadExecutor(loader machine.BrowserLoader) machineReadExecutor {
-	return machine.Executor{Browser: loader}
+func defaultMachineReadExecutor(
+	loader machine.BrowserLoader,
+	catalog resources.ResourceCatalog,
+	mode redact.Mode,
+) machineReadExecutor {
+	return machine.Executor{Browser: loader, Catalog: catalog, Redaction: mode}
 }
 
 type resourceSessionProvider interface {
@@ -1239,19 +1243,29 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		recordID = args[2]
 	}
 	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-		return a.executeMachineRead(ctx, product, resource, op, recordID, browserService)
+		return a.executeMachineRead(ctx, product, resource, op, recordID, browserService, opts)
 	})
 	if err != nil {
 		return err
 	}
+	if op == "list" {
+		errW := redact.NewWriter(a.err, cfg.Defaults.Redaction)
+		warnUnknownFilterKeys(errW, spec, opts.filters)
+		if err := errW.Close(); err != nil {
+			return err
+		}
+	}
+	renderOpts := opts
+	renderOpts.filters = nil
+	renderOpts.search = ""
 	if op == "show" || op == "get" {
 		records := projected.Records()
 		if len(records) != 1 {
 			return fmt.Errorf("resource %s %s/%s returned %d projected records, want 1", op, product, resource, len(records))
 		}
-		return a.writeProjectedRecord(cfg, opts, spec, records[0], op)
+		return a.writeProjectedRecord(cfg, renderOpts, spec, records[0], op)
 	}
-	return a.writeProjectedRecords(cfg, opts, spec, projected)
+	return a.writeProjectedRecords(cfg, renderOpts, spec, projected)
 }
 
 type machineReadBrowserLoader struct {
@@ -1264,8 +1278,30 @@ func (l *machineReadBrowserLoader) LoadProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
+	return l.ListProjected(ctx, product, resource)
+}
+
+func (l *machineReadBrowserLoader) ListProjected(
+	ctx context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
 	l.err = nil
-	projected, err := l.service.LoadProjected(ctx, product, resource)
+	projected, err := l.service.ListProjected(ctx, product, resource)
+	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+func (l *machineReadBrowserLoader) ShowProjected(
+	ctx context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.ShowProjected(ctx, product, resource)
 	if err != nil {
 		l.err = err
 		return resources.ProjectedRecords{}, err
@@ -1279,8 +1315,17 @@ func (l *machineReadBrowserLoader) LoadProjectedByID(
 	resource string,
 	id string,
 ) (resources.ProjectedRecords, error) {
+	return l.GetProjectedByID(ctx, product, resource, id)
+}
+
+func (l *machineReadBrowserLoader) GetProjectedByID(
+	ctx context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
 	l.err = nil
-	projected, err := l.service.LoadProjectedByID(ctx, product, resource, id)
+	projected, err := l.service.GetProjectedByID(ctx, product, resource, id)
 	if err != nil {
 		l.err = err
 		return resources.ProjectedRecords{}, err
@@ -1295,10 +1340,11 @@ func (a *App) executeMachineRead(
 	op string,
 	recordID string,
 	service browser.Service,
+	opts globalOptions,
 ) (resources.ProjectedRecords, error) {
 	loader := &machineReadBrowserLoader{service: service}
-	executor := a.machineReadExecutor(loader)
-	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op, recordID))
+	executor := a.machineReadExecutor(loader, service.Catalog, service.Mode)
+	resp, err := executor.Execute(ctx, machineReadRequest(product, resource, op, recordID, opts))
 	if err != nil {
 		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err, loader.err)
 	}
@@ -1308,17 +1354,30 @@ func (a *App) executeMachineRead(
 	return projectedRecordsFromMachineResponse(resp), nil
 }
 
-func (a *App) machineReadExecutor(loader machine.BrowserLoader) machineReadExecutor {
+func (a *App) machineReadExecutor(
+	loader machine.BrowserLoader,
+	catalog resources.ResourceCatalog,
+	mode redact.Mode,
+) machineReadExecutor {
 	if a.machineReadExecutorFactory != nil {
-		return a.machineReadExecutorFactory(loader)
+		return a.machineReadExecutorFactory(loader, catalog, mode)
 	}
-	return defaultMachineReadExecutor(loader)
+	return defaultMachineReadExecutor(loader, catalog, mode)
 }
 
-func machineReadRequest(product resources.Product, resource string, op string, recordID string) machine.Request {
+func machineReadRequest(
+	product resources.Product,
+	resource string,
+	op string,
+	recordID string,
+	opts globalOptions,
+) machine.Request {
 	input := &machine.Input{
 		Product:  string(product),
 		Resource: resource,
+		Fields:   opts.fields,
+		Filters:  machineFilters(opts.filters),
+		Search:   opts.search,
 	}
 	if op == string(machine.OperationGet) {
 		input.RecordID = recordID
@@ -1328,6 +1387,22 @@ func machineReadRequest(product resources.Product, resource string, op string, r
 		Operation:  machine.Operation(op),
 		Input:      input,
 	}
+}
+
+func machineFilters(filters []recordFilter) []machine.Filter {
+	out := make([]machine.Filter, 0, len(filters))
+	for _, filter := range filters {
+		operator := "="
+		if filter.substring {
+			operator = "~"
+		}
+		out = append(out, machine.Filter{
+			Field:    filter.key,
+			Operator: operator,
+			Value:    filter.value,
+		})
+	}
+	return out
 }
 
 func cliErrorFromMachineRead(err error, loaderErr error) error {
@@ -2041,28 +2116,11 @@ func (a *App) collectDump(
 // a usage error, while a known-but-not-rendered field (secret or mode-excluded)
 // is silently skipped, so --fields can never widen the sanitized output.
 func effectiveFields(spec resources.ResourceSpec, mode redact.Mode, requested []string) ([]string, error) {
-	order := spec.FieldOrder(mode)
-	if len(requested) == 0 {
-		return order, nil
+	fields, err := resources.EffectiveFields(spec, mode, requested)
+	if err != nil {
+		return nil, UsageError{Message: err.Error()}
 	}
-	catalog := make(map[string]struct{}, len(spec.Fields))
-	for _, field := range spec.Fields {
-		catalog[field.JSONField()] = struct{}{}
-	}
-	renderable := make(map[string]struct{}, len(order))
-	for _, name := range order {
-		renderable[name] = struct{}{}
-	}
-	out := make([]string, 0, len(requested))
-	for _, name := range requested {
-		if _, ok := catalog[name]; !ok {
-			return nil, UsageError{Message: fmt.Sprintf("--fields: %q is not a field of %s/%s", name, spec.Product, spec.Name)}
-		}
-		if _, ok := renderable[name]; ok {
-			out = append(out, name)
-		}
-	}
-	return out, nil
+	return fields, nil
 }
 
 func (a *App) writeProjectedRecord(
@@ -2118,61 +2176,16 @@ func isResourceReadInvocation(rest []string, catalog resources.ResourceCatalog) 
 	return false
 }
 
-// narrowRecords applies --filter and --search to an already-projected record
-// set. SAFETY PROPERTY: narrowing runs strictly post-projection. The records
-// here have already been allow-list projected and per-field redacted for the
-// active redaction mode, so a dropped or secret-classified field is simply
-// absent: a filter naming it matches no record, and search only ever sees the
-// sanitized rendered values. Narrowing can reduce the record set but can never
-// resurrect a field or widen exposure in any redaction mode.
-func narrowRecords(records resources.ProjectedRecords, filters []recordFilter, search string) resources.ProjectedRecords {
-	if len(filters) == 0 && search == "" {
-		return records
-	}
-	kept := make([]resources.ProjectedRecord, 0)
-	for _, record := range records.Records() {
-		if recordMatches(record.Fields(), filters, search) {
-			kept = append(kept, record)
-		}
-	}
-	return resources.NewProjectedRecords(kept)
-}
-
-// recordMatches evaluates all narrowing conditions against one record's
-// projected fields: every --filter must match (AND), and when --search is set
-// at least one rendered field value must contain the term. Values are compared
-// in their rendered string form (the same formatting the table renderer uses),
-// so arrays and nested values participate via their rendered text.
-func recordMatches(fields map[string]any, filters []recordFilter, search string) bool {
+func resourceFilters(filters []recordFilter) []resources.ProjectedFilter {
+	out := make([]resources.ProjectedFilter, 0, len(filters))
 	for _, filter := range filters {
-		value, ok := fields[filter.key]
-		if !ok {
-			// A record lacking the key does not match. This is also the
-			// fail-closed path for secret/dropped field names, which never
-			// appear in projected records.
-			return false
-		}
-		rendered := formatTableValue(value)
-		if filter.substring {
-			if !strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.value)) {
-				return false
-			}
-			continue
-		}
-		if rendered != filter.value {
-			return false
-		}
+		out = append(out, resources.ProjectedFilter{
+			Field:     filter.key,
+			Value:     filter.value,
+			Substring: filter.substring,
+		})
 	}
-	if search == "" {
-		return true
-	}
-	term := strings.ToLower(search)
-	for _, value := range fields {
-		if strings.Contains(strings.ToLower(formatTableValue(value)), term) {
-			return true
-		}
-	}
-	return false
+	return out
 }
 
 func (a *App) writeProjectedRecords(
@@ -2193,9 +2206,13 @@ func (a *App) writeProjectedRecords(
 	// Narrow rows before --fields narrows columns, so a filter may reference
 	// any projected field even when it is not selected for display. An empty
 	// match is success: every format renders its empty form and exits 0.
-	records = narrowRecords(records, opts.filters, opts.search)
-	if len(opts.fields) > 0 {
-		records = records.Select(fields)
+	records, err = resources.NarrowProjectedRecords(spec, cfg.Defaults.Redaction, records, resources.NarrowOptions{
+		Fields:  opts.fields,
+		Filters: resourceFilters(opts.filters),
+		Search:  opts.search,
+	})
+	if err != nil {
+		return UsageError{Message: err.Error()}
 	}
 	switch opts.format {
 	case output.FormatJSON:
@@ -2445,38 +2462,14 @@ func renderRecordPretty(
 // tab cannot break the tab-separated or border-delimited layout; the JSON
 // renderer uses a separate path and keeps raw values.
 func formatTableValue(value any) string {
-	return sanitizeCellValue(rawTableValue(value))
-}
-
-func rawTableValue(value any) string {
-	switch v := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return v
-	case []string:
-		return strings.Join(v, ",")
-	case []any:
-		parts := make([]string, len(v))
-		for i, item := range v {
-			parts[i] = rawTableValue(item)
-		}
-		return strings.Join(parts, ",")
-	default:
-		return fmt.Sprint(v)
-	}
+	return resources.FormatProjectedValue(value)
 }
 
 // sanitizeCellValue collapses control characters (newline, tab, carriage return,
 // and other C0/DEL bytes) to single spaces so multi-line or tabbed values render
 // on one logical cell instead of corrupting row or column boundaries.
 func sanitizeCellValue(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '\t' || r == '\n' || r == '\r' || r < 0x20 || r == 0x7f {
-			return ' '
-		}
-		return r
-	}, s)
+	return resources.FormatProjectedValue(s)
 }
 
 // resolveFormat collapses the auto format to a concrete one at the point where

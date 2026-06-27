@@ -197,6 +197,103 @@ func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.
 	}
 }
 
+func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	got, err := resources.EffectiveFields(spec, redact.ModeStandard, nil)
+	if err != nil {
+		t.Fatalf("EffectiveFields(default) error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, []string{"id", "name", "country", "ipAddresses", "authRequired"}) {
+		t.Fatalf("EffectiveFields(default) = %#v, want standard renderable fields", got)
+	}
+
+	got, err = resources.EffectiveFields(spec, redact.ModeStandard, []string{"name", "id"})
+	if err != nil {
+		t.Fatalf("EffectiveFields(narrowed) error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, []string{"name", "id"}) {
+		t.Fatalf("EffectiveFields(narrowed) = %#v, want requested order", got)
+	}
+
+	got, err = resources.EffectiveFields(spec, redact.ModeStandard, []string{"token"})
+	if err != nil {
+		t.Fatalf("EffectiveFields(secret) error = %v, want nil", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("EffectiveFields(secret) = %#v, want empty narrow result", got)
+	}
+
+	_, err = resources.EffectiveFields(spec, redact.ModeStandard, []string{"nope"})
+	if !errors.Is(err, resources.ErrUnknownField) {
+		t.Fatalf("EffectiveFields(unknown) error = %v, want ErrUnknownField", err)
+	}
+}
+
+func TestNarrowProjectedRecordsFiltersBeforeFieldSelection(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "HQ", "country": "US", "ipAddresses": []any{"192.0.2.10"}, "authRequired": true},
+		map[string]any{"id": 2, "name": "Branch East", "country": "US", "ipAddresses": []any{"203.0.113.5"}, "authRequired": false},
+		map[string]any{"id": 3, "name": "Branch West", "country": "DE", "ipAddresses": []any{"192.0.2.99"}, "authRequired": true},
+	)
+
+	got, err := resources.NarrowProjectedRecords(spec, redact.ModeStandard, records, resources.NarrowOptions{
+		Fields: []string{"name"},
+		Filters: []resources.ProjectedFilter{
+			{Field: "country", Value: "DE"},
+			{Field: "name", Value: "branch", Substring: true},
+		},
+		Search: "192.0.2",
+	})
+	if err != nil {
+		t.Fatalf("NarrowProjectedRecords(filter/search/fields) error = %v, want nil", err)
+	}
+	projected := got.Records()
+	if len(projected) != 1 {
+		t.Fatalf("NarrowProjectedRecords(filter/search/fields) records = %d, want 1", len(projected))
+	}
+	want := map[string]any{"name": "Branch West"}
+	if fields := projected[0].Fields(); !reflect.DeepEqual(fields, want) {
+		t.Fatalf("NarrowProjectedRecords(filter/search/fields) fields = %#v, want %#v", fields, want)
+	}
+}
+
+func TestFilterProjectedRecordsCannotReachDroppedFields(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "HQ", "token": "secret-token"},
+	)
+
+	got := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{
+		{Field: "token", Value: "secret-token"},
+	}, "")
+	if len(got.Records()) != 0 {
+		t.Fatalf("FilterProjectedRecords(secret field) records = %#v, want empty", got.Records())
+	}
+
+	got = resources.FilterProjectedRecords(records, nil, "secret-token")
+	if len(got.Records()) != 0 {
+		t.Fatalf("FilterProjectedRecords(secret search) records = %#v, want empty", got.Records())
+	}
+}
+
+func TestFormatProjectedValueMatchesTextCellSemantics(t *testing.T) {
+	t.Parallel()
+
+	if got := resources.FormatProjectedValue("a\nb"); got != "a b" {
+		t.Fatalf("FormatProjectedValue(string newline) = %q, want %q", got, "a b")
+	}
+	if got := resources.FormatProjectedValue([]any{"x\ty", "z"}); got != "x y,z" {
+		t.Fatalf("FormatProjectedValue([]any) = %q, want %q", got, "x y,z")
+	}
+}
+
 func TestResourceSpecEffectiveShapeDefaultsToList(t *testing.T) {
 	t.Parallel()
 
@@ -1259,6 +1356,43 @@ func hasCatalogField(fields []resources.FieldSpec, name string) bool {
 		}
 	}
 	return false
+}
+
+func narrowingSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "locations",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
+			{Name: "country", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "authRequired", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "token", Classification: resources.ClassSecret},
+		},
+	}
+}
+
+func allTestModes() []redact.Mode {
+	return []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+}
+
+func projectedRecordsFromMaps(
+	t *testing.T,
+	spec resources.ResourceSpec,
+	rows ...map[string]any,
+) resources.ProjectedRecords {
+	t.Helper()
+	source := make([]resources.SourceRecord, 0, len(rows))
+	for _, row := range rows {
+		source = append(source, resources.NewSourceRecord(row))
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, source)
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify(%s/%s) error = %v, want nil", spec.Product, spec.Name, err)
+	}
+	return projected
 }
 
 func TestCatalogIsValidAndReadOnly(t *testing.T) {

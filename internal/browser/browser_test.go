@@ -200,6 +200,58 @@ func TestLoadProjectedReturnsProjectedRecords(t *testing.T) {
 	}
 }
 
+func TestOperationSpecificProjectedLoadsDoNotFallThrough(t *testing.T) {
+	reader := &fakeReader{
+		list: map[resourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, name: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id":     "list",
+					"name":   "List Result",
+					"status": "active",
+				}),
+			},
+		},
+		show: map[resourceKey]resources.SourceRecord{
+			{product: resources.ProductZIA, name: "locations"}: resources.NewSourceRecord(map[string]any{
+				"id":     "show",
+				"name":   "Show Result",
+				"status": "enabled",
+			}),
+		},
+	}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "locations", append(resources.ReadOperations(), resources.ShowOperation()...)),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+
+	listed, err := service.ListProjected(context.Background(), "zia", "locations")
+	if err != nil {
+		t.Fatalf("Service.ListProjected(zia, locations) error = %v, want nil", err)
+	}
+	shown, err := service.ShowProjected(context.Background(), "zia", "locations")
+	if err != nil {
+		t.Fatalf("Service.ShowProjected(zia, locations) error = %v, want nil", err)
+	}
+	wantCalls := []string{"list:zia/locations", "show:zia/locations"}
+	if !reflect.DeepEqual(reader.calls, wantCalls) {
+		t.Fatalf("operation-specific projected load calls = %#v, want %#v", reader.calls, wantCalls)
+	}
+	listRecords := listed.Records()
+	showRecords := shown.Records()
+	if len(listRecords) != 1 || len(showRecords) != 1 {
+		t.Fatalf("operation-specific projected records lengths = %d/%d, want 1/1", len(listRecords), len(showRecords))
+	}
+	if got, _ := listRecords[0].Value("id"); got != "list" {
+		t.Fatalf("Service.ListProjected(zia, locations) id = %#v, want list", got)
+	}
+	if got, _ := showRecords[0].Value("id"); got != "show" {
+		t.Fatalf("Service.ShowProjected(zia, locations) id = %#v, want show", got)
+	}
+}
+
 func TestLoadProjectedByIDReturnsProjectedRedactedRecord(t *testing.T) {
 	const canary = "abc123abc123abc123abc123abc123abc123"
 	spec := testSpec(resources.ProductZIA, "locations", resources.ReadOperations())

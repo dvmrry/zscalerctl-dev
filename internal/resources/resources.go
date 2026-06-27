@@ -15,6 +15,10 @@ var (
 	ErrMutatingOperation   = errors.New("mutating operation is not available in read-only release")
 	ErrInvalidResourceSpec = errors.New("invalid resource spec")
 	ErrUnexpectedField     = errors.New("unexpected rendered field")
+	ErrUnknownField        = errors.New("unknown projected field")
+	ErrUnknownResource     = errors.New("unknown browser resource")
+	ErrMissingID           = errors.New("browser resource id is required")
+	ErrUnsupportedLoad     = errors.New("unsupported browser load operation")
 )
 
 type Product string
@@ -242,6 +246,35 @@ type ProjectedRecords struct {
 	records []ProjectedRecord
 }
 
+// UnknownFieldError reports a requested projected field that is not declared in
+// the catalog for a product/resource.
+type UnknownFieldError struct {
+	Product  Product
+	Resource string
+	Field    string
+}
+
+func (e UnknownFieldError) Error() string {
+	return fmt.Sprintf("--fields: %q is not a field of %s/%s", e.Field, e.Product, e.Resource)
+}
+
+// Unwrap returns the sentinel error for errors.Is checks.
+func (e UnknownFieldError) Unwrap() error { return ErrUnknownField }
+
+// ProjectedFilter describes one post-projection record filter.
+type ProjectedFilter struct {
+	Field     string
+	Value     string
+	Substring bool
+}
+
+// NarrowOptions describes post-projection row and field narrowing.
+type NarrowOptions struct {
+	Fields  []string
+	Filters []ProjectedFilter
+	Search  string
+}
+
 func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 	out := make([]ProjectedRecord, len(records))
 	copy(out, records)
@@ -285,6 +318,143 @@ func (rs ProjectedRecords) Records() []ProjectedRecord {
 	out := make([]ProjectedRecord, len(rs.records))
 	copy(out, rs.records)
 	return out
+}
+
+// EffectiveFields returns the renderable field order for a resource, optionally
+// narrowed to requested fields. Unknown fields are rejected. Known fields that
+// are not renderable in the active mode are silently omitted so callers cannot
+// widen projected output through field selection.
+func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([]string, error) {
+	order := spec.FieldOrder(mode)
+	if len(requested) == 0 {
+		return order, nil
+	}
+	catalog := make(map[string]struct{}, len(spec.Fields))
+	for _, field := range spec.Fields {
+		catalog[field.JSONField()] = struct{}{}
+	}
+	renderable := make(map[string]struct{}, len(order))
+	for _, name := range order {
+		renderable[name] = struct{}{}
+	}
+	out := make([]string, 0, len(requested))
+	for _, name := range requested {
+		if _, ok := catalog[name]; !ok {
+			return nil, UnknownFieldError{
+				Product:  spec.Product,
+				Resource: spec.Name,
+				Field:    name,
+			}
+		}
+		if _, ok := renderable[name]; ok {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// NarrowProjectedRecords applies filters/search to projected records before
+// optional field selection. It only reduces the projected record set and field
+// set; it never reads source records or widens the projection allow-list.
+func NarrowProjectedRecords(
+	spec ResourceSpec,
+	mode redact.Mode,
+	records ProjectedRecords,
+	opts NarrowOptions,
+) (ProjectedRecords, error) {
+	fields, err := EffectiveFields(spec, mode, opts.Fields)
+	if err != nil {
+		return ProjectedRecords{}, err
+	}
+	narrowed := FilterProjectedRecords(records, opts.Filters, opts.Search)
+	if len(opts.Fields) > 0 {
+		narrowed = narrowed.Select(fields)
+	}
+	return narrowed, nil
+}
+
+// FilterProjectedRecords applies filters and search to already-projected
+// records. Missing fields do not match, which keeps dropped and secret fields
+// unreachable after projection.
+func FilterProjectedRecords(
+	records ProjectedRecords,
+	filters []ProjectedFilter,
+	search string,
+) ProjectedRecords {
+	if len(filters) == 0 && search == "" {
+		return records
+	}
+	kept := make([]ProjectedRecord, 0)
+	for _, record := range records.Records() {
+		if projectedRecordMatches(record.Fields(), filters, search) {
+			kept = append(kept, record)
+		}
+	}
+	return NewProjectedRecords(kept)
+}
+
+func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
+	for _, filter := range filters {
+		value, ok := fields[filter.Field]
+		if !ok {
+			return false
+		}
+		rendered := FormatProjectedValue(value)
+		if filter.Substring {
+			if !strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.Value)) {
+				return false
+			}
+			continue
+		}
+		if rendered != filter.Value {
+			return false
+		}
+	}
+	if search == "" {
+		return true
+	}
+	term := strings.ToLower(search)
+	for _, value := range fields {
+		if strings.Contains(strings.ToLower(FormatProjectedValue(value)), term) {
+			return true
+		}
+	}
+	return false
+}
+
+// FormatProjectedValue renders a projected value for matching and text cells.
+// It collapses control characters so matching semantics align with table-style
+// renderers without importing presentation packages.
+func FormatProjectedValue(value any) string {
+	return sanitizeProjectedValue(rawProjectedValue(value))
+}
+
+func rawProjectedValue(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case []string:
+		return strings.Join(v, ",")
+	case []any:
+		parts := make([]string, len(v))
+		for i, item := range v {
+			parts[i] = rawProjectedValue(item)
+		}
+		return strings.Join(parts, ",")
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func sanitizeProjectedValue(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' || r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 type ProjectionReport struct {

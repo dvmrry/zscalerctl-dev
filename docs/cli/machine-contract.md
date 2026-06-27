@@ -89,7 +89,9 @@ like this:
 ```go
 type BrowserService interface {
     Resources(ctx context.Context, filter Filter) ([]ResourceInfo, error)
-    LoadProjected(ctx context.Context, product, resource string) ([]ProjectedRecord, error)
+    ListProjected(ctx context.Context, product, resource string) ([]ProjectedRecord, error)
+    ShowProjected(ctx context.Context, product, resource string) ([]ProjectedRecord, error)
+    GetProjectedByID(ctx context.Context, product, resource, id string) ([]ProjectedRecord, error)
 }
 ```
 
@@ -111,6 +113,13 @@ not import
 `internal/secret`, or `internal/zscaler` to construct their own raw runtime.
 If an overlay needs a new capability, add a narrow projected seam instead of
 passing raw SDK/config/secret objects through the UI boundary.
+
+Machine request narrowing is owned by the machine/core boundary. `fields`,
+`filters`, and `search` are applied only after projection and redaction.
+Filters and search apply to list operations; fields can narrow list/get/show
+records. Non-empty machine `options` are rejected as usage errors until a
+specific option is deliberately added to the contract. Response metadata is
+server-generated; clients must not rely on request metadata being echoed.
 
 If a future Wails or React desktop app exists, the React frontend must never
 receive credentials, secret refs, tokens, SDK clients, or raw source records.
