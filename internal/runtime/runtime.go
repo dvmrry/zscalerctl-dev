@@ -300,13 +300,32 @@ func catalogFromOptions(catalog resources.ResourceCatalog) resources.ResourceCat
 	if catalog != nil {
 		return copyCatalog(catalog)
 	}
-	return resources.Catalog()
+	return copyCatalog(resources.Catalog())
 }
 
 func copyCatalog(catalog resources.ResourceCatalog) resources.ResourceCatalog {
-	out := append(resources.ResourceCatalog(nil), catalog...)
-	if out == nil {
-		return resources.ResourceCatalog{}
+	out := make(resources.ResourceCatalog, len(catalog))
+	for i, spec := range catalog {
+		out[i] = copyResourceSpec(spec)
+	}
+	return out
+}
+
+func copyResourceSpec(spec resources.ResourceSpec) resources.ResourceSpec {
+	spec.Operations = append([]resources.Operation(nil), spec.Operations...)
+	spec.Fields = copyFieldSpecs(spec.Fields)
+	return spec
+}
+
+func copyFieldSpecs(fields []resources.FieldSpec) []resources.FieldSpec {
+	if fields == nil {
+		return nil
+	}
+	out := make([]resources.FieldSpec, len(fields))
+	for i, field := range fields {
+		out[i] = field
+		out[i].AllowedModes = append([]redact.Mode(nil), field.AllowedModes...)
+		out[i].Fields = copyFieldSpecs(field.Fields)
 	}
 	return out
 }

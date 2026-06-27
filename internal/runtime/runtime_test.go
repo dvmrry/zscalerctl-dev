@@ -230,6 +230,51 @@ func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	}
 }
 
+func TestMachineCatalogDeepCopiesNestedMetadata(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		{
+			Product:    resources.ProductZIA,
+			Name:       "locations",
+			Operations: resources.ReadOperations(),
+			Fields: []resources.FieldSpec{
+				{
+					Name:           "metadata",
+					Classification: resources.ClassTenantConfig,
+					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+					Fields: []resources.FieldSpec{
+						{
+							Name:           "name",
+							Classification: resources.ClassTenantConfig,
+							AllowedModes:   []redact.Mode{redact.ModeStandard},
+						},
+					},
+				},
+			},
+		},
+	}
+	rt := NewMachineFromReader(&runtimeFakeReader{}, catalog, redact.ModeStandard)
+
+	catalog[0].Operations[0].Name = "delete"
+	catalog[0].Fields[0].Name = "mutated"
+	catalog[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+	catalog[0].Fields[0].Fields[0].Name = "mutated-child"
+	catalog[0].Fields[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+
+	got := rt.Catalog()
+	assertRuntimeCatalogMetadata(t, got, "initial Catalog copy")
+
+	got[0].Operations[0].Name = "delete"
+	got[0].Fields[0].Name = "changed"
+	got[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+	got[0].Fields[0].Fields[0].Name = "changed-child"
+	got[0].Fields[0].Fields[0].AllowedModes[0] = redact.ModeParanoid
+
+	got = rt.Catalog()
+	assertRuntimeCatalogMetadata(t, got, "Catalog copy after caller mutation")
+}
+
 type runtimeFakeReader struct {
 	list    map[runtimeResourceKey][]resources.SourceRecord
 	get     map[runtimeResourceIDKey]resources.SourceRecord
@@ -282,6 +327,32 @@ func runtimeTestCatalog(t *testing.T, product resources.Product, resource string
 		t.Fatalf("resources.Catalog().FindSpec(%s, %q) ok = false, want true", product, resource)
 	}
 	return resources.ResourceCatalog{spec}
+}
+
+func assertRuntimeCatalogMetadata(t *testing.T, got resources.ResourceCatalog, label string) {
+	t.Helper()
+
+	if len(got) != 1 {
+		t.Fatalf("Machine.Catalog(%s) length = %d, want 1", label, len(got))
+	}
+	if got[0].Operations[0].Name != "list" {
+		t.Fatalf("Machine.Catalog(%s).Operations[0].Name = %q, want list", label, got[0].Operations[0].Name)
+	}
+	if got[0].Fields[0].Name != "metadata" {
+		t.Fatalf("Machine.Catalog(%s).Fields[0].Name = %q, want metadata", label, got[0].Fields[0].Name)
+	}
+	if got[0].Fields[0].AllowedModes[0] != redact.ModeStandard {
+		t.Fatalf("Machine.Catalog(%s).Fields[0].AllowedModes[0] = %q, want standard",
+			label, got[0].Fields[0].AllowedModes[0])
+	}
+	if got[0].Fields[0].Fields[0].Name != "name" {
+		t.Fatalf("Machine.Catalog(%s).Fields[0].Fields[0].Name = %q, want name",
+			label, got[0].Fields[0].Fields[0].Name)
+	}
+	if got[0].Fields[0].Fields[0].AllowedModes[0] != redact.ModeStandard {
+		t.Fatalf("Machine.Catalog(%s).Fields[0].Fields[0].AllowedModes[0] = %q, want standard",
+			label, got[0].Fields[0].Fields[0].AllowedModes[0])
+	}
 }
 
 func runtimeWriteConfig(t *testing.T, body string) string {
