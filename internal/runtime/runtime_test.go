@@ -104,6 +104,39 @@ func TestNewMachineAssemblesReaderConfigAndExecutes(t *testing.T) {
 	}
 }
 
+func TestNewMachineFromConfigAssemblesReaderConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.LoadConfig([]string{
+		config.EnvClientID + "=client-id",
+		config.EnvClientSecret + "=client-secret",
+		config.EnvVanityDomain + "=example",
+		config.EnvRedaction + "=paranoid",
+	}, config.LoadOptions{})
+	if err != nil {
+		t.Fatalf("LoadConfig(runtime fixture) error = %v, want nil", err)
+	}
+
+	var gotReaderConfig zscaler.ReaderConfig
+	rt, err := NewMachineFromConfig(context.Background(), cfg, Options{
+		Timeout: 3 * time.Second,
+		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		newReader: func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
+			gotReaderConfig = cfg
+			return &runtimeFakeReader{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewMachineFromConfig(effective config) error = %v, want nil", err)
+	}
+	if gotReaderConfig.Timeout != 3*time.Second {
+		t.Fatalf("NewMachineFromConfig(effective config) Timeout = %s, want 3s", gotReaderConfig.Timeout)
+	}
+	if got := rt.Redaction(); got != redact.ModeParanoid {
+		t.Fatalf("Machine.Redaction() = %q, want %q", got, redact.ModeParanoid)
+	}
+}
+
 func TestNewMachineWrapsDeferredSecretResolutionErrors(t *testing.T) {
 	t.Parallel()
 
@@ -147,11 +180,35 @@ func TestNewMachineRejectsInvalidRuntimeOptionsBeforeReader(t *testing.T) {
 	}
 }
 
+func TestMachineExecutePreservesOriginalLiveLoadError(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("backend sentinel")
+	rt := newMachineFromReader(&runtimeFakeReader{listErr: sentinel},
+		runtimeTestCatalog(t, resources.ProductZIA, "locations"), redact.ModeStandard)
+
+	resp, err := rt.Execute(context.Background(), machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Machine.Execute(live load error) error = %v, want original sentinel", err)
+	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		t.Fatalf("Machine.Execute(live load error) returned %#v, want original loader error", machineErr)
+	}
+	if resp.Error == nil || resp.Error.Kind != machine.ErrorKindLiveAccessFailed {
+		t.Fatalf("Machine.Execute(live load error) response error = %#v, want live_access_failed", resp.Error)
+	}
+}
+
 func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	t.Parallel()
 
 	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
-	rt := newMachineFromReader(&runtimeFakeReader{}, catalog, redact.ModeParanoid)
+	rt := NewMachineFromReader(&runtimeFakeReader{}, catalog, redact.ModeParanoid)
 	catalog[0].Name = "mutated"
 
 	manifest := rt.Manifest()
@@ -174,24 +231,36 @@ func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 }
 
 type runtimeFakeReader struct {
-	list  map[runtimeResourceKey][]resources.SourceRecord
-	get   map[runtimeResourceIDKey]resources.SourceRecord
-	show  map[runtimeResourceKey]resources.SourceRecord
-	calls []string
+	list    map[runtimeResourceKey][]resources.SourceRecord
+	get     map[runtimeResourceIDKey]resources.SourceRecord
+	show    map[runtimeResourceKey]resources.SourceRecord
+	listErr error
+	getErr  error
+	showErr error
+	calls   []string
 }
 
 func (r *runtimeFakeReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
 	r.calls = append(r.calls, "list:"+string(product)+"/"+resource)
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
 	return r.list[runtimeResourceKey{product: product, resource: resource}], nil
 }
 
 func (r *runtimeFakeReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
 	r.calls = append(r.calls, "get:"+string(product)+"/"+resource+"/"+id)
+	if r.getErr != nil {
+		return resources.SourceRecord{}, r.getErr
+	}
 	return r.get[runtimeResourceIDKey{product: product, resource: resource, id: id}], nil
 }
 
 func (r *runtimeFakeReader) Show(_ context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
 	r.calls = append(r.calls, "show:"+string(product)+"/"+resource)
+	if r.showErr != nil {
+		return resources.SourceRecord{}, r.showErr
+	}
 	return r.show[runtimeResourceKey{product: product, resource: resource}], nil
 }
 

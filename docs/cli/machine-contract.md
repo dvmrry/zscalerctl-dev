@@ -69,13 +69,14 @@ The trusted runtime owns:
 - machine-safe serialization
 - error sanitization
 
-For the current CLI binary, that trusted runtime is assembled by `internal/cli`
-from `internal/config`, credential/secret-reference packages, and the
-`internal/zscaler` SDK adapter. Overlay-facing packages such as
-`internal/machine`, `internal/machineio`, `internal/browser`, and
-`internal/resources` expose the safe side of that assembly: catalog metadata,
-typed machine envelopes, JSON request/response helpers, projected records, and
-narrow loading capabilities.
+For the current CLI binary, `internal/cli` consumes the trusted runtime facade
+in `internal/runtime` for catalog resource reads after Cobra parsing and config
+option handling. `internal/runtime` owns config-backed reader construction and
+wires `internal/browser`, `internal/machine`, and the `internal/zscaler` SDK
+adapter. Overlay-facing packages such as `internal/machine`,
+`internal/machineio`, `internal/browser`, and `internal/resources` expose the
+safe side of that assembly: catalog metadata, typed machine envelopes, JSON
+request/response helpers, projected records, and narrow loading capabilities.
 
 Presentation layers must not own or receive:
 

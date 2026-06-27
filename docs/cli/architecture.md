@@ -81,10 +81,12 @@ facade. It is not a safe seam: lower-level catalog, browser, machine, and
 machineio packages must not import it.
 
 Catalog resource `list`, `show`, and `get <id>` commands route through
-`internal/machine.Executor` after CLI parsing, config loading, and reader
-construction have already happened. The executor only sees a narrow projected
-loader capability and returns projected machine response records; it does not
-own config, credentials, SDK clients, Cobra commands, or renderers.
+`internal/runtime` after CLI parsing and config option handling. The runtime
+facade constructs the read-only SDK-backed reader, wires `internal/browser`,
+and executes through `internal/machine.Executor`. The executor only sees a
+narrow projected loader capability and returns projected machine response
+records; it does not own config, credentials, SDK clients, Cobra commands, or
+renderers.
 
 `internal/machineio` provides the small JSON request/response adapter helpers
 for stdio-style machine consumers. It decodes `machine.Request`, calls a

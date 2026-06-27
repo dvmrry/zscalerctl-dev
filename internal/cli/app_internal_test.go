@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -166,36 +167,33 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				Reader:  &machineRouteReader{},
 				Catalog: machineRouteCatalog(),
 			})
-			executor := &recordingMachineReadExecutor{response: tt.response}
-			loaderFactoryCalled := false
-			app.machineReadExecutorFactory = func(
-				loader machine.BrowserLoader,
-				catalog resources.ResourceCatalog,
-				mode redact.Mode,
-			) machineReadExecutor {
-				if loader == nil {
-					t.Fatal("machine executor factory received nil loader")
+			rt := &recordingMachineRuntime{response: tt.response, redaction: redact.ModeStandard}
+			runtimeFactoryCalled := false
+			app.machineRuntimeFactory = func(
+				_ context.Context,
+				cfg config.Config,
+				opts globalOptions,
+			) (machineRuntime, error) {
+				if cfg.Defaults.Redaction != redact.ModeStandard {
+					t.Fatalf("machine runtime factory redaction = %q, want standard default", cfg.Defaults.Redaction)
 				}
-				if len(catalog) == 0 {
-					t.Fatal("machine executor factory received empty catalog")
+				if opts.timeout <= 0 {
+					t.Fatalf("machine runtime factory timeout = %s, want positive timeout", opts.timeout)
 				}
-				if mode != redact.ModeStandard {
-					t.Fatalf("machine executor factory mode = %q, want standard default", mode)
-				}
-				loaderFactoryCalled = true
-				return executor
+				runtimeFactoryCalled = true
+				return rt, nil
 			}
 
 			if err := app.Run(context.Background(), tt.args); err != nil {
 				t.Fatalf("App.Run(%s) error = %v, want nil", tt.name, err)
 			}
-			if !loaderFactoryCalled {
-				t.Fatal("machine executor factory was not called")
+			if !runtimeFactoryCalled {
+				t.Fatal("machine runtime factory was not called")
 			}
-			if len(executor.calls) != 1 {
-				t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+			if len(rt.calls) != 1 {
+				t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
 			}
-			req := executor.calls[0]
+			req := rt.calls[0]
 			if req.Capability != machine.CapabilityResourcesRead ||
 				req.Operation != tt.wantOp ||
 				req.Input == nil ||
@@ -235,20 +233,18 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 		Reader:  &machineRouteReader{},
 		Catalog: machineRouteCatalog(),
 	})
-	executor := &recordingMachineReadExecutor{
+	rt := &recordingMachineRuntime{
 		response: machine.Response{
 			Records: []map[string]any{{"name": "Branch West"}},
 		},
+		redaction: redact.ModeStandard,
 	}
-	app.machineReadExecutorFactory = func(
-		loader machine.BrowserLoader,
-		_ resources.ResourceCatalog,
-		_ redact.Mode,
-	) machineReadExecutor {
-		if loader == nil {
-			t.Fatal("machine executor factory received nil loader")
-		}
-		return executor
+	app.machineRuntimeFactory = func(
+		context.Context,
+		config.Config,
+		globalOptions,
+	) (machineRuntime, error) {
+		return rt, nil
 	}
 
 	args := []string{
@@ -261,10 +257,10 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 	if err := app.Run(context.Background(), args); err != nil {
 		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 	}
-	if len(executor.calls) != 1 {
-		t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+	if len(rt.calls) != 1 {
+		t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
 	}
-	req := executor.calls[0]
+	req := rt.calls[0]
 	if req.Input == nil {
 		t.Fatalf("machine request = %#v, want input", req)
 	}
@@ -285,15 +281,12 @@ func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
 				Reader:  &machineRouteReader{},
 				Catalog: machineRouteCatalog(),
 			})
-			app.machineReadExecutorFactory = func(
-				loader machine.BrowserLoader,
-				_ resources.ResourceCatalog,
-				_ redact.Mode,
-			) machineReadExecutor {
-				if loader == nil {
-					t.Fatal("machine executor factory received nil loader")
-				}
-				return &recordingMachineReadExecutor{
+			app.machineRuntimeFactory = func(
+				context.Context,
+				config.Config,
+				globalOptions,
+			) (machineRuntime, error) {
+				return &recordingMachineRuntime{
 					response: machine.Response{
 						Records: []map[string]any{{
 							"id":            "1",
@@ -301,7 +294,8 @@ func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
 							"new_sdk_field": "SECRET_VALUE_SHOULD_NOT_RENDER",
 						}},
 					},
-				}
+					redaction: redact.ModeStandard,
+				}, nil
 			}
 
 			args := []string{"--format", format, "zia", "locations", "list"}
@@ -328,7 +322,6 @@ func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 	sentinel := errors.New("backend sentinel")
 	var out, errOut bytes.Buffer
 	app := NewWithOptions(&out, &errOut, nil, Options{
-		Reader: &machineRouteReader{listErr: sentinel},
 		Catalog: resources.ResourceCatalog{{
 			Product:    resources.ProductZIA,
 			Name:       "locations",
@@ -336,6 +329,13 @@ func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 			Fields:     machineRouteFields(),
 		}},
 	})
+	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+		return &recordingMachineRuntime{
+			response:  machine.Response{Error: &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}},
+			err:       sentinel,
+			redaction: redact.ModeStandard,
+		}, nil
+	}
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list"})
 	if !errors.Is(err, sentinel) {
@@ -355,12 +355,17 @@ func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 
 func TestRunProductMachineGetLoaderErrorPreservesOriginalError(t *testing.T) {
 	sentinel := errors.New("backend get sentinel")
-	reader := &machineRouteReader{getErr: sentinel}
 	var out, errOut bytes.Buffer
 	app := NewWithOptions(&out, &errOut, nil, Options{
-		Reader:  reader,
 		Catalog: machineRouteCatalog(),
 	})
+	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+		return &recordingMachineRuntime{
+			response:  machine.Response{Error: &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}},
+			err:       sentinel,
+			redaction: redact.ModeStandard,
+		}, nil
+	}
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
 	if !errors.Is(err, sentinel) {
@@ -369,9 +374,6 @@ func TestRunProductMachineGetLoaderErrorPreservesOriginalError(t *testing.T) {
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
 		t.Fatalf("App.Run(machine get loader error) error = %#v, want original loader error", machineErr)
-	}
-	if reader.getCalls != 1 {
-		t.Fatalf("reader get calls = %d, want 1", reader.getCalls)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", out.String())
@@ -387,11 +389,11 @@ func TestRunProductMachineExecutorUsageErrorMapsToCLIUsage(t *testing.T) {
 		Reader:  &machineRouteReader{},
 		Catalog: machineRouteCatalog(),
 	})
-	app.machineReadExecutorFactory = func(machine.BrowserLoader, resources.ResourceCatalog, redact.Mode) machineReadExecutor {
-		return &recordingMachineReadExecutor{err: &machine.MachineError{
+	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+		return &recordingMachineRuntime{err: &machine.MachineError{
 			Kind:    machine.ErrorKindUsage,
 			Message: "missing required input: input.product",
-		}}
+		}, redaction: redact.ModeStandard}, nil
 	}
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list"})
@@ -421,20 +423,18 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 		Reader:  reader,
 		Catalog: machineRouteCatalog(),
 	})
-	executor := &recordingMachineReadExecutor{
+	rt := &recordingMachineRuntime{
 		response: machine.Response{
 			Records: []map[string]any{{"id": "42", "name": "Machine get"}},
 		},
+		redaction: redact.ModeStandard,
 	}
-	app.machineReadExecutorFactory = func(
-		loader machine.BrowserLoader,
-		_ resources.ResourceCatalog,
-		_ redact.Mode,
-	) machineReadExecutor {
-		if _, ok := loader.(machine.ProjectedRecordGetter); !ok {
-			t.Fatal("machine executor factory loader does not implement ProjectedRecordGetter")
-		}
-		return executor
+	app.machineRuntimeFactory = func(
+		context.Context,
+		config.Config,
+		globalOptions,
+	) (machineRuntime, error) {
+		return rt, nil
 	}
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
@@ -447,10 +447,10 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 	if reader.listCalls != 0 || reader.showCalls != 0 {
 		t.Fatalf("reader list/show calls = %d/%d, want 0/0", reader.listCalls, reader.showCalls)
 	}
-	if len(executor.calls) != 1 {
-		t.Fatalf("machine executor calls = %d, want 1", len(executor.calls))
+	if len(rt.calls) != 1 {
+		t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
 	}
-	req := executor.calls[0]
+	req := rt.calls[0]
 	if req.Operation != machine.OperationGet ||
 		req.Input == nil ||
 		req.Input.Product != "zia" ||
@@ -493,18 +493,23 @@ func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
 	}
 }
 
-type recordingMachineReadExecutor struct {
-	response machine.Response
-	err      error
-	calls    []machine.Request
+type recordingMachineRuntime struct {
+	response  machine.Response
+	err       error
+	redaction redact.Mode
+	calls     []machine.Request
 }
 
-func (e *recordingMachineReadExecutor) Execute(_ context.Context, req machine.Request) (machine.Response, error) {
-	e.calls = append(e.calls, req)
-	if e.err != nil {
-		return machine.Response{}, e.err
+func (r *recordingMachineRuntime) Execute(_ context.Context, req machine.Request) (machine.Response, error) {
+	r.calls = append(r.calls, req)
+	if r.err != nil {
+		return r.response, r.err
 	}
-	return e.response, nil
+	return r.response, nil
+}
+
+func (r *recordingMachineRuntime) Redaction() redact.Mode {
+	return redact.EffectiveMode(r.redaction)
 }
 
 type machineRouteReader struct {

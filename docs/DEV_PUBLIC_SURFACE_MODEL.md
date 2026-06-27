@@ -29,7 +29,8 @@ Current supported surfaces include:
 - the installable `skills/zscalerctl/` guidance and generated `.agents` copy
 - release artifacts, checksums, provenance, and documented install behavior
 
-Current candidate seams include:
+Current candidate adapter-facing seams and trusted adapter assembly packages
+include:
 
 - `internal/machine` request, response, manifest, executor, and error types
 - `internal/machineio` JSON request/response helpers over the machine contract
