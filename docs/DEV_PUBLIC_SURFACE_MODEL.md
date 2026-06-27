@@ -35,6 +35,7 @@ Current candidate seams include:
 - `internal/machineio` JSON request/response helpers over the machine contract
 - `internal/browser` projected catalog/resource loading interfaces
 - `internal/resources` projected-record containers and catalog metadata
+- `internal/runtime` trusted read-only machine runtime assembly for adapters
 - package-boundary checks that keep overlays away from raw runtime packages
 
 These are candidate seams for in-repo overlays and future promotion. They are
@@ -113,6 +114,8 @@ Allowed experiment inputs:
 - `internal/machine`, `internal/machineio`, `internal/browser`, and
   already-projected `internal/resources` values when the experiment lives in
   this repo
+- `internal/runtime` when an in-repo experiment needs the trusted live
+  read-only machine runtime rather than a static fixture
 
 Forbidden experiment shortcuts:
 
@@ -128,6 +131,8 @@ Forbidden experiment shortcuts:
 
 If an experiment needs a capability that the core seam does not expose, add a
 separate candidate-seam PR first. The experiment should then consume that seam.
+Safe seams such as `internal/resources`, `internal/browser`, `internal/machine`,
+and `internal/machineio` must not import the trusted runtime facade.
 
 ## Promotion Rules
 

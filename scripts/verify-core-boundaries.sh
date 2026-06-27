@@ -33,7 +33,7 @@ check_package() {
 
 ui_runtime_re='github\.com/charmbracelet/(bubbletea|bubbles)|github\.com/wailsapp/wails|vite|react|internal/tui'
 cli_rendering_re='github\.com/spf13/cobra|github\.com/charmbracelet/lipgloss|internal/(cli|output)'
-raw_runtime_re='internal/(config|credentials|secret|secretref|zscaler)'
+raw_runtime_re='github\.com/dvmrry/zscalerctl/internal/(config|credentials|secret|secretref|zscaler|runtime)'
 
 check_package \
   "cmd/zscalerctl" \
@@ -41,6 +41,13 @@ check_package \
   "ZSCALERCTL_CMD_DEPS_FILE" \
   "(^|/)(${ui_runtime_re})(/|$)" \
   "cmd/zscalerctl must remain the normal CLI binary; UI runtimes belong outside this dependency graph."
+
+check_package \
+  "internal/resources" \
+  "./internal/resources" \
+  "ZSCALERCTL_RESOURCES_DEPS_FILE" \
+  "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
+  "internal/resources must remain a safe catalog/projection seam: no CLI/UI/rendering packages and no raw runtime, secret, credential, SDK adapter, or runtime facade packages."
 
 check_package \
   "internal/browser" \
