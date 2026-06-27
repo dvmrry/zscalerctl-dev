@@ -44,7 +44,7 @@ type Options struct {
 
 // Machine is the trusted read-only machine execution facade.
 type Machine struct {
-	executor  machine.Executor
+	service   browser.Service
 	catalog   resources.ResourceCatalog
 	redaction redact.Mode
 }
@@ -67,6 +67,16 @@ func NewMachine(ctx context.Context, opts Options) (*Machine, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewMachineFromConfig(ctx, cfg, opts)
+}
+
+// NewMachineFromConfig resolves credentials from an already-loaded effective
+// config, constructs the SDK-backed read-only reader, and returns a machine
+// execution facade.
+func NewMachineFromConfig(ctx context.Context, cfg config.Config, opts Options) (*Machine, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := applyOptions(&cfg, opts); err != nil {
 		return nil, err
 	}
@@ -87,6 +97,18 @@ func NewMachine(ctx context.Context, opts Options) (*Machine, error) {
 	return newMachineFromReader(reader, catalogFromOptions(opts.Catalog), cfg.Defaults.Redaction), nil
 }
 
+// NewMachineFromReader constructs a machine runtime around an already-trusted
+// read-only record reader. Tests and trusted in-process callers can use it when
+// they already own reader construction; adapters that need live Zscaler access
+// should prefer NewMachine or NewMachineFromConfig.
+func NewMachineFromReader(
+	reader browser.RecordReader,
+	catalog resources.ResourceCatalog,
+	mode redact.Mode,
+) *Machine {
+	return newMachineFromReader(reader, catalog, mode)
+}
+
 // Execute runs one machine request through the assembled read-only stack.
 func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Response, error) {
 	if m == nil {
@@ -95,7 +117,17 @@ func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Res
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return m.executor.Execute(ctx, req)
+	loader := &machineBrowserLoader{service: m.service}
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   m.catalog,
+		Redaction: m.redaction,
+	}
+	resp, err := executor.Execute(ctx, req)
+	if err != nil {
+		return resp, runtimeErrorFromMachineExecution(err, loader.err)
+	}
+	return resp, nil
 }
 
 // Manifest returns the capability manifest for the runtime catalog.
@@ -193,14 +225,75 @@ func newMachineFromReader(
 		Mode:    mode,
 	}
 	return &Machine{
-		executor: machine.Executor{
-			Browser:   service,
-			Catalog:   catalog,
-			Redaction: mode,
-		},
+		service:   service,
 		catalog:   catalog,
 		redaction: mode,
 	}
+}
+
+type machineBrowserLoader struct {
+	service browser.Service
+	err     error
+}
+
+func (l *machineBrowserLoader) ListProjected(
+	ctx context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.ListProjected(ctx, product, resource)
+	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+func (l *machineBrowserLoader) ShowProjected(
+	ctx context.Context,
+	product string,
+	resource string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.ShowProjected(ctx, product, resource)
+	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+func (l *machineBrowserLoader) GetProjectedByID(
+	ctx context.Context,
+	product string,
+	resource string,
+	id string,
+) (resources.ProjectedRecords, error) {
+	l.err = nil
+	projected, err := l.service.GetProjectedByID(ctx, product, resource, id)
+	if err != nil {
+		l.err = err
+		return resources.ProjectedRecords{}, err
+	}
+	return projected, nil
+}
+
+func runtimeErrorFromMachineExecution(err error, loadErr error) error {
+	if err == nil {
+		return nil
+	}
+	if loadErr == nil {
+		return err
+	}
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		return err
+	}
+	if machineErr.Kind != machine.ErrorKindLiveAccessFailed {
+		return err
+	}
+	return loadErr
 }
 
 func catalogFromOptions(catalog resources.ResourceCatalog) resources.ResourceCatalog {

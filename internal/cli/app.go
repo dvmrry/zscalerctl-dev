@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dvmrry/zscalerctl/internal/browser"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
@@ -24,6 +23,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 	"github.com/spf13/cobra"
@@ -94,7 +94,7 @@ type App struct {
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
 
-	machineReadExecutorFactory machineReadExecutorFactory
+	machineRuntimeFactory machineRuntimeFactory
 }
 
 // diagLogger returns the diagnostic logger, defaulting to a disabled one so log
@@ -149,15 +149,12 @@ type machineReadExecutor interface {
 	Execute(context.Context, machine.Request) (machine.Response, error)
 }
 
-type machineReadExecutorFactory func(machine.BrowserLoader, resources.ResourceCatalog, redact.Mode) machineReadExecutor
-
-func defaultMachineReadExecutor(
-	loader machine.BrowserLoader,
-	catalog resources.ResourceCatalog,
-	mode redact.Mode,
-) machineReadExecutor {
-	return machine.Executor{Browser: loader, Catalog: catalog, Redaction: mode}
+type machineRuntime interface {
+	machineReadExecutor
+	Redaction() redact.Mode
 }
+
+type machineRuntimeFactory func(context.Context, config.Config, globalOptions) (machineRuntime, error)
 
 type resourceSessionProvider interface {
 	Session(context.Context, resources.Product) (zscaler.ResourceSession, error)
@@ -191,8 +188,6 @@ func NewWithOptions(out, err io.Writer, env []string, opts Options) *App {
 		stderrTTY: opts.StderrTTY,
 		reader:    opts.Reader,
 		catalog:   catalog,
-
-		machineReadExecutorFactory: defaultMachineReadExecutor,
 	}
 }
 
@@ -1229,21 +1224,16 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if !spec.SupportsReadOperation(op) {
 		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec, 0))}
 	}
-	reader, err := a.resourceReader(ctx, cfg, opts)
+	rt, err := a.machineRuntime(ctx, cfg, opts)
 	if err != nil {
 		return err
-	}
-	browserService := browser.Service{
-		Catalog: catalog,
-		Reader:  reader,
-		Mode:    cfg.Defaults.Redaction,
 	}
 	recordID := ""
 	if op == "get" {
 		recordID = args[2]
 	}
 	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
-		return a.executeMachineRead(ctx, spec, op, recordID, browserService, opts)
+		return a.executeMachineRead(ctx, spec, op, recordID, rt, opts)
 	})
 	if err != nil {
 		return err
@@ -1268,100 +1258,40 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	return a.writeProjectedRecords(cfg, renderOpts, spec, projected)
 }
 
-type machineReadBrowserLoader struct {
-	service browser.Service
-	err     error
-}
-
-func (l *machineReadBrowserLoader) LoadProjected(
-	ctx context.Context,
-	product string,
-	resource string,
-) (resources.ProjectedRecords, error) {
-	return l.ListProjected(ctx, product, resource)
-}
-
-func (l *machineReadBrowserLoader) ListProjected(
-	ctx context.Context,
-	product string,
-	resource string,
-) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.ListProjected(ctx, product, resource)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
-}
-
-func (l *machineReadBrowserLoader) ShowProjected(
-	ctx context.Context,
-	product string,
-	resource string,
-) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.ShowProjected(ctx, product, resource)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
-}
-
-func (l *machineReadBrowserLoader) LoadProjectedByID(
-	ctx context.Context,
-	product string,
-	resource string,
-	id string,
-) (resources.ProjectedRecords, error) {
-	return l.GetProjectedByID(ctx, product, resource, id)
-}
-
-func (l *machineReadBrowserLoader) GetProjectedByID(
-	ctx context.Context,
-	product string,
-	resource string,
-	id string,
-) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.GetProjectedByID(ctx, product, resource, id)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
-}
-
 func (a *App) executeMachineRead(
 	ctx context.Context,
 	spec resources.ResourceSpec,
 	op string,
 	recordID string,
-	service browser.Service,
+	rt machineRuntime,
 	opts globalOptions,
 ) (resources.ProjectedRecords, error) {
-	loader := &machineReadBrowserLoader{service: service}
-	executor := a.machineReadExecutor(loader, service.Catalog, service.Mode)
-	resp, err := executor.Execute(ctx, machineReadRequest(spec.Product, spec.Name, op, recordID, opts))
+	resp, err := rt.Execute(ctx, machineReadRequest(spec.Product, spec.Name, op, recordID, opts))
 	if err != nil {
-		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err, loader.err)
+		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err)
 	}
 	if resp.Error != nil {
-		return resources.ProjectedRecords{}, cliErrorFromMachineRead(resp.Error, loader.err)
+		return resources.ProjectedRecords{}, cliErrorFromMachineRead(resp.Error)
 	}
-	return projectedRecordsFromMachineResponse(spec, service.Mode, resp)
+	return projectedRecordsFromMachineResponse(spec, rt.Redaction(), resp)
 }
 
-func (a *App) machineReadExecutor(
-	loader machine.BrowserLoader,
-	catalog resources.ResourceCatalog,
-	mode redact.Mode,
-) machineReadExecutor {
-	if a.machineReadExecutorFactory != nil {
-		return a.machineReadExecutorFactory(loader, catalog, mode)
+func (a *App) machineRuntime(ctx context.Context, cfg config.Config, opts globalOptions) (machineRuntime, error) {
+	if a.machineRuntimeFactory != nil {
+		return a.machineRuntimeFactory(ctx, cfg, opts)
 	}
-	return defaultMachineReadExecutor(loader, catalog, mode)
+	return a.defaultMachineRuntime(ctx, cfg, opts)
+}
+
+func (a *App) defaultMachineRuntime(ctx context.Context, cfg config.Config, opts globalOptions) (machineRuntime, error) {
+	if a.reader != nil {
+		return machineruntime.NewMachineFromReader(a.reader, a.resourceCatalog(), cfg.Defaults.Redaction), nil
+	}
+	return machineruntime.NewMachineFromConfig(ctx, cfg, machineruntime.Options{
+		Timeout:    opts.timeout,
+		Catalog:    a.resourceCatalog(),
+		DiagLogger: a.sdkDiagLogger(opts),
+	})
 }
 
 func machineReadRequest(
@@ -1404,16 +1334,13 @@ func machineFilters(filters []recordFilter) []machine.Filter {
 	return out
 }
 
-func cliErrorFromMachineRead(err error, loaderErr error) error {
+func cliErrorFromMachineRead(err error) error {
 	if err == nil {
 		return nil
 	}
 	machineErr, ok := asMachineError(err)
 	if !ok {
 		return err
-	}
-	if machineErr.Kind == machine.ErrorKindLiveAccessFailed && loaderErr != nil {
-		return loaderErr
 	}
 	switch machineErr.Kind {
 	case machine.ErrorKindUsage, machine.ErrorKindUnsupportedOperation:
@@ -1939,13 +1866,6 @@ func (a *App) resourceReader(ctx context.Context, cfg config.Config, opts global
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
 	}
-	// Surface SDK retry/backoff and session/token-renewal activity only when the
-	// operator opts in with --log-level debug; otherwise the reader installs a
-	// nop SDK logger and stays silent.
-	var sdkDiagLogger *slog.Logger
-	if opts.logLevel == "debug" {
-		sdkDiagLogger = a.diagLogger()
-	}
 	return zscaler.NewReader(zscaler.ReaderConfig{
 		ClientID:         cfg.Credentials.ClientID,
 		ClientSecret:     clientSecret,
@@ -1966,8 +1886,18 @@ func (a *App) resourceReader(ctx context.Context, cfg config.Config, opts global
 			URL:             cfg.Proxy.URL,
 			FromEnvironment: cfg.Proxy.FromEnvironment,
 		},
-		DiagLogger: sdkDiagLogger,
+		DiagLogger: a.sdkDiagLogger(opts),
 	})
+}
+
+func (a *App) sdkDiagLogger(opts globalOptions) *slog.Logger {
+	// Surface SDK retry/backoff and session/token-renewal activity only when the
+	// operator opts in with --log-level debug; otherwise the reader installs a
+	// nop SDK logger and stays silent.
+	if opts.logLevel == "debug" {
+		return a.diagLogger()
+	}
+	return nil
 }
 
 func (a *App) dumpResourceReader(
