@@ -1,79 +1,61 @@
 // Command stdio-machine-adapter is an unsupported experiment that demonstrates
-// consuming internal/machineio from an isolated adapter.
+// consuming the trusted read-only machine runtime facade from an isolated
+// adapter.
 package main
 
 import (
 	"context"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/machineio"
+	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdin, os.Stdout); err != nil {
+	if err := run(context.Background(), os.Stdin, os.Stdout, runOptions{Env: os.Environ()}); err != nil {
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
-	return machineio.ExecuteJSON(ctx, stdin, stdout, staticExecutor{})
+type machineExecutor interface {
+	Execute(context.Context, machine.Request) (machine.Response, error)
 }
 
-type staticExecutor struct{}
+type runtimeFactory func(context.Context, []string) (machineExecutor, error)
 
-func (staticExecutor) Execute(_ context.Context, req machine.Request) (machine.Response, error) {
-	resp := responseForRequest(req)
-	product, resource, recordID := requestInput(req)
-
-	if req.Operation == machine.OperationGet && recordID == "" {
-		machineErr := &machine.MachineError{
-			Kind:      machine.ErrorKindUsage,
-			Message:   "missing required input: input.record_id",
-			Missing:   []string{"input.record_id"},
-			Operation: req.Operation,
-			Product:   product,
-			Resource:  resource,
-		}
-		resp.Error = machineErr
-		return resp, machineErr
-	}
-
-	resp.Records = []map[string]any{
-		{
-			"id":        "experiment-record",
-			"adapter":   "stdio-machine-adapter",
-			"operation": string(req.Operation),
-			"product":   product,
-			"resource":  resource,
-			"record_id": recordID,
-		},
-	}
-	resp.Meta.Count = len(resp.Records)
-	return resp, nil
+type runOptions struct {
+	Env        []string
+	NewRuntime runtimeFactory
 }
 
-func responseForRequest(req machine.Request) machine.Response {
-	meta := machine.Meta{
-		RequestID: req.RequestID,
-		ReadOnly:  true,
+func run(ctx context.Context, stdin io.Reader, stdout io.Writer, opts runOptions) error {
+	req, err := machineio.DecodeRequestStrict(stdin)
+	if err != nil {
+		return err
 	}
-	meta.Product, meta.Resource, _ = requestInput(req)
-	return machine.Response{
-		RequestID:  req.RequestID,
-		Capability: req.Capability,
-		Operation:  req.Operation,
-		Meta:       &meta,
+	newRuntime := opts.NewRuntime
+	if newRuntime == nil {
+		newRuntime = newRuntimeExecutor
 	}
+	executor, err := newRuntime(ctx, opts.Env)
+	if err != nil {
+		return err
+	}
+	resp, execErr := executor.Execute(ctx, req)
+	if err := machineio.EncodeResponse(stdout, resp); err != nil {
+		return err
+	}
+	return execErr
 }
 
-func requestInput(req machine.Request) (string, string, string) {
-	if req.Input == nil {
-		return "", "", ""
+func newRuntimeExecutor(ctx context.Context, env []string) (machineExecutor, error) {
+	rt, err := machineruntime.NewMachine(ctx, machineruntime.Options{
+		Env: append([]string(nil), env...),
+	})
+	if err != nil {
+		return nil, err
 	}
-	return strings.TrimSpace(req.Input.Product),
-		strings.TrimSpace(req.Input.Resource),
-		strings.TrimSpace(req.Input.RecordID)
+	return rt, nil
 }
