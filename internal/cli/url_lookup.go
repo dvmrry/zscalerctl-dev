@@ -30,10 +30,9 @@ type URLLookupReader interface {
 // The live SDK reader must keep satisfying the optional lookup capability.
 var _ URLLookupReader = (*zscaler.SDKReader)(nil)
 
-// urlLookupResult is the hand-built output-safe view of one lookup answer
-// (doctorStatus pattern). Each field is copied explicitly from the adapter
-// struct — no raw struct passthrough — and rendered through the normal
-// renderer so redaction applies.
+// urlLookupResult is the hand-built output-safe view of one lookup answer.
+// Each field is copied explicitly from the adapter struct — no raw struct
+// passthrough — and rendered through the normal renderer so redaction applies.
 type urlLookupResult struct {
 	URL                          string   `json:"url"`
 	Classifications              []string `json:"classifications"`

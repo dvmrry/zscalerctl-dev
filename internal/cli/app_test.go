@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -145,6 +146,106 @@ profiles:
 	if safe.Credentials.ClientSecretScheme != "cmd" {
 		t.Fatalf("SafeConfig client_secret_scheme = %q, want cmd", safe.Credentials.ClientSecretScheme)
 	}
+}
+
+func TestStatusCommandJSONShapesRemainStable(t *testing.T) {
+	t.Parallel()
+
+	env := []string{
+		config.EnvClientID + "=client-id",
+		config.EnvClientSecret + "=client-secret",
+		config.EnvVanityDomain + "=example",
+		config.EnvCloud + "=PRODUCTION",
+	}
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "config show",
+			args: []string{"--format", "json", "config", "show"},
+			want: []string{
+				"source",
+				"config_file_set",
+				"profile",
+				"auth_mode",
+				"vanity_domain_set",
+				"cloud",
+				"credentials",
+				"zpa",
+				"zia_legacy",
+				"proxy",
+				"defaults",
+			},
+		},
+		{
+			name: "doctor",
+			args: []string{"--format", "json", "doctor"},
+			want: []string{
+				"status",
+				"mode",
+				"profile",
+				"config",
+				"auth_mode",
+				"redaction",
+				"timeout",
+				"cache",
+				"proxy",
+				"credentials",
+				"live_api",
+			},
+		},
+		{
+			name: "auth status",
+			args: []string{"--format", "json", "auth", "status"},
+			want: []string{
+				"credentials",
+				"credential_exchange",
+				"live_api",
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			app := cli.New(&out, &errOut, env)
+			if err := app.Run(context.Background(), tc.args); err != nil {
+				t.Fatalf("App.Run(%s) error = %v, want nil", tc.name, err)
+			}
+			if errOut.Len() != 0 {
+				t.Fatalf("App.Run(%s) stderr = %q, want empty", tc.name, errOut.String())
+			}
+			assertJSONTopLevelKeys(t, tc.name, out.Bytes(), tc.want)
+		})
+	}
+}
+
+func assertJSONTopLevelKeys(t *testing.T, name string, body []byte, want []string) {
+	t.Helper()
+
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("json.Unmarshal(App.Run(%s) stdout) error = %v; body = %q", name, err, string(body))
+	}
+	if len(got) != len(want) {
+		t.Fatalf("App.Run(%s) JSON keys = %#v, want exactly %#v", name, mapKeys(got), want)
+	}
+	for _, key := range want {
+		if _, ok := got[key]; !ok {
+			t.Fatalf("App.Run(%s) JSON keys = %#v, want key %q", name, mapKeys(got), key)
+		}
+	}
+}
+
+func mapKeys(values map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func TestDoctorDoesNotExposeEnvironmentSecrets(t *testing.T) {

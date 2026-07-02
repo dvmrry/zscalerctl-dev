@@ -25,7 +25,6 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/dvmrry/zscalerctl/internal/version"
-	"github.com/dvmrry/zscalerctl/internal/zscaler"
 	"github.com/spf13/cobra"
 )
 
@@ -469,30 +468,6 @@ func parseFilterExpr(raw string) (recordFilter, error) {
 		substring: raw[idx] == '~',
 	}, nil
 }
-
-type doctorStatus struct {
-	Status      string `json:"status"`
-	Mode        string `json:"mode"`
-	Profile     string `json:"profile"`
-	Config      string `json:"config"`
-	AuthMode    string `json:"auth_mode"`
-	Redaction   string `json:"redaction"`
-	Timeout     string `json:"timeout"`
-	Cache       string `json:"cache"`
-	Proxy       string `json:"proxy"`
-	Credentials string `json:"credentials"`
-	LiveAPI     string `json:"live_api"`
-}
-
-func (doctorStatus) OutputSafe() {}
-
-type authStatus struct {
-	Credentials        string `json:"credentials"`
-	CredentialExchange string `json:"credential_exchange"`
-	LiveAPI            string `json:"live_api"`
-}
-
-func (authStatus) OutputSafe() {}
 
 func parseGlobal(args []string) (globalOptions, []string, error) {
 	fs := flag.NewFlagSet("zscalerctl", flag.ContinueOnError)
@@ -1070,16 +1045,12 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
 	default:
 	}
-	// Doctor's job is catching problems before live calls: surface the same
-	// proxy-conflict error the reader would raise on the first API request,
-	// instead of reporting status OK on a configuration that cannot work.
-	if err := zscaler.ValidateProxyConfig(zscaler.ProxyConfig{
-		URL:             cfg.Proxy.URL,
-		FromEnvironment: cfg.Proxy.FromEnvironment,
-	}); err != nil {
+	status, err := machineruntime.NewDoctorStatus(cfg, machineruntime.StatusOptions{
+		Timeout: opts.timeout,
+	})
+	if err != nil {
 		return err
 	}
-	status := newDoctorStatus(cfg, opts)
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
@@ -1096,7 +1067,7 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl auth status"}
 	}
-	status := newAuthStatus(cfg)
+	status := machineruntime.NewAuthStatus(cfg)
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
@@ -1113,30 +1084,30 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl config show"}
 	}
+	safe := machineruntime.NewConfigStatus(cfg)
 	if opts.format == output.FormatJSON {
-		return a.renderer(cfg, opts).WriteJSON(a.out, cfg.Safe())
+		return a.renderer(cfg, opts).WriteJSON(a.out, safe)
 	}
 	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
 		return rejectUnsupportedFormat("config show", opts.format)
 	}
-	safe := cfg.Safe()
 	rows := []output.KV{
 		{Key: "Profile", Value: safe.Profile},
-		{Key: "Config", Value: configSourceStatus(safe)},
+		{Key: "Config", Value: machineruntime.ConfigSourceStatus(safe)},
 		{Key: "Auth Mode", Value: safe.AuthMode},
-		{Key: "Vanity Domain", Value: setStatus(safe.VanityDomainSet)},
-		{Key: "Cloud", Value: valueOrUnset(safe.Cloud)},
-		{Key: "Client ID", Value: setStatus(safe.Credentials.ClientIDSet)},
-		{Key: "Client Secret", Value: secretSourceStatus(safe.Credentials.ClientSecretSet || safe.Credentials.ClientSecretFileSet, safe.Credentials.ClientSecretScheme)},
-		{Key: "ZPA Customer ID", Value: setStatus(safe.ZPA.CustomerIDSet)},
-		{Key: "ZPA Microtenant ID", Value: setStatus(safe.ZPA.MicrotenantIDSet)},
-		{Key: "ZIA Username", Value: setStatus(safe.ZIALegacy.UsernameSet)},
-		{Key: "ZIA Password", Value: secretSourceStatus(safe.ZIALegacy.PasswordSet || safe.ZIALegacy.PasswordFileSet, safe.ZIALegacy.PasswordScheme)},
-		{Key: "ZIA API Key", Value: secretSourceStatus(safe.ZIALegacy.APIKeySet || safe.ZIALegacy.APIKeyFileSet, safe.ZIALegacy.APIKeyScheme)},
-		{Key: "ZIA Cloud", Value: setStatus(safe.ZIALegacy.CloudSet)},
-		{Key: "Proxy", Value: proxyStatus(cfg.Proxy)},
+		{Key: "Vanity Domain", Value: machineruntime.SetStatus(safe.VanityDomainSet)},
+		{Key: "Cloud", Value: machineruntime.ValueOrUnset(safe.Cloud)},
+		{Key: "Client ID", Value: machineruntime.SetStatus(safe.Credentials.ClientIDSet)},
+		{Key: "Client Secret", Value: machineruntime.SecretSourceStatus(safe.Credentials.ClientSecretSet || safe.Credentials.ClientSecretFileSet, safe.Credentials.ClientSecretScheme)},
+		{Key: "ZPA Customer ID", Value: machineruntime.SetStatus(safe.ZPA.CustomerIDSet)},
+		{Key: "ZPA Microtenant ID", Value: machineruntime.SetStatus(safe.ZPA.MicrotenantIDSet)},
+		{Key: "ZIA Username", Value: machineruntime.SetStatus(safe.ZIALegacy.UsernameSet)},
+		{Key: "ZIA Password", Value: machineruntime.SecretSourceStatus(safe.ZIALegacy.PasswordSet || safe.ZIALegacy.PasswordFileSet, safe.ZIALegacy.PasswordScheme)},
+		{Key: "ZIA API Key", Value: machineruntime.SecretSourceStatus(safe.ZIALegacy.APIKeySet || safe.ZIALegacy.APIKeyFileSet, safe.ZIALegacy.APIKeyScheme)},
+		{Key: "ZIA Cloud", Value: machineruntime.SetStatus(safe.ZIALegacy.CloudSet)},
+		{Key: "Proxy", Value: machineruntime.ProxyStatus(cfg.Proxy)},
 		{Key: "Redaction", Value: safe.Defaults.Redaction},
-		{Key: "Cache", Value: cacheStatus(safe.Defaults.NoCache)},
+		{Key: "Cache", Value: machineruntime.CacheStatus(safe.Defaults.NoCache)},
 	}
 	body := renderKeyValuesForFormat(rows, opts.format, a.style(opts))
 	return a.renderer(cfg, opts).WriteText(a.out, body)
@@ -2466,23 +2437,7 @@ func productReadOperationNames(product resources.Product, catalog resources.Reso
 	return names
 }
 
-func newDoctorStatus(cfg config.Config, opts globalOptions) doctorStatus {
-	return doctorStatus{
-		Status:      "OK",
-		Mode:        "read-only",
-		Profile:     cfg.Profile,
-		Config:      configSourceStatus(cfg.Safe()),
-		AuthMode:    string(cfg.EffectiveAuthMode()),
-		Redaction:   string(cfg.Defaults.Redaction),
-		Timeout:     opts.timeout.String(),
-		Cache:       cacheStatus(cfg.Defaults.NoCache),
-		Proxy:       proxyStatus(cfg.Proxy),
-		Credentials: credentialStatus(cfg),
-		LiveAPI:     liveAPIStatus(cfg),
-	}
-}
-
-func doctorStatusRows(status doctorStatus) []output.KV {
+func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {
 	return []output.KV{
 		{Key: "Status", Value: status.Status, Kind: "ok"},
 		{Key: "Mode", Value: status.Mode, Kind: "mode"},
@@ -2498,104 +2453,12 @@ func doctorStatusRows(status doctorStatus) []output.KV {
 	}
 }
 
-func newAuthStatus(cfg config.Config) authStatus {
-	return authStatus{
-		Credentials:        credentialStatus(cfg),
-		CredentialExchange: "not requested",
-		LiveAPI:            liveAPIStatus(cfg),
-	}
-}
-
-func authStatusRows(status authStatus) []output.KV {
+func authStatusRows(status machineruntime.AuthStatus) []output.KV {
 	return []output.KV{
 		{Key: "Credentials", Value: status.Credentials},
 		{Key: "Credential Exchange", Value: status.CredentialExchange},
 		{Key: "Live API", Value: status.LiveAPI},
 	}
-}
-
-func credentialStatus(cfg config.Config) string {
-	switch cfg.EffectiveAuthMode() {
-	case config.AuthModeZIALegacy:
-		if cfg.ZIALegacy.Configured() {
-			return "configured"
-		}
-		if cfg.ZIALegacy.AnySet() {
-			return "partial"
-		}
-		return "not configured"
-	default:
-		if cfg.Credentials.Configured(cfg.VanityDomain) {
-			return "configured"
-		}
-		if cfg.Credentials.AnySet() || cfg.VanityDomain != "" {
-			return "partial"
-		}
-		return "not configured"
-	}
-}
-
-func liveAPIStatus(cfg config.Config) string {
-	if credentialStatus(cfg) == "configured" {
-		if cfg.EffectiveAuthMode() != config.AuthModeZIALegacy && strings.TrimSpace(cfg.ZPA.CustomerID) == "" {
-			return "available for ZIA read-only commands; ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
-		}
-		return "available for read-only commands"
-	}
-	if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
-		return "requires ZSCALERCTL_ZIA_USERNAME, ZSCALERCTL_ZIA_PASSWORD, ZSCALERCTL_ZIA_API_KEY, and ZSCALERCTL_ZIA_CLOUD"
-	}
-	return "requires ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, and ZSCALERCTL_VANITY_DOMAIN; ZPA resources also require ZSCALERCTL_ZPA_CUSTOMER_ID"
-}
-
-func setStatus(set bool) string {
-	if set {
-		return "set"
-	}
-	return "unset"
-}
-
-func secretSourceStatus(set bool, scheme string) string {
-	if !set {
-		return "unset"
-	}
-	if scheme == "" {
-		return "set"
-	}
-	return "set (" + scheme + ")"
-}
-
-func configSourceStatus(safe config.SafeConfig) string {
-	if safe.ConfigFileSet {
-		return "config file"
-	}
-	return "environment"
-}
-
-func cacheStatus(noCache bool) string {
-	if noCache {
-		return "bypass"
-	}
-	return "default"
-}
-
-func proxyStatus(proxy config.Proxy) string {
-	switch {
-	case proxy.FromEnvironment:
-		return "environment"
-	case strings.TrimSpace(proxy.URL) != "":
-		return "explicit"
-	default:
-		return "direct"
-	}
-}
-
-func valueOrUnset(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "unset"
-	}
-	return value
 }
 
 func parseProducts(value string, catalog resources.ResourceCatalog) (map[resources.Product]bool, error) {
