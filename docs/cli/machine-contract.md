@@ -50,6 +50,88 @@ other compatibility-affecting change.
 strict `machineio` decode behavior, and projected-record reconstruction guard
 together as the mechanical contract gate.
 
+## Streaming And Progress Direction
+
+The current core read model is intentionally single-shot. A
+`machine.Executor.Execute` call returns one complete `machine.Response`, and the
+supported CLI `list`, `get`, and `show` flows render that response as JSON,
+NDJSON, table, or pretty output. Runtime dump collection reports progress
+through a trusted callback used by CLI logging/progress paths, while dump data
+is still written as dump files rather than as machine response envelopes.
+
+This remains valid for bounded resource reads and small operator workflows:
+the response is already projected, redacted, verified, and easy for scripts to
+consume. The design pressure appears when operations become large or long
+running. Large lists and dumps can create memory pressure if every record must
+be buffered before any consumer sees progress or data. Human frontends also
+need structured progress without importing the CLI, while machine consumers
+need stable data streams that do not depend on spinners, table layout, or
+stderr prose.
+
+Future streaming or progress work should keep these boundaries:
+
+- shared libraries may provide iterators, cursors, or event streams over
+  already-owned operation semantics
+- core owns structured operation meaning: start, record delivery, warning,
+  partial error, completion, cancellation, and failure
+- trusted runtime owns live collection, product sessions, config loading,
+  credential resolution, SDK reader construction, and retry/session mechanics
+- CLI owns human rendering of progress, status text, colors, and spinners
+- presentation layers must reuse runtime/core capabilities instead of
+  duplicating config, credential, secret, SDK, or raw reader setup
+- safe seams must still avoid importing trusted runtime assembly
+
+One candidate model is an internal operation event stream. This is not a
+committed schema, but it gives future changes a vocabulary:
+
+- `started`: value-free operation metadata such as operation kind, product,
+  resource, selected count when known, and redaction mode
+- `progress`: value-free progress counters and catalog names, never record
+  values, credentials, raw IDs from unprojected payloads, headers, or SDK errors
+- `record`: one projected, redacted, verified record, or a batch of those
+  records, and only after the same projection rules used by machine responses
+- `warning` or `partial_error`: stable kind plus product/resource/operation
+  context; messages must stay value-free and must not contain source payloads
+  or raw transport details
+- `completed`: value-free totals such as record count, resource count, and
+  warning/error count
+- `failed` or `canceled`: stable error kind and sanitized message, with context
+  cancellation and deadline behavior mapped deliberately
+
+The compatibility strategy is additive. Existing `Execute` remains the stable
+one-shot adapter for current resource reads. A future event API can start as an
+internal runtime/core helper, and a one-shot `machine.Response` can be built
+from that stream later if the event model proves correct. No current CLI JSON,
+NDJSON, table, pretty, stderr error envelope, exit code, or dump behavior
+changes until a separate promotion explicitly changes the supported surface.
+
+Dump should remain a separate artifact model unless a later design deliberately
+promotes a dump event schema into the machine contract. Runtime dump collection
+can eventually consume structured progress or operation events, but dump file
+schemas, manifest files, and partial dump error records should not be folded
+into `machine.Response` accidentally. Partial dump errors must remain
+value-free, preserving the current safety property that failure metadata can be
+reported without leaking tenant record values.
+
+Semver follows the surface being changed:
+
+- docs-only design updates are `semver:none`
+- internal unexported streaming helpers are usually `semver:patch`
+- a supported machine event schema, supported CLI streaming command, or new
+  supported output mode is usually `semver:minor`
+- breaking the existing machine response schema, JSON/NDJSON behavior, stderr
+  error envelope, exit-code mapping, dump schema, or supported command behavior
+  is `semver:major`
+
+Non-decisions for this design:
+
+- no transport choice
+- no frontend implementation
+- no supported event schema
+- no command or output-mode promotion
+- no process lifecycle model
+- no change to current one-shot reads, dump collection, or CLI rendering
+
 ## Core Security Boundary
 
 The security win from layering comes from capability boundaries, not package
