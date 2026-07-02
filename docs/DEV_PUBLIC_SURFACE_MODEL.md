@@ -18,16 +18,77 @@ agents.
 | Candidate | A reviewed dev-repo seam or internal behavior being shaped for a possible supported surface. | Included in default gates only when it is part of the normal product runtime and has no experiment-only dependencies. | Not promised as a public API until promoted, but must not weaken supported behavior. |
 | Experimental | A prototype, spike, alternate presentation layer, or uncommitted product idea. | Excluded from default root-module build/check paths unless deliberately promoted. | No compatibility promise. Experiments must be easy to remove. |
 
-Current supported surfaces include:
+## 1.0 Supported Surface Declaration
 
-- the `zscalerctl` CLI command, flags, help, completion, generated CLI docs, and
-  introspection output
-- JSON and NDJSON resource output, stderr error envelopes, and exit-code
-  mapping
-- committed JSON Schemas for dump, diff, redaction, config, and error artifacts
-- `machine manifest`, `schema list`, and the manifest-first agent workflow
+The 1.0 supported surface is the audited read-only CLI and its documented
+machine-readable artifacts. It includes:
+
+- the human CLI command tree, global flags, completion entry points, and
+  per-command flag/argument surface as captured by generated CLI docs and
+  golden surface tests
+- the output modes each command documents as supported, including JSON and
+  NDJSON output shapes where those modes are supported
+- the stderr machine-readable error envelope emitted for failures in machine
+  output modes
+- the documented process exit-code mapping
+- generated CLI docs, generated manpage/help surfaces, and golden surface tests
+  as freeze evidence for command, flag, completion, and output-shape behavior
+- dump and diff artifacts plus their committed documented schemas
+- config, auth, doctor, schema, dump, diff, completion, and introspection
+  behavior documented for the CLI
+- `machine manifest` CLI JSON output, including `Manifest.Version:
+  "machine.v1"`, when exposed by the public command tree
 - the installable `skills/zscalerctl/` guidance and generated `.agents` copy
-- release artifacts, checksums, provenance, and documented install behavior
+- release artifacts, checksums, provenance, install docs, and version metadata
+
+The following surfaces are candidate or explicitly not stable for 1.0:
+
+- `machine.Request` and `machine.Response` JSON envelopes unless a later PR
+  deliberately promotes them to supported surface
+- the Go runtime facade in `internal/runtime` and all other `internal/` package
+  APIs
+- `internal/machineio` JSON transport behavior
+- source-only experiments such as `experiments/stdio-machine-adapter`
+- streaming, progress, or operation-event APIs
+- TUI, GUI, Wails, MCP, Fang, React, daemon, or stdio adapter surfaces
+
+The following details are intentionally unstable and not semver-covered unless
+they are captured by a supported schema or golden surface:
+
+- human help prose wording outside the generated/golden surface being frozen
+- table and pretty styling, spacing, wrapping, and color details that do not
+  change the underlying supported data contract
+- diagnostic log wording
+- internal runtime function names, structs, interfaces, and package layout
+- experiment README text, command behavior, transport behavior, and fixtures
+
+Machine manifest output is a supported CLI JSON surface. Its manifest version,
+currently `machine.v1`, is the manifest contract version. Changing the
+supported machine manifest shape after 1.0 requires semver treatment.
+Machine request and response envelopes remain candidate until deliberately
+declared supported, so request/response version fields are not required before
+1.0 while those envelopes stay candidate.
+
+The stderr error envelope and exit-code mapping are supported. The machine
+error-kind taxonomy is not yet 1.0-ready: a future PR must add and verify the
+machine `not_found` kind for nonexistent record `get` behavior before 1.0
+promotion.
+
+The public release repo remains held until a deliberate 1.0 promotion. A 1.0
+promotion cannot proceed until:
+
+- nonexistent record `get` maps to a verified machine `not_found` kind
+- machine manifest schema or fixture coverage is added where appropriate
+- surface freeze gates are mechanized for the supported CLI/output/error/dump
+  and manifest surfaces
+- release-repo promotion validation passes for the exact selected dev baseline
+
+Semver follows the supported surface. Before 1.0, breaking changes use
+`semver:minor`; `semver:major` is reserved for post-1.0 releases unless the
+manual 0.x to 1.0 release path explicitly overrides it. After 1.0, breaking
+supported CLI, output, error, dump, or manifest behavior is `semver:major`.
+Candidate and experimental surfaces can change without supported-surface
+semver guarantees, but they must not weaken supported behavior.
 
 Current candidate adapter-facing seams and trusted adapter assembly packages
 include:
