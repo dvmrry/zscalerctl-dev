@@ -63,8 +63,11 @@ they are captured by a supported schema or golden surface:
 - experiment README text, command behavior, transport behavior, and fixtures
 
 Machine manifest output is a supported CLI JSON surface. Its manifest version,
-currently `machine.v1`, is the manifest contract version. Changing the
-supported machine manifest shape after 1.0 requires semver treatment.
+currently `machine.v1`, is the manifest contract version. Its published schema
+is [machine-manifest.schema.json](schema/machine-manifest.schema.json), and
+machine contract verification validates the committed manifest fixture against
+that schema. Changing the supported machine manifest shape after 1.0 requires
+semver treatment.
 Machine request and response envelopes remain candidate until deliberately
 declared supported, so request/response version fields are not required before
 1.0 while those envelopes stay candidate.
@@ -77,7 +80,6 @@ machine request/response promotion.
 The public release repo remains held until a deliberate 1.0 promotion. A 1.0
 promotion cannot proceed until:
 
-- machine manifest schema or fixture coverage is added where appropriate
 - surface freeze gates are mechanized for the supported CLI/output/error/dump
   and manifest surfaces
 - release-repo promotion validation passes for the exact selected dev baseline

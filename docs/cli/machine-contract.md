@@ -34,8 +34,11 @@ The 1.0-supported machine-facing CLI surfaces are:
 - committed schemas and fixtures for supported machine-readable artifacts
 
 `machine manifest` output is a supported CLI JSON surface. Its `version` field,
-currently `machine.v1`, is the manifest contract version. Changing the
-supported manifest shape after 1.0 requires semver treatment.
+currently `machine.v1`, is the manifest contract version. The published schema
+is [machine-manifest.schema.json](../schema/machine-manifest.schema.json), and
+`scripts/verify-machine-contract.sh` validates the committed manifest fixture
+against it. Changing the supported manifest shape after 1.0 requires semver
+treatment.
 
 `machine.Request`, `machine.Response`, `MachineError`, the in-process executor
 shape, `internal/runtime`, and `internal/machineio` remain candidate/internal
@@ -45,8 +48,10 @@ request/response transport, but that promotion must add the appropriate schema,
 fixture, compatibility, and semver gates.
 
 The stderr CLI error envelope and exit-code mapping are supported. The machine
-error-kind taxonomy includes `not_found` for nonexistent record `get`
-behavior. Further taxonomy changes need fixture coverage before any supported
+error-kind taxonomy has representative fixtures for the current stable kinds:
+`usage`, `unsupported_capability`, `unsupported_operation`, `unknown_resource`,
+`not_found`, `live_access_failed`, `canceled`, `deadline_exceeded`, and
+`internal`. Further taxonomy changes need fixture coverage before any supported
 machine request/response promotion.
 
 ## Machine Contract
@@ -75,8 +80,8 @@ completion, introspection, or generated CLI docs are machine-contract changes.
 They require the same surface review, schema/golden coverage, and semver
 treatment as any other compatibility-affecting change.
 `scripts/verify-machine-contract.sh` keeps the internal machine JSON fixtures,
-strict `machineio` decode behavior, and projected-record reconstruction guard
-together as the mechanical contract gate.
+machine manifest schema validation, strict `machineio` decode behavior, and
+projected-record reconstruction guard together as the mechanical contract gate.
 
 ## Streaming And Progress Direction
 

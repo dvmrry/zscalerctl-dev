@@ -42,6 +42,7 @@ registered path exists.
 | `scripts/verify-docs.sh` | verify | `make docs-check`; `.github/workflows/ci.yml` | No companion test yet; docs secret-pattern gate |
 | `scripts/verify-experiment-boundaries.sh` | verify | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | `scripts/test-verify-experiment-boundaries.sh` |
 | `scripts/verify-licenses.sh` | verify | `make verify-licenses`; `.github/workflows/ci.yml` | `go-licenses` allow-list check for the shipped binary |
+| `scripts/verify-machine-manifest-schema.go` | verify | `scripts/verify-machine-contract.sh` | `scripts/test-verify-machine-contract.sh` |
 | `scripts/verify-machine-contract.sh` | verify | `make verify-machine-contract`; `.github/workflows/ci.yml` | `scripts/test-verify-machine-contract.sh` |
 | `scripts/verify-release-artifacts.sh` | verify | `make verify-release-artifacts` | `scripts/test-verify-release-artifacts.sh` |
 | `scripts/verify-sdk-boundary.sh` | verify | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | `scripts/test-verify-sdk-boundary.sh` |

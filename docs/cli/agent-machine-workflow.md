@@ -14,8 +14,9 @@ zscalerctl --format json machine manifest
 
 `machine manifest` is derived from the same resource catalog used by resource
 execution. It never loads tenant config, resolves credentials, constructs SDK
-clients, or contacts Zscaler. Use it to discover the machine-readable read
-surface before making live calls:
+clients, or contacts Zscaler. Its published schema is
+[machine-manifest.schema.json](../schema/machine-manifest.schema.json). Use it
+to discover the machine-readable read surface before making live calls:
 
 - `version`, currently `machine.v1`
 - `capabilities[].name`, currently `resources.read`
@@ -79,9 +80,9 @@ human prose. Exit codes are part of the contract:
 
 Use the manifest, `schema list`, committed JSON Schemas, error envelopes, and
 exit codes as the durable automation surface. The published schemas in
-`docs/schema/` cover stable file and stream artifacts such as stderr error
-envelopes, dump manifests, dump error records, redaction reports, and diff
-reports. Resource records are governed by the catalog and by the
+`docs/schema/` cover stable file and stream artifacts such as the machine
+manifest, stderr error envelopes, dump manifests, dump error records, redaction
+reports, and diff reports. Resource records are governed by the catalog and by the
 `projected-records` schema ref advertised by the machine manifest.
 
 Rendered resource fields are projected and redacted before machine output.

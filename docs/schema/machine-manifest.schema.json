@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dvmrry/zscalerctl/blob/main/docs/schema/machine-manifest.schema.json",
+  "title": "zscalerctl machine manifest output",
+  "description": "Schema for the JSON document emitted by `zscalerctl --format json machine manifest`. This is the supported machine capability manifest surface; machine request and response envelopes remain candidate/internal surfaces.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "capabilities", "schemas", "meta"],
+  "properties": {
+    "version": {
+      "const": "machine.v1",
+      "description": "Machine manifest contract version."
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "description": "Machine-readable capabilities exposed by this build."
+    },
+    "schemas": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/schemaRef" },
+      "description": "Schema references advertised by the manifest."
+    },
+    "meta": {
+      "$ref": "#/$defs/manifestMeta"
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "title", "description", "operations", "input", "output", "meta"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["resources.read"],
+          "description": "Capability name."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short human-readable capability title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable capability description."
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["list", "get", "show"]
+          },
+          "description": "Supported read operations for this capability."
+        },
+        "input": {
+          "$ref": "#/$defs/capabilityInput"
+        },
+        "output": {
+          "$ref": "#/$defs/schemaRef"
+        },
+        "meta": {
+          "$ref": "#/$defs/capabilityMeta"
+        }
+      }
+    },
+    "capabilityInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource"],
+      "properties": {
+        "product": {
+          "type": "string",
+          "description": "Product family for the resource capability."
+        },
+        "resource": {
+          "type": "string",
+          "description": "Resource name within the product."
+        }
+      }
+    },
+    "schemaRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Referenced schema name."
+        },
+        "version": {
+          "type": "string",
+          "description": "Referenced schema version."
+        },
+        "uri": {
+          "type": "string",
+          "description": "Optional schema URI."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Optional schema reference."
+        }
+      }
+    },
+    "capabilityMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "shape", "read_only"],
+      "properties": {
+        "product": {
+          "type": "string",
+          "description": "Product family for the capability."
+        },
+        "resource": {
+          "type": "string",
+          "description": "Resource name for the capability."
+        },
+        "shape": {
+          "type": "string",
+          "description": "Resource shape, currently list or singleton."
+        },
+        "get_key": {
+          "type": "string",
+          "description": "Projected ID field used by get operations."
+        },
+        "read_only": {
+          "type": "boolean",
+          "description": "True when the capability is tenant read-only."
+        }
+      }
+    },
+    "manifestMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "read_only", "count"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Metadata version for this manifest envelope."
+        },
+        "read_only": {
+          "type": "boolean",
+          "description": "True when all advertised capabilities are tenant read-only."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of advertised capabilities."
+        }
+      }
+    }
+  }
+}

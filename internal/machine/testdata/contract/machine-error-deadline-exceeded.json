@@ -1,0 +1,7 @@
+{
+  "kind": "deadline_exceeded",
+  "message": "request deadline exceeded",
+  "operation": "list",
+  "product": "zia",
+  "resource": "locations"
+}

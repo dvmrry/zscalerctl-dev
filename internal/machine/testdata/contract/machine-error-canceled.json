@@ -1,0 +1,7 @@
+{
+  "kind": "canceled",
+  "message": "request canceled",
+  "operation": "list",
+  "product": "zia",
+  "resource": "locations"
+}

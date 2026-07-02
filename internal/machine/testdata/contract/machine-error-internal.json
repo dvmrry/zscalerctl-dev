@@ -1,0 +1,7 @@
+{
+  "kind": "internal",
+  "message": "browser loader is not configured",
+  "operation": "list",
+  "product": "zia",
+  "resource": "locations"
+}
