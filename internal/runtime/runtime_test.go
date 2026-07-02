@@ -137,6 +137,186 @@ func TestNewMachineFromConfigAssemblesReaderConfig(t *testing.T) {
 	}
 }
 
+func TestNewDumpCollectorAssemblesReaderConfigAndCollects(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id":       "loc-1",
+					"name":     "HQ",
+					"rawNoise": "dropped",
+				}),
+			},
+		},
+	}
+	var gotReaderConfig zscaler.ReaderConfig
+	collector, err := NewDumpCollector(context.Background(), Options{
+		Env: []string{
+			config.EnvClientID + "=client-id",
+			config.EnvClientSecret + "=client-secret",
+			config.EnvVanityDomain + "=example",
+			config.EnvCloud + "=PRODUCTION",
+			config.EnvRedaction + "=share",
+			config.EnvNoCache + "=true",
+		},
+		Timeout: 9 * time.Second,
+		Catalog: catalog,
+		newReader: func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
+			gotReaderConfig = cfg
+			return reader, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewDumpCollector(env runtime) error = %v, want nil", err)
+	}
+	if got := gotReaderConfig.ClientID.Reveal(); got != "client-id" {
+		t.Errorf("NewDumpCollector(env runtime) ClientID = %q, want client-id", got)
+	}
+	if got := gotReaderConfig.ClientSecret.Reveal(); got != "client-secret" {
+		t.Errorf("NewDumpCollector(env runtime) ClientSecret = %q, want client-secret", got)
+	}
+	if gotReaderConfig.Timeout != 9*time.Second {
+		t.Errorf("NewDumpCollector(env runtime) Timeout = %s, want 9s", gotReaderConfig.Timeout)
+	}
+	if !gotReaderConfig.NoCache {
+		t.Errorf("NewDumpCollector(env runtime) NoCache = false, want true")
+	}
+
+	result, err := collector.Collect(context.Background(), catalog, DumpCollectOptions{})
+	if err != nil {
+		t.Fatalf("DumpCollector.Collect(locations) error = %v, want nil", err)
+	}
+	if got, want := len(result.Entries), 1; got != want {
+		t.Fatalf("DumpCollector.Collect(locations) entries = %d, want %d", got, want)
+	}
+	gotRecords := result.Entries[0].Records.Records()
+	if got, want := len(gotRecords), 1; got != want {
+		t.Fatalf("DumpCollector.Collect(locations) records = %d, want %d", got, want)
+	}
+	if gotFields := gotRecords[0].Fields(); !reflect.DeepEqual(gotFields, map[string]any{"id": "loc-1", "name": "HQ"}) {
+		t.Fatalf("DumpCollector.Collect(locations) record = %#v, want id/name only", gotFields)
+	}
+	if gotCalls := reader.calls; !reflect.DeepEqual(gotCalls, []string{"list:zia/locations"}) {
+		t.Fatalf("DumpCollector.Collect(locations) reader calls = %#v, want list call", gotCalls)
+	}
+}
+
+func TestDumpCollectorUsesOneProductSession(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+		runtimeDumpListSpec(resources.ProductZIA, "rule-labels"),
+	}
+	session := &runtimeDumpSession{
+		list: []resources.SourceRecord{
+			resources.NewSourceRecord(map[string]any{"id": "1", "name": "one"}),
+		},
+	}
+	reader := &runtimeDumpSessionProvider{session: session}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	_, err := collector.Collect(context.Background(), catalog, DumpCollectOptions{})
+	if err != nil {
+		t.Fatalf("DumpCollector.Collect(session catalog) error = %v, want nil", err)
+	}
+	if reader.sessionCalls != 1 {
+		t.Errorf("runtimeDumpSessionProvider.Session calls = %d, want 1", reader.sessionCalls)
+	}
+	if reader.directListCalls != 0 {
+		t.Errorf("runtimeDumpSessionProvider.List calls = %d, want 0", reader.directListCalls)
+	}
+	if session.listCalls != 2 {
+		t.Errorf("runtimeDumpSession.List calls = %d, want 2", session.listCalls)
+	}
+	if session.closeCalls != 1 {
+		t.Errorf("runtimeDumpSession.Close calls = %d, want 1", session.closeCalls)
+	}
+}
+
+func TestDumpCollectorContinueOnErrorRecordsValueFreeListFailure(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+		runtimeDumpListSpec(resources.ProductZIA, "rule-labels"),
+	}
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{"id": "loc-1", "name": "HQ"}),
+			},
+		},
+		failures: map[runtimeResourceKey]error{
+			{product: resources.ProductZIA, resource: "rule-labels"}: errors.New("client_secret=raw-value"),
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	result, err := collector.Collect(context.Background(), catalog, DumpCollectOptions{
+		ContinueOnError: true,
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.Collect(continue on list error) error = %v, want nil", err)
+	}
+	if got, want := len(result.Entries), 1; got != want {
+		t.Fatalf("DumpCollector.Collect(continue on list error) entries = %d, want %d", got, want)
+	}
+	if got, want := len(result.Errors), 1; got != want {
+		t.Fatalf("DumpCollector.Collect(continue on list error) errors = %d, want %d", got, want)
+	}
+	got := result.Errors[0]
+	if got.Product != "zia" || got.Name != "rule-labels" || got.Operation != "list" || got.Kind != "list_failed" {
+		t.Fatalf("DumpCollector.Collect(continue on list error) error record = %#v, want value-free list_failed", got)
+	}
+}
+
+func TestDumpCollectorContinueOnErrorRecordsProjectionFailure(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{{
+		Product:    resources.ProductZIA,
+		Name:       "bad-shape",
+		Shape:      resources.ResourceShape("invalid"),
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
+	}}
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "bad-shape"}: {
+				resources.NewSourceRecord(map[string]any{"id": "1"}),
+			},
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	result, err := collector.Collect(context.Background(), catalog, DumpCollectOptions{
+		ContinueOnError: true,
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.Collect(continue on projection error) error = %v, want nil", err)
+	}
+	if got, want := len(result.Entries), 0; got != want {
+		t.Fatalf("DumpCollector.Collect(continue on projection error) entries = %d, want %d", got, want)
+	}
+	if got, want := len(result.Errors), 1; got != want {
+		t.Fatalf("DumpCollector.Collect(continue on projection error) errors = %d, want %d", got, want)
+	}
+	got := result.Errors[0]
+	if got.Product != "zia" || got.Name != "bad-shape" || got.Operation != "project" || got.Kind != "projection_failed" {
+		t.Fatalf("DumpCollector.Collect(continue on projection error) error record = %#v, want projection_failed", got)
+	}
+}
+
 func TestNewMachineWrapsDeferredSecretResolutionErrors(t *testing.T) {
 	t.Parallel()
 
@@ -357,4 +537,96 @@ func runtimeWriteConfig(t *testing.T, body string) string {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
 	}
 	return path
+}
+
+func runtimeDumpListSpec(product resources.Product, resource string) resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    product,
+		Name:       resource,
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+		},
+	}
+}
+
+type runtimeDumpReader struct {
+	list            map[runtimeResourceKey][]resources.SourceRecord
+	failures        map[runtimeResourceKey]error
+	calls           []string
+	directListCalls int
+}
+
+func (r *runtimeDumpReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	r.calls = append(r.calls, "list:"+string(product)+"/"+resource)
+	r.directListCalls++
+	key := runtimeResourceKey{product: product, resource: resource}
+	if err := r.failures[key]; err != nil {
+		return nil, err
+	}
+	return r.list[key], nil
+}
+
+func (r *runtimeDumpReader) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpReader.Get must not be called")
+}
+
+func (r *runtimeDumpReader) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpReader.Show must not be called")
+}
+
+type runtimeDumpSessionProvider struct {
+	session         *runtimeDumpSession
+	sessionCalls    int
+	directListCalls int
+}
+
+func (r *runtimeDumpSessionProvider) Session(_ context.Context, _ resources.Product) (zscaler.ResourceSession, error) {
+	r.sessionCalls++
+	return r.session, nil
+}
+
+func (r *runtimeDumpSessionProvider) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	r.directListCalls++
+	return nil, nil
+}
+
+func (r *runtimeDumpSessionProvider) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpSessionProvider.Get must not be called")
+}
+
+func (r *runtimeDumpSessionProvider) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpSessionProvider.Show must not be called")
+}
+
+type runtimeDumpSession struct {
+	list       []resources.SourceRecord
+	listCalls  int
+	closeCalls int
+}
+
+func (s *runtimeDumpSession) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	s.listCalls++
+	return s.list, nil
+}
+
+func (s *runtimeDumpSession) Get(_ context.Context, _ resources.Product, _ string, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpSession.Get must not be called")
+}
+
+func (s *runtimeDumpSession) Show(_ context.Context, _ resources.Product, _ string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("runtimeDumpSession.Show must not be called")
+}
+
+func (s *runtimeDumpSession) Close() {
+	s.closeCalls++
 }
