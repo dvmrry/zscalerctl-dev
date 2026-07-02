@@ -850,7 +850,7 @@ func ziaSDKListGetByIntID[T any](
 		// The list call succeeded, so there is no HTTP 404 to classify
 		// downstream: a scan miss must carry the not-found sentinel itself or
 		// it surfaces as a live-access failure (exit 5 instead of 4).
-		return nil, ErrResourceNotFound
+		return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
 	})
 }
 
@@ -4666,7 +4666,8 @@ func (e liveAccessError) ErrorContext() ErrorContext {
 
 // resourceNotFoundError marks a get-by-ID whose target does not exist (404). It
 // carries only the safe product/resource labels — never the SDK response body —
-// and unwraps to ErrResourceNotFound so the CLI exits 4, not 5.
+// and unwraps to both the legacy Zscaler sentinel and the safe resource
+// sentinel.
 type resourceNotFoundError struct {
 	product  resources.Product
 	resource string
@@ -4676,8 +4677,8 @@ func (e resourceNotFoundError) Error() string {
 	return fmt.Sprintf("%s: %s/%s", ErrResourceNotFound, e.product, e.resource)
 }
 
-func (e resourceNotFoundError) Unwrap() error {
-	return ErrResourceNotFound
+func (e resourceNotFoundError) Unwrap() []error {
+	return []error{ErrResourceNotFound, resources.ErrRecordNotFound}
 }
 
 // resourceNotFoundError is only constructed for a get-by-ID 404, so its

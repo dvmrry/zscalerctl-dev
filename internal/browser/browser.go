@@ -24,6 +24,9 @@ var (
 	// ErrMissingID reports that an ID-backed load was requested without an ID.
 	ErrMissingID = resources.ErrMissingID
 
+	// ErrRecordNotFound reports that an ID-backed load target does not exist.
+	ErrRecordNotFound = resources.ErrRecordNotFound
+
 	// ErrUnsupportedLoad reports that a catalog entry has no list, show, or get
 	// operation suitable for browser loading.
 	ErrUnsupportedLoad = resources.ErrUnsupportedLoad

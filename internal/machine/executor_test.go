@@ -3,6 +3,7 @@ package machine_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -331,6 +332,7 @@ func TestExecutorMapsKnownLoaderErrorsToStableMachineKinds(t *testing.T) {
 		wantKind string
 	}{
 		{name: "unknown_resource", err: resources.ErrUnknownResource, wantKind: machine.ErrorKindUnknownResource},
+		{name: "record_not_found", err: resources.ErrRecordNotFound, wantKind: machine.ErrorKindNotFound},
 		{name: "unsupported_load", err: resources.ErrUnsupportedLoad, wantKind: machine.ErrorKindUnsupportedOperation},
 		{name: "context_canceled", err: context.Canceled, wantKind: machine.ErrorKindCanceled},
 		{name: "deadline_exceeded", err: context.DeadlineExceeded, wantKind: machine.ErrorKindDeadlineExceeded},
@@ -353,6 +355,36 @@ func TestExecutorMapsKnownLoaderErrorsToStableMachineKinds(t *testing.T) {
 			assertMachineError(t, err, tt.wantKind, machine.OperationList, "zia", "locations")
 			assertResponseError(t, got, tt.wantKind)
 		})
+	}
+}
+
+func TestExecutorGetRecordNotFoundReturnsNotFound(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		getErr: fmt.Errorf("%w: loc-123 raw backend body", resources.ErrRecordNotFound),
+	}
+	executor := machine.Executor{Browser: loader}
+	req := machine.Request{
+		RequestID:  "req-not-found",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "loc-123"},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(get not found) error = nil, want MachineError")
+	}
+	machineErr := assertMachineError(t, err, machine.ErrorKindNotFound, machine.OperationGet, "zia", "locations")
+	if machineErr.Message != "record not found" {
+		t.Fatalf("MachineError.Message = %q, want sanitized not-found message", machineErr.Message)
+	}
+	if strings.Contains(machineErr.Message, "loc-123") || strings.Contains(machineErr.Message, "raw backend body") {
+		t.Fatalf("MachineError.Message = %q, want no record ID or backend detail", machineErr.Message)
+	}
+	assertResponseError(t, got, machine.ErrorKindNotFound)
+	wantCalls := []string{"get:zia/locations/loc-123"}
+	if !reflect.DeepEqual(loader.calls, wantCalls) {
+		t.Fatalf("Executor.Execute(get not found) loader calls = %#v, want %#v", loader.calls, wantCalls)
 	}
 }
 

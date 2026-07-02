@@ -384,6 +384,36 @@ func TestMachineExecutePreservesOriginalLiveLoadError(t *testing.T) {
 	}
 }
 
+func TestMachineExecuteReturnsMachineNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	reader := &runtimeFakeReader{getErr: resources.ErrRecordNotFound}
+	rt := newMachineFromReader(reader, runtimeTestCatalog(t, resources.ProductZIA, "locations"), redact.ModeStandard)
+
+	resp, err := rt.Execute(context.Background(), machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "missing"},
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("Machine.Execute(missing record) error = %T %v, want *machine.MachineError", err, err)
+	}
+	if machineErr.Kind != machine.ErrorKindNotFound {
+		t.Fatalf("Machine.Execute(missing record) MachineError.Kind = %q, want %q", machineErr.Kind, machine.ErrorKindNotFound)
+	}
+	if errors.Is(err, resources.ErrRecordNotFound) {
+		t.Fatalf("Machine.Execute(missing record) error = %v, want machine error instead of original loader sentinel", err)
+	}
+	if resp.Error == nil || resp.Error.Kind != machine.ErrorKindNotFound {
+		t.Fatalf("Machine.Execute(missing record) response error = %#v, want not_found", resp.Error)
+	}
+	wantCalls := []string{"get:zia/locations/missing"}
+	if !reflect.DeepEqual(reader.calls, wantCalls) {
+		t.Fatalf("Machine.Execute(missing record) reader calls = %#v, want %#v", reader.calls, wantCalls)
+	}
+}
+
 func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	t.Parallel()
 

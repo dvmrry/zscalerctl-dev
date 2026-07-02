@@ -18,6 +18,7 @@ var (
 	ErrUnknownField        = errors.New("unknown projected field")
 	ErrUnknownResource     = errors.New("unknown browser resource")
 	ErrMissingID           = errors.New("browser resource id is required")
+	ErrRecordNotFound      = errors.New("browser record not found")
 	ErrUnsupportedLoad     = errors.New("unsupported browser load operation")
 )
 

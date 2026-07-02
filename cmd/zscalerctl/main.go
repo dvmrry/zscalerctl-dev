@@ -11,6 +11,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
@@ -126,6 +127,12 @@ func errorDetails(err error) errorBody {
 		body.Product = string(notFound.Product)
 		body.Resource = notFound.Resource
 	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		body.Operation = string(machineErr.Operation)
+		body.Product = machineErr.Product
+		body.Resource = machineErr.Resource
+	}
 	var mce *zscaler.MissingCredentialsError
 	if errors.As(err, &mce) {
 		body.Missing = mce.Missing
@@ -147,6 +154,10 @@ func errorDetails(err error) errorBody {
 }
 
 func errorKind(err error) string {
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) && machineErr.Kind != "" {
+		return machineErr.Kind
+	}
 	switch {
 	case errors.Is(err, cli.ErrUsage):
 		return "usage"
@@ -176,6 +187,10 @@ func errorKind(err error) string {
 }
 
 func exitCodeForError(err error) int {
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) && machineErr.Kind == machine.ErrorKindNotFound {
+		return exitNotFound
+	}
 	switch {
 	case errors.Is(err, cli.ErrUsage):
 		return exitUsageError

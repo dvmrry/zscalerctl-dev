@@ -452,6 +452,45 @@ func TestRunProductMachineGetLoaderErrorPreservesOriginalError(t *testing.T) {
 	}
 }
 
+func TestRunProductMachineGetNotFoundPreservesMachineError(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := NewWithOptions(&out, &errOut, nil, Options{
+		Catalog: machineRouteCatalog(),
+	})
+	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+		machineErr := &machine.MachineError{
+			Kind:      machine.ErrorKindNotFound,
+			Message:   "record not found",
+			Operation: machine.OperationGet,
+			Product:   "zia",
+			Resource:  "locations",
+		}
+		return &recordingMachineRuntime{
+			response:  machine.Response{Error: machineErr},
+			err:       machineErr,
+			redaction: redact.ModeStandard,
+		}, nil
+	}
+
+	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "get", "42"})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("App.Run(machine get not_found) error = %T %v, want *machine.MachineError", err, err)
+	}
+	if machineErr.Kind != machine.ErrorKindNotFound {
+		t.Fatalf("App.Run(machine get not_found) MachineError.Kind = %q, want %q", machineErr.Kind, machine.ErrorKindNotFound)
+	}
+	if errors.Is(err, ErrUsage) {
+		t.Fatalf("App.Run(machine get not_found) error = %v, want not ErrUsage", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestRunProductMachineExecutorUsageErrorMapsToCLIUsage(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := NewWithOptions(&out, &errOut, nil, Options{

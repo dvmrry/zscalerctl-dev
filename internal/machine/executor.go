@@ -26,6 +26,10 @@ const (
 	// projected resource catalog.
 	ErrorKindUnknownResource = "unknown_resource"
 
+	// ErrorKindNotFound reports an ID-backed record lookup whose target does not
+	// exist.
+	ErrorKindNotFound = "not_found"
+
 	// ErrorKindLiveAccessFailed reports a sanitized resource-loading failure.
 	ErrorKindLiveAccessFailed = "live_access_failed"
 
@@ -382,6 +386,14 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 		return MachineError{
 			Kind:      ErrorKindUnknownResource,
 			Message:   "unknown resource",
+			Operation: op,
+			Product:   product,
+			Resource:  resource,
+		}
+	case errors.Is(err, resources.ErrRecordNotFound):
+		return MachineError{
+			Kind:      ErrorKindNotFound,
+			Message:   "record not found",
 			Operation: op,
 			Product:   product,
 			Resource:  resource,

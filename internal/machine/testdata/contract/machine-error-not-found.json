@@ -1,0 +1,7 @@
+{
+  "kind": "not_found",
+  "message": "record not found",
+  "operation": "get",
+  "product": "zia",
+  "resource": "locations"
+}
