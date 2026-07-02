@@ -32,7 +32,7 @@ registered path exists.
 | `scripts/test-verify-sdk-boundary.sh` | test | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-script-registry.sh` | test | `make verify-script-registry` | Self-contained verifier test |
 | `scripts/test-verify-semver-label.sh` | test | `make verify-release-automation` | Self-contained verifier test |
-| `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test |
+| `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test for golden/manifest pairing |
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
 | `scripts/gen-cli-docs.go` | dev | `make gen-cli-docs`; manual CLI-reference regeneration | `scripts/verify-cli-docs.sh` |
@@ -47,7 +47,7 @@ registered path exists.
 | `scripts/verify-release-artifacts.sh` | verify | `make verify-release-artifacts` | `scripts/test-verify-release-artifacts.sh` |
 | `scripts/verify-sdk-boundary.sh` | verify | `make verify-sdk-boundary`; `.github/workflows/ci.yml` | `scripts/test-verify-sdk-boundary.sh` |
 | `scripts/verify-script-registry.sh` | verify | `make verify-script-registry` | `scripts/test-verify-script-registry.sh` |
-| `scripts/verify-surface-changes-manifest.sh` | verify | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | `scripts/test-verify-surface-changes-manifest.sh` |
+| `scripts/verify-surface-changes-manifest.sh` | verify | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Requires changed CLI surface goldens to update `surface_changes.md`; self-tested by `scripts/test-verify-surface-changes-manifest.sh` |
 | `scripts/verify-pty-escape-clean.py` | dev | `scripts/verify-pty-escape-clean.sh` | PTY helper for escape-sequence regression check |
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |

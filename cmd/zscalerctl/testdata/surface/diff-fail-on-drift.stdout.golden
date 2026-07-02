@@ -1,0 +1,48 @@
+{
+  "schema": "zscalerctl.diff.v1",
+  "old": {
+    "path": "testdata/surface/fixtures/diff-drift-old",
+    "manifest_schema": "zscalerctl.dump.manifest.v2",
+    "redaction": "standard",
+    "status": "complete",
+    "partial": false
+  },
+  "new": {
+    "path": "testdata/surface/fixtures/diff-drift-new",
+    "manifest_schema": "zscalerctl.dump.manifest.v2",
+    "redaction": "standard",
+    "status": "complete",
+    "partial": false
+  },
+  "summary": {
+    "resources_compared": 1,
+    "resources_with_drift": 1,
+    "records_added": 0,
+    "records_removed": 0,
+    "records_changed": 1
+  },
+  "resources": [
+    {
+      "product": "zia",
+      "resource": "locations",
+      "identity": {
+        "mode": "get_key",
+        "field": "id"
+      },
+      "added": [],
+      "removed": [],
+      "changed": [
+        {
+          "key": "fixture-location",
+          "changes": [
+            {
+              "field": "name",
+              "old": "old",
+              "new": "new"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

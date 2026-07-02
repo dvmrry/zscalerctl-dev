@@ -1,0 +1,18 @@
+{
+  "schema": "zscalerctl.dump.manifest.v2",
+  "collected_at": "2026-01-01T00:00:00Z",
+  "tool_version": "test",
+  "redaction": "standard",
+  "warning": "surface golden fixture",
+  "status": "complete",
+  "resources": [
+    {
+      "product": "zia",
+      "name": "locations",
+      "shape": "list",
+      "status": "ok",
+      "path": "resources/zia/locations.json",
+      "records": 1
+    }
+  ]
+}

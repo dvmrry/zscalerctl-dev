@@ -53,6 +53,24 @@ ZSCALERCTL_BASE_REF=HEAD \
 	ZSCALERCTL_REPO_ROOT="$tmp_dir/golden-and-manifest" \
 	"$repo_root/scripts/verify-surface-changes-manifest.sh"
 
+init_repo "$tmp_dir/untracked-golden-only"
+cd "$tmp_dir/untracked-golden-only"
+printf 'new-golden\n' >"$surface_dir/new-case.stdout.golden"
+if ZSCALERCTL_BASE_REF=HEAD \
+	ZSCALERCTL_REPO_ROOT="$tmp_dir/untracked-golden-only" \
+	"$repo_root/scripts/verify-surface-changes-manifest.sh" \
+	>"$tmp_dir/out" 2>"$tmp_dir/err"; then
+	echo "verify-surface-changes-manifest accepted an untracked golden-only change" >&2
+	cat "$tmp_dir/out" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+if ! grep -q "surface golden files changed but $manifest was not updated" "$tmp_dir/err"; then
+	echo "verify-surface-changes-manifest failed on an untracked golden without the expected manifest message" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
+
 # Only manifest changed: should pass.
 init_repo "$tmp_dir/manifest-only"
 cd "$tmp_dir/manifest-only"

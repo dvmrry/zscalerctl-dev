@@ -271,10 +271,10 @@ type surfaceCase struct {
 // readable output shape. Each intentional change that causes a golden diff must
 // be recorded in testdata/surface/surface_changes.md.
 //
-// NOTE: testdata/surface/surface_changes.md is a human-maintained convention —
-// the test suite does NOT enforce that it is updated when goldens change.
-// A maintainer who updates goldens without updating surface_changes.md will
-// not see a test failure; the manifest is an audit trail, not a machine gate.
+// scripts/verify-surface-changes-manifest.sh enforces that golden changes and
+// testdata/surface/surface_changes.md are committed together. The table below
+// asserts exit codes; the verifier keeps the human change rationale from being
+// skipped when stdout/stderr goldens are intentionally updated.
 func TestGoldenSurface(t *testing.T) {
 	if goldenBinary == "" {
 		t.Fatal("goldenBinary not set — TestMain did not run")
@@ -444,6 +444,19 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"diff", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
+		},
+		// ── diff --fail-on-drift exit-code contract ─────────────────────────────
+		{
+			name: "diff-fail-on-drift",
+			args: []string{
+				"--format", "json",
+				"diff",
+				"--fail-on-drift",
+				filepath.Join("testdata", "surface", "fixtures", "diff-drift-old"),
+				filepath.Join("testdata", "surface", "fixtures", "diff-drift-new"),
+			},
+			wantCode: 7,
+			note:     "drift-detected-exit-code",
 		},
 		// ── config command group ─────────────────────────────────────────────────
 		// config init: path on stdout, exit 0; temp HOME is scrubbed to <TMPDIR>.
