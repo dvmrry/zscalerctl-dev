@@ -156,10 +156,6 @@ type machineRuntime interface {
 
 type machineRuntimeFactory func(context.Context, config.Config, globalOptions) (machineRuntime, error)
 
-type resourceSessionProvider interface {
-	Session(context.Context, resources.Product) (zscaler.ResourceSession, error)
-}
-
 type Options struct {
 	StdoutTTY bool
 	StderrTTY bool
@@ -1850,42 +1846,29 @@ func (a *App) resourceReader(ctx context.Context, cfg config.Config, opts global
 	if a.reader != nil {
 		return a.reader, nil
 	}
-	clientSecret, err := cfg.Credentials.ClientSecret.Resolve(ctx)
-	if err != nil {
-		// Invariant: keep the credential noun LAST (parenthetical, trailing). Appending text after it can reintroduce the redactor over-redaction (see redact secret_phrase/secret_assignment rules).
-		// Phrase the credential AFTER the cause (parenthesized). A "<secret>: <cause>"
-		// shape makes the redactor read the nested diagnostic as a key:value secret
-		// and redact the cause, hiding the real failure (redact secret_assignment rule).
-		return nil, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
+	// url-lookup still needs the raw reader's optional URLLookup capability,
+	// but trusted runtime owns credential resolution and SDK reader assembly.
+	return machineruntime.NewReaderFromConfig(ctx, cfg, machineruntime.Options{
+		Timeout:    opts.timeout,
+		DiagLogger: a.sdkDiagLogger(opts),
+	})
+}
+
+func (a *App) dumpCollector(
+	ctx context.Context,
+	cfg config.Config,
+	opts globalOptions,
+) (*machineruntime.DumpCollector, error) {
+	if a.reader != nil {
+		return machineruntime.NewDumpCollectorFromReader(
+			a.reader,
+			a.resourceCatalog(),
+			cfg.Defaults.Redaction,
+		), nil
 	}
-	ziaPassword, err := cfg.ZIALegacy.Password.Resolve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w (while resolving the ZIA legacy password)", zscaler.ErrMissingCredentials, err)
-	}
-	ziaAPIKey, err := cfg.ZIALegacy.APIKey.Resolve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
-	}
-	return zscaler.NewReader(zscaler.ReaderConfig{
-		ClientID:         cfg.Credentials.ClientID,
-		ClientSecret:     clientSecret,
-		VanityDomain:     cfg.VanityDomain,
-		Cloud:            cfg.Cloud,
-		ZPACustomerID:    cfg.ZPA.CustomerID,
-		ZPAMicrotenantID: cfg.ZPA.MicrotenantID,
-		AuthMode:         zscaler.AuthMode(cfg.EffectiveAuthMode()),
-		ZIALegacy: zscaler.ZIALegacyConfig{
-			Username: cfg.ZIALegacy.Username,
-			Password: ziaPassword,
-			APIKey:   ziaAPIKey,
-			Cloud:    cfg.ZIALegacy.Cloud,
-		},
-		Timeout: opts.timeout,
-		NoCache: cfg.Defaults.NoCache,
-		Proxy: zscaler.ProxyConfig{
-			URL:             cfg.Proxy.URL,
-			FromEnvironment: cfg.Proxy.FromEnvironment,
-		},
+	return machineruntime.NewDumpCollectorFromConfig(ctx, cfg, machineruntime.Options{
+		Timeout:    opts.timeout,
+		Catalog:    a.resourceCatalog(),
 		DiagLogger: a.sdkDiagLogger(opts),
 	})
 }
@@ -1900,33 +1883,6 @@ func (a *App) sdkDiagLogger(opts globalOptions) *slog.Logger {
 	return nil
 }
 
-func (a *App) dumpResourceReader(
-	ctx context.Context,
-	cfg config.Config,
-	opts globalOptions,
-	product resources.Product,
-) (ResourceReader, func(), error) {
-	reader, err := a.resourceReader(ctx, cfg, opts)
-	if err != nil {
-		return nil, nil, err
-	}
-	provider, ok := reader.(resourceSessionProvider)
-	if !ok {
-		return reader, func() {}, nil
-	}
-	session, err := provider.Session(ctx, product)
-	if err != nil {
-		if errors.Is(err, zscaler.ErrUnsupportedResource) {
-			return reader, func() {}, nil
-		}
-		return nil, nil, err
-	}
-	if session == nil {
-		return nil, nil, errors.New("reader session provider returned nil session")
-	}
-	return session, session.Close, nil
-}
-
 func (a *App) collectDump(
 	ctx context.Context,
 	cfg config.Config,
@@ -1936,115 +1892,25 @@ func (a *App) collectDump(
 	continueOnError bool,
 	progress func(done, total int, product resources.Product, resource string),
 ) (dump.Result, error) {
-	result := dump.Result{}
 	catalog := a.resourceCatalog()
-	if err := resources.AssertReadOnly(catalog...); err != nil {
-		return result, err
-	}
-	selectedCount := 0
-	for _, spec := range catalog {
-		if products[spec.Product] && dumpResourceSelected(selectedResources, spec) {
-			selectedCount++
-		}
-	}
+	selectedSpecs := selectedDumpSpecs(catalog, products, selectedResources)
 	// A full dump can run for minutes; at info, operators get the selection
 	// size up front and one progress event per resource below.
-	a.diagLogger().Info("dump starting", "resources", selectedCount)
+	a.diagLogger().Info("dump starting", "resources", len(selectedSpecs))
 
-	readers := make(map[resources.Product]ResourceReader)
-	done := 0
-	for _, spec := range catalog {
-		if !products[spec.Product] {
-			continue
-		}
-		if !dumpResourceSelected(selectedResources, spec) {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		reader, ok := readers[spec.Product]
-		if !ok {
-			var cleanup func()
-			var err error
-			reader, cleanup, err = a.dumpResourceReader(ctx, cfg, opts, spec.Product)
-			if err != nil {
-				return result, err
-			}
-			readers[spec.Product] = reader
-			// Register cleanup once per product session, not once per resource.
-			defer cleanup()
-		}
-		done++
-		if progress != nil {
-			progress(done, selectedCount, spec.Product, spec.Name)
-		}
-		a.diagLogger().Info("dump reading resource", "product", spec.Product, "resource", spec.Name)
-		if spec.SupportsReadOperation("show") {
-			record, err := reader.Show(ctx, spec.Product, spec.Name)
-			if err != nil {
-				if ctxErr := ctx.Err(); ctxErr != nil {
-					return result, ctxErr
-				}
-				if continueOnError {
-					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed"))
-					continue
-				}
-				return result, fmt.Errorf("dump %s/%s show failed: %w", spec.Product, spec.Name, err)
-			}
-			projected, report, err := resources.ProjectRecordAndVerify(spec, cfg.Defaults.Redaction, record)
-			if err != nil {
-				operation := "project"
-				kind := "projection_failed"
-				if errors.Is(err, resources.ErrUnexpectedField) {
-					operation = "validate"
-					kind = "subset_failed"
-				}
-				if continueOnError {
-					result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
-					continue
-				}
-				return result, fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
-			}
-			result.Entries = append(result.Entries, dump.ResourceDump{
-				Spec:    spec,
-				Record:  &projected,
-				Reports: []resources.ProjectionReport{report},
-			})
-			continue
-		}
-		records, err := reader.List(ctx, spec.Product, spec.Name)
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return result, ctxErr
-			}
-			if continueOnError {
-				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed"))
-				continue
-			}
-			return result, fmt.Errorf("dump %s/%s list failed: %w", spec.Product, spec.Name, err)
-		}
-		projected, reports, err := resources.ProjectRecordsAndVerify(spec, cfg.Defaults.Redaction, records)
-		if err != nil {
-			operation := "project"
-			kind := "projection_failed"
-			if errors.Is(err, resources.ErrUnexpectedField) {
-				operation = "validate"
-				kind = "subset_failed"
-			}
-			if continueOnError {
-				result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
-				continue
-			}
-			return result, fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
-		}
-		result.Entries = append(result.Entries, dump.ResourceDump{
-			Spec:    spec,
-			Records: projected,
-			Reports: reports,
-		})
+	collector, err := a.dumpCollector(ctx, cfg, opts)
+	if err != nil {
+		return dump.Result{}, err
 	}
-	return result, nil
+	return collector.Collect(ctx, selectedSpecs, machineruntime.DumpCollectOptions{
+		ContinueOnError: continueOnError,
+		Progress: func(done, total int, product resources.Product, resource string) {
+			if progress != nil {
+				progress(done, total, product, resource)
+			}
+			a.diagLogger().Info("dump reading resource", "product", product, "resource", resource)
+		},
+	})
 }
 
 // effectiveFields returns the field order to render: the renderable fields for
@@ -2891,6 +2757,24 @@ func dumpResourceSelected(selected map[dumpResourceKey]bool, spec resources.Reso
 		return true
 	}
 	return selected[dumpResourceKey{product: spec.Product, name: spec.Name}]
+}
+
+func selectedDumpSpecs(
+	catalog resources.ResourceCatalog,
+	products map[resources.Product]bool,
+	selected map[dumpResourceKey]bool,
+) []resources.ResourceSpec {
+	specs := make([]resources.ResourceSpec, 0)
+	for _, spec := range catalog {
+		if !products[spec.Product] {
+			continue
+		}
+		if !dumpResourceSelected(selected, spec) {
+			continue
+		}
+		specs = append(specs, spec)
+	}
+	return specs
 }
 
 func diffResourceSelection(selected map[dumpResourceKey]bool) map[dumpdiff.ResourceKey]bool {

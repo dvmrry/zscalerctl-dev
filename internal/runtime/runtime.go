@@ -1,8 +1,9 @@
 // Package runtime assembles trusted read-only execution stacks for adapters.
 //
 // This package owns config loading, secret resolution, SDK reader construction,
-// browser projection, and machine execution wiring. Transport adapters can use
-// it without importing the Cobra CLI adapter or duplicating raw runtime setup.
+// browser projection, dump collection, and machine execution wiring. Transport
+// adapters can use it without importing the Cobra CLI adapter or duplicating
+// raw runtime setup.
 package runtime
 
 import (
@@ -77,24 +78,20 @@ func NewMachineFromConfig(ctx context.Context, cfg config.Config, opts Options) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := applyOptions(&cfg, opts); err != nil {
-		return nil, err
-	}
-	readerConfig, err := readerConfigFromConfig(ctx, cfg, opts)
-	if err != nil {
-		return nil, err
-	}
-	newReader := opts.newReader
-	if newReader == nil {
-		newReader = func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
-			return zscaler.NewReader(cfg)
-		}
-	}
-	reader, err := newReader(readerConfig)
+	reader, err := newReaderFromConfig(ctx, &cfg, opts)
 	if err != nil {
 		return nil, err
 	}
 	return newMachineFromReader(reader, catalogFromOptions(opts.Catalog), cfg.Defaults.Redaction), nil
+}
+
+// NewReaderFromConfig resolves credentials from an already-loaded effective
+// config and constructs the SDK-backed read-only record reader.
+func NewReaderFromConfig(ctx context.Context, cfg config.Config, opts Options) (browser.RecordReader, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return newReaderFromConfig(ctx, &cfg, opts)
 }
 
 // NewMachineFromReader constructs a machine runtime around an already-trusted
@@ -210,6 +207,27 @@ func readerConfigFromConfig(
 		},
 		DiagLogger: opts.DiagLogger,
 	}, nil
+}
+
+func newReaderFromConfig(
+	ctx context.Context,
+	cfg *config.Config,
+	opts Options,
+) (browser.RecordReader, error) {
+	if err := applyOptions(cfg, opts); err != nil {
+		return nil, err
+	}
+	readerConfig, err := readerConfigFromConfig(ctx, *cfg, opts)
+	if err != nil {
+		return nil, err
+	}
+	newReader := opts.newReader
+	if newReader == nil {
+		newReader = func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
+			return zscaler.NewReader(cfg)
+		}
+	}
+	return newReader(readerConfig)
 }
 
 func newMachineFromReader(
