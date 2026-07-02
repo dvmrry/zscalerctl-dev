@@ -71,6 +71,7 @@ Column definitions:
 | `inventory` | Top-level verb inventory omitted `machine manifest` | Top-level verb inventory includes `machine manifest`. | Command-tree inventory tracks the same new machine manifest surface as the live Cobra tree. | `command-added` |
 | `introspect` | 290 commands | 292 commands; added `machine` and `machine manifest` command docs. | New machine manifest command is enumerated from the live Cobra tree; no catalog/resource execution occurs. | `command-added` |
 | `introspect-pretty` | 290 commands | 292 commands; added `machine` and `machine manifest` in the human tree. | Same live Cobra tree addition as `introspect`, reflected in the pretty introspection view. | `command-added` |
+| `diff-fail-on-drift` | (none — new case) | JSON diff report on stdout plus a drift-detected error envelope on stderr; exit code asserted as 7. | Freezes the process-boundary `diff --fail-on-drift` contract with tiny sanitized dump fixtures. | `exit-code` |
 
 ---
 

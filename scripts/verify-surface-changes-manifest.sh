@@ -23,9 +23,17 @@ if ! git rev-parse --quiet --verify "$base_ref" >/dev/null; then
 	fi
 fi
 
-# Two-dot diff so the gate also catches uncommitted changes locally and in
-# pre-commit hooks, while still working on a clean CI checkout.
+# Two-dot diff so the gate catches committed and tracked uncommitted changes
+# locally and in pre-commit hooks, while still working on a clean CI checkout.
 changed_files="$(git diff --name-only "$base_ref" --)"
+
+# New golden files are untracked before the maintainer stages them. Include
+# untracked files under the surface directory so local verification fails before
+# an accidental "golden only" commit can be assembled.
+untracked_files="$(git ls-files --others --exclude-standard -- "$surface_dir")"
+if [[ -n "$untracked_files" ]]; then
+	changed_files="${changed_files}"$'\n'"${untracked_files}"
+fi
 
 if ! grep -qE "^$surface_dir/.*\.golden$" <<<"$changed_files"; then
 	exit 0
