@@ -98,15 +98,15 @@ Exit codes are stable for scripting:
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Internal or unclassified failure |
+| `1` | Internal, canceled, or unclassified failure |
 | `2` | Usage or argument error |
 | `3` | Missing or invalid credentials |
 | `4` | Product/resource not found or unsupported |
-| `5` | Live Zscaler API access failure |
+| `5` | Live Zscaler API access failure, including machine request deadline exceeded |
 | `6` | Partial dump written (inspect `manifest.json` and `errors.ndjson`) |
 | `7` | Drift detected when `diff --fail-on-drift` is used |
 
-Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`. With `--format json` — or the default `auto` when stdout is not a terminal — a failing command emits a redacted envelope on stderr:
+Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`; machine `not_found` maps to `4`, `deadline_exceeded` maps to `5`, and `canceled` maps to `1`. With `--format json` — or the default `auto` when stdout is not a terminal — a failing command emits a redacted envelope on stderr:
 
 ```json
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }

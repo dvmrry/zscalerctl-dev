@@ -40,6 +40,8 @@ func TestExitCodeForError(t *testing.T) {
 		{"resource_not_found", zscaler.ErrResourceNotFound, exitNotFound},
 		{"wrapped_resource_not_found", fmt.Errorf("zia get: %w", zscaler.ErrResourceNotFound), exitNotFound},
 		{"machine_not_found", &machine.MachineError{Kind: machine.ErrorKindNotFound}, exitNotFound},
+		{"machine_deadline_exceeded", &machine.MachineError{Kind: machine.ErrorKindDeadlineExceeded}, exitLiveAccessFailure},
+		{"machine_canceled", &machine.MachineError{Kind: machine.ErrorKindCanceled}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
@@ -109,6 +111,46 @@ func TestErrorEnvelopeJSONIncludesMachineErrorContext(t *testing.T) {
 	}
 	if env.Error.Resource != "locations" {
 		t.Errorf("error.resource = %q, want locations", env.Error.Resource)
+	}
+}
+
+func TestErrorEnvelopeJSONPreservesMachineErrorKinds(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		kind string
+	}{
+		{name: "deadline_exceeded", kind: machine.ErrorKindDeadlineExceeded},
+		{name: "canceled", kind: machine.ErrorKindCanceled},
+		{name: "not_found", kind: machine.ErrorKindNotFound},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := &machine.MachineError{
+				Kind:      tc.kind,
+				Message:   "machine read failed",
+				Operation: machine.OperationList,
+				Product:   "zia",
+				Resource:  "locations",
+			}
+			var buf bytes.Buffer
+			writeError(&buf, output.FormatJSON, err)
+
+			var env errorEnvelope
+			if e := json.Unmarshal(buf.Bytes(), &env); e != nil {
+				t.Fatalf("json.Unmarshal(machine error envelope %q) error = %v, want nil", buf.String(), e)
+			}
+			if env.Error.Kind != tc.kind {
+				t.Errorf("error.kind for %s = %q, want %q", tc.name, env.Error.Kind, tc.kind)
+			}
+			if env.Error.Operation != "list" || env.Error.Product != "zia" || env.Error.Resource != "locations" {
+				t.Errorf("error context for %s = %q/%q/%q, want list/zia/locations", tc.name, env.Error.Operation, env.Error.Product, env.Error.Resource)
+			}
+		})
 	}
 }
 
