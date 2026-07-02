@@ -627,7 +627,7 @@ func TestProductCmd_Help_Cobra(t *testing.T) {
 // TestProductCmd_AuthGoesViaCobra verifies that "auth status" is now handled by
 // the Cobra path. With no credentials the command succeeds
 // (auth status does not require live creds) and the output contains the
-// "credentials" field emitted by runAuth / newAuthStatus.
+// "credentials" field emitted by runAuth.
 func TestProductCmd_AuthGoesViaCobra(t *testing.T) {
 	t.Parallel()
 
@@ -636,7 +636,7 @@ func TestProductCmd_AuthGoesViaCobra(t *testing.T) {
 	if err != nil {
 		t.Errorf("App.Run(auth status) error = %v, want nil", err)
 	}
-	// runAuth / newAuthStatus always emits the "credentials" field.
+	// runAuth always emits the "credentials" field.
 	if !strings.Contains(out.String(), `"credentials"`) {
 		t.Errorf("auth status output = %q, want JSON with 'credentials' field", out.String())
 	}
