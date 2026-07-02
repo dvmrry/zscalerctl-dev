@@ -28,7 +28,7 @@ The supported core CLI release surface for 1.0 includes:
 - JSON and NDJSON output shapes where each command supports them
 - machine-readable stderr error envelopes and exit-code mapping
 - the machine manifest CLI JSON output, including the current `machine.v1`
-  manifest contract version
+  manifest contract version and `docs/schema/machine-manifest.schema.json`
 - config, auth, doctor, dump, diff, and schema behavior
 - dump and diff artifacts plus their documented schemas
 - release artifacts, checksums, SBOMs, provenance, install docs, and version
@@ -47,7 +47,6 @@ supported CLI, machine contract, release artifacts, or default build/check path.
 
 A 1.0 promotion cannot proceed until:
 
-- machine manifest schema or fixture coverage is added where appropriate
 - surface freeze gates are mechanized for supported CLI, output, error, dump,
   and manifest behavior
 - release-repo promotion validation passes for the exact selected dev baseline

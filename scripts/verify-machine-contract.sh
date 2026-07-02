@@ -5,8 +5,12 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 if [[ "${ZSCALERCTL_MACHINE_CONTRACT_SKIP_GO_TESTS:-}" != "1" ]]; then
-  go test -mod=vendor ./internal/machine/... ./internal/machineio/...
+	go test -mod=vendor ./internal/machine/... ./internal/machineio/...
 fi
+
+manifest_schema="${ZSCALERCTL_MACHINE_MANIFEST_SCHEMA:-$repo_root/docs/schema/machine-manifest.schema.json}"
+manifest_fixture="${ZSCALERCTL_MACHINE_MANIFEST_FIXTURE:-$repo_root/internal/machine/testdata/contract/manifest.json}"
+go run ./scripts/verify-machine-manifest-schema.go "$manifest_schema" "$manifest_fixture"
 
 scan_root="${ZSCALERCTL_MACHINE_CONTRACT_SCAN_ROOT:-$repo_root}"
 tmp_matches="$(mktemp)"

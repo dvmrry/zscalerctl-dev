@@ -1,0 +1,7 @@
+{
+  "kind": "live_access_failed",
+  "message": "resource read failed",
+  "operation": "list",
+  "product": "zia",
+  "resource": "locations"
+}

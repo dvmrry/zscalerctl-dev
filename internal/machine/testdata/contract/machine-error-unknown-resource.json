@@ -1,0 +1,7 @@
+{
+  "kind": "unknown_resource",
+  "message": "unknown resource",
+  "operation": "list",
+  "product": "zia",
+  "resource": "missing-resource"
+}

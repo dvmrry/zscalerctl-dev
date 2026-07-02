@@ -1,0 +1,7 @@
+{
+  "kind": "unsupported_capability",
+  "message": "unsupported capability \"inventory.read\"",
+  "operation": "list",
+  "product": "zia",
+  "resource": "locations"
+}

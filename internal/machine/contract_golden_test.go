@@ -84,48 +84,146 @@ func TestMachineContractGoldenRequestFixturesExecute(t *testing.T) {
 	}
 }
 
-func TestMachineContractGoldenErrorFixture(t *testing.T) {
-	req := machine.Request{
-		RequestID:  "contract-missing-id",
-		Capability: machine.CapabilityResourcesRead,
-		Operation:  machine.OperationGet,
-		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+func TestMachineContractGoldenErrorKindFixtures(t *testing.T) {
+	tests := []struct {
+		name     string
+		fixture  string
+		executor machine.Executor
+		request  machine.Request
+	}{
+		{
+			name:    "usage",
+			fixture: "machine-error.json",
+			executor: contractExecutor(
+				resources.ProjectedRecords{},
+				resources.ProjectedRecords{},
+			),
+			request: machine.Request{
+				RequestID:  "contract-missing-id",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationGet,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:     "unsupported_capability",
+			fixture:  "machine-error-unsupported-capability.json",
+			executor: machine.Executor{Catalog: contractCatalog()},
+			request: machine.Request{
+				RequestID:  "contract-unsupported-capability",
+				Capability: "inventory.read",
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:     "unsupported_operation",
+			fixture:  "machine-error-unsupported-operation.json",
+			executor: machine.Executor{Catalog: contractCatalog()},
+			request: machine.Request{
+				RequestID:  "contract-unsupported-operation",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.Operation("delete"),
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:    "unknown_resource",
+			fixture: "machine-error-unknown-resource.json",
+			executor: machine.Executor{
+				Browser: &fakeBrowserLoader{err: resources.ErrUnknownResource},
+				Catalog: contractCatalog(),
+			},
+			request: machine.Request{
+				RequestID:  "contract-unknown-resource",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "missing-resource"},
+			},
+		},
+		{
+			name:    "not_found",
+			fixture: "machine-error-not-found.json",
+			executor: machine.Executor{
+				Browser:   &fakeBrowserLoader{getErr: resources.ErrRecordNotFound},
+				Catalog:   contractCatalog(),
+				Redaction: redact.ModeStandard,
+			},
+			request: machine.Request{
+				RequestID:  "contract-record-not-found",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationGet,
+				Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "loc-missing"},
+			},
+		},
+		{
+			name:    "live_access_failed",
+			fixture: "machine-error-live-access-failed.json",
+			executor: machine.Executor{
+				Browser: &fakeBrowserLoader{err: errors.New("raw backend failure")},
+				Catalog: contractCatalog(),
+			},
+			request: machine.Request{
+				RequestID:  "contract-live-access-failed",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:    "canceled",
+			fixture: "machine-error-canceled.json",
+			executor: machine.Executor{
+				Browser: &fakeBrowserLoader{err: context.Canceled},
+				Catalog: contractCatalog(),
+			},
+			request: machine.Request{
+				RequestID:  "contract-canceled",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:    "deadline_exceeded",
+			fixture: "machine-error-deadline-exceeded.json",
+			executor: machine.Executor{
+				Browser: &fakeBrowserLoader{err: context.DeadlineExceeded},
+				Catalog: contractCatalog(),
+			},
+			request: machine.Request{
+				RequestID:  "contract-deadline-exceeded",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
+		{
+			name:     "internal",
+			fixture:  "machine-error-internal.json",
+			executor: machine.Executor{Catalog: contractCatalog()},
+			request: machine.Request{
+				RequestID:  "contract-internal",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &machine.Input{Product: "zia", Resource: "locations"},
+			},
+		},
 	}
-	executor := contractExecutor(resources.ProjectedRecords{}, resources.ProjectedRecords{})
 
-	got, err := executor.Execute(context.Background(), req)
-	var machineErr *machine.MachineError
-	if !errors.As(err, &machineErr) {
-		t.Fatalf("Executor.Execute(missing id) error = %T %v, want *MachineError", err, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.executor.Execute(context.Background(), tt.request)
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) {
+				t.Fatalf("Executor.Execute(%s fixture request) error = %T %v, want *MachineError", tt.name, err, err)
+			}
+			if got.Error == nil {
+				t.Fatalf("Executor.Execute(%s fixture request).Error = nil, want MachineError response", tt.name)
+			}
+			assertGoldenJSON(t, tt.fixture, *machineErr)
+		})
 	}
-	if got.Error == nil {
-		t.Fatalf("Executor.Execute(missing id).Error = nil, want MachineError response")
-	}
-	assertGoldenJSON(t, "machine-error.json", *machineErr)
-}
-
-func TestMachineContractGoldenNotFoundErrorFixture(t *testing.T) {
-	req := machine.Request{
-		RequestID:  "contract-record-not-found",
-		Capability: machine.CapabilityResourcesRead,
-		Operation:  machine.OperationGet,
-		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "loc-missing"},
-	}
-	executor := machine.Executor{
-		Browser:   &fakeBrowserLoader{getErr: resources.ErrRecordNotFound},
-		Catalog:   contractCatalog(),
-		Redaction: redact.ModeStandard,
-	}
-
-	got, err := executor.Execute(context.Background(), req)
-	var machineErr *machine.MachineError
-	if !errors.As(err, &machineErr) {
-		t.Fatalf("Executor.Execute(missing record) error = %T %v, want *MachineError", err, err)
-	}
-	if got.Error == nil {
-		t.Fatalf("Executor.Execute(missing record).Error = nil, want MachineError response")
-	}
-	assertGoldenJSON(t, "machine-error-not-found.json", *machineErr)
 }
 
 func TestMachineContractGoldenManifestFixture(t *testing.T) {
