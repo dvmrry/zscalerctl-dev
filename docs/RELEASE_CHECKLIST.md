@@ -47,7 +47,6 @@ supported CLI, machine contract, release artifacts, or default build/check path.
 
 A 1.0 promotion cannot proceed until:
 
-- nonexistent record `get` maps to a verified machine `not_found` kind
 - machine manifest schema or fixture coverage is added where appropriate
 - surface freeze gates are mechanized for supported CLI, output, error, dump,
   and manifest behavior

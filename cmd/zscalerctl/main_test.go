@@ -18,6 +18,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
@@ -38,6 +39,7 @@ func TestExitCodeForError(t *testing.T) {
 		{"not_found", cli.ErrNotFound, exitNotFound},
 		{"resource_not_found", zscaler.ErrResourceNotFound, exitNotFound},
 		{"wrapped_resource_not_found", fmt.Errorf("zia get: %w", zscaler.ErrResourceNotFound), exitNotFound},
+		{"machine_not_found", &machine.MachineError{Kind: machine.ErrorKindNotFound}, exitNotFound},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
@@ -67,6 +69,40 @@ func TestErrorEnvelopeJSONIncludesResourceContext(t *testing.T) {
 	}
 	if env.Error.Kind != "not_found" {
 		t.Errorf("error.kind = %q, want not_found", env.Error.Kind)
+	}
+	if env.Error.Product != "zia" {
+		t.Errorf("error.product = %q, want zia", env.Error.Product)
+	}
+	if env.Error.Resource != "locations" {
+		t.Errorf("error.resource = %q, want locations", env.Error.Resource)
+	}
+}
+
+func TestErrorEnvelopeJSONIncludesMachineErrorContext(t *testing.T) {
+	t.Parallel()
+
+	err := &machine.MachineError{
+		Kind:      machine.ErrorKindNotFound,
+		Message:   "record not found",
+		Operation: machine.OperationGet,
+		Product:   "zia",
+		Resource:  "locations",
+	}
+	var buf bytes.Buffer
+	writeError(&buf, output.FormatJSON, err)
+
+	var env errorEnvelope
+	if e := json.Unmarshal(buf.Bytes(), &env); e != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v, want nil", buf.String(), e)
+	}
+	if env.Error.Kind != "not_found" {
+		t.Errorf("error.kind = %q, want not_found", env.Error.Kind)
+	}
+	if env.Error.Message != "record not found" {
+		t.Errorf("error.message = %q, want sanitized machine message", env.Error.Message)
+	}
+	if env.Error.Operation != "get" {
+		t.Errorf("error.operation = %q, want get", env.Error.Operation)
 	}
 	if env.Error.Product != "zia" {
 		t.Errorf("error.product = %q, want zia", env.Error.Product)

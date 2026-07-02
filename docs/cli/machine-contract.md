@@ -45,9 +45,9 @@ request/response transport, but that promotion must add the appropriate schema,
 fixture, compatibility, and semver gates.
 
 The stderr CLI error envelope and exit-code mapping are supported. The machine
-error-kind taxonomy is not yet ready to freeze: a future PR must add and verify
-the machine `not_found` kind for nonexistent record `get` behavior before 1.0
-promotion.
+error-kind taxonomy includes `not_found` for nonexistent record `get`
+behavior. Further taxonomy changes need fixture coverage before any supported
+machine request/response promotion.
 
 ## Machine Contract
 

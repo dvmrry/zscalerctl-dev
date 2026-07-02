@@ -70,14 +70,13 @@ declared supported, so request/response version fields are not required before
 1.0 while those envelopes stay candidate.
 
 The stderr error envelope and exit-code mapping are supported. The machine
-error-kind taxonomy is not yet 1.0-ready: a future PR must add and verify the
-machine `not_found` kind for nonexistent record `get` behavior before 1.0
-promotion.
+error-kind taxonomy includes `not_found` for nonexistent record `get`
+behavior. Further taxonomy changes need fixture coverage before any supported
+machine request/response promotion.
 
 The public release repo remains held until a deliberate 1.0 promotion. A 1.0
 promotion cannot proceed until:
 
-- nonexistent record `get` maps to a verified machine `not_found` kind
 - machine manifest schema or fixture coverage is added where appropriate
 - surface freeze gates are mechanized for the supported CLI/output/error/dump
   and manifest surfaces

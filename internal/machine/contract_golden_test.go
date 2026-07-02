@@ -104,6 +104,30 @@ func TestMachineContractGoldenErrorFixture(t *testing.T) {
 	assertGoldenJSON(t, "machine-error.json", *machineErr)
 }
 
+func TestMachineContractGoldenNotFoundErrorFixture(t *testing.T) {
+	req := machine.Request{
+		RequestID:  "contract-record-not-found",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "loc-missing"},
+	}
+	executor := machine.Executor{
+		Browser:   &fakeBrowserLoader{getErr: resources.ErrRecordNotFound},
+		Catalog:   contractCatalog(),
+		Redaction: redact.ModeStandard,
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("Executor.Execute(missing record) error = %T %v, want *MachineError", err, err)
+	}
+	if got.Error == nil {
+		t.Fatalf("Executor.Execute(missing record).Error = nil, want MachineError response")
+	}
+	assertGoldenJSON(t, "machine-error-not-found.json", *machineErr)
+}
+
 func TestMachineContractGoldenManifestFixture(t *testing.T) {
 	catalog := contractCatalog()
 	manifest := machine.ManifestFromCatalog(catalog)

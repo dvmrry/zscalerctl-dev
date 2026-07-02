@@ -6236,6 +6236,9 @@ func TestZIASDKListGetByIntIDScanMissIsResourceNotFound(t *testing.T) {
 	if !errors.Is(err, ErrResourceNotFound) {
 		t.Errorf("get(8) error = %v, want ErrResourceNotFound", err)
 	}
+	if !errors.Is(err, resources.ErrRecordNotFound) {
+		t.Errorf("get(8) error = %v, want resources.ErrRecordNotFound", err)
+	}
 }
 
 func TestReaderGetScanMissMapsToResourceNotFound(t *testing.T) {
@@ -6258,6 +6261,9 @@ func TestReaderGetScanMissMapsToResourceNotFound(t *testing.T) {
 	_, err := reader.Get(context.Background(), resources.ProductZIA, resourceAppServices, "999")
 	if !errors.Is(err, ErrResourceNotFound) {
 		t.Fatalf("SDKReader.Get(missing id) error = %v, want ErrResourceNotFound", err)
+	}
+	if !errors.Is(err, resources.ErrRecordNotFound) {
+		t.Fatalf("SDKReader.Get(missing id) error = %v, want resources.ErrRecordNotFound", err)
 	}
 	if errors.Is(err, ErrLiveAccessFailed) {
 		t.Errorf("SDKReader.Get(missing id) error = %v, want NOT ErrLiveAccessFailed", err)
@@ -6311,6 +6317,9 @@ func TestNormalizeLiveErrorMapsGet404ToNotFound(t *testing.T) {
 	getErr := normalizeLiveError(context.Background(), "get", resources.ProductZIA, "locations", notFound)
 	if !errors.Is(getErr, ErrResourceNotFound) {
 		t.Errorf("get 404 = %v, want ErrResourceNotFound", getErr)
+	}
+	if !errors.Is(getErr, resources.ErrRecordNotFound) {
+		t.Errorf("get 404 = %v, want resources.ErrRecordNotFound", getErr)
 	}
 	if errors.Is(getErr, ErrLiveAccessFailed) {
 		t.Errorf("get 404 = %v, want NOT ErrLiveAccessFailed", getErr)
@@ -6662,6 +6671,12 @@ func TestResourceNotFoundErrorContext(t *testing.T) {
 	t.Parallel()
 
 	e := resourceNotFoundError{product: "zpa", resource: "server-groups"}
+	if !errors.Is(e, ErrResourceNotFound) {
+		t.Fatalf("resourceNotFoundError = %v, want ErrResourceNotFound", e)
+	}
+	if !errors.Is(e, resources.ErrRecordNotFound) {
+		t.Fatalf("resourceNotFoundError = %v, want resources.ErrRecordNotFound", e)
+	}
 	got := e.ErrorContext()
 	want := ErrorContext{Product: "zpa", Resource: "server-groups", Operation: "get"}
 	if got != want {
