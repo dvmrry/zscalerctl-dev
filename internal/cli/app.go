@@ -1242,6 +1242,8 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 		}
 	}
 	renderOpts := opts
+	// The machine/core path has already applied row narrowing. The render path
+	// only keeps fields for text-format presentation order.
 	renderOpts.filters = nil
 	renderOpts.search = ""
 	if op == "show" || op == "get" {
@@ -1937,9 +1939,6 @@ func (a *App) writeProjectedRecord(
 	if err != nil {
 		return err
 	}
-	if len(opts.fields) > 0 {
-		record = record.Select(fields)
-	}
 	switch opts.format {
 	case output.FormatJSON:
 		return a.renderer(cfg, opts).WriteJSON(a.out, record)
@@ -1979,18 +1978,6 @@ func isResourceReadInvocation(rest []string, catalog resources.ResourceCatalog) 
 	return false
 }
 
-func resourceFilters(filters []recordFilter) []resources.ProjectedFilter {
-	out := make([]resources.ProjectedFilter, 0, len(filters))
-	for _, filter := range filters {
-		out = append(out, resources.ProjectedFilter{
-			Field:     filter.key,
-			Value:     filter.value,
-			Substring: filter.substring,
-		})
-	}
-	return out
-}
-
 func (a *App) writeProjectedRecords(
 	cfg config.Config,
 	opts globalOptions,
@@ -2005,17 +1992,6 @@ func (a *App) writeProjectedRecords(
 	warnUnknownFilterKeys(errW, spec, opts.filters)
 	if err := errW.Close(); err != nil {
 		return err
-	}
-	// Narrow rows before --fields narrows columns, so a filter may reference
-	// any projected field even when it is not selected for display. An empty
-	// match is success: every format renders its empty form and exits 0.
-	records, err = resources.NarrowProjectedRecords(spec, cfg.Defaults.Redaction, records, resources.NarrowOptions{
-		Fields:  opts.fields,
-		Filters: resourceFilters(opts.filters),
-		Search:  opts.search,
-	})
-	if err != nil {
-		return UsageError{Message: err.Error()}
 	}
 	switch opts.format {
 	case output.FormatJSON:
