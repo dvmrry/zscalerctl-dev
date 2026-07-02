@@ -9,8 +9,17 @@ if [[ "${ZSCALERCTL_MACHINE_CONTRACT_SKIP_GO_TESTS:-}" != "1" ]]; then
 fi
 
 manifest_schema="${ZSCALERCTL_MACHINE_MANIFEST_SCHEMA:-$repo_root/docs/schema/machine-manifest.schema.json}"
-manifest_fixture="${ZSCALERCTL_MACHINE_MANIFEST_FIXTURE:-$repo_root/internal/machine/testdata/contract/manifest.json}"
-go run ./scripts/verify-machine-manifest-schema.go "$manifest_schema" "$manifest_fixture"
+if [[ -n "${ZSCALERCTL_MACHINE_MANIFEST_FIXTURE:-}" ]]; then
+  manifest_fixtures=("$ZSCALERCTL_MACHINE_MANIFEST_FIXTURE")
+else
+  manifest_fixtures=(
+    "$repo_root/internal/machine/testdata/contract/manifest.json"
+    "$repo_root/cmd/zscalerctl/testdata/surface/machine-manifest-json.stdout.golden"
+  )
+fi
+for manifest_fixture in "${manifest_fixtures[@]}"; do
+  go run ./scripts/verify-machine-manifest-schema.go "$manifest_schema" "$manifest_fixture"
+done
 
 scan_root="${ZSCALERCTL_MACHINE_CONTRACT_SCAN_ROOT:-$repo_root}"
 tmp_matches="$(mktemp)"

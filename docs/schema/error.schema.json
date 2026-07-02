@@ -14,7 +14,25 @@
       "properties": {
         "kind": {
           "type": "string",
-          "description": "Stable error classification, e.g. usage, partial_dump, not_found, missing_credentials, invalid_resource_id, unsupported_resource, live_access_failed, invalid_proxy_config, invalid_config, internal."
+          "description": "Stable error classification. Current supported values include usage, partial_dump, drift_detected, not_found, missing_credentials, invalid_resource_id, unsupported_resource, live_access_failed, invalid_proxy_config, invalid_config, unsupported_capability, unsupported_operation, unknown_resource, canceled, deadline_exceeded, and internal. Auth/config/live API categories are represented by missing_credentials, invalid_config or invalid_proxy_config, and live_access_failed.",
+          "examples": [
+            "usage",
+            "partial_dump",
+            "drift_detected",
+            "not_found",
+            "missing_credentials",
+            "invalid_resource_id",
+            "unsupported_resource",
+            "live_access_failed",
+            "invalid_proxy_config",
+            "invalid_config",
+            "unsupported_capability",
+            "unsupported_operation",
+            "unknown_resource",
+            "canceled",
+            "deadline_exceeded",
+            "internal"
+          ]
         },
         "message": {
           "type": "string",

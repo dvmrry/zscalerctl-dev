@@ -68,13 +68,16 @@ human prose. Exit codes are part of the contract:
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Internal error |
+| `1` | Internal, canceled, or unclassified error |
 | `2` | Usage error |
 | `3` | Missing or invalid credentials |
 | `4` | Not found or unsupported, including a `get` of a nonexistent ID |
-| `5` | Live API failure |
+| `5` | Live API failure, including machine request deadline exceeded |
 | `6` | Partial dump |
 | `7` | Drift detected by `diff --fail-on-drift` |
+
+Machine `not_found` maps to exit `4`, `deadline_exceeded` maps to exit `5`,
+and `canceled` maps to exit `1`.
 
 ## Use Schemas And Field Metadata
 

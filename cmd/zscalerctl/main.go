@@ -188,8 +188,15 @@ func errorKind(err error) string {
 
 func exitCodeForError(err error) int {
 	var machineErr *machine.MachineError
-	if errors.As(err, &machineErr) && machineErr.Kind == machine.ErrorKindNotFound {
-		return exitNotFound
+	if errors.As(err, &machineErr) {
+		switch machineErr.Kind {
+		case machine.ErrorKindNotFound:
+			return exitNotFound
+		case machine.ErrorKindDeadlineExceeded:
+			return exitLiveAccessFailure
+		case machine.ErrorKindCanceled:
+			return exitInternalError
+		}
 	}
 	switch {
 	case errors.Is(err, cli.ErrUsage):
