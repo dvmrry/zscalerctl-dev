@@ -9,17 +9,45 @@ This document defines the contract split. It is not a requirement to split the
 current `zscalerctl` binary. The first boundary is internal: keep the machine
 contract independent from human presentation choices.
 
-The in-process contract types live in `internal/machine`. Adapters may translate
-Cobra argv, future stdio/JSON-RPC messages, or UI events into
+The in-process candidate contract types live in `internal/machine`. Adapters may
+translate Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
-values. Those types are a typed boundary. Stdio-style adapters that need a
-small JSON transport convention can use `internal/machineio` to decode one
-bounded request, execute it, and encode the response without importing CLI
-rendering. `machineio.ExecuteJSON` rejects unknown request fields and trailing
-JSON values before executing.
+values. Those types are a typed internal boundary, not a 1.0 public API.
+Stdio-style adapters that need a small JSON transport convention can use
+`internal/machineio` to decode one bounded request, execute it, and encode the
+response without importing CLI rendering. `machineio.ExecuteJSON` rejects
+unknown request fields and trailing JSON values before executing. The
+`machineio` transport convention is also candidate surface until explicitly
+promoted.
 
 For the agent-facing command workflow, see
 [agent-machine-workflow.md](agent-machine-workflow.md).
+
+## 1.0 Stability Boundary
+
+The 1.0-supported machine-facing CLI surfaces are:
+
+- `zscalerctl --format json machine manifest`
+- JSON and NDJSON resource command output where those modes are supported
+- the stderr machine-readable error envelope
+- the documented process exit-code mapping
+- committed schemas and fixtures for supported machine-readable artifacts
+
+`machine manifest` output is a supported CLI JSON surface. Its `version` field,
+currently `machine.v1`, is the manifest contract version. Changing the
+supported manifest shape after 1.0 requires semver treatment.
+
+`machine.Request`, `machine.Response`, `MachineError`, the in-process executor
+shape, `internal/runtime`, and `internal/machineio` remain candidate/internal
+surfaces for 1.0. Request/response version fields are not required before 1.0
+while those envelopes stay candidate. A later PR may deliberately promote a
+request/response transport, but that promotion must add the appropriate schema,
+fixture, compatibility, and semver gates.
+
+The stderr CLI error envelope and exit-code mapping are supported. The machine
+error-kind taxonomy is not yet ready to freeze: a future PR must add and verify
+the machine `not_found` kind for nonexistent record `get` behavior before 1.0
+promotion.
 
 ## Machine Contract
 
@@ -42,10 +70,10 @@ Machine consumers should pass `--format json` or `--format ndjson` explicitly
 when those formats are supported. `--format auto` remains convenient, but a
 PTY-based harness may look interactive and receive human output.
 
-Changes to JSON, NDJSON, machine error envelopes, exit codes, completion,
-introspection, or generated CLI docs are machine-contract changes. They require
-the same surface review, schema/golden coverage, and semver treatment as any
-other compatibility-affecting change.
+Changes to supported JSON, NDJSON, stderr error envelopes, exit codes,
+completion, introspection, or generated CLI docs are machine-contract changes.
+They require the same surface review, schema/golden coverage, and semver
+treatment as any other compatibility-affecting change.
 `scripts/verify-machine-contract.sh` keeps the internal machine JSON fixtures,
 strict `machineio` decode behavior, and projected-record reconstruction guard
 together as the mechanical contract gate.
@@ -119,9 +147,9 @@ Semver follows the surface being changed:
 - internal unexported streaming helpers are usually `semver:patch`
 - a supported machine event schema, supported CLI streaming command, or new
   supported output mode is usually `semver:minor`
-- breaking the existing machine response schema, JSON/NDJSON behavior, stderr
-  error envelope, exit-code mapping, dump schema, or supported command behavior
-  is `semver:major`
+- after 1.0, breaking supported JSON/NDJSON behavior, stderr error envelope,
+  exit-code mapping, dump schema, supported command behavior, or a future
+  promoted machine response schema is `semver:major`
 
 Non-decisions for this design:
 
@@ -239,7 +267,7 @@ Human CLI responsibilities include:
 Human CLI work must not change:
 
 - JSON or NDJSON output
-- stderr machine error envelopes
+- machine-readable stderr error envelopes
 - exit-code mapping
 - completion protocol
 - introspection schema or output

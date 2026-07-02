@@ -18,24 +18,45 @@ experiments, or follow-up branches. Draft pull requests are excluded by default.
 Experiments are excluded unless the promotion note explicitly says they are
 being copied as source-only unsupported experiments.
 
-The supported core CLI release surface includes:
+The supported core CLI release surface for 1.0 includes:
 
 - human commands documented by generated CLI docs, including `version`,
   `doctor`, `auth status`, `config init`, `config show`, `schema list`,
   resource `list`, `get`, and `show`, `dump`, `diff`, completion, and
   `introspect`
-- JSON, NDJSON, table, and pretty behavior where each command supports them
+- global flags and per-command supported output modes
+- JSON and NDJSON output shapes where each command supports them
 - machine-readable stderr error envelopes and exit-code mapping
-- the machine manifest and machine request/response behavior that are currently
-  documented and gated
+- the machine manifest CLI JSON output, including the current `machine.v1`
+  manifest contract version
 - config, auth, doctor, dump, diff, and schema behavior
+- dump and diff artifacts plus their documented schemas
 - release artifacts, checksums, SBOMs, provenance, install docs, and version
   metadata
+
+Machine request/response envelopes, `internal/runtime`, `internal/machineio`,
+and other `internal/` Go APIs remain candidate or trusted implementation
+surfaces unless a later PR deliberately promotes them to supported surface.
+Streaming/progress APIs and stdio, MCP, TUI, GUI, Wails, Fang, React, or daemon
+adapters are not required for 1.0 and are not supported release surface.
 
 Experiments are not supported release surface. If experiments are present in
 the promoted source tree, they remain source-only and unsupported unless a
 separate semver-bearing pull request deliberately promotes them into the
 supported CLI, machine contract, release artifacts, or default build/check path.
+
+A 1.0 promotion cannot proceed until:
+
+- nonexistent record `get` maps to a verified machine `not_found` kind
+- machine manifest schema or fixture coverage is added where appropriate
+- surface freeze gates are mechanized for supported CLI, output, error, dump,
+  and manifest behavior
+- release-repo promotion validation passes for the exact selected dev baseline
+
+The public release repo remains held until a deliberate 1.0 promotion. Giant
+catch-up promotion PRs can be useful as dry-run evidence, but they should not
+be merged as additional pre-1.0 public releases when the intended release path
+is a 1.0 freeze.
 
 Before promotion, validate the selected `zscalerctl-dev` baseline with:
 
@@ -100,8 +121,11 @@ Semver for promotion work follows the surface impact:
 - internal release-process hardening is usually `semver:patch`
 - a new supported command, output mode, machine capability, or release artifact
   is usually `semver:minor`
-- breaking CLI, JSON, NDJSON, machine, dump, manifest, schema, or exit-code
-  behavior is `semver:major`
+- before 1.0, breaking supported CLI, JSON, NDJSON, dump, manifest, schema, or
+  exit-code behavior uses `semver:minor`; `semver:major` is reserved for the
+  deliberate 1.0 promotion path and post-1.0 releases
+- after 1.0, breaking supported CLI, JSON, NDJSON, dump, manifest, schema, or
+  exit-code behavior is `semver:major`
 
 ## Gate Map
 

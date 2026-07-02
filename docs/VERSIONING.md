@@ -21,8 +21,9 @@ Before `v1.0.0`, the project uses `v0.MINOR.PATCH`.
   output semantics.
 
 Breaking changes are allowed in `0.x` minor releases, but not in patch releases.
-`semver:major` is reserved until after `v1.0.0`; cutting `v1.0.0` itself is a
-deliberate manual step (see [Automation](#automation)).
+During the pre-1.0 line, breaking supported-surface changes use
+`semver:minor`. `semver:major` is reserved until after `v1.0.0`; cutting
+`v1.0.0` itself is a deliberate manual step (see [Automation](#automation)).
 
 Machine-readable output schemas are part of the release contract. This includes
 dump manifests, redaction reports, partial-dump error records, diff reports, and
@@ -31,6 +32,16 @@ The published JSON Schemas for these artifacts live in [schema/](schema/) and
 carry versioned `schema` ids; drift tests keep them in sync with the emitting
 structs. Backward-compatible schema additions are minor releases; incompatible
 schema changes are breaking changes.
+
+The 1.0 supported surface is defined in
+[DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md). In short, it covers
+the audited read-only CLI command/flag/output/error/dump/diff/schema surfaces,
+generated CLI docs and golden surface tests, and the public `machine manifest`
+CLI JSON output. `machine manifest` uses `Manifest.Version: "machine.v1"` as
+the manifest contract version. `machine.Request`, `machine.Response`,
+`internal/runtime`, `internal/machineio`, other `internal/` Go APIs, streaming
+or event APIs, and stdio/TUI/GUI/Wails/MCP surfaces remain candidate or
+experimental unless a later PR deliberately promotes them.
 
 Process exit codes are also part of the contract: `0` success, `1` internal
 error, `2` usage (including invalid CLI flags, an invalid resource id, an
@@ -45,14 +56,17 @@ detected when `diff --fail-on-drift` is used.
 
 - Major: breaking contract changes, including removing or renaming commands,
   flags, environment variables, resources, or fields; incompatible JSON or dump
-  schema changes; auth/config precedence changes; weakened security guarantees;
-  or changed read-only guarantees.
+  schema changes; incompatible machine manifest changes; auth/config precedence
+  changes; weakened security guarantees; or changed read-only guarantees.
 - Minor: backward-compatible capability, including added resources, classified
   fields, commands, flags, output modes, or supported auth paths.
 - Patch: bug fixes, security fixes, documentation fixes, dependency updates,
   and internal hardening with no intended contract expansion. A patch may redact
   more aggressively if it fixes a leak risk, but the release notes must call it
   out because automation may observe the changed output.
+
+Candidate and experimental surfaces can change without supported-surface semver
+guarantees. They still must not weaken or bypass supported behavior.
 
 ## Automation
 
