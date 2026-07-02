@@ -4,6 +4,105 @@ This checklist is for the first public release and any release that changes the
 credentialed SDK boundary. A gate is complete only when its enforcement column is
 satisfied for the exact release commit.
 
+## Dev-To-Release Promotion Checkpoint
+
+`dvmrry/zscalerctl-dev` is the development and staging repository.
+`dvmrry/zscalerctl` is the release repository. A public release is cut from the
+release repository after promotion and validation, not directly from
+`zscalerctl-dev`, unless the repository policy changes deliberately.
+
+Promotion starts by selecting one exact `zscalerctl-dev` commit or merge commit
+as the source baseline. The promotion note must name that baseline, list the
+included pull requests, and list excluded work such as open drafts, incomplete
+experiments, or follow-up branches. Draft pull requests are excluded by default.
+Experiments are excluded unless the promotion note explicitly says they are
+being copied as source-only unsupported experiments.
+
+The supported core CLI release surface includes:
+
+- human commands documented by generated CLI docs, including `version`,
+  `doctor`, `auth status`, `config init`, `config show`, `schema list`,
+  resource `list`, `get`, and `show`, `dump`, `diff`, completion, and
+  `introspect`
+- JSON, NDJSON, table, and pretty behavior where each command supports them
+- machine-readable stderr error envelopes and exit-code mapping
+- the machine manifest and machine request/response behavior that are currently
+  documented and gated
+- config, auth, doctor, dump, diff, and schema behavior
+- release artifacts, checksums, SBOMs, provenance, install docs, and version
+  metadata
+
+Experiments are not supported release surface. If experiments are present in
+the promoted source tree, they remain source-only and unsupported unless a
+separate semver-bearing pull request deliberately promotes them into the
+supported CLI, machine contract, release artifacts, or default build/check path.
+
+Before promotion, validate the selected `zscalerctl-dev` baseline with:
+
+```sh
+go test -mod=vendor ./...
+go test -mod=vendor ./cmd/zscalerctl/... -run TestGoldenSurface
+scripts/verify-core-boundaries.sh
+scripts/test-verify-core-boundaries.sh
+scripts/verify-machine-contract.sh
+scripts/test-verify-machine-contract.sh
+scripts/verify-experiment-boundaries.sh
+scripts/test-verify-experiment-boundaries.sh
+make check
+git diff --check
+```
+
+`make check` includes the normal release, vulnerability, static-analysis,
+documentation, dependency, boundary, and security gates that do not require
+operator-provided live credentials. Any advisory finding or intentionally
+skipped live gate needs a written promotion note.
+
+After syncing the selected baseline into `dvmrry/zscalerctl`, validate again in
+the release repository:
+
+```sh
+go test -mod=vendor ./...
+go test -mod=vendor ./cmd/zscalerctl/... -run TestGoldenSurface
+scripts/verify-core-boundaries.sh
+scripts/test-verify-core-boundaries.sh
+scripts/verify-machine-contract.sh
+scripts/test-verify-machine-contract.sh
+scripts/verify-experiment-boundaries.sh
+scripts/test-verify-experiment-boundaries.sh
+make check
+make release-check
+git diff --check
+```
+
+Also confirm:
+
+- release packaging and artifact verification checks pass
+- vulnerability, dependency, secret, static-analysis, and security scans pass
+- `zscalerctl version` reports the expected injected metadata in candidate
+  binaries
+- generated docs, help, completion, and golden surfaces match the promotion
+  note
+- root `go.mod`, `go.sum`, `vendor/`, and default build paths do not contain
+  unexpected dependency changes
+- experiments did not enter release artifacts or supported docs unless the
+  promotion note explicitly includes them as unsupported source-only content
+- the release repository source baseline matches the selected dev commit after
+  any documented release-repo-only metadata changes
+
+Abort or roll back the promotion if release-repo validation fails, golden
+surface drift is not explained, vulnerability or secret gates fail, unexpected
+root dependency changes appear, experiments leak into artifacts, or the release
+repo source no longer matches the selected dev baseline.
+
+Semver for promotion work follows the surface impact:
+
+- this checklist and other docs-only promotion notes are `semver:none`
+- internal release-process hardening is usually `semver:patch`
+- a new supported command, output mode, machine capability, or release artifact
+  is usually `semver:minor`
+- breaking CLI, JSON, NDJSON, machine, dump, manifest, schema, or exit-code
+  behavior is `semver:major`
+
 ## Gate Map
 
 | Gate | Enforcement |
