@@ -272,6 +272,75 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 	}
 }
 
+func TestRunProductDoesNotReapplyNarrowingAfterMachineExecution(t *testing.T) {
+	var out, errOut bytes.Buffer
+	allModes := []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+	catalog := resources.ResourceCatalog{{
+		Product:    resources.ProductZIA,
+		Name:       "locations",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: allModes},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: allModes},
+			{Name: "country", Classification: resources.ClassOperational, AllowedModes: allModes},
+		},
+	}}
+	app := NewWithOptions(&out, &errOut, nil, Options{Catalog: catalog})
+	rt := &recordingMachineRuntime{
+		response: machine.Response{
+			Records: []map[string]any{{
+				"id":      "1",
+				"name":    "HQ",
+				"country": "US",
+			}},
+		},
+		redaction: redact.ModeStandard,
+	}
+	app.machineRuntimeFactory = func(
+		context.Context,
+		config.Config,
+		globalOptions,
+	) (machineRuntime, error) {
+		return rt, nil
+	}
+
+	args := []string{
+		"--format", "json",
+		"--fields", "name",
+		"--filter", "country=DE",
+		"--search", "branch",
+		"zia", "locations", "list",
+	}
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+	}
+	if len(rt.calls) != 1 {
+		t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
+	}
+	req := rt.calls[0]
+	wantFilters := []machine.Filter{{Field: "country", Operator: "=", Value: "DE"}}
+	if req.Input == nil ||
+		!reflect.DeepEqual(req.Input.Fields, []string{"name"}) ||
+		!reflect.DeepEqual(req.Input.Filters, wantFilters) ||
+		req.Input.Search != "branch" {
+		t.Fatalf("machine request input = %#v, want fields/filter/search", req.Input)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(list output) error = %v; output = %q", err, out.String())
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("list output = %#v, want one machine response record", decoded)
+	}
+	got := decoded[0]
+	if got["id"] != "1" || got["name"] != "HQ" || got["country"] != "US" || len(got) != 3 {
+		t.Fatalf("list output record = %#v, want verified machine response without CLI renarrowing", got)
+	}
+}
+
 func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
 	formats := []string{"json", "ndjson", "table", "pretty"}
 	for _, format := range formats {
