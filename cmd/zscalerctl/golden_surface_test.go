@@ -17,7 +17,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -306,16 +305,7 @@ func runWithGoldenSurfaceFixture(ctx context.Context, args []string, stdout, std
 	app := cli.NewWithOptions(stdout, stderr, env, cli.Options{
 		Reader: goldenSurfaceReader{fixture: fixture},
 	})
-	if err := app.Run(ctx, args); err != nil {
-		code := exitCodeForError(err)
-		format := errorFormat(args, stdout)
-		if errors.Is(err, cli.ErrPartialDump) && format != output.FormatJSON {
-			return code
-		}
-		writeError(stderr, format, err)
-		return code
-	}
-	return exitSuccess
+	return runApp(ctx, app, args, stdout, stderr)
 }
 
 type goldenSurfaceReader struct {

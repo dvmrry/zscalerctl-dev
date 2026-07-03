@@ -44,6 +44,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, env []str
 		return exitInternalError
 	}
 	defer restoreProcessOutput()
+
+	app := cli.New(stdout, stderr, env)
+	return runApp(ctx, app, args, stdout, stderr)
+}
+
+func runApp(ctx context.Context, app *cli.App, args []string, stdout, stderr io.Writer) (exitCode int) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %v", recovered))
@@ -51,7 +57,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, env []str
 		}
 	}()
 
-	app := cli.New(stdout, stderr, env)
 	if err := app.Run(ctx, args); err != nil {
 		code := exitCodeForError(err)
 		format := errorFormat(args, stdout)
