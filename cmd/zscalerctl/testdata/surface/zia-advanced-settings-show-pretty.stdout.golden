@@ -1,0 +1,54 @@
+┌────────────────────────────────────────────────────────┬────────────────────────┐
+│ field                                                  │ value                  │
+├────────────────────────────────────────────────────────┼────────────────────────┤
+│ apiSessionTimeout                                      │ 30                     │
+│ blockConnectHostSniMismatch                            │                        │
+│ blockDomainFrontingOnHostHeader                        │                        │
+│ blockHttpTunnelOnNonHttpPorts                          │                        │
+│ blockNonCompliantHttpRequestOnHttpPorts                │                        │
+│ blockNonHttpOnHttpPortEnabled                          │                        │
+│ cascadeUrlFiltering                                    │                        │
+│ dynamicUserRiskEnabled                                 │                        │
+│ ecsForAllEnabled                                       │ true                   │
+│ enableAdminRankAccess                                  │                        │
+│ enableDnsResolutionOnTransparentProxy                  │ true                   │
+│ enableEvaluatePolicyOnGlobalSSLBypass                  │                        │
+│ enableIPv6DnsOptimizationOnAllTransparentProxy         │                        │
+│ enableIPv6DnsResolutionOnTransparentProxy              │                        │
+│ enableOffice365                                        │                        │
+│ enablePolicyForUnauthenticatedTraffic                  │                        │
+│ enforceSurrogateIpForWindowsApp                        │                        │
+│ http2NonbrowserTrafficEnabled                          │                        │
+│ logInternalIp                                          │                        │
+│ preferSniOverConnHost                                  │                        │
+│ sipaXffHeaderEnabled                                   │                        │
+│ trackHttpTunnelOnHttpPorts                             │                        │
+│ uiSessionTimeout                                       │                        │
+│ zscalerClientConnector1AndPacRoadWarriorInFirewall     │                        │
+│ authBypassApps                                         │                        │
+│ authBypassUrlCategories                                │                        │
+│ authBypassUrls                                         │ admin.internal.example │
+│ basicBypassApps                                        │                        │
+│ basicBypassUrlCategories                               │                        │
+│ blockDomainFrontingApps                                │                        │
+│ digestAuthBypassApps                                   │                        │
+│ digestAuthBypassUrlCategories                          │                        │
+│ digestAuthBypassUrls                                   │                        │
+│ dnsResolutionOnTransparentProxyApps                    │                        │
+│ dnsResolutionOnTransparentProxyExemptApps              │                        │
+│ dnsResolutionOnTransparentProxyExemptUrlCategories     │                        │
+│ dnsResolutionOnTransparentProxyExemptUrls              │                        │
+│ dnsResolutionOnTransparentProxyIPv6Apps                │                        │
+│ dnsResolutionOnTransparentProxyIPv6ExemptApps          │                        │
+│ dnsResolutionOnTransparentProxyIPv6ExemptUrlCategories │                        │
+│ dnsResolutionOnTransparentProxyIPv6UrlCategories       │                        │
+│ dnsResolutionOnTransparentProxyUrlCategories           │                        │
+│ dnsResolutionOnTransparentProxyUrls                    │                        │
+│ domainFrontingBypassUrlCategories                      │                        │
+│ httpRangeHeaderRemoveUrlCategories                     │                        │
+│ kerberosBypassApps                                     │                        │
+│ kerberosBypassUrlCategories                            │                        │
+│ kerberosBypassUrls                                     │                        │
+│ preferSniOverConnHostApps                              │                        │
+│ sniDnsOptimizationBypassUrlCategories                  │                        │
+└────────────────────────────────────────────────────────┴────────────────────────┘

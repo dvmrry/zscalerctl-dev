@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/spf13/cobra"
 )
@@ -41,11 +43,20 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 // goldenBinary holds the path to the binary built in TestMain for this run.
 var goldenBinary string
 
+const (
+	goldenSurfaceFixtureEnv  = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture = "resource-read"
+)
+
 // TestMain builds the binary once for all golden tests.
 func TestMain(m *testing.M) {
 	// flag.Parse is called by testing infrastructure before TestMain in Go 1.13+,
 	// but parse here explicitly in case that changes.
 	flag.Parse()
+
+	if os.Getenv(goldenSurfaceFixtureEnv) != "" {
+		os.Exit(m.Run())
+	}
 
 	tmpDir, err := os.MkdirTemp("", "zscalerctl-golden-*")
 	if err != nil {
@@ -191,10 +202,15 @@ func collapseIntrospectFieldArrays(s string) string {
 	return reIntrospectFieldArrays.ReplaceAllString(s, `"$1": ["<omitted>"]`)
 }
 
-// runCase executes one golden case against the pre-built binary.
+// runCase executes one golden case against the pre-built binary or, for
+// fixture-backed resource read cases, against this test binary's helper process.
 // It returns scrubbed stdout, scrubbed stderr, and the actual exit code.
-func runCase(t *testing.T, homeDir string, args []string, extraEnv []string) (stdout, stderr string, code int) {
+func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fixture string) (stdout, stderr string, code int) {
 	t.Helper()
+	if fixture != "" {
+		return runFixtureCase(t, homeDir, args, extraEnv, fixture)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -220,6 +236,148 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string) (st
 	stdout = scrub(outBuf.String(), homeDir, goldenBinary)
 	stderr = scrub(errBuf.String(), homeDir, goldenBinary)
 	return stdout, stderr, code
+}
+
+func runFixtureCase(t *testing.T, homeDir string, args []string, extraEnv []string, fixture string) (stdout, stderr string, code int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	helperArgs := append([]string{"-test.run=^TestGoldenSurfaceFixtureHelper$", "--"}, args...)
+	cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...)
+	cmd.Env = hermeticEnv(homeDir, append(extraEnv, goldenSurfaceFixtureEnv+"="+fixture))
+
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	runErr := cmd.Run()
+	code = 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else if ctx.Err() != nil {
+			t.Fatalf("fixture case timed out after 15s: args=%v", args)
+		} else {
+			t.Fatalf("fixture exec error (not exit): %v", runErr)
+		}
+	}
+
+	stdout = scrub(outBuf.String(), homeDir, os.Args[0])
+	stderr = scrub(errBuf.String(), homeDir, os.Args[0])
+	return stdout, stderr, code
+}
+
+func TestGoldenSurfaceFixtureHelper(t *testing.T) {
+	fixture := os.Getenv(goldenSurfaceFixtureEnv)
+	if fixture == "" {
+		return
+	}
+	argStart := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			argStart = i + 1
+			break
+		}
+	}
+	if argStart < 0 {
+		t.Fatal("missing -- before fixture helper arguments")
+	}
+	os.Exit(runWithGoldenSurfaceFixture(context.Background(), os.Args[argStart:], os.Stdout, os.Stderr, os.Environ(), fixture))
+}
+
+func runWithGoldenSurfaceFixture(ctx context.Context, args []string, stdout, stderr io.Writer, env []string, fixture string) (exitCode int) {
+	processOutputMu.Lock()
+	defer processOutputMu.Unlock()
+
+	restoreProcessOutput, err := muteProcessOutput()
+	if err != nil {
+		writeError(stderr, output.FormatTable, fmt.Errorf("internal error: %w", err))
+		return exitInternalError
+	}
+	defer restoreProcessOutput()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %v", recovered))
+			exitCode = exitInternalError
+		}
+	}()
+
+	app := cli.NewWithOptions(stdout, stderr, env, cli.Options{
+		Reader: goldenSurfaceReader{fixture: fixture},
+	})
+	if err := app.Run(ctx, args); err != nil {
+		code := exitCodeForError(err)
+		format := errorFormat(args, stdout)
+		if errors.Is(err, cli.ErrPartialDump) && format != output.FormatJSON {
+			return code
+		}
+		writeError(stderr, format, err)
+		return code
+	}
+	return exitSuccess
+}
+
+type goldenSurfaceReader struct {
+	fixture string
+}
+
+func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" {
+		return []resources.SourceRecord{
+			resources.NewSourceRecord(map[string]any{
+				"id":             "123",
+				"name":           "HQ",
+				"ipAddresses":    []any{"2001:db8::10", "2001:db8::11"},
+				"description":    "temporary psk=surface-list-psk-canary A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v",
+				"preSharedKey":   "top-level-psk-canary",
+				"vpnCredentials": map[string]any{"preSharedKey": "nested-psk-canary"},
+				"country":        "US",
+				"tz":             "America/New_York",
+				"authRequired":   true,
+				"newSdkField":    "surprise",
+			}),
+			resources.NewSourceRecord(map[string]any{
+				"id":           "456",
+				"name":         "Branch",
+				"ipAddresses":  []any{"2001:db8::20"},
+				"description":  "ordinary branch",
+				"country":      "US",
+				"tz":           "America/Chicago",
+				"authRequired": false,
+			}),
+		}, nil
+	}
+	return nil, fmt.Errorf("surface fixture %q has no list result for %s/%s", r.fixture, product, resource)
+}
+
+func (r goldenSurfaceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" && id == "42" {
+		return resources.NewSourceRecord(map[string]any{
+			"id":             "42",
+			"name":           "GetResult",
+			"ipAddresses":    []any{"2001:db8::42"},
+			"description":    "get psk=surface-get-psk-canary",
+			"preSharedKey":   "get-top-level-psk-canary",
+			"vpnCredentials": map[string]any{"preSharedKey": "get-nested-psk-canary"},
+			"country":        "US",
+		}), nil
+	}
+	return resources.SourceRecord{}, fmt.Errorf("surface fixture %q has no get result for %s/%s id %q", r.fixture, product, resource, id)
+}
+
+func (r goldenSurfaceReader) Show(_ context.Context, product resources.Product, resource string) (resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "advanced-settings" {
+		return resources.NewSourceRecord(map[string]any{
+			"apiSessionTimeout":                     30,
+			"authBypassUrls":                        []any{"admin.internal.example"},
+			"ecsForAllEnabled":                      true,
+			"enableDnsResolutionOnTransparentProxy": true,
+			"ecsObject":                             map[string]any{"token": "raw-token-value"},
+			"newSdkField":                           "surprise",
+		}), nil
+	}
+	return resources.SourceRecord{}, fmt.Errorf("surface fixture %q has no show result for %s/%s", r.fixture, product, resource)
 }
 
 // goldenPath returns the path to the golden file for a given case name.
@@ -258,6 +416,9 @@ type surfaceCase struct {
 	// extraEnv is appended to the hermetic env for this case only.
 	// Use sparingly — the hermetic env must stay the baseline.
 	extraEnv []string
+	// fixture names a test-only offline reader fixture for successful resource
+	// read output cases. Empty means execute the built CLI binary.
+	fixture string
 	// wantCode is the expected exit code. Asserted in Go; never overwritten by -update.
 	wantCode int
 	// note is a one-word description of why this case is in the table (for the reader).
@@ -388,6 +549,37 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "resource-help",
 		},
+		// ── resource list (offline fixture → pretty/table success) ──────────────
+		{
+			name:     "zia-locations-list-pretty",
+			args:     []string{"--format", "pretty", "zia", "locations", "list"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "pretty-resource-list-shape",
+		},
+		{
+			name:     "zia-locations-list-table",
+			args:     []string{"--format", "table", "zia", "locations", "list"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "table-resource-list-shape",
+		},
+		// ── resource get (offline fixture → pretty success) ─────────────────────
+		{
+			name:     "zia-locations-get-pretty",
+			args:     []string{"--format", "pretty", "zia", "locations", "get", "42"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "pretty-resource-get-shape",
+		},
+		// ── singleton show (offline fixture → pretty success) ───────────────────
+		{
+			name:     "zia-advanced-settings-show-pretty",
+			args:     []string{"--format", "pretty", "zia", "advanced-settings", "show"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "pretty-singleton-show-shape",
+		},
 		// ── resource list (hermetic → missing credentials) ────────────────────────
 		{
 			name:     "zia-locations-list-no-creds",
@@ -408,6 +600,12 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"--format", "table", "schema", "list"},
 			wantCode: 0,
 			note:     "catalog-enumeration",
+		},
+		{
+			name:     "schema-list-pretty",
+			args:     []string{"--format", "pretty", "schema", "list"},
+			wantCode: 0,
+			note:     "pretty-catalog-enumeration",
 		},
 		// ── machine manifest ────────────────────────────────────────────────────
 		{
@@ -573,7 +771,7 @@ func TestGoldenSurface(t *testing.T) {
 				t.Fatalf("mkdir case home: %v", err)
 			}
 
-			stdout, stderr, code := runCase(t, caseHome, tc.args, tc.extraEnv)
+			stdout, stderr, code := runCase(t, caseHome, tc.args, tc.extraEnv, tc.fixture)
 
 			// Collapse per-field arrays in introspect JSON output so the surface golden
 			// captures CLI structure (commands/flags/exit-codes/catalog products+ops)
@@ -872,7 +1070,7 @@ func TestParseErrorsExitTwo(t *testing.T) {
 				t.Fatalf("mkdir case home: %v", err)
 			}
 
-			_, stderr, code := runCase(t, caseHome, tc.args, nil)
+			_, stderr, code := runCase(t, caseHome, tc.args, nil, "")
 
 			if code != 2 {
 				t.Errorf(
