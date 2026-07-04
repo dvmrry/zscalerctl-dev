@@ -8,8 +8,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/output"
-	"github.com/dvmrry/zscalerctl/internal/resources"
-	"github.com/dvmrry/zscalerctl/internal/zscaler"
+	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 )
 
 // urlLookupCommandName is the zia diagnostic verb for URL category lookups.
@@ -18,17 +17,6 @@ import (
 const urlLookupCommandName = "url-lookup"
 
 const urlLookupUsageMessage = "usage: zscalerctl zia url-lookup <url> [url...]"
-
-// URLLookupReader is the optional reader capability behind zia url-lookup.
-// It is deliberately separate from ResourceReader so adding the diagnostic
-// does not widen the resource interface every fake must implement; the CLI
-// type-asserts and reports a clean unsupported error when absent.
-type URLLookupReader interface {
-	URLLookup(ctx context.Context, urls []string) ([]zscaler.URLClassification, error)
-}
-
-// The live SDK reader must keep satisfying the optional lookup capability.
-var _ URLLookupReader = (*zscaler.SDKReader)(nil)
 
 // urlLookupResult is the hand-built output-safe view of one lookup answer.
 // Each field is copied explicitly from the adapter struct — no raw struct
@@ -61,16 +49,12 @@ func (a *App) runURLLookup(ctx context.Context, cfg config.Config, opts globalOp
 		}
 		lookupURLs = append(lookupURLs, sanitized)
 	}
-	reader, err := a.resourceReader(ctx, cfg, opts)
+	lookup, err := a.urlLookup(ctx, cfg, opts)
 	if err != nil {
 		return err
 	}
-	lookupReader, ok := reader.(URLLookupReader)
-	if !ok {
-		return fmt.Errorf("%w: %s/%s", zscaler.ErrUnsupportedResource, resources.ProductZIA, urlLookupCommandName)
-	}
-	classifications, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]zscaler.URLClassification, error) {
-		return lookupReader.URLLookup(ctx, lookupURLs)
+	classifications, err := callWithSpinner(a, opts, "contacting Zscaler", func() ([]machineruntime.URLClassification, error) {
+		return lookup.Lookup(ctx, lookupURLs)
 	})
 	if err != nil {
 		return err
@@ -91,7 +75,7 @@ func (a *App) runURLLookup(ctx context.Context, cfg config.Config, opts globalOp
 // newURLLookupResults copies the adapter results into the output-safe view,
 // normalizing nil slices to empty ones so the JSON shape is stable
 // (classification fields always render as arrays, never null).
-func newURLLookupResults(classifications []zscaler.URLClassification) urlLookupResults {
+func newURLLookupResults(classifications []machineruntime.URLClassification) urlLookupResults {
 	results := make(urlLookupResults, 0, len(classifications))
 	for _, classification := range classifications {
 		results = append(results, urlLookupResult{
