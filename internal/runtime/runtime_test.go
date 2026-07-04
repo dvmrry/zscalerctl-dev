@@ -360,7 +360,7 @@ func TestNewMachineRejectsInvalidRuntimeOptionsBeforeReader(t *testing.T) {
 	}
 }
 
-func TestMachineExecutePreservesOriginalLiveLoadError(t *testing.T) {
+func TestMachineExecuteReturnsMachineLiveLoadError(t *testing.T) {
 	t.Parallel()
 
 	sentinel := errors.New("backend sentinel")
@@ -372,12 +372,15 @@ func TestMachineExecutePreservesOriginalLiveLoadError(t *testing.T) {
 		Operation:  machine.OperationList,
 		Input:      &machine.Input{Product: "zia", Resource: "locations"},
 	})
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("Machine.Execute(live load error) error = %v, want original sentinel", err)
-	}
 	var machineErr *machine.MachineError
-	if errors.As(err, &machineErr) {
-		t.Fatalf("Machine.Execute(live load error) returned %#v, want original loader error", machineErr)
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("Machine.Execute(live load error) error = %T %v, want *machine.MachineError", err, err)
+	}
+	if machineErr.Kind != machine.ErrorKindLiveAccessFailed {
+		t.Fatalf("Machine.Execute(live load error) MachineError.Kind = %q, want %q", machineErr.Kind, machine.ErrorKindLiveAccessFailed)
+	}
+	if errors.Is(err, sentinel) {
+		t.Fatalf("Machine.Execute(live load error) error = %v, want machine error instead of original loader sentinel", err)
 	}
 	if resp.Error == nil || resp.Error.Kind != machine.ErrorKindLiveAccessFailed {
 		t.Fatalf("Machine.Execute(live load error) response error = %#v, want live_access_failed", resp.Error)

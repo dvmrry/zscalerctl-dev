@@ -40,6 +40,7 @@ func TestExitCodeForError(t *testing.T) {
 		{"resource_not_found", zscaler.ErrResourceNotFound, exitNotFound},
 		{"wrapped_resource_not_found", fmt.Errorf("zia get: %w", zscaler.ErrResourceNotFound), exitNotFound},
 		{"machine_not_found", &machine.MachineError{Kind: machine.ErrorKindNotFound}, exitNotFound},
+		{"machine_live_access_failed", &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}, exitLiveAccessFailure},
 		{"machine_deadline_exceeded", &machine.MachineError{Kind: machine.ErrorKindDeadlineExceeded}, exitLiveAccessFailure},
 		{"machine_canceled", &machine.MachineError{Kind: machine.ErrorKindCanceled}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
@@ -122,6 +123,7 @@ func TestErrorEnvelopeJSONPreservesMachineErrorKinds(t *testing.T) {
 		kind string
 	}{
 		{name: "deadline_exceeded", kind: machine.ErrorKindDeadlineExceeded},
+		{name: "live_access_failed", kind: machine.ErrorKindLiveAccessFailed},
 		{name: "canceled", kind: machine.ErrorKindCanceled},
 		{name: "not_found", kind: machine.ErrorKindNotFound},
 	}
@@ -151,6 +153,31 @@ func TestErrorEnvelopeJSONPreservesMachineErrorKinds(t *testing.T) {
 				t.Errorf("error context for %s = %q/%q/%q, want list/zia/locations", tc.name, env.Error.Operation, env.Error.Product, env.Error.Resource)
 			}
 		})
+	}
+}
+
+func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
+	t.Parallel()
+
+	err := &machine.MachineError{
+		Kind:      machine.ErrorKindLiveAccessFailed,
+		Message:   "resource read failed",
+		Operation: machine.OperationList,
+		Product:   "zia",
+		Resource:  "locations",
+	}
+	if got := exitCodeForError(err); got != exitLiveAccessFailure {
+		t.Fatalf("exitCodeForError(machine live_access_failed) = %d, want %d", got, exitLiveAccessFailure)
+	}
+
+	var stderr bytes.Buffer
+	writeError(&stderr, output.FormatJSON, err)
+	var env errorEnvelope
+	if e := json.Unmarshal(stderr.Bytes(), &env); e != nil {
+		t.Fatalf("json.Unmarshal(machine live_access_failed stderr %q) error = %v, want nil", stderr.String(), e)
+	}
+	if env.Error.Kind != machine.ErrorKindLiveAccessFailed {
+		t.Errorf("stderr error.kind = %q, want %q", env.Error.Kind, machine.ErrorKindLiveAccessFailed)
 	}
 }
 
