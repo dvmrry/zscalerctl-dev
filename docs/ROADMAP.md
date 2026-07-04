@@ -70,9 +70,12 @@ exit 5, `canceled` → exit 1, envelope kind vocabulary enumerated in
 5. Tag `v1.0.0` via manual `workflow_dispatch bump=major`.
 
 Nothing else gates the tag. (Revised per external review: adapter-enablement
-cleanup that was previously bundled here moved to Phase 2.)
+cleanup that was previously bundled here moved to Phase 2.) Owner decision
+2026-07-04: dev `main` continues shipping 0.x minors until the backlog is
+done; Phase 2+ merges are NOT gated on the public 1.0 tag — promotion, when
+chosen, picks a validated baseline commit.
 
-## Phase 2 — Adapter-enablement cleanup (post-1.0, pre-adapter-promotion)
+## Phase 2 — Adapter-enablement cleanup (pre-adapter-promotion)
 
 1. **`refactor(cli)`: url-lookup behind runtime.** Retire `resourceReader`;
    remove `internal/cli`'s last `internal/zscaler` import; then add

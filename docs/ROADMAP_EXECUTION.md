@@ -24,9 +24,11 @@ pasted cold into a fresh agent session, or driven by a coordinator.
    change (the verifier enforces this; agents forget it).
 5. **Review pass before merge:** run an adversarial review (`/code-review` or
    a second agent) on the diff; the implementing agent never reviews itself.
-6. **Sequencing:** briefs P2.x must not merge to `main` until the public 1.0
-   tag exists (ROADMAP Phase 1). P3.1 may merge any time (test-only, adds
-   freeze coverage).
+6. **Sequencing:** merge in review order on the 0.x line — VERSIONING.md
+   allows breaking changes in 0.x minors, and dev `main` keeps shipping minors
+   until the work runs dry (owner decision 2026-07-04). The deliberate public
+   promotion, whenever chosen, selects a validated baseline commit; it does
+   not gate dev merges.
 
 Universal constraints for every brief (paste into every agent prompt):
 
