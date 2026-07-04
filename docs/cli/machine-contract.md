@@ -54,6 +54,28 @@ error-kind taxonomy has representative fixtures for the current stable kinds:
 `internal`. Further taxonomy changes need fixture coverage before any supported
 machine request/response promotion.
 
+## Error Vocabulary Map
+
+Envelope `message` text is diagnostic prose, not a stable machine surface.
+Consumers should branch on error kinds and process exit codes; those are the
+stable compatibility surface.
+
+| Scenario | Machine kind | Envelope kind | Exit code | Internal sentinel | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Usage error | `usage` | `usage` | `2` for `cli.ErrUsage`; `1` if an unadapted `MachineError{Kind: usage}` reaches `main.go` | `cli.ErrUsage`; `resources.ErrMissingID`; `resources.ErrUnknownField` | `machineErrorFromLoadError` maps missing IDs and unknown projected fields to machine usage. Command usage reaches `main.go` as `cli.ErrUsage`. |
+| Unknown/unsupported resource | `unknown_resource` | `unknown_resource` for machine errors; `unsupported_resource` for the Zscaler sentinel; `not_found` for CLI catalog misses | `4` for command-boundary unsupported/not-found errors; `1` if an unadapted `MachineError{Kind: unknown_resource}` reaches `main.go` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | The executor vocabulary is `unknown_resource`. `main.go` maps `zscaler.ErrUnsupportedResource` to `unsupported_resource`, and CLI catalog misses unwrap to `cli.ErrNotFound`. |
+| Record not found (get of nonexistent id) | `not_found` | `not_found` | `4` | `resources.ErrRecordNotFound`; `zscaler.ErrResourceNotFound`; `cli.ErrNotFound` | `main.go` special-cases `machine.ErrorKindNotFound` to the not-found exit code. |
+| Missing credentials | — | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | No executor machine kind; config/runtime construction reports the Zscaler sentinel. |
+| Invalid resource id | — | `invalid_resource_id` | `2` | `zscaler.ErrInvalidResourceID` | Command-boundary usage-class error; `machineErrorFromLoadError` has no separate invalid-ID kind. |
+| Live access failure | `live_access_failed` | `live_access_failed` | `5` for `zscaler.ErrLiveAccessFailed`; `1` if an unadapted `MachineError{Kind: live_access_failed}` reaches `main.go` | `zscaler.ErrLiveAccessFailed`; executor default branch | The executor default hides backend details as machine `live_access_failed`. `main.go` maps only the Zscaler sentinel to exit 5. |
+| Deadline exceeded | `deadline_exceeded` | `deadline_exceeded` | `5` | `context.DeadlineExceeded` | `main.go` special-cases `machine.ErrorKindDeadlineExceeded` to the live-access failure exit code. |
+| Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
+| Partial dump | — | `partial_dump` | `6` | `cli.ErrPartialDump` | For non-JSON formats, `run` returns the code without writing the JSON envelope. |
+| Drift detected | — | `drift_detected` | `7` | `cli.ErrDriftDetected` | Set by `diff --fail-on-drift`. |
+| Invalid config | — | `invalid_config` | `2` | `config.ErrInvalidConfig` | Config parsing/loading is outside `internal/machine`. |
+| Invalid proxy config | — | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Proxy validation is outside `internal/machine`. |
+| Internal | `internal` | `internal` | `1` | `machine.ErrorKindInternal`; default branch | Executor wiring errors use machine `internal`; otherwise unmapped command errors fall through to internal. |
+
 ## Machine Contract
 
 The machine contract is the product floor:
