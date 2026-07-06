@@ -196,6 +196,8 @@ func exitCodeForError(err error) int {
 		switch machineErr.Kind {
 		case machine.ErrorKindNotFound:
 			return exitNotFound
+		case machine.ErrorKindLiveAccessFailed:
+			return exitLiveAccessFailure
 		case machine.ErrorKindDeadlineExceeded:
 			return exitLiveAccessFailure
 		case machine.ErrorKindCanceled:

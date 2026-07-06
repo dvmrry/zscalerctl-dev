@@ -120,11 +120,7 @@ func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Res
 		Catalog:   m.catalog,
 		Redaction: m.redaction,
 	}
-	resp, err := executor.Execute(ctx, req)
-	if err != nil {
-		return resp, runtimeErrorFromMachineExecution(err, loader.err)
-	}
-	return resp, nil
+	return executor.Execute(ctx, req)
 }
 
 // Manifest returns the capability manifest for the runtime catalog.
@@ -251,7 +247,6 @@ func newMachineFromReader(
 
 type machineBrowserLoader struct {
 	service browser.Service
-	err     error
 }
 
 func (l *machineBrowserLoader) ListProjected(
@@ -259,13 +254,7 @@ func (l *machineBrowserLoader) ListProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.ListProjected(ctx, product, resource)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
+	return l.service.ListProjected(ctx, product, resource)
 }
 
 func (l *machineBrowserLoader) ShowProjected(
@@ -273,13 +262,7 @@ func (l *machineBrowserLoader) ShowProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.ShowProjected(ctx, product, resource)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
+	return l.service.ShowProjected(ctx, product, resource)
 }
 
 func (l *machineBrowserLoader) GetProjectedByID(
@@ -288,30 +271,7 @@ func (l *machineBrowserLoader) GetProjectedByID(
 	resource string,
 	id string,
 ) (resources.ProjectedRecords, error) {
-	l.err = nil
-	projected, err := l.service.GetProjectedByID(ctx, product, resource, id)
-	if err != nil {
-		l.err = err
-		return resources.ProjectedRecords{}, err
-	}
-	return projected, nil
-}
-
-func runtimeErrorFromMachineExecution(err error, loadErr error) error {
-	if err == nil {
-		return nil
-	}
-	if loadErr == nil {
-		return err
-	}
-	var machineErr *machine.MachineError
-	if !errors.As(err, &machineErr) {
-		return err
-	}
-	if machineErr.Kind != machine.ErrorKindLiveAccessFailed {
-		return err
-	}
-	return loadErr
+	return l.service.GetProjectedByID(ctx, product, resource, id)
 }
 
 func catalogFromOptions(catalog resources.ResourceCatalog) resources.ResourceCatalog {
