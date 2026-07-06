@@ -16,11 +16,11 @@ import (
 // it reaches stdout. When color is disabled the output is byte-clean (no ANSI
 // escapes), so it stays safe to capture or diff.
 
-// prettyProfile pins the color profile from the resolved Style instead of
+// ColorProfile pins the color profile from the resolved Style instead of
 // asking lipgloss or colorprofile to auto-detect the environment. This keeps
 // pretty output deterministic and honors --color / NO_COLOR / TTY exactly as
 // the rest of the tool does.
-func prettyProfile(style Style) colorprofile.Profile {
+func ColorProfile(style Style) colorprofile.Profile {
 	switch {
 	case !style.Color:
 		return colorprofile.NoTTY
@@ -38,7 +38,7 @@ func RenderRecordsPretty(headers []string, rows [][]string, style Style) SafeTex
 	headerStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	cellStyle := lipgloss.NewStyle().Padding(0, 1)
 	if style.Color {
-		headerStyle = headerStyle.Foreground(prettyAccent(style))
+		headerStyle = headerStyle.Foreground(AccentColor(style))
 	}
 
 	t := table.New().
@@ -68,8 +68,8 @@ func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
 	keyStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	cellStyle := lipgloss.NewStyle().Padding(0, 1)
 	if style.Color {
-		headerStyle = headerStyle.Foreground(prettyAccent(style))
-		keyStyle = keyStyle.Foreground(prettyAccent(style))
+		headerStyle = headerStyle.Foreground(AccentColor(style))
+		keyStyle = keyStyle.Foreground(AccentColor(style))
 	}
 
 	tableRows := make([][]string, 0, len(rows))
@@ -98,11 +98,22 @@ func RenderKeyValuesPretty(rows []KV, style Style) SafeText {
 	return renderPrettyTable(t, style)
 }
 
-func prettyAccent(style Style) color.Color {
+// AccentColor is the shared accent for human output (pretty tables, styled
+// help). One palette for all human surfaces so they cannot drift apart.
+func AccentColor(style Style) color.Color {
 	if style.Color256 {
 		return lipgloss.Color("45")
 	}
 	return lipgloss.Color("6")
+}
+
+// MutedColor is the shared muted text color for secondary human output such
+// as flag tokens in styled help.
+func MutedColor(style Style) color.Color {
+	if style.Color256 {
+		return lipgloss.Color("245")
+	}
+	return lipgloss.Color("8")
 }
 
 func prettyBorderStyle(style Style) lipgloss.Style {
@@ -125,14 +136,16 @@ func renderPrettyTable(t *table.Table, style Style) SafeText {
 	if style.Width > 0 && lipgloss.Width(rendered) > style.Width {
 		rendered = t.Width(style.Width).Render()
 	}
-	return NewSafeText(filterPrettyANSI(rendered, style) + "\n")
+	return NewSafeText(FilterANSI(rendered, style) + "\n")
 }
 
-func filterPrettyANSI(rendered string, style Style) string {
+// FilterANSI downsamples or strips ANSI in rendered text according to the
+// resolved Style, using the pinned profile (never environment detection).
+func FilterANSI(rendered string, style Style) string {
 	var buf bytes.Buffer
 	w := colorprofile.Writer{
 		Forward: &buf,
-		Profile: prettyProfile(style),
+		Profile: ColorProfile(style),
 	}
 	_, _ = w.WriteString(rendered)
 	return buf.String()

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dvmrry/zscalerctl/internal/redact"
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
@@ -145,14 +145,7 @@ func productCommandUsage(product resources.Product, width int, catalog resources
 // plus the renderable field names (standard mode), so the operator can discover
 // what to pass to --fields without consulting `schema list`.
 func resourceUsage(product resources.Product, spec resources.ResourceSpec, width int) string {
-	msg := fmt.Sprintf(
-		"usage: zscalerctl %s %s %s",
-		product,
-		spec.Name,
-		strings.Join(readOperationNames(spec), "|"),
-	)
-	if fields := spec.FieldOrder(redact.ModeStandard); len(fields) > 0 {
-		msg += "\nfields:\n" + columnize(fields, width)
-	}
-	return msg
+	// A zero-value Style renders without color, so this stays byte-identical
+	// plain text (usage errors and envelopes must never carry ANSI).
+	return newHelpRenderer(output.Style{}).renderResourceUsage(product, spec, width)
 }
