@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"regexp"
@@ -9,7 +8,6 @@ import (
 	"unicode"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -30,12 +28,8 @@ func newHelpRenderer(style output.Style) helpRenderer {
 	if !style.Color {
 		return r
 	}
-	accent := lipgloss.Color("6")
-	muted := lipgloss.Color("8")
-	if style.Color256 {
-		accent = lipgloss.Color("45")
-		muted = lipgloss.Color("245")
-	}
+	accent := output.AccentColor(style)
+	muted := output.MutedColor(style)
 	r.heading = lipgloss.NewStyle().Bold(true).Foreground(accent)
 	r.usage = lipgloss.NewStyle().Foreground(accent)
 	r.command = lipgloss.NewStyle().Bold(true).Foreground(accent)
@@ -157,10 +151,10 @@ func (r helpRenderer) writeCommands(b *strings.Builder, cmd *cobra.Command) {
 	}
 }
 
+// renderResourceUsage is the single content builder for resource help; with
+// color off the styling helpers are no-ops, so the plain resourceUsage wrapper
+// delegates here and both surfaces share one shape by construction.
 func (r helpRenderer) renderResourceUsage(product resources.Product, spec resources.ResourceSpec, width int) string {
-	if !r.style.Color {
-		return resourceUsage(product, spec, width)
-	}
 	var b strings.Builder
 	fmt.Fprintf(
 		&b,
@@ -219,23 +213,7 @@ func (r helpRenderer) filterANSI(rendered string) string {
 	if !r.style.Color {
 		return rendered
 	}
-	var buf bytes.Buffer
-	w := colorprofile.Writer{
-		Forward: &buf,
-		Profile: helpColorProfile(r.style),
-	}
-	_, _ = w.WriteString(rendered)
-	return buf.String()
-}
-
-func helpColorProfile(style output.Style) colorprofile.Profile {
-	if !style.Color {
-		return colorprofile.NoTTY
-	}
-	if style.Color256 {
-		return colorprofile.ANSI256
-	}
-	return colorprofile.ANSI
+	return output.FilterANSI(rendered, r.style)
 }
 
 func firstNonEmpty(values ...string) string {

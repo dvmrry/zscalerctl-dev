@@ -86,15 +86,16 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 	// the help func fires, cmd.Flags().Args() is populated: it contains the
 	// positional args (e.g. ["locations"] or ["locations", "list"]) stripped of
 	// any flags. We use it as the reliable source for the resource name.
+	helpRenderer := newHelpRenderer(a.style(opts))
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		positionals := c.Flags().Args()
 		if len(positionals) >= 1 {
 			if spec, ok := catalog.FindSpec(product, positionals[0]); ok {
-				fmt.Fprintln(c.OutOrStdout(), newHelpRenderer(a.style(opts)).renderResourceUsage(product, spec, 0))
+				fmt.Fprintln(c.OutOrStdout(), helpRenderer.renderResourceUsage(product, spec, 0))
 				return
 			}
 		}
-		if err := newHelpRenderer(a.style(opts)).writeHelp(c.OutOrStdout(), c); err != nil {
+		if err := helpRenderer.writeHelp(c.OutOrStdout(), c); err != nil {
 			c.PrintErrln(err)
 		}
 	})
