@@ -17,7 +17,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,7 +31,6 @@ import (
 	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
-	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/spf13/cobra"
 )
@@ -286,36 +284,11 @@ func TestGoldenSurfaceFixtureHelper(t *testing.T) {
 	os.Exit(runWithGoldenSurfaceFixture(context.Background(), os.Args[argStart:], os.Stdout, os.Stderr, os.Environ(), fixture))
 }
 
-func runWithGoldenSurfaceFixture(ctx context.Context, args []string, stdout, stderr io.Writer, env []string, fixture string) (exitCode int) {
-	processOutputMu.Lock()
-	defer processOutputMu.Unlock()
-
-	restoreProcessOutput, err := muteProcessOutput()
-	if err != nil {
-		writeError(stderr, output.FormatTable, fmt.Errorf("internal error: %w", err))
-		return exitInternalError
-	}
-	defer restoreProcessOutput()
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %v", recovered))
-			exitCode = exitInternalError
-		}
-	}()
-
+func runWithGoldenSurfaceFixture(ctx context.Context, args []string, stdout, stderr io.Writer, env []string, fixture string) int {
 	app := cli.NewWithOptions(stdout, stderr, env, cli.Options{
 		Reader: goldenSurfaceReader{fixture: fixture},
 	})
-	if err := app.Run(ctx, args); err != nil {
-		code := exitCodeForError(err)
-		format := errorFormat(args, stdout)
-		if errors.Is(err, cli.ErrPartialDump) && format != output.FormatJSON {
-			return code
-		}
-		writeError(stderr, format, err)
-		return code
-	}
-	return exitSuccess
+	return runApp(ctx, app, args, stdout, stderr)
 }
 
 type goldenSurfaceReader struct {

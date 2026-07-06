@@ -34,7 +34,12 @@ func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, os.Environ()))
 }
 
-func run(ctx context.Context, args []string, stdout, stderr io.Writer, env []string) (exitCode int) {
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, env []string) int {
+	app := cli.New(stdout, stderr, env)
+	return runApp(ctx, app, args, stdout, stderr)
+}
+
+func runApp(ctx context.Context, app *cli.App, args []string, stdout, stderr io.Writer) (exitCode int) {
 	processOutputMu.Lock()
 	defer processOutputMu.Unlock()
 
@@ -51,7 +56,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, env []str
 		}
 	}()
 
-	app := cli.New(stdout, stderr, env)
 	if err := app.Run(ctx, args); err != nil {
 		code := exitCodeForError(err)
 		format := errorFormat(args, stdout)
