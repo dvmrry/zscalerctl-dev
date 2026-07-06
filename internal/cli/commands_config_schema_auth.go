@@ -1,15 +1,20 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/fileperm"
+	"github.com/dvmrry/zscalerctl/internal/output"
+	"github.com/dvmrry/zscalerctl/internal/resources"
+	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -220,4 +225,82 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 			return a.runAuth(cmd.Context(), cfg, opts, args)
 		},
 	}
+}
+
+func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "status" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
+		return UsageError{Message: "usage: zscalerctl auth status"}
+	}
+	status := machineruntime.NewAuthStatus(cfg)
+	if opts.format == output.FormatJSON {
+		return a.renderer(cfg, opts).WriteJSON(a.out, status)
+	}
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
+		return rejectUnsupportedFormat("auth status", opts.format)
+	}
+	body := renderKeyValuesForFormat(authStatusRows(status), opts.format, a.style(opts))
+	return a.renderer(cfg, opts).WriteText(a.out, body)
+}
+
+func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "show" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
+		return UsageError{Message: "usage: zscalerctl config show"}
+	}
+	safe := machineruntime.NewConfigStatus(cfg)
+	if opts.format == output.FormatJSON {
+		return a.renderer(cfg, opts).WriteJSON(a.out, safe)
+	}
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
+		return rejectUnsupportedFormat("config show", opts.format)
+	}
+	rows := []output.KV{
+		{Key: "Profile", Value: safe.Profile},
+		{Key: "Config", Value: machineruntime.ConfigSourceStatus(safe)},
+		{Key: "Auth Mode", Value: safe.AuthMode},
+		{Key: "Vanity Domain", Value: machineruntime.SetStatus(safe.VanityDomainSet)},
+		{Key: "Cloud", Value: machineruntime.ValueOrUnset(safe.Cloud)},
+		{Key: "Client ID", Value: machineruntime.SetStatus(safe.Credentials.ClientIDSet)},
+		{Key: "Client Secret", Value: machineruntime.SecretSourceStatus(safe.Credentials.ClientSecretSet || safe.Credentials.ClientSecretFileSet, safe.Credentials.ClientSecretScheme)},
+		{Key: "ZPA Customer ID", Value: machineruntime.SetStatus(safe.ZPA.CustomerIDSet)},
+		{Key: "ZPA Microtenant ID", Value: machineruntime.SetStatus(safe.ZPA.MicrotenantIDSet)},
+		{Key: "ZIA Username", Value: machineruntime.SetStatus(safe.ZIALegacy.UsernameSet)},
+		{Key: "ZIA Password", Value: machineruntime.SecretSourceStatus(safe.ZIALegacy.PasswordSet || safe.ZIALegacy.PasswordFileSet, safe.ZIALegacy.PasswordScheme)},
+		{Key: "ZIA API Key", Value: machineruntime.SecretSourceStatus(safe.ZIALegacy.APIKeySet || safe.ZIALegacy.APIKeyFileSet, safe.ZIALegacy.APIKeyScheme)},
+		{Key: "ZIA Cloud", Value: machineruntime.SetStatus(safe.ZIALegacy.CloudSet)},
+		{Key: "Proxy", Value: machineruntime.ProxyStatus(cfg.Proxy)},
+		{Key: "Redaction", Value: safe.Defaults.Redaction},
+		{Key: "Cache", Value: machineruntime.CacheStatus(safe.Defaults.NoCache)},
+	}
+	body := renderKeyValuesForFormat(rows, opts.format, a.style(opts))
+	return a.renderer(cfg, opts).WriteText(a.out, body)
+}
+
+func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+	// args contains only the post-verb positional args; Cobra routing already
+	// ensured the "list" verb was present. Reject any unexpected extra args.
+	if len(args) != 0 {
+		return UsageError{Message: "usage: zscalerctl schema list"}
+	}
+	catalog := a.resourceCatalog()
+	if err := resources.AssertReadOnly(catalog...); err != nil {
+		return err
+	}
+	if opts.format == output.FormatJSON {
+		return a.renderer(cfg, opts).WriteJSON(a.out, catalog)
+	}
+	if opts.format != output.FormatTable && opts.format != output.FormatPretty {
+		return rejectUnsupportedFormat("schema list", opts.format)
+	}
+	if len(catalog) == 0 {
+		return a.renderer(cfg, opts).WriteText(a.out, output.NewSafeText("no resources enabled yet\n"))
+	}
+	var body strings.Builder
+	for _, spec := range catalog {
+		fmt.Fprintf(&body, "%s\t%s\t%s\n", spec.Product, spec.Name, strings.Join(readOperationNames(spec), ","))
+	}
+	return a.renderer(cfg, opts).WriteText(a.out, output.NewSafeText(body.String()))
 }

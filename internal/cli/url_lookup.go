@@ -113,36 +113,16 @@ func nonNilStrings(values []string) []string {
 	return append(out, values...)
 }
 
-func urlLookupRows(results urlLookupResults) [][]string {
-	rows := make([][]string, 0, len(results))
-	for _, result := range results {
-		rows = append(rows, []string{
-			formatTableValue(result.URL),
-			formatTableValue(result.Classifications),
-			formatTableValue(result.SecurityAlertClassifications),
-			formatTableValue(result.Application),
-		})
+func (a *App) urlLookup(
+	ctx context.Context,
+	cfg config.Config,
+	opts globalOptions,
+) (*machineruntime.URLLookup, error) {
+	if a.reader != nil {
+		return machineruntime.NewURLLookupFromReader(a.reader)
 	}
-	return rows
-}
-
-func renderURLLookupTable(results urlLookupResults, style output.Style) output.SafeText {
-	var body strings.Builder
-	for i, field := range urlLookupFieldOrder {
-		if i > 0 {
-			body.WriteByte('\t')
-		}
-		body.WriteString(style.Key(field))
-	}
-	body.WriteByte('\n')
-	for _, row := range urlLookupRows(results) {
-		for i, cell := range row {
-			if i > 0 {
-				body.WriteByte('\t')
-			}
-			body.WriteString(style.Value(urlLookupFieldOrder[i], cell))
-		}
-		body.WriteByte('\n')
-	}
-	return output.NewSafeText(body.String())
+	return machineruntime.NewURLLookupFromConfig(ctx, cfg, machineruntime.Options{
+		Timeout:    opts.timeout,
+		DiagLogger: a.sdkDiagLogger(opts),
+	})
 }
