@@ -685,6 +685,7 @@ func rejectUnsupportedFormat(command string, format output.Format) error {
 // between the live dispatch path and the generator / introspection path.
 func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	root := newRootCmd(a)
+	configureHelp(root, a.style(opts))
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
 		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
 		a.newMachineCmd(opts))
@@ -911,16 +912,17 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 	// the help func fires, cmd.Flags().Args() is populated: it contains the
 	// positional args (e.g. ["locations"] or ["locations", "list"]) stripped of
 	// any flags. We use it as the reliable source for the resource name.
-	defaultHelp := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		positionals := c.Flags().Args()
 		if len(positionals) >= 1 {
 			if spec, ok := catalog.FindSpec(product, positionals[0]); ok {
-				fmt.Fprintln(c.OutOrStdout(), resourceUsage(product, spec, 0))
+				fmt.Fprintln(c.OutOrStdout(), newHelpRenderer(a.style(opts)).renderResourceUsage(product, spec, 0))
 				return
 			}
 		}
-		defaultHelp(c, args)
+		if err := newHelpRenderer(a.style(opts)).writeHelp(c.OutOrStdout(), c); err != nil {
+			c.PrintErrln(err)
+		}
 	})
 
 	// url-lookup is a ZIA-only diagnostic verb (not a catalog resource). Wire it
