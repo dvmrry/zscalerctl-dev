@@ -13,13 +13,25 @@ check_package() {
   local deps_file_env="$3"
   local forbidden_re="$4"
   local guidance="$5"
+  local mode="${6:-deps}"
   local deps_file="$tmp_dir/${label//[^A-Za-z0-9]/_}.deps"
   local matches
 
   if [[ -n "${!deps_file_env:-}" ]]; then
     cat "${!deps_file_env}" >"$deps_file"
   else
-    go list -deps -mod=vendor "$package" >"$deps_file"
+    case "$mode" in
+      deps)
+        go list -deps -mod=vendor "$package" >"$deps_file"
+        ;;
+      imports)
+        go list -f '{{range .Imports}}{{.}}{{"\n"}}{{end}}' -mod=vendor "$package" >"$deps_file"
+        ;;
+      *)
+        echo "verify-core-boundaries: unknown check mode $mode" >&2
+        exit 1
+        ;;
+    esac
   fi
 
   matches="$(grep -E "$forbidden_re" "$deps_file" || true)"
@@ -34,6 +46,7 @@ check_package() {
 ui_runtime_re='github\.com/charmbracelet/(bubbletea|bubbles)|github\.com/wailsapp/wails|vite|react|internal/tui'
 cli_rendering_re='github\.com/spf13/cobra|github\.com/charmbracelet/lipgloss|internal/(cli|output)'
 raw_runtime_re='github\.com/dvmrry/zscalerctl/internal/(config|credentials|secret|secretref|zscaler|runtime)'
+cli_zscaler_re='^github\.com/dvmrry/zscalerctl/internal/zscaler$'
 
 check_package \
   "cmd/zscalerctl" \
@@ -69,5 +82,13 @@ check_package \
   "ZSCALERCTL_MACHINEIO_DEPS_FILE" \
   "(^|/)(${ui_runtime_re}|${cli_rendering_re}|${raw_runtime_re})(/|$)" \
   "internal/machineio must remain a machine JSON adapter helper: no CLI/UI/rendering packages and no raw config, secret, credential, or SDK adapter packages."
+
+check_package \
+  "internal/cli" \
+  "./internal/cli" \
+  "ZSCALERCTL_CLI_DEPS_FILE" \
+  "${cli_zscaler_re}" \
+  "internal/cli must route live Zscaler access through internal/runtime and must not import internal/zscaler directly." \
+  "imports"
 
 echo "verify-core-boundaries: PASS"

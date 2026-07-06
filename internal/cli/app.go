@@ -1815,13 +1815,15 @@ func validateExistingDumpDir(dir string) error {
 	return nil
 }
 
-func (a *App) resourceReader(ctx context.Context, cfg config.Config, opts globalOptions) (ResourceReader, error) {
+func (a *App) urlLookup(
+	ctx context.Context,
+	cfg config.Config,
+	opts globalOptions,
+) (*machineruntime.URLLookup, error) {
 	if a.reader != nil {
-		return a.reader, nil
+		return machineruntime.NewURLLookupFromReader(a.reader)
 	}
-	// url-lookup still needs the raw reader's optional URLLookup capability,
-	// but trusted runtime owns credential resolution and SDK reader assembly.
-	return machineruntime.NewReaderFromConfig(ctx, cfg, machineruntime.Options{
+	return machineruntime.NewURLLookupFromConfig(ctx, cfg, machineruntime.Options{
 		Timeout:    opts.timeout,
 		DiagLogger: a.sdkDiagLogger(opts),
 	})

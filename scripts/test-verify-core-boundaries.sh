@@ -13,6 +13,13 @@ github.com/charmbracelet/lipgloss
 github.com/spf13/cobra
 EOF
 
+cat >"$tmp_dir/cli-good.deps" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/cli
+github.com/dvmrry/zscalerctl/internal/config
+github.com/dvmrry/zscalerctl/internal/output
+github.com/dvmrry/zscalerctl/internal/runtime
+EOF
+
 cat >"$tmp_dir/browser-good.deps" <<'EOF'
 github.com/dvmrry/zscalerctl/internal/browser
 github.com/dvmrry/zscalerctl/internal/resources
@@ -37,6 +44,12 @@ cat >"$tmp_dir/cmd-bad.deps" <<'EOF'
 github.com/dvmrry/zscalerctl/cmd/zscalerctl
 github.com/charmbracelet/bubbletea
 github.com/dvmrry/zscalerctl/internal/browser
+EOF
+
+cat >"$tmp_dir/cli-zscaler-bad.deps" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/cli
+github.com/dvmrry/zscalerctl/internal/config
+github.com/dvmrry/zscalerctl/internal/zscaler
 EOF
 
 cat >"$tmp_dir/browser-bad.deps" <<'EOF'
@@ -85,6 +98,7 @@ github.com/dvmrry/zscalerctl/internal/zscaler
 EOF
 
 ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
 ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
 ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
 ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -92,6 +106,7 @@ ZSCALERCTL_MACHINEIO_DEPS_FILE="$tmp_dir/machineio-good.deps" \
   "$repo_root/scripts/verify-core-boundaries.sh" >/dev/null
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-bad.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -110,6 +125,26 @@ if ! grep -q "cmd/zscalerctl imports forbidden dependencies" "$tmp_dir/cmd.err";
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-zscaler-bad.deps" \
+  ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
+  ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
+  ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
+  ZSCALERCTL_MACHINEIO_DEPS_FILE="$tmp_dir/machineio-good.deps" \
+  "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/cli-zscaler.out" 2>"$tmp_dir/cli-zscaler.err"; then
+  echo "verify-core-boundaries accepted internal/cli dependencies on internal/zscaler" >&2
+  cat "$tmp_dir/cli-zscaler.out" >&2
+  cat "$tmp_dir/cli-zscaler.err" >&2
+  exit 1
+fi
+
+if ! grep -q "internal/cli imports forbidden dependencies" "$tmp_dir/cli-zscaler.err"; then
+  echo "verify-core-boundaries failed without the expected internal/cli zscaler boundary message" >&2
+  cat "$tmp_dir/cli-zscaler.err" >&2
+  exit 1
+fi
+
+if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-runtime-bad.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -122,6 +157,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-bad.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -134,6 +170,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-raw-bad.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -146,6 +183,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-bad.deps" \
@@ -158,6 +196,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-raw-bad.deps" \
@@ -170,6 +209,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
@@ -182,6 +222,7 @@ if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
 fi
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-good.deps" \
+  ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \
   ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
   ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
   ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
