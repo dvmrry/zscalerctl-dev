@@ -57,7 +57,9 @@ The producer calls the sink synchronously on its own goroutine.
 Why callback over channel/iterator:
 
 - **Backpressure is inherent.** The producer blocks until the consumer
-  returns. No buffering policy, no dropped-event policy, no goroutine
+  returns. In the Wails case the blocked goroutine is the backend Go
+  goroutine servicing the call — never the JS/UI thread — and that backend
+  can drain into its own channel and emit to the frontend asynchronously. No buffering policy, no dropped-event policy, no goroutine
   lifecycle to manage or leak. This matches the project's "explicit,
   inspectable behavior" principle and the sequential-collection pacing policy.
 - **Ordering is trivial.** Single producer goroutine, synchronous calls:
@@ -76,13 +78,18 @@ producer; do not start there.
 1. **Ordering guarantees.** Exactly one `started` first; zero or more
    `progress`/`record`/`warning` in program order; exactly one terminal event
    (`completed`, `failed`, or `canceled`) last. After a terminal event the
-   sink is never called again. Records for a given resource are emitted in
+   sink is never called again. The producer's emission wrapper recovers a
+   panicking sink and converts it to a terminal `failed` with
+   `Kind: internal` — without this, a sink panic would unwind the producer
+   and the terminal-exactly-once property would be silently false
+   (adversarial-review finding, 2026-07-06). Records for a given resource are emitted in
    the same order the projected reader returns them (catalog order across
    resources, matching today's dump collection order).
 2. **Cancellation semantics.** `ctx.Done()` between operations → terminal
    `canceled` with `MachineError{Kind: canceled}`. Sink error → terminal
    `failed` wrapping the sink's error value-free (kind `internal` unless the
-   sink returned a `MachineError`). The CLI exit-code mapping is unchanged
+   sink returned a `MachineError`). Sink panic → recovered, terminal
+   `failed{internal}` (see 1); the panic value is never placed in the event. The CLI exit-code mapping is unchanged
    (canceled → 1), because the CLI consumes the same terminal kinds the
    one-shot path produces today.
 3. **Deadline behavior.** Per-request deadlines surface exactly as post-#91
@@ -127,13 +134,18 @@ removed — it is a candidate seam, so removal is `semver:minor` at most).
 Dump file writing consumes `record` events per resource instead of a fully
 accumulated slice **only if** the write path can stream marshaling; otherwise
 buffering stays as-is and the memory-baseline work is a separate follow-up.
-The `TestLargeTenantDumpBaseline` 20x heap gate must pass either way.
+Note (adversarial-review finding): `TestLargeTenantDumpBaseline` calls the
+projection and dump-write layers directly and never crosses
+`DumpCollector.Collect` or `Executor.Execute`, so it is structurally blind
+to this refactor. The dump-migration PR must add a peak-heap baseline over
+the reconstructed collect path (an accumulating sink must not create a new
+full-copy generation of records) in addition to keeping the existing gate.
 
 ## Test plan
 
 - Unit: ordering property tests (terminal-exactly-once, no-events-after-
-  terminal), cancellation from both paths, deadline mapping, warning
-  accounting, sink-error abort.
+  terminal — including under a panicking sink), cancellation from both
+  paths, deadline mapping, warning accounting, sink-error abort.
 - Contract: existing golden fixtures over reconstructed Execute (no new
   fixtures — that is the point).
 - Dump: progress-event sequence test replacing the DumpProgressFunc test;
