@@ -103,11 +103,14 @@ producer; do not start there.
    source record to an event.
 7. **Schema status.** Candidate, in-process only. Event types live in
    `internal/machine` (safe seam; types + kinds), emission lives in
-   `internal/runtime` (trusted). No JSON tags on `Event` in v1 — omitting
-   them is the mechanical guard against accidental serialization becoming a
-   de-facto wire contract. JSON serialization is added only by the future
-   MCP-notification or supported-streaming promotion, with schemas and
-   fixtures at that time.
+   `internal/runtime` (trusted). There is no committed wire form for events
+   in v1. Note: omitting JSON tags is NOT a guard — encoding/json marshals
+   exported untagged fields by name — so the mechanical guard is a unit test
+   in `internal/machine` asserting no production code path marshals `Event`
+   (grep-style check over non-test sources, same pattern as
+   verify-machine-contract.sh's constructor scan). JSON serialization is
+   added only by the future MCP-notification or supported-streaming
+   promotion, with schemas and fixtures at that time.
 8. **One-shot reconstruction.** `Executor.Execute` becomes: run the
    event-producing path with an accumulating sink; build `machine.Response`
    from accumulated records; map terminal `failed`/`canceled` to the
