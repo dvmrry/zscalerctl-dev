@@ -28,7 +28,9 @@ pasted cold into a fresh agent session, or driven by a coordinator.
    allows breaking changes in 0.x minors, and dev `main` keeps shipping minors
    until the work runs dry (owner decision 2026-07-04). The deliberate public
    promotion, whenever chosen, selects a validated baseline commit; it does
-   not gate dev merges.
+   not gate dev merges. Normal discipline is unchanged: small single-concern
+   PRs, semver labels, mechanical gates — and no public release ships until
+   the selected backlog cutoff is complete and validated.
 
 Universal constraints for every brief (paste into every agent prompt):
 
