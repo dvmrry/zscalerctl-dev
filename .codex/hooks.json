@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/adversarial_review_stop.sh\"",
+            "timeout": 30,
+            "statusMessage": "Checking adversarial review requirement"
+          }
+        ]
+      }
+    ]
+  }
+}

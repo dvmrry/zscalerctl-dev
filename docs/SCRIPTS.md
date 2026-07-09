@@ -24,6 +24,7 @@ registered path exists.
 | `scripts/test-sdk-surface-inventory.sh` | test | `make verify-sdk-surface-inventory` | Self-contained inventory test |
 | `scripts/test-sync-agents-skill.sh` | test | `make verify-agents-skill` | Self-contained generated-copy drift test |
 | `scripts/test-verify-actions-pinned.sh` | test | `make verify-actions-pinned`; `.github/workflows/ci.yml` | Self-contained verifier test |
+| `scripts/test-verify-adversarial-review.sh` | test | `make verify-adversarial-review`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-ci-no-live-creds.sh` | test | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-core-boundaries.sh` | test | `make verify-core-boundaries`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-experiment-boundaries.sh` | test | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | Self-contained verifier test |
@@ -34,6 +35,7 @@ registered path exists.
 | `scripts/test-verify-semver-label.sh` | test | `make verify-release-automation` | Self-contained verifier test |
 | `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test for golden/manifest pairing |
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
+| `scripts/verify-adversarial-review.sh` | verify | `make verify-adversarial-review`; `.github/workflows/ci.yml` | Requires high-risk changes to commit an approved fresh-context review artifact |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
 | `scripts/gen-cli-docs.go` | dev | `make gen-cli-docs`; manual CLI-reference regeneration | `scripts/verify-cli-docs.sh` |
 | `scripts/test-verify-cli-docs.sh` | test | `make docs-cli-check`; `.github/workflows/ci.yml` | Self-contained verifier test (pass + corrupt-doc fail cases) |

@@ -31,6 +31,17 @@ GitHub security policy.
 
 ## Maintenance
 
+- [adversarial-review.md](adversarial-review.md) — Codex-only post-build
+  adversarial review workflow for high-risk generated, machine-contract,
+  redaction/projection, and resource-surface changes.
+- [adversarial-reviews/](adversarial-reviews/) — committed review artifacts
+  required by the adversarial-review gate for high-risk changes.
+- [review-handoff-template.md](review-handoff-template.md) and
+  [adversarial-review-run-prompt.md](adversarial-review-run-prompt.md) —
+  builder handoff and fresh-context reviewer prompt for the
+  adversarial-review loop.
+- [adversarial-review-template.md](adversarial-review-template.md) — reviewer
+  report template for adversarial-review findings and verdicts.
 - [SDK_SURFACE_INVENTORY.md](SDK_SURFACE_INVENTORY.md)
 - [DEFERRED_RESOURCE_RECHECK.md](DEFERRED_RESOURCE_RECHECK.md) — pinned-SDK
   source review for resources removed after live-smoke failures.

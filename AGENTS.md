@@ -12,6 +12,44 @@ repo-local `.agents` content; do not edit it directly. Run
 `scripts/sync-agents-skill.sh` after changing the canonical skill, and
 `scripts/sync-agents-skill.sh --check` to verify drift.
 
+## Post-build adversarial review
+
+For high-risk agent-built changes, stop at "ready for adversarial review"
+instead of self-approving. Use the workflow in
+[docs/adversarial-review.md](docs/adversarial-review.md), with the builder
+handoff template in
+[docs/review-handoff-template.md](docs/review-handoff-template.md) and the
+fresh-context reviewer run prompt in
+[docs/adversarial-review-run-prompt.md](docs/adversarial-review-run-prompt.md).
+The reviewer reports with
+[docs/adversarial-review-template.md](docs/adversarial-review-template.md).
+
+This applies especially to CLI surface, schema, machine-contract,
+redaction/projection, field-coverage, resource catalog/reader wiring, generated
+artifact, golden fixture, and skill-sync changes. The reviewer must run in a
+fresh Codex context that did not implement the change, must not rely on the
+builder summary as evidence, and must not implement fixes.
+
+Treat user requests for "adversarial review" as workflow invocations, not as a
+request to personally review harder. If no fresh-context reviewer or formal
+review workflow is available, say that clearly and do not present a manual
+review as equivalent. For named PRs, branches, or issues, inspect the process
+docs from `origin/main` or the explicitly requested baseline before relying on
+the current checkout.
+
+The workflow is enforced locally by the project Codex `Stop` hook in
+`.codex/hooks.json`, plus `make verify-adversarial-review` and `make check`.
+When high-risk files change, the hook blocks completion until there is an
+approved artifact under `docs/adversarial-reviews/`; prose in this file is not
+the enforcement layer.
+
+Implementation completion protocol: after editing files, Codex should expect
+the Stop hook to run before the final response. If the hook reports that
+adversarial review is required, do not claim the task is complete. Generate a
+builder handoff, spawn a fresh-context reviewer, fix/recheck confirmed
+findings, add the approved review artifact, then rerun
+`make verify-adversarial-review`.
+
 ## CLI reference
 
 The authoritative command and flag list is at
