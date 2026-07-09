@@ -79,19 +79,25 @@ producer; do not start there.
    `progress`/`record`/`warning` in program order; exactly one terminal event
    (`completed`, `failed`, or `canceled`) last. After a terminal event the
    sink is never called again. The producer's emission wrapper recovers a
-   panicking sink and converts it to a terminal `failed` with
-   `Kind: internal` — without this, a sink panic would unwind the producer
-   and the terminal-exactly-once property would be silently false
-   (adversarial-review finding, 2026-07-06). Records for a given resource are emitted in
-   the same order the projected reader returns them (catalog order across
-   resources, matching today's dump collection order).
+   panicking sink before terminal emission and converts it to a single terminal
+   `failed` with `Kind: internal` — without this, a sink panic would unwind the
+   producer and the terminal-exactly-once property would be silently false
+   (adversarial-review finding, 2026-07-06). If the sink panics while receiving
+   the terminal event itself, the producer recovers, returns an internal error
+   to its caller, and does **not** emit or retry a second terminal event; the
+   terminal delivery was attempted and the no-events-after-terminal rule still
+   holds. Records for a given resource are emitted in the same order the
+   projected reader returns them (catalog order across resources, matching
+   today's dump collection order).
 2. **Cancellation semantics.** `ctx.Done()` between operations → terminal
    `canceled` with `MachineError{Kind: canceled}`. Sink error → terminal
    `failed` wrapping the sink's error value-free (kind `internal` unless the
-   sink returned a `MachineError`). Sink panic → recovered, terminal
-   `failed{internal}` (see 1); the panic value is never placed in the event. The CLI exit-code mapping is unchanged
-   (canceled → 1), because the CLI consumes the same terminal kinds the
-   one-shot path produces today.
+   sink returned a `MachineError`). Sink panic before terminal emission →
+   recovered, terminal `failed{internal}` (see 1); sink panic during terminal
+   emission → recovered and returned as an internal execution error with no
+   second terminal event. In both cases the panic value is never placed in an
+   event. The CLI exit-code mapping is unchanged (canceled → 1), because the
+   CLI consumes the same terminal kinds the one-shot path produces today.
 3. **Deadline behavior.** Per-request deadlines surface exactly as post-#91
    semantics: terminal `failed` with `Kind: deadline_exceeded` (CLI exit 5).
    No new timeout mechanism; the SDK adapter's per-request timeout stands.
@@ -144,7 +150,8 @@ full-copy generation of records) in addition to keeping the existing gate.
 ## Test plan
 
 - Unit: ordering property tests (terminal-exactly-once, no-events-after-
-  terminal — including under a panicking sink), cancellation from both
+  terminal, non-terminal sink panic emits one failed/internal terminal, and
+  terminal sink panic does not retry a second terminal), cancellation from both
   paths, deadline mapping, warning accounting, sink-error abort.
 - Contract: existing golden fixtures over reconstructed Execute (no new
   fixtures — that is the point).
