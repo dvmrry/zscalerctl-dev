@@ -295,13 +295,6 @@ func runWithGoldenSurfaceFixture(ctx context.Context, args []string, stdout, std
 		return exitInternalError
 	}
 	defer restoreProcessOutput()
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %v", recovered))
-			exitCode = exitInternalError
-		}
-	}()
-
 	app := cli.NewWithOptions(stdout, stderr, env, cli.Options{
 		Reader: goldenSurfaceReader{fixture: fixture},
 	})
