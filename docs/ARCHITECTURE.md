@@ -75,11 +75,13 @@ deliberate: it keeps the production surface to one audited read-only binary,
 while agents start from `machine manifest`, use `schema list` for field
 metadata, parse deterministic JSON or NDJSON, and branch on stable exit codes.
 
-An MCP sidecar is not planned for the v1 surface. Revisit it only if a concrete
-host cannot consume shell commands, stdout/stderr, exit codes, and the skill
-guidance safely. Until then, adding a second protocol process would duplicate
-authorization, redaction, output, and packaging decisions without improving the
-core safety model.
+An MCP sidecar is not part of the v1 supported surface. The forward roadmap now
+allows a local, stdio-only MCP experiment after the Phase 5 threat-model gate in
+[MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) is accepted. Until and unless that
+experiment is deliberately promoted, the supported agent interface remains the
+CLI contract plus skill guidance. Any MCP implementation must consume the
+existing runtime/machine seams and must not add a network listener without a new
+threat-model decision.
 
 ## Initial Package Shape
 

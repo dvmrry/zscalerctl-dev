@@ -140,7 +140,6 @@ changes.
 ## Exit criteria for D0 → D1 (experiment)
 
 This document reviewed and its DECISIONs accepted/amended by the owner;
-THREAT_MODEL.md gains a pointer to this addendum; the stale "MCP sidecar is
-not planned" paragraph in ARCHITECTURE.md is updated to reference the
-ROADMAP Phase 5 posture; and the D1 experiment brief inherits D1–D11 as
-constraints verbatim.
+THREAT_MODEL.md points to this addendum; ARCHITECTURE.md references the
+ROADMAP Phase 5 posture instead of the previous no-MCP-sidecar wording; and
+the D1 experiment brief inherits D1–D11 as constraints verbatim.
