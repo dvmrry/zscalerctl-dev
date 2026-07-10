@@ -71,19 +71,35 @@ func (r Redactor) String(in string) string {
 }
 
 func (r Redactor) ScanString(in string) (string, Report) {
-	view := prefilterText{text: in}
-	if containsFold("authorization").match(&view) {
-		// The plain-text Authorization rule intentionally consumes the rest of a
-		// header value. Keep that regex inside decoded JSON string tokens so it
-		// cannot consume quotes, object members, or NDJSON record boundaries.
-		if json.Valid([]byte(in)) {
-			return r.scanJSON(in)
-		}
-		if out, report, ok := r.scanNDJSON(in); ok {
-			return out, report
-		}
+	if !r.structuredScanMayMatch(in) {
+		return in, Report{}
+	}
+	if out, report, ok := scanStructuredDocuments(in, r.scanJSONString, true); ok {
+		return out, report
 	}
 	return r.scanPlainString(in)
+}
+
+func (r Redactor) structuredScanMayMatch(in string) bool {
+	// A JSON escape can hide every literal character a rule prefilter needs;
+	// decode escaped documents before deciding that no rule can match.
+	if strings.Contains(in, `\`) {
+		return true
+	}
+	view := prefilterText{text: in}
+	for _, candidate := range baseRules {
+		if candidate.prefilter.match(&view) {
+			return true
+		}
+	}
+	if r.mode == ModeShare || r.mode == ModeParanoid {
+		for _, candidate := range shareRules {
+			if candidate.prefilter.match(&view) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (r Redactor) scanPlainString(in string) (string, Report) {
@@ -96,20 +112,27 @@ func (r Redactor) scanPlainString(in string) (string, Report) {
 	return out, report
 }
 
-func (r Redactor) scanJSON(in string) (string, Report) {
-	return scanJSONDocument(in, func(value string) (string, Report) {
-		out := value
-		var report Report
-		out, report = scanRules(out, report, jsonBaseRules)
-		if r.mode == ModeShare || r.mode == ModeParanoid {
-			out, report = scanRules(out, report, shareRules)
-		}
-		return out, report
-	})
+func (r Redactor) scanJSONString(value string) (string, Report) {
+	out, report := scanRules(value, Report{}, baseRules)
+	if r.mode == ModeShare || r.mode == ModeParanoid {
+		out, report = scanRules(out, report, shareRules)
+	}
+	return out, report
 }
 
-func (r Redactor) scanNDJSON(in string) (string, Report, bool) {
-	return scanNDJSONDocuments(in, r.scanJSON)
+// scanStructuredDocuments keeps plaintext regexes inside decoded JSON string
+// tokens, so a match cannot consume JSON syntax or a neighboring NDJSON record.
+// Trying every valid JSON document also covers escaped keywords that are only
+// recognizable after decoding.
+func scanStructuredDocuments(in string, scanString jsonStringScanner, classifySensitive bool) (string, Report, bool) {
+	scanDocument := func(document string) (string, Report) {
+		return scanJSONDocument(document, scanString, classifySensitive)
+	}
+	if json.Valid([]byte(in)) {
+		out, report := scanDocument(in)
+		return out, report, true
+	}
+	return scanNDJSONDocuments(in, scanDocument)
 }
 
 // scanNDJSONDocuments recognizes a stream only when it contains at least two
@@ -226,7 +249,7 @@ type jsonDocumentParser struct {
 // while retaining the original document's whitespace, key order, and container
 // structure. The caller has already established that in is valid JSON; parser
 // or rewrite invariant failures return a valid, fail-closed marker document.
-func scanJSONDocument(in string, scanString jsonStringScanner) (string, Report) {
+func scanJSONDocument(in string, scanString jsonStringScanner, classifySensitive bool) (string, Report) {
 	parser := jsonDocumentParser{in: in}
 	if !parser.parseDocument() {
 		return encodeJSONString(markerSecret), Report{}
@@ -237,7 +260,7 @@ func scanJSONDocument(in string, scanString jsonStringScanner) (string, Report) 
 	for _, token := range parser.strings {
 		value, tokenReport := scanString(token.value)
 		report = mergeReports(report, tokenReport)
-		if value != token.value {
+		if value != token.value || containsRedactionMarker(value) {
 			replacements = append(replacements, jsonReplacement{
 				start: token.start,
 				end:   token.end,
@@ -245,14 +268,16 @@ func scanJSONDocument(in string, scanString jsonStringScanner) (string, Report) 
 			})
 		}
 	}
-	for _, sensitive := range parser.sensitiveValues {
-		report = addReportCount(report, sensitive.ruleName, 1)
-		replacements = append(replacements, jsonReplacement{
-			start:    sensitive.start,
-			end:      sensitive.end,
-			value:    encodeJSONString(sensitive.marker),
-			priority: 1,
-		})
+	if classifySensitive {
+		for _, sensitive := range parser.sensitiveValues {
+			report = addReportCount(report, sensitive.ruleName, 1)
+			replacements = append(replacements, jsonReplacement{
+				start:    sensitive.start,
+				end:      sensitive.end,
+				value:    encodeJSONString(sensitive.marker),
+				priority: 1,
+			})
+		}
 	}
 
 	sort.Slice(replacements, func(i, j int) bool {
@@ -283,6 +308,13 @@ func scanJSONDocument(in string, scanString jsonStringScanner) (string, Report) 
 		return encodeJSONString(markerSecret), report
 	}
 	return result, report
+}
+
+func containsRedactionMarker(value string) bool {
+	return strings.Contains(value, markerSecret) ||
+		strings.Contains(value, markerPrivateKey) ||
+		strings.Contains(value, markerJWT) ||
+		strings.Contains(value, markerProvisioningKey)
 }
 
 func mergeReports(dst, src Report) Report {
@@ -476,6 +508,19 @@ const (
 
 func (r Redactor) scanStringWithEntropy(in string, context highEntropyContext) (string, Report) {
 	out, report := r.ScanString(in)
+	if !highEntropyFreeTextTokenRE.MatchString(out) {
+		return out, report
+	}
+	entropyScanner := func(value string) (string, Report) {
+		return r.scanEntropy(value, Report{}, context)
+	}
+	if structured, entropyReport, ok := scanStructuredDocuments(out, entropyScanner, false); ok {
+		return structured, mergeReports(report, entropyReport)
+	}
+	return r.scanEntropy(out, report, context)
+}
+
+func (r Redactor) scanEntropy(out string, report Report, context highEntropyContext) (string, Report) {
 	matches := highEntropyFreeTextTokenRE.FindAllStringIndex(out, -1)
 	if len(matches) == 0 {
 		return out, report
@@ -627,14 +672,15 @@ const (
 )
 
 var authorizationHeaderRE = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)\S.*`)
-var jsonAuthorizationHeaderRE = regexp.MustCompile(`(?is)(authorization\s*[:=]\s*)\S.*`)
 
 var baseRules = buildBaseRules()
-var jsonBaseRules = buildJSONBaseRules()
 
-var jsonProvisioningAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + provisioningAssignmentKeys + `)$`)
-var jsonPrivateKeyAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + privateKeyAssignmentKeys + `)$`)
-var jsonSecretAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + secretAssignmentKeys + `)$`)
+// The plaintext assignment rules can begin within a longer key, but only when
+// the sensitive fragment reaches the key's closing quote. Preserve that suffix
+// behavior when classifying decoded JSON keys.
+var jsonProvisioningAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + provisioningAssignmentKeys + `)$`)
+var jsonPrivateKeyAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + privateKeyAssignmentKeys + `)$`)
+var jsonSecretAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + secretAssignmentKeys + `)$`)
 
 var highEntropyFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}\b`)
 var canonicalUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -642,17 +688,6 @@ var compactUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
 var publicHexFingerprintRE = regexp.MustCompile(`(?i)^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var gitSHARE = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
 var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b[\s:=#-]*)$`)
-
-func buildJSONBaseRules() []rule {
-	rules := append([]rule(nil), baseRules...)
-	for i := range rules {
-		if rules[i].name == "authorization_header" {
-			rules[i].re = jsonAuthorizationHeaderRE
-			break
-		}
-	}
-	return rules
-}
 
 func classifyJSONKey(key string) (string, string, bool) {
 	switch {

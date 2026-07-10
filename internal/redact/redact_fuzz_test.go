@@ -17,6 +17,10 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 		`{"authorization":"Bearer abcdefghijklmnopqrstuvwxyz"}`,
 		`{"message":"set the Authorization: Bearer fuzz-authorization-canary header","count":42}`,
 		`{"message":"Authorization:","count":42}`,
+		`{"message":"Authoriz\u0061tion: Bearer fuzz-escaped-auth-canary","count":42}`,
+		`{"message":"Authorization: Bearer fuzz-multiline-canary\nsafe-status-line","count":42}`,
+		`{"authorizationInfo":"public","sessionToken":"fuzz-suffix-canary"}`,
+		`{"message":"Authorization: Bearer fuzz-number-canary","value":1234567890123456.789012345678901e+2}`,
 		`{"message":"Authorization:","url":"https://user:fuzz-cross-token-canary@host.invalid","owner":"alice@example.com"}`,
 		`{"message":"Authorization:","wrapper":{"\u0061uthorization":"fuzz-nested-canary"}}`,
 		`["Authorization: Digest username=\"fuzz-user\", response=\"fuzz-response\"",42,true,null]`,
@@ -43,6 +47,17 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 			gotBytes := r.Bytes([]byte(input))
 			if !json.Valid(gotBytes) {
 				t.Fatalf("Redactor.Bytes(%q, mode %s) = invalid JSON %q, want valid JSON", input, mode, string(gotBytes))
+			}
+
+			gotRendered, _ := r.ScanRenderedString(input)
+			if !json.Valid([]byte(gotRendered)) {
+				t.Fatalf("Redactor.ScanRenderedString(%q, mode %s) = invalid JSON %q, want valid JSON", input, mode, gotRendered)
+			}
+			if gotTwice := r.String(got); gotTwice != got {
+				t.Fatalf("Redactor.String(Redactor.String(%q), mode %s) = %q, want idempotent %q", input, mode, gotTwice, got)
+			}
+			if gotRenderedTwice, _ := r.ScanRenderedString(gotRendered); gotRenderedTwice != gotRendered {
+				t.Fatalf("Redactor.ScanRenderedString(Redactor.ScanRenderedString(%q), mode %s) = %q, want idempotent %q", input, mode, gotRenderedTwice, gotRendered)
 			}
 		}
 	})
@@ -94,6 +109,9 @@ func FuzzRedactorPreservesValidNDJSON(f *testing.F) {
 				if !json.Valid([]byte(line)) {
 					t.Fatalf("Redactor.String(NDJSON, mode %s) line %d = invalid JSON %q", mode, i+1, line)
 				}
+			}
+			if gotTwice := redact.New(mode).String(got); gotTwice != got {
+				t.Fatalf("Redactor.String(Redactor.String(NDJSON), mode %s) = %q, want idempotent %q", mode, gotTwice, got)
 			}
 		}
 	})

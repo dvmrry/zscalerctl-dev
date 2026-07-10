@@ -69,6 +69,8 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		`{"apiKey":"api-key-leak-value"}`,
 		`{"message":"set the Authorization: Bearer prefilter-authorization-canary header","count":42}`,
 		`{"message":"Authorization:","count":42}`,
+		`{"message":"Authoriz\u0061tion: Bearer prefilter-escaped-auth-canary","count":42}`,
+		`{"authorizationInfo":"public","sessionToken":"prefilter-suffix-canary"}`,
 		"{\"message\":\"Authorization: Bearer first-prefilter-canary\"}\n{\"message\":\"Authorization:\",\"clientSecret\":\"second-prefilter-canary\"}\n",
 		`Authorization: Token sk-supersecret-credential-value`,
 		`owner alice@example.com uses 192.0.2.10`,
@@ -87,26 +89,65 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 	})
 }
 
+func FuzzJSONSensitiveKeyClassificationMatchesLegacyAssignments(f *testing.F) {
+	for _, key := range []string{
+		"secret",
+		"my_secret",
+		"sessionToken",
+		"appSecret",
+		"tenant_private_key",
+		"customProvisioningKey",
+		"tokenEndpoint",
+		"secretPolicy",
+		"publicKey",
+		"authorizationInfo",
+	} {
+		f.Add(key)
+	}
+
+	legacyRules := make([]rule, 0, len(baseRules))
+	for _, candidate := range baseRules {
+		if strings.HasSuffix(candidate.name, "_assignment") {
+			legacyRules = append(legacyRules, candidate)
+		}
+	}
+
+	const canary = "classification-value-canary"
+	f.Fuzz(func(t *testing.T, key string) {
+		if key == "" || len(key) > 256 || strings.Contains(key, canary) {
+			return
+		}
+		for i := 0; i < len(key); i++ {
+			ch := key[i]
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+				return
+			}
+		}
+
+		body, err := json.Marshal(map[string]string{key: canary})
+		if err != nil {
+			t.Fatalf("json.Marshal(%q) error = %v", key, err)
+		}
+		legacy, _ := scanRulesWithoutPrefilters(string(body), Report{}, legacyRules)
+		got := New(ModeStandard).String(string(body))
+		legacyLeaked := strings.Contains(legacy, canary)
+		gotLeaked := strings.Contains(got, canary)
+		if gotLeaked != legacyLeaked {
+			t.Fatalf("JSON key %q classification changed: legacy=%q, got=%q", key, legacy, got)
+		}
+	})
+}
+
 func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
-	view := prefilterText{text: in}
-	if containsFold("authorization").match(&view) {
-		scanJSON := func(document string) (string, Report) {
-			return scanJSONDocument(document, func(value string) (string, Report) {
-				out := value
-				var report Report
-				out, report = scanRulesWithoutPrefilters(out, report, jsonBaseRules)
-				if mode == ModeShare || mode == ModeParanoid {
-					out, report = scanRulesWithoutPrefilters(out, report, shareRules)
-				}
-				return out, report
-			})
+	scanString := func(value string) (string, Report) {
+		out, report := scanRulesWithoutPrefilters(value, Report{}, baseRules)
+		if mode == ModeShare || mode == ModeParanoid {
+			out, report = scanRulesWithoutPrefilters(out, report, shareRules)
 		}
-		if json.Valid([]byte(in)) {
-			return scanJSON(in)
-		}
-		if out, report, ok := scanNDJSONDocuments(in, scanJSON); ok {
-			return out, report
-		}
+		return out, report
+	}
+	if out, report, ok := scanStructuredDocuments(in, scanString, true); ok {
+		return out, report
 	}
 
 	out := in
@@ -117,6 +158,7 @@ func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
 	}
 	return out, report
 }
+
 func scanRulesWithoutPrefilters(out string, report Report, rules []rule) (string, Report) {
 	for _, rule := range rules {
 		count := len(rule.re.FindAllStringIndex(out, -1))

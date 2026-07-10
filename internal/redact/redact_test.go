@@ -222,10 +222,10 @@ func TestRedactorJSONRedactionStaysWithinStringTokenBoundaries(t *testing.T) {
 func TestRedactorPreservesNDJSONAuthorizationRecords(t *testing.T) {
 	t.Parallel()
 
-	const authorizationCanary = "ndjson-authorization-canary"
+	const authorizationCanary = "ndjson-auth-canary"
 	const assignmentCanary = "ndjson-assignment-canary"
-	input := `{"message":"Authorization: Bearer ` + authorizationCanary + `","count":1}` + "\r\n" +
-		`{"message":"Authorization:","clientSecret":"` + assignmentCanary + `","count":2}` + "\r\n"
+	input := `{"message":"Authoriz\u0061tion: Bearer ` + authorizationCanary + `","count":1}` + "\r\n" +
+		`{"message":"Authoriz\u0061tion:","clientSecret":"` + assignmentCanary + `","count":2}` + "\r\n"
 
 	got := redact.New(redact.ModeStandard).String(input)
 	for _, forbidden := range []string{authorizationCanary, assignmentCanary} {
@@ -289,6 +289,124 @@ func TestRedactorJSONClassifiesDecodedSensitiveKeys(t *testing.T) {
 	}
 	if gotCount := report.Counts["secret_assignment"]; gotCount != 2 {
 		t.Errorf("Redactor.ScanString(%q) secret_assignment count = %d, want 2", input, gotCount)
+	}
+}
+
+func TestRedactorJSONPreservesSensitiveSuffixAssignmentCoverage(t *testing.T) {
+	t.Parallel()
+
+	input := `{"authorizationInfo":"public","my_secret":"suffix-canary-one","sessionToken":"suffix-canary-two","appSecret":"suffix-canary-three","tenant_private_key":"suffix-canary-four","customProvisioningKey":"suffix-canary-five"}`
+	want := map[string]string{
+		"my_secret":             "<REDACTED:SECRET>",
+		"sessionToken":          "<REDACTED:SECRET>",
+		"appSecret":             "<REDACTED:SECRET>",
+		"tenant_private_key":    "<REDACTED:PRIVATE_KEY>",
+		"customProvisioningKey": "<REDACTED:PROVISIONING_KEY>",
+	}
+
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			got := redact.New(mode).String(input)
+			if !json.Valid([]byte(got)) {
+				t.Fatalf("Redactor.String(%q, %s) = invalid JSON %q", input, mode, got)
+			}
+			for _, canary := range []string{"suffix-canary-one", "suffix-canary-two", "suffix-canary-three", "suffix-canary-four", "suffix-canary-five"} {
+				if strings.Contains(got, canary) {
+					t.Errorf("Redactor.String(%q, %s) = %q, want no %q", input, mode, got, canary)
+				}
+			}
+
+			var decoded map[string]string
+			if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(Redactor.String(%q, %s)) error = %v", input, mode, err)
+			}
+			for key, marker := range want {
+				if decoded[key] != marker {
+					t.Errorf("redacted %s = %q, want %q", key, decoded[key], marker)
+				}
+			}
+		})
+	}
+}
+
+func TestRedactorDecodesEscapedJSONAuthorizationKeyword(t *testing.T) {
+	t.Parallel()
+
+	const canary = "escaped-auth-canary-value"
+	input := `{"message":"Authoriz\u0061tion: Bearer ` + canary + `","count":1}`
+
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			got := redact.New(mode).String(input)
+			if !json.Valid([]byte(got)) {
+				t.Fatalf("Redactor.String(%q, %s) = invalid JSON %q", input, mode, got)
+			}
+			if strings.Contains(got, canary) {
+				t.Errorf("Redactor.String(%q, %s) = %q, want no %q", input, mode, got, canary)
+			}
+			var decoded struct {
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(Redactor.String(%q, %s)) error = %v", input, mode, err)
+			}
+			if decoded.Message != "Authorization: <REDACTED:SECRET>" {
+				t.Errorf("redacted message = %q, want decoded Authorization marker", decoded.Message)
+			}
+		})
+	}
+}
+
+func TestRedactorJSONAuthorizationStopsAtDecodedNewline(t *testing.T) {
+	t.Parallel()
+
+	const canary = "multiline-authorization-canary"
+	input := `{"message":"Authorization: Bearer ` + canary + `\nsafe-status-line","count":2}`
+
+	got := redact.New(redact.ModeStandard).String(input)
+	if !json.Valid([]byte(got)) {
+		t.Fatalf("Redactor.String(%q) = invalid JSON %q", input, got)
+	}
+	if strings.Contains(got, canary) {
+		t.Errorf("Redactor.String(%q) = %q, want no %q", input, got, canary)
+	}
+	var decoded struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(Redactor.String(%q)) error = %v", input, err)
+	}
+	const want = "Authorization: <REDACTED:SECRET>\nsafe-status-line"
+	if decoded.Message != want {
+		t.Errorf("redacted message = %q, want %q", decoded.Message, want)
+	}
+}
+
+func TestScanRenderedStringPreservesJSONWithLongNumber(t *testing.T) {
+	t.Parallel()
+
+	const number = "1234567890123456.789012345678901e+2"
+	const token = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	input := `{"message":"Authorization: Bearer numeric-authorization-canary","credential":"` + token + `","value":` + number + `}`
+
+	got, report := redact.New(redact.ModeStandard).ScanRenderedString(input)
+	if !json.Valid([]byte(got)) {
+		t.Fatalf("Redactor.ScanRenderedString(%q) = invalid JSON %q", input, got)
+	}
+	if !strings.Contains(got, number) {
+		t.Errorf("Redactor.ScanRenderedString(%q) = %q, want numeric JSON value preserved", input, got)
+	}
+	if strings.Contains(got, token) {
+		t.Errorf("Redactor.ScanRenderedString(%q) = %q, want string token redacted", input, got)
+	}
+	if gotCount := report.Counts["high_entropy_rendered_token"]; gotCount != 1 {
+		t.Errorf("Redactor.ScanRenderedString(%q) report count = %d, want 1", input, gotCount)
 	}
 }
 
