@@ -15,6 +15,11 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 		`{"clientSecret":true}`,
 		`{"password":null}`,
 		`{"authorization":"Bearer abcdefghijklmnopqrstuvwxyz"}`,
+		`{"message":"set the Authorization: Bearer fuzz-authorization-canary header","count":42}`,
+		`{"message":"Authorization:","count":42}`,
+		`{"message":"Authorization:","url":"https://user:fuzz-cross-token-canary@host.invalid","owner":"alice@example.com"}`,
+		`{"message":"Authorization:","wrapper":{"\u0061uthorization":"fuzz-nested-canary"}}`,
+		`["Authorization: Digest username=\"fuzz-user\", response=\"fuzz-response\"",42,true,null]`,
 		`{"url":"https://user:password@example.invalid/private"}`,
 		`{"nested":{"secretKey":"nested-secret"},"items":[{"apiToken":"item-token"}]}`,
 		`{"ordinary":{"tokenEndpoint":"https://example.invalid/oauth/token"}}`,
@@ -38,6 +43,57 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 			gotBytes := r.Bytes([]byte(input))
 			if !json.Valid(gotBytes) {
 				t.Fatalf("Redactor.Bytes(%q, mode %s) = invalid JSON %q, want valid JSON", input, mode, string(gotBytes))
+			}
+		}
+	})
+}
+
+func FuzzRedactorPreservesValidNDJSON(f *testing.F) {
+	for _, seed := range []struct {
+		first  string
+		second string
+	}{
+		{first: "ordinary note", second: "branch office"},
+		{first: "escaped quote \" and slash \\", second: "unicode 東京"},
+		{first: "owner alice@example.com", second: "address 192.0.2.10"},
+	} {
+		f.Add(seed.first, seed.second)
+	}
+
+	const authorizationCanary = "fuzz-ndjson-authorization-canary"
+	f.Fuzz(func(t *testing.T, first, second string) {
+		if len(first)+len(second) > 8192 {
+			return
+		}
+		line1, err := json.Marshal(map[string]string{
+			"message": "Authorization: Bearer " + authorizationCanary,
+			"note":    first,
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(first record) error = %v", err)
+		}
+		line2, err := json.Marshal(map[string]string{
+			"message": "Authorization:",
+			"note":    second,
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(second record) error = %v", err)
+		}
+		input := string(line1) + "\n" + string(line2) + "\n"
+
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			got := redact.New(mode).String(input)
+			if strings.Contains(got, authorizationCanary) {
+				t.Fatalf("Redactor.String(NDJSON, mode %s) leaked authorization canary: %q", mode, got)
+			}
+			lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("Redactor.String(NDJSON, mode %s) produced %d lines, want 2: %q", mode, len(lines), got)
+			}
+			for i, line := range lines {
+				if !json.Valid([]byte(line)) {
+					t.Fatalf("Redactor.String(NDJSON, mode %s) line %d = invalid JSON %q", mode, i+1, line)
+				}
 			}
 		}
 	})

@@ -1,9 +1,12 @@
 package redact
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -68,7 +71,23 @@ func (r Redactor) String(in string) string {
 }
 
 func (r Redactor) ScanString(in string) (string, Report) {
-	out := string(in)
+	view := prefilterText{text: in}
+	if containsFold("authorization").match(&view) {
+		// The plain-text Authorization rule intentionally consumes the rest of a
+		// header value. Keep that regex inside decoded JSON string tokens so it
+		// cannot consume quotes, object members, or NDJSON record boundaries.
+		if json.Valid([]byte(in)) {
+			return r.scanJSON(in)
+		}
+		if out, report, ok := r.scanNDJSON(in); ok {
+			return out, report
+		}
+	}
+	return r.scanPlainString(in)
+}
+
+func (r Redactor) scanPlainString(in string) (string, Report) {
+	out := in
 	var report Report
 	out, report = scanRules(out, report, baseRules)
 	if r.mode == ModeShare || r.mode == ModeParanoid {
@@ -77,24 +96,362 @@ func (r Redactor) ScanString(in string) (string, Report) {
 	return out, report
 }
 
+func (r Redactor) scanJSON(in string) (string, Report) {
+	return scanJSONDocument(in, func(value string) (string, Report) {
+		out := value
+		var report Report
+		out, report = scanRules(out, report, jsonBaseRules)
+		if r.mode == ModeShare || r.mode == ModeParanoid {
+			out, report = scanRules(out, report, shareRules)
+		}
+		return out, report
+	})
+}
+
+func (r Redactor) scanNDJSON(in string) (string, Report, bool) {
+	return scanNDJSONDocuments(in, r.scanJSON)
+}
+
+// scanNDJSONDocuments recognizes a stream only when it contains at least two
+// complete JSON documents, one per line. This keeps ordinary multi-line text on
+// the existing plain-text path while protecting the CLI's buffered NDJSON pass.
+func scanNDJSONDocuments(in string, scanDocument jsonDocumentScanner) (string, Report, bool) {
+	var out strings.Builder
+	out.Grow(len(in))
+	var report Report
+	documents := 0
+
+	for remaining := in; remaining != ""; {
+		line := remaining
+		remaining = ""
+		if newline := strings.IndexByte(line, '\n'); newline >= 0 {
+			line, remaining = line[:newline+1], line[newline+1:]
+		}
+
+		body, ending := line, ""
+		if strings.HasSuffix(body, "\n") {
+			body, ending = strings.TrimSuffix(body, "\n"), "\n"
+			if strings.HasSuffix(body, "\r") {
+				body, ending = strings.TrimSuffix(body, "\r"), "\r\n"
+			}
+		}
+		if strings.TrimSpace(body) == "" {
+			out.WriteString(line)
+			continue
+		}
+		if !json.Valid([]byte(body)) {
+			return "", Report{}, false
+		}
+		redacted, lineReport := scanDocument(body)
+		report = mergeReports(report, lineReport)
+		out.WriteString(redacted)
+		out.WriteString(ending)
+		documents++
+	}
+
+	if documents < 2 {
+		return "", Report{}, false
+	}
+	return out.String(), report, true
+}
+
 func scanRules(out string, report Report, rules []rule) (string, Report) {
 	view := prefilterText{text: out}
 	for _, rule := range rules {
-		if !rule.prefilter.match(&view) {
-			continue
-		}
-		count := len(rule.re.FindAllStringIndex(out, -1))
-		if count == 0 {
-			continue
-		}
-		if report.Counts == nil {
-			report.Counts = make(map[string]int)
-		}
-		report.Counts[rule.name] += count
-		out = rule.re.ReplaceAllString(out, rule.replacement)
-		view = prefilterText{text: out}
+		out, report = scanRule(out, report, rule, &view)
 	}
 	return out, report
+}
+
+func scanRule(out string, report Report, rule rule, view *prefilterText) (string, Report) {
+	if !rule.prefilter.match(view) {
+		return out, report
+	}
+	count := len(rule.re.FindAllStringIndex(out, -1))
+	if count == 0 {
+		return out, report
+	}
+	if report.Counts == nil {
+		report.Counts = make(map[string]int)
+	}
+	report.Counts[rule.name] += count
+	out = rule.re.ReplaceAllString(out, rule.replacement)
+	*view = prefilterText{text: out}
+	return out, report
+}
+
+func jsonStringEnd(in string, start int) int {
+	for i := start + 1; i < len(in); i++ {
+		switch in[i] {
+		case '\\':
+			i++
+		case '"':
+			return i + 1
+		}
+	}
+	return -1
+}
+
+type jsonDocumentScanner func(string) (string, Report)
+type jsonStringScanner func(string) (string, Report)
+
+type jsonStringToken struct {
+	start int
+	end   int
+	value string
+}
+
+type jsonSensitiveValue struct {
+	start    int
+	end      int
+	ruleName string
+	marker   string
+}
+
+type jsonReplacement struct {
+	start    int
+	end      int
+	value    string
+	priority int
+}
+
+type jsonDocumentParser struct {
+	in              string
+	pos             int
+	strings         []jsonStringToken
+	sensitiveValues []jsonSensitiveValue
+}
+
+// scanJSONDocument rewrites decoded string tokens and sensitive scalar values
+// while retaining the original document's whitespace, key order, and container
+// structure. The caller has already established that in is valid JSON; parser
+// or rewrite invariant failures return a valid, fail-closed marker document.
+func scanJSONDocument(in string, scanString jsonStringScanner) (string, Report) {
+	parser := jsonDocumentParser{in: in}
+	if !parser.parseDocument() {
+		return encodeJSONString(markerSecret), Report{}
+	}
+
+	replacements := make([]jsonReplacement, 0, len(parser.strings)+len(parser.sensitiveValues))
+	var report Report
+	for _, token := range parser.strings {
+		value, tokenReport := scanString(token.value)
+		report = mergeReports(report, tokenReport)
+		if value != token.value {
+			replacements = append(replacements, jsonReplacement{
+				start: token.start,
+				end:   token.end,
+				value: encodeJSONString(value),
+			})
+		}
+	}
+	for _, sensitive := range parser.sensitiveValues {
+		report = addReportCount(report, sensitive.ruleName, 1)
+		replacements = append(replacements, jsonReplacement{
+			start:    sensitive.start,
+			end:      sensitive.end,
+			value:    encodeJSONString(sensitive.marker),
+			priority: 1,
+		})
+	}
+
+	sort.Slice(replacements, func(i, j int) bool {
+		left, right := replacements[i], replacements[j]
+		if left.start != right.start {
+			return left.start < right.start
+		}
+		if left.end != right.end {
+			return left.end > right.end
+		}
+		return left.priority > right.priority
+	})
+
+	var out strings.Builder
+	out.Grow(len(in))
+	last := 0
+	for _, replacement := range replacements {
+		if replacement.start < last {
+			continue
+		}
+		out.WriteString(in[last:replacement.start])
+		out.WriteString(replacement.value)
+		last = replacement.end
+	}
+	out.WriteString(in[last:])
+	result := out.String()
+	if !json.Valid([]byte(result)) {
+		return encodeJSONString(markerSecret), report
+	}
+	return result, report
+}
+
+func mergeReports(dst, src Report) Report {
+	for name, count := range src.Counts {
+		dst = addReportCount(dst, name, count)
+	}
+	return dst
+}
+
+func addReportCount(report Report, name string, count int) Report {
+	if count == 0 {
+		return report
+	}
+	if report.Counts == nil {
+		report.Counts = make(map[string]int)
+	}
+	report.Counts[name] += count
+	return report
+}
+
+func (p *jsonDocumentParser) parseDocument() bool {
+	if _, _, ok := p.parseValue(); !ok {
+		return false
+	}
+	p.skipSpace()
+	return p.pos == len(p.in)
+}
+
+func (p *jsonDocumentParser) parseValue() (int, int, bool) {
+	p.skipSpace()
+	start := p.pos
+	if start >= len(p.in) {
+		return 0, 0, false
+	}
+
+	var ok bool
+	switch p.in[p.pos] {
+	case '"':
+		_, ok = p.parseString()
+	case '{':
+		ok = p.parseObject()
+	case '[':
+		ok = p.parseArray()
+	default:
+		for p.pos < len(p.in) && !isJSONValueDelimiter(p.in[p.pos]) {
+			p.pos++
+		}
+		ok = p.pos > start
+	}
+	return start, p.pos, ok
+}
+
+func (p *jsonDocumentParser) parseObject() bool {
+	p.pos++
+	p.skipSpace()
+	if p.consume('}') {
+		return true
+	}
+
+	for {
+		key, ok := p.parseString()
+		if !ok {
+			return false
+		}
+		p.skipSpace()
+		if !p.consume(':') {
+			return false
+		}
+		valueStart, valueEnd, ok := p.parseValue()
+		if !ok {
+			return false
+		}
+		// Match the existing assignment-rule surface: scalar values are replaced,
+		// while structured values continue to be scanned recursively by token.
+		structuredValue := p.in[valueStart] == '{' || p.in[valueStart] == '['
+		if ruleName, marker, sensitive := classifyJSONKey(key.value); sensitive && !structuredValue {
+			p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
+				start:    valueStart,
+				end:      valueEnd,
+				ruleName: ruleName,
+				marker:   marker,
+			})
+		}
+
+		p.skipSpace()
+		if p.consume('}') {
+			return true
+		}
+		if !p.consume(',') {
+			return false
+		}
+		p.skipSpace()
+	}
+}
+
+func (p *jsonDocumentParser) parseArray() bool {
+	p.pos++
+	p.skipSpace()
+	if p.consume(']') {
+		return true
+	}
+	for {
+		if _, _, ok := p.parseValue(); !ok {
+			return false
+		}
+		p.skipSpace()
+		if p.consume(']') {
+			return true
+		}
+		if !p.consume(',') {
+			return false
+		}
+		p.skipSpace()
+	}
+}
+
+func (p *jsonDocumentParser) parseString() (jsonStringToken, bool) {
+	if p.pos >= len(p.in) || p.in[p.pos] != '"' {
+		return jsonStringToken{}, false
+	}
+	start := p.pos
+	end := jsonStringEnd(p.in, start)
+	if end < 0 {
+		return jsonStringToken{}, false
+	}
+	var value string
+	if err := json.Unmarshal([]byte(p.in[start:end]), &value); err != nil {
+		return jsonStringToken{}, false
+	}
+	token := jsonStringToken{start: start, end: end, value: value}
+	p.strings = append(p.strings, token)
+	p.pos = end
+	return token, true
+}
+
+func (p *jsonDocumentParser) skipSpace() {
+	for p.pos < len(p.in) {
+		switch p.in[p.pos] {
+		case ' ', '\t', '\r', '\n':
+			p.pos++
+		default:
+			return
+		}
+	}
+}
+
+func (p *jsonDocumentParser) consume(want byte) bool {
+	if p.pos >= len(p.in) || p.in[p.pos] != want {
+		return false
+	}
+	p.pos++
+	return true
+}
+
+func isJSONValueDelimiter(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\r', '\n', ',', ']', '}':
+		return true
+	default:
+		return false
+	}
+}
+
+func encodeJSONString(value string) string {
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode(value) // bytes.Buffer cannot return a write error.
+	return strings.TrimSuffix(out.String(), "\n")
 }
 
 // ScanRenderedString applies the standard scanners plus a conservative
@@ -269,7 +626,15 @@ const (
 	secretPhraseKeys           = `client[_ -]?secret|secret[_ -]?key|key[_ -]?secret|api[_ -]?key|api[_ -]?token|sandbox[_ -]?api[_ -]?token|bearer[_ -]?token|refresh[_ -]?token|access[_ -]?token|jwt[_ -]?token|auth[_ -]?token|hec[_ -]?token|psk|pre[_ -]?shared[_ -]?key|shared[_ -]?secret|provision(?:ing)?[_ -]?key|provision[_ -]?token|enrollment[_ -]?token|passphrase|private[_ -]?key|device[_ -]?token|one[_ -]?time[_ -]?token|one[_ -]?time[_ -]?password|temporary[_ -]?password|otp` // #nosec G101 -- redaction keyword patterns (field-name matchers), not a secret
 )
 
+var authorizationHeaderRE = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)\S.*`)
+var jsonAuthorizationHeaderRE = regexp.MustCompile(`(?is)(authorization\s*[:=]\s*)\S.*`)
+
 var baseRules = buildBaseRules()
+var jsonBaseRules = buildJSONBaseRules()
+
+var jsonProvisioningAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + provisioningAssignmentKeys + `)$`)
+var jsonPrivateKeyAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + privateKeyAssignmentKeys + `)$`)
+var jsonSecretAssignmentKeyRE = regexp.MustCompile(`(?i)^(?:` + secretAssignmentKeys + `)$`)
 
 var highEntropyFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}\b`)
 var canonicalUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -277,6 +642,30 @@ var compactUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
 var publicHexFingerprintRE = regexp.MustCompile(`(?i)^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var gitSHARE = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
 var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b[\s:=#-]*)$`)
+
+func buildJSONBaseRules() []rule {
+	rules := append([]rule(nil), baseRules...)
+	for i := range rules {
+		if rules[i].name == "authorization_header" {
+			rules[i].re = jsonAuthorizationHeaderRE
+			break
+		}
+	}
+	return rules
+}
+
+func classifyJSONKey(key string) (string, string, bool) {
+	switch {
+	case jsonProvisioningAssignmentKeyRE.MatchString(key):
+		return "provisioning_key_assignment", markerProvisioningKey, true
+	case jsonPrivateKeyAssignmentKeyRE.MatchString(key):
+		return "private_key_assignment", markerPrivateKey, true
+	case jsonSecretAssignmentKeyRE.MatchString(key):
+		return "secret_assignment", markerSecret, true
+	default:
+		return "", "", false
+	}
+}
 
 func buildBaseRules() []rule {
 	rules := []rule{
@@ -305,7 +694,7 @@ func buildBaseRules() []rule {
 			// etc. Matching only one scheme/token left non-Bearer/Basic
 			// credentials, and Digest's later params, in the clear.
 			name:        "authorization_header",
-			re:          regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)\S.*`),
+			re:          authorizationHeaderRE,
 			replacement: `${1}` + markerSecret,
 			prefilter:   containsFold("authorization"),
 		},

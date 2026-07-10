@@ -15,6 +15,13 @@ import (
 
 const dumpCanary = "dump-canary-secret"
 
+type authorizationJSONFixture struct {
+	Message string `json:"message"`
+	Count   int    `json:"count"`
+}
+
+func (authorizationJSONFixture) OutputSafe() {}
+
 func TestEnsureDirRejectsSymlink(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +86,31 @@ func TestWriteFileExclusiveRefusesExistingPath(t *testing.T) {
 	}
 	if string(got) != "existing" {
 		t.Errorf("existing file content = %q, want unchanged", got)
+	}
+}
+
+func TestWriteJSONFilePreservesValidJSONForAuthorizationText(t *testing.T) {
+	t.Parallel()
+
+	const authorizationCanary = "dump-authorization-canary"
+	path := filepath.Join(t.TempDir(), "resource.json")
+	err := writeJSONFile(path, redact.ModeStandard, authorizationJSONFixture{
+		Message: "set the Authorization: Bearer " + authorizationCanary + " header",
+		Count:   42,
+	})
+	if err != nil {
+		t.Fatalf("writeJSONFile(%q) error = %v, want nil", path, err)
+	}
+
+	body := readFile(t, path)
+	if !json.Valid([]byte(body)) {
+		t.Errorf("writeJSONFile(%q) = invalid JSON %q, want valid JSON", path, body)
+	}
+	if strings.Contains(body, authorizationCanary) {
+		t.Errorf("writeJSONFile(%q) = %q, want no %q", path, body, authorizationCanary)
+	}
+	if !strings.Contains(body, "<REDACTED:SECRET>") {
+		t.Errorf("writeJSONFile(%q) = %q, want secret marker", path, body)
 	}
 }
 

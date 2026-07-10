@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,6 +67,9 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		`{"proviſioningKey":"provisioning-leak-value"}`,
 		`{"zrſaencryptedsessionkey":"session-leak-value"}`,
 		`{"apiKey":"api-key-leak-value"}`,
+		`{"message":"set the Authorization: Bearer prefilter-authorization-canary header","count":42}`,
+		`{"message":"Authorization:","count":42}`,
+		"{\"message\":\"Authorization: Bearer first-prefilter-canary\"}\n{\"message\":\"Authorization:\",\"clientSecret\":\"second-prefilter-canary\"}\n",
 		`Authorization: Token sk-supersecret-credential-value`,
 		`owner alice@example.com uses 192.0.2.10`,
 	} {
@@ -84,6 +88,27 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 }
 
 func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
+	view := prefilterText{text: in}
+	if containsFold("authorization").match(&view) {
+		scanJSON := func(document string) (string, Report) {
+			return scanJSONDocument(document, func(value string) (string, Report) {
+				out := value
+				var report Report
+				out, report = scanRulesWithoutPrefilters(out, report, jsonBaseRules)
+				if mode == ModeShare || mode == ModeParanoid {
+					out, report = scanRulesWithoutPrefilters(out, report, shareRules)
+				}
+				return out, report
+			})
+		}
+		if json.Valid([]byte(in)) {
+			return scanJSON(in)
+		}
+		if out, report, ok := scanNDJSONDocuments(in, scanJSON); ok {
+			return out, report
+		}
+	}
+
 	out := in
 	var report Report
 	out, report = scanRulesWithoutPrefilters(out, report, baseRules)
@@ -92,7 +117,6 @@ func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
 	}
 	return out, report
 }
-
 func scanRulesWithoutPrefilters(out string, report Report, rules []rule) (string, Report) {
 	for _, rule := range rules {
 		count := len(rule.re.FindAllStringIndex(out, -1))

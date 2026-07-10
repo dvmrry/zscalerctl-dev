@@ -158,17 +158,21 @@ func TestRendererWriteJSONUsesSecretSafeMarshalAndBackstopRedaction(t *testing.T
 	t.Parallel()
 
 	const raw = "client-secret-from-response"
+	const authorizationCanary = "output-authorization-canary"
 	var buf bytes.Buffer
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
 	err := renderer.WriteJSON(&buf, safeJSONFixture{
-		AuthHeader: "Authorization: Bearer raw-bearer-token",
+		AuthHeader: "set the Authorization: Bearer " + authorizationCanary + " header",
 		Secret:     secret.New(raw),
 	})
 	if err != nil {
 		t.Fatalf("Renderer.WriteJSON() error = %v, want nil", err)
 	}
 	got := buf.String()
-	for _, forbidden := range []string{raw, "raw-bearer-token"} {
+	if !json.Valid([]byte(got)) {
+		t.Errorf("Renderer.WriteJSON() = invalid JSON %q, want valid JSON", got)
+	}
+	for _, forbidden := range []string{raw, authorizationCanary} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("Renderer.WriteJSON() = %q, want no %q", got, forbidden)
 		}
@@ -212,14 +216,20 @@ func TestRendererWriteTextRedactsText(t *testing.T) {
 func TestRendererWriteNDJSONOneCompactRecordPerLineAndRedacts(t *testing.T) {
 	t.Parallel()
 
+	const firstAuthorizationCanary = "first-output-authorization-canary"
+	const secondAuthorizationCanary = "second-output-authorization-canary"
 	var buf bytes.Buffer
+	redactingWriter := redact.NewWriter(&buf, redact.ModeStandard)
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
-	err := renderer.WriteNDJSON(&buf, []output.SafeJSON{
-		safeJSONFixture{AuthHeader: "first", Secret: secret.New("client-secret-from-response")},
-		safeJSONFixture{AuthHeader: "second", Secret: secret.New("another-client-secret")},
+	err := renderer.WriteNDJSON(redactingWriter, []output.SafeJSON{
+		safeJSONFixture{AuthHeader: "set the Authorization: Bearer " + firstAuthorizationCanary + " header", Secret: secret.New("client-secret-from-response")},
+		safeJSONFixture{AuthHeader: "set the Authorization: Bearer " + secondAuthorizationCanary + " header", Secret: secret.New("another-client-secret")},
 	})
 	if err != nil {
 		t.Fatalf("Renderer.WriteNDJSON() error = %v, want nil", err)
+	}
+	if err := redactingWriter.Close(); err != nil {
+		t.Fatalf("redactingWriter.Close() error = %v, want nil", err)
 	}
 	got := buf.String()
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
@@ -237,7 +247,7 @@ func TestRendererWriteNDJSONOneCompactRecordPerLineAndRedacts(t *testing.T) {
 		}
 	}
 	// secret.Secret marshals to <REDACTED:SECRET>, so the raw values never appear.
-	for _, forbidden := range []string{"client-secret-from-response", "another-client-secret"} {
+	for _, forbidden := range []string{"client-secret-from-response", "another-client-secret", firstAuthorizationCanary, secondAuthorizationCanary} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("WriteNDJSON() = %q, leaked %q", got, forbidden)
 		}
