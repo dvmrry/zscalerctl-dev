@@ -151,6 +151,11 @@ if run_verify "$bad_malformed_workflow" >"$tmpdir/bad-malformed-workflow.out" 2>
 	exit 1
 fi
 grep -q 'malformed YAML' "$tmpdir/bad-malformed-workflow.err"
+if grep -Fq '%!(EXTRA' "$tmpdir/bad-malformed-workflow.err"; then
+	echo "verify-go-toolchain emitted a malformed Go formatting diagnostic" >&2
+	cat "$tmpdir/bad-malformed-workflow.err" >&2
+	exit 1
+fi
 
 bad_dynamic_workflow="$tmpdir/bad-dynamic-workflow"
 make_fixture "$bad_dynamic_workflow"

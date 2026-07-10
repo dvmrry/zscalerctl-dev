@@ -8,6 +8,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 mkdir -p "$tmp_dir/good/workflows" "$tmp_dir/good-action-only/workflows" "$tmp_dir/good-input-keys/workflows" "$tmp_dir/good-flow-step/workflows" "$tmp_dir/good-flow-inline/workflows" "$tmp_dir/good-flow-reusable/workflows" "$tmp_dir/good-reusable/workflows" "$tmp_dir/good-reusable/.github/workflows" "$tmp_dir/bad-reusable/workflows" "$tmp_dir/bad-reusable/.github/workflows" "$tmp_dir/bad-duplicate/workflows" "$tmp_dir/bad-tag/workflows" "$tmp_dir/bad-missing-comment/workflows" "$tmp_dir/bad-retired-runtime/workflows" "$tmp_dir/good-local/workflows" "$tmp_dir/good-local/local-action" "$tmp_dir/good-nested-local/workflows" "$tmp_dir/good-nested-local/local-action" "$tmp_dir/good-nested-local/nested-action" "$tmp_dir/flow-style-unpinned/workflows" "$tmp_dir/bad-local-external/workflows" "$tmp_dir/bad-local-external/local-action" "$tmp_dir/bad-escape/workflows" "$tmp_dir/bad-cycle/workflows" "$tmp_dir/bad-cycle/local-a" "$tmp_dir/bad-cycle/local-b" "$tmp_dir/bad-missing-metadata/workflows" "$tmp_dir/bad-missing-metadata/missing-action" "$tmp_dir/bad-malformed/workflows" "$tmp_dir/bad-dynamic/workflows"
 mkdir -p "$tmp_dir/bad-retired-runtime-case/workflows" "$tmp_dir/bad-unreferenced-local/workflows" "$tmp_dir/bad-unreferenced-local/tools/proxy-action"
 mkdir -p "$tmp_dir/bad-steps-alias/workflows" "$tmp_dir/bad-step-merge/workflows"
+mkdir -p "$tmp_dir/good-workflows-override/.github/workflows" "$tmp_dir/good-workflows-override/.github/actions/local"
 
 cat >"$tmp_dir/good/workflows/ci.yml" <<'YAML'
 name: ci
@@ -151,6 +152,26 @@ YAML
 cat >"$tmp_dir/good-local/local-action/action.yml" <<'YAML'
 name: local-action
 description: valid local composite action fixture
+runs:
+  using: composite
+  steps:
+    - run: echo valid
+      shell: bash
+YAML
+
+cat >"$tmp_dir/good-workflows-override/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/local
+YAML
+
+cat >"$tmp_dir/good-workflows-override/.github/actions/local/action.yml" <<'YAML'
+name: local-action
+description: valid repository-root-relative local action fixture
 runs:
   using: composite
   steps:
@@ -354,6 +375,9 @@ ZSCALERCTL_GITHUB_DIR="$tmp_dir/good-flow-reusable" \
 ZSCALERCTL_GITHUB_DIR="$tmp_dir/good-local" \
 	"$repo_root/scripts/verify-actions-pinned.sh"
 
+ZSCALERCTL_GITHUB_DIR="$tmp_dir/good-workflows-override/.github/workflows" \
+	"$repo_root/scripts/verify-actions-pinned.sh"
+
 ZSCALERCTL_GITHUB_DIR="$tmp_dir/good-flow-step" \
 	"$repo_root/scripts/verify-actions-pinned.sh"
 
@@ -434,6 +458,11 @@ if ZSCALERCTL_GITHUB_DIR="$tmp_dir/bad-malformed" \
 	exit 1
 fi
 grep -q "malformed YAML" "$tmp_dir/err"
+if grep -Fq '%!(EXTRA' "$tmp_dir/err"; then
+	echo "verify-actions-pinned emitted a malformed Go formatting diagnostic" >&2
+	cat "$tmp_dir/err" >&2
+	exit 1
+fi
 
 if ZSCALERCTL_GITHUB_DIR="$tmp_dir/bad-dynamic" \
 	"$repo_root/scripts/verify-actions-pinned.sh" >"$tmp_dir/out" 2>"$tmp_dir/err"; then

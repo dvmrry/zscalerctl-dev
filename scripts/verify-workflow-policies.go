@@ -268,7 +268,7 @@ func (v *verifier) scanFile(path string, via *yaml.Node, kind fileKind) {
 
 	root, ok := decodeYAML(data)
 	if !ok {
-		v.addErrorWithYAMLLine(absPath, root.err, "malformed YAML: %v", root.err)
+		v.addErrorWithYAMLLine(absPath, root.err, "malformed YAML: %v")
 		return
 	}
 	if root.node == nil || root.node.Kind != yaml.MappingNode {
@@ -683,14 +683,14 @@ func (v *verifier) addNodeError(file string, node *yaml.Node, format string, arg
 	v.addError(file, line, column, format, args...)
 }
 
-func (v *verifier) addErrorWithYAMLLine(file string, err error, format string, args ...any) {
+func (v *verifier) addErrorWithYAMLLine(file string, err error, format string) {
 	line := 1
 	if matches := lineInErr.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if parsed, parseErr := strconv.Atoi(matches[1]); parseErr == nil {
 			line = parsed
 		}
 	}
-	v.addError(file, line, 1, format, append([]any{err}, args...)...)
+	v.addError(file, line, 1, format, err)
 }
 
 func (v *verifier) addError(file string, line, column int, format string, args ...any) {

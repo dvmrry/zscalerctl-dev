@@ -19,8 +19,11 @@ fi
 
 if [[ "${ZSCALERCTL_GITHUB_DIR+x}" == x ]]; then
 	github_dir_abs="$(cd "$github_dir" && pwd)"
+	github_dir_parent="$(dirname "$github_dir_abs")"
 	if [[ "${github_dir_abs##*/}" == ".github" ]]; then
 		local_root="$(cd "$github_dir_abs/.." && pwd)"
+	elif [[ "${github_dir_abs##*/}" == "workflows" && "${github_dir_parent##*/}" == ".github" ]]; then
+		local_root="$(cd "$github_dir_parent/.." && pwd)"
 	else
 		local_root="$github_dir_abs"
 	fi
