@@ -1,0 +1,3 @@
+# Published schemas are immutable byte streams. Keep their committed LF bytes
+# unchanged on Windows so cross-platform tests verify the same artifact.
+docs/schema/*.json text eol=lf
