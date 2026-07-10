@@ -1,0 +1,7 @@
+{
+  "kind": "invalid_resource_id",
+  "message": "invalid resource ID",
+  "operation": "get",
+  "product": "zia",
+  "resource": "locations"
+}

@@ -61,9 +61,9 @@ fixture, compatibility, and semver gates.
 The stderr CLI error envelope and exit-code mapping are supported. The machine
 error-kind taxonomy has representative fixtures for the current stable kinds:
 `usage`, `unsupported_capability`, `unsupported_operation`, `unknown_resource`,
-`not_found`, `live_access_failed`, `canceled`, `deadline_exceeded`, and
-`internal`. Further taxonomy changes need fixture coverage before any supported
-machine request/response promotion.
+`not_found`, `invalid_resource_id`, `live_access_failed`, `canceled`,
+`deadline_exceeded`, and `internal`. Further taxonomy changes need fixture
+coverage before any supported machine request/response promotion.
 
 ## Error Vocabulary Map
 
@@ -77,7 +77,7 @@ stable compatibility surface.
 | Unknown/unsupported resource | `unknown_resource` | `unknown_resource` for machine errors; `unsupported_resource` for the Zscaler sentinel; `not_found` for CLI catalog misses | `4` for command-boundary unsupported/not-found errors; `1` if an unadapted `MachineError{Kind: unknown_resource}` reaches `main.go` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | The executor vocabulary is `unknown_resource`. `main.go` maps `zscaler.ErrUnsupportedResource` to `unsupported_resource`, and CLI catalog misses unwrap to `cli.ErrNotFound`. |
 | Record not found (get of nonexistent id) | `not_found` | `not_found` | `4` | `resources.ErrRecordNotFound`; `zscaler.ErrResourceNotFound`; `cli.ErrNotFound` | `main.go` special-cases `machine.ErrorKindNotFound` to the not-found exit code. |
 | Missing credentials | — | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | No executor machine kind; config/runtime construction reports the Zscaler sentinel. |
-| Invalid resource id | — | `invalid_resource_id` | `2` | `zscaler.ErrInvalidResourceID` | Command-boundary usage-class error; `machineErrorFromLoadError` has no separate invalid-ID kind. |
+| Invalid resource id | `invalid_resource_id` | `invalid_resource_id` | `2` | `resources.ErrInvalidResourceID`; `zscaler.ErrInvalidResourceID` | The reader aliases the shared sentinel; `machineErrorFromLoadError` emits a sanitized machine error whose unexported cause preserves only that sentinel, and `main.go` maps the kind to exit 2. |
 | Live access failure | `live_access_failed` | `live_access_failed` | `5` | `zscaler.ErrLiveAccessFailed` (non-machine paths); executor default branch | Kind-driven since PR #102: `exitCodeForError` maps `MachineError{Kind: live_access_failed}` to exit 5 directly; the Zscaler sentinel still covers non-machine paths such as dump collection. The executor default hides backend details. |
 | Deadline exceeded | `deadline_exceeded` | `deadline_exceeded` | `5` | `context.DeadlineExceeded` | `main.go` special-cases `machine.ErrorKindDeadlineExceeded` to the live-access failure exit code. |
 | Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
