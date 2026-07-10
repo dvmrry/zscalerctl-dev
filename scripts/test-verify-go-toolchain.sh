@@ -42,6 +42,41 @@ make_fixture "$named_step"
 perl -0pi -e 's/- uses: actions\/setup-go@example/- name: Setup Go\n        uses: actions\/setup-go@example/' "$named_step/.github/workflows/ci.yml"
 run_verify "$named_step"
 
+flow_style_good="$tmpdir/flow-style-good"
+make_fixture "$flow_style_good"
+cat >>"$flow_style_good/.github/workflows/ci.yml" <<'YAML'
+
+  flow-style-good:
+    steps: [{uses: actions/setup-go@example, with: {go-version: '1.26.5'}}]
+YAML
+run_verify "$flow_style_good"
+
+flow_style_stale="$tmpdir/flow-style-stale"
+make_fixture "$flow_style_stale"
+cat >>"$flow_style_stale/.github/workflows/ci.yml" <<'YAML'
+
+  flow-style-stale:
+    steps: [{uses: actions/setup-go@example, with: {go-version: '1.26.4'}}]
+YAML
+if run_verify "$flow_style_stale" >"$tmpdir/flow-style-stale.out" 2>"$tmpdir/flow-style-stale.err"; then
+	echo "verify-go-toolchain accepted a stale flow-style setup-go step" >&2
+	exit 1
+fi
+if ! grep -q 'does not match root security minimum' "$tmpdir/flow-style-stale.err"; then
+	echo "verify-go-toolchain reported the wrong flow-style stale setup-go error" >&2
+	cat "$tmpdir/flow-style-stale.err" >&2
+	exit 1
+fi
+
+case_varied_stale="$tmpdir/case-varied-stale"
+make_fixture "$case_varied_stale"
+perl -0pi -e 's#actions/setup-go@example#Actions/Setup-Go@example#; s/1\.26\.5/1.26.4/' "$case_varied_stale/.github/workflows/ci.yml"
+if run_verify "$case_varied_stale" >"$tmpdir/case-varied-stale.out" 2>"$tmpdir/case-varied-stale.err"; then
+	echo "verify-go-toolchain accepted a stale case-varied setup-go step" >&2
+	exit 1
+fi
+grep -q 'does not match root security minimum' "$tmpdir/case-varied-stale.err"
+
 named_unpinned="$tmpdir/named-unpinned"
 make_fixture "$named_unpinned"
 perl -0pi -e 's/- uses: actions\/setup-go@example/- name: Setup Go\n        uses: actions\/setup-go@example/; s/\n[[:space:]]+go-version: '\''1\.26\.5'\''//' "$named_unpinned/.github/workflows/ci.yml"
@@ -50,6 +85,92 @@ if run_verify "$named_unpinned" >"$tmpdir/named-unpinned.out" 2>"$tmpdir/named-u
 	exit 1
 fi
 grep -q 'setup-go step is missing with.go-version' "$tmpdir/named-unpinned.err"
+
+nested_local="$tmpdir/nested-local"
+make_fixture "$nested_local"
+mkdir -p "$nested_local/local-action" "$nested_local/nested-action"
+cat >"$nested_local/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  test:
+    steps:
+      - uses: ./local-action
+YAML
+cat >"$nested_local/local-action/action.yml" <<'YAML'
+name: outer-local-action
+description: nested local action setup-go fixture
+runs:
+  using: composite
+  steps:
+    - uses: ./nested-action
+YAML
+cat >"$nested_local/nested-action/action.yaml" <<'YAML'
+name: nested-local-action
+description: leaf local action setup-go fixture
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@example
+      with:
+        go-version: '1.26.5'
+YAML
+run_verify "$nested_local"
+
+reusable_local="$tmpdir/reusable-local"
+make_fixture "$reusable_local"
+cat >"$reusable_local/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  call:
+    uses: ./.github/workflows/reusable.yml
+YAML
+cat >"$reusable_local/.github/workflows/reusable.yml" <<'YAML'
+name: reusable
+on:
+  workflow_call:
+jobs:
+  nested:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@example
+        with:
+          go-version: '1.26.5'
+YAML
+run_verify "$reusable_local"
+
+bad_malformed_workflow="$tmpdir/bad-malformed-workflow"
+make_fixture "$bad_malformed_workflow"
+cat >"$bad_malformed_workflow/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  test:
+    steps: [
+      - uses: actions/setup-go@example
+        with:
+          go-version: '1.26.5'
+YAML
+if run_verify "$bad_malformed_workflow" >"$tmpdir/bad-malformed-workflow.out" 2>"$tmpdir/bad-malformed-workflow.err"; then
+	echo "verify-go-toolchain accepted malformed workflow YAML" >&2
+	exit 1
+fi
+grep -q 'malformed YAML' "$tmpdir/bad-malformed-workflow.err"
+
+bad_dynamic_workflow="$tmpdir/bad-dynamic-workflow"
+make_fixture "$bad_dynamic_workflow"
+cat >"$bad_dynamic_workflow/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  test:
+    steps: ${{ matrix.steps }}
+YAML
+if run_verify "$bad_dynamic_workflow" >"$tmpdir/bad-dynamic-workflow.out" 2>"$tmpdir/bad-dynamic-workflow.err"; then
+	echo "verify-go-toolchain accepted a dynamic workflow steps structure" >&2
+	exit 1
+fi
+grep -q 'unsupported or dynamic steps structure' "$tmpdir/bad-dynamic-workflow.err"
+
+overrides="$tmpdir/overrides"
+make_fixture "$overrides"
+ZSCALERCTL_REPO_ROOT="$overrides" \
+ZSCALERCTL_ROOT_GO_MOD="$overrides/go.mod" \
+ZSCALERCTL_WORKFLOWS_DIR="$overrides/.github/workflows" \
+	"$verifier"
 
 bad_minimum="$tmpdir/bad-minimum"
 make_fixture "$bad_minimum"

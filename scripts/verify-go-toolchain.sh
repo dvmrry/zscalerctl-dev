@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="${ZSCALERCTL_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="${ZSCALERCTL_REPO_ROOT:-$script_root}"
+repo_root="$(cd "$repo_root" && pwd)"
 cd "$repo_root"
 
 root_mod="${ZSCALERCTL_ROOT_GO_MOD:-go.mod}"
@@ -52,90 +54,14 @@ for module_file in "${module_files[@]}"; do
 	fi
 done
 
-check_workflow() {
-	local file="$1"
-	local line line_no=0 setup_count=0
-	local pending=0 setup_line=0 step_indent=0
-	local saw_with=0 with_indent=0 with_child_indent=-1
-	local indent version current_step_indent=-1
-
-	while IFS= read -r line || [[ -n "$line" ]]; do
-		line_no=$((line_no + 1))
-
-		if (( pending != 0 )); then
-			if [[ "$line" =~ ^([[:space:]]*)-[[:space:]] ]]; then
-				indent=${#BASH_REMATCH[1]}
-				if (( indent <= step_indent )); then
-					echo "$file:$setup_line: setup-go step is missing with.go-version: $minimum" >&2
-					return 1
-				fi
-			fi
-
-			if (( saw_with == 0 )) && [[ "$line" =~ ^([[:space:]]*)with:[[:space:]]*$ ]]; then
-				indent=${#BASH_REMATCH[1]}
-				if (( indent > step_indent )); then
-					saw_with=1
-					with_indent=$indent
-					with_child_indent=-1
-					continue
-				fi
-			fi
-
-			if (( saw_with != 0 )); then
-				if [[ ! "$line" =~ ^[[:space:]]*($|#) && "$line" =~ ^([[:space:]]*)[^[:space:]] ]]; then
-					indent=${#BASH_REMATCH[1]}
-					if (( indent <= with_indent )); then
-						echo "$file:$setup_line: setup-go step is missing with.go-version: $minimum" >&2
-						return 1
-					fi
-					if (( with_child_indent < 0 )); then
-						with_child_indent=$indent
-					fi
-					if (( indent == with_child_indent )) && [[ "$line" =~ ^[[:space:]]*go-version:[[:space:]]*[\"\']?([^\"\'[:space:]#]+) ]]; then
-						version="${BASH_REMATCH[1]}"
-						if [[ "$version" != "$minimum" ]]; then
-							echo "$file:$line_no: go-version $version does not match root security minimum $minimum" >&2
-							return 1
-						fi
-						pending=0
-						continue
-					fi
-				fi
-			fi
-		fi
-
-		if [[ "$line" =~ ^([[:space:]]*)-[[:space:]] ]]; then
-			current_step_indent=${#BASH_REMATCH[1]}
-		fi
-		if [[ "$line" =~ ^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*[\"\']?actions/setup-go@ ]]; then
-			if (( current_step_indent < 0 )); then
-				echo "$file:$line_no: setup-go use is not inside a workflow step" >&2
-				return 1
-			fi
-			pending=1
-			setup_line=$line_no
-			step_indent=$current_step_indent
-			saw_with=0
-			with_child_indent=-1
-			setup_count=$((setup_count + 1))
-		fi
-	done <"$file"
-
-	if (( pending != 0 )); then
-		echo "$file:$setup_line: setup-go step is missing with.go-version: $minimum" >&2
-		return 1
-	fi
-	printf '%d\n' "$setup_count"
-}
-
 if [[ -d "$workflows_dir" ]]; then
-	total_setup_go=0
-	while IFS= read -r workflow; do
-		count="$(check_workflow "$workflow")"
-		total_setup_go=$((total_setup_go + count))
-	done < <(find "$workflows_dir" -type f \( -name '*.yml' -o -name '*.yaml' \) | LC_ALL=C sort)
-	if (( total_setup_go == 0 )); then
-		echo "$workflows_dir: no setup-go steps found" >&2
-		exit 1
-	fi
+	workflows_path="$(cd "$workflows_dir" && pwd)"
+	(
+		cd "$script_root"
+		go run -mod=vendor "$script_root/scripts/verify-workflow-policies.go" \
+			--mode setup-go \
+			--scan-dir "$workflows_path" \
+			--repo-root "$repo_root" \
+			--go-minimum "$minimum"
+	)
 fi

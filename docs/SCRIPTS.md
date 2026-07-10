@@ -59,6 +59,7 @@ registered path exists.
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |
+| `scripts/verify-workflow-policies.go` | verify | `scripts/verify-actions-pinned.sh`; `scripts/verify-go-toolchain.sh` | Shared YAML-aware action and setup-go policy traversal |
 
 The testdata directory under `scripts/` holds fixtures for script tests and is
 intentionally not a registry entry because the verifier tracks top-level script

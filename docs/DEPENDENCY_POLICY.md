@@ -129,7 +129,11 @@ changing terminal styling dependencies or startup paths.
 Renovate keeps Go dependencies and GitHub Actions current, but it does not
 automerge updates. GitHub Actions must remain pinned to full commit SHAs with an
 inline version comment so Renovate can update the digest while preserving a
-human-readable tag.
+human-readable tag. The pin gate parses workflow and local-action YAML instead
+of matching source lines, follows local reusable workflows and composite-action
+references, and scans every repository-local `action.yml` or `action.yaml` even
+when it is not currently referenced. Malformed, dynamic, aliased, duplicate-key,
+or repository-escaping executable structures fail closed.
 
 Release SBOM generation uses `cyclonedx-gomod` installed by `go install` from
 the committed `tools/go.mod` and `tools/go.sum` instead of a GitHub Action.
