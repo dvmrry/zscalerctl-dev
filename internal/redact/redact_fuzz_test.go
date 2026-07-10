@@ -117,6 +117,66 @@ func FuzzRedactorPreservesValidNDJSON(f *testing.F) {
 	})
 }
 
+func FuzzScanRenderedStringRedactsEscapedJSONHighEntropyCanary(f *testing.F) {
+	for _, seed := range []struct {
+		note   string
+		ndjson bool
+	}{
+		{note: "ordinary note"},
+		{note: "escaped quote \" and slash \\", ndjson: true},
+		{note: "unicode 東京", ndjson: true},
+	} {
+		f.Add(seed.note, seed.ndjson)
+	}
+
+	const escapedToken = `A7b9C2d\u0034E6f8G1h\u0033J5k7L9m\u0032N4p6Q8r\u0030S2t4U6v`
+	f.Fuzz(func(t *testing.T, note string, ndjson bool) {
+		if len(note) > 8192 {
+			return
+		}
+		noteJSON, err := json.Marshal(note)
+		if err != nil {
+			t.Fatalf("json.Marshal(note) error = %v", err)
+		}
+		record := `{"credential":"` + escapedToken + `","note":` + string(noteJSON) + `}`
+		input := record
+		wantRecords := 1
+		if ndjson {
+			input = record + "\n" + record + "\n"
+			wantRecords = 2
+		}
+
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			r := redact.New(mode)
+			got, report := r.ScanRenderedString(input)
+			lines := []string{got}
+			if ndjson {
+				lines = strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			}
+			if len(lines) != wantRecords {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) records = %d, want %d: %q", mode, len(lines), wantRecords, got)
+			}
+			for i, line := range lines {
+				var decoded struct {
+					Credential string `json:"credential"`
+				}
+				if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+					t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) record %d invalid: %v; body = %q", mode, i+1, err, line)
+				}
+				if decoded.Credential != "<REDACTED:SECRET>" {
+					t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) record %d credential = %q, want marker", mode, i+1, decoded.Credential)
+				}
+			}
+			if report.Counts["high_entropy_rendered_token"] < wantRecords {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) report count = %d, want at least %d", mode, report.Counts["high_entropy_rendered_token"], wantRecords)
+			}
+			if gotTwice, _ := r.ScanRenderedString(got); gotTwice != got {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON twice, %s) = %q, want idempotent %q", mode, gotTwice, got)
+			}
+		}
+	})
+}
+
 func FuzzScanRenderedStringRedactsBareHighEntropyCanary(f *testing.F) {
 	for _, seed := range []struct {
 		prefix string

@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -261,8 +262,6 @@ func TestRendererWriteNDJSONOneCompactRecordPerLineAndRedacts(t *testing.T) {
 func TestRendererThroughRedactingWriterPreservesLongJSONNumbers(t *testing.T) {
 	t.Parallel()
 
-	const number = "1234567890123456.789012345678901e+2"
-	const token = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
 	tests := []struct {
 		name   string
 		write  func(output.Renderer, io.Writer) error
@@ -299,15 +298,7 @@ func TestRendererThroughRedactingWriterPreservesLongJSONNumbers(t *testing.T) {
 			}
 
 			if !tt.ndjson {
-				if !json.Valid(destination.Bytes()) {
-					t.Errorf("rendered JSON is invalid: %q", destination.String())
-				}
-				if !strings.Contains(destination.String(), number) {
-					t.Errorf("rendered JSON = %q, want numeric value preserved", destination.String())
-				}
-				if strings.Contains(destination.String(), token) {
-					t.Errorf("rendered JSON = %q, want string token redacted", destination.String())
-				}
+				assertLongNumberJSONFixtureOutput(t, destination.Bytes())
 				return
 			}
 
@@ -316,17 +307,39 @@ func TestRendererThroughRedactingWriterPreservesLongJSONNumbers(t *testing.T) {
 				t.Fatalf("rendered NDJSON line count = %d, want 2: %q", len(lines), destination.String())
 			}
 			for i, line := range lines {
-				if !json.Valid([]byte(line)) {
-					t.Errorf("rendered line %d = invalid JSON %q", i+1, line)
-				}
-				if !strings.Contains(line, number) {
-					t.Errorf("rendered line %d = %q, want numeric JSON value preserved", i+1, line)
-				}
-				if strings.Contains(line, token) {
-					t.Errorf("rendered line %d = %q, want string token redacted", i+1, line)
-				}
+				t.Run(fmt.Sprintf("record-%d", i+1), func(t *testing.T) {
+					assertLongNumberJSONFixtureOutput(t, []byte(line))
+				})
 			}
 		})
+	}
+}
+
+func assertLongNumberJSONFixtureOutput(t *testing.T, body []byte) {
+	t.Helper()
+
+	const number = "1234567890123456.789012345678901e+2"
+	if !json.Valid(body) {
+		t.Fatalf("rendered JSON is invalid: %q", string(body))
+	}
+	var decoded struct {
+		Credential        string      `json:"credential"`
+		EscapedCredential string      `json:"escaped_credential"`
+		Value             json.Number `json:"value"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(rendered JSON) error = %v; body = %q", err, string(body))
+	}
+	if decoded.Value.String() != number {
+		t.Errorf("rendered numeric value = %q, want %q", decoded.Value, number)
+	}
+	for field, value := range map[string]string{
+		"credential":         decoded.Credential,
+		"escaped_credential": decoded.EscapedCredential,
+	} {
+		if value != "<REDACTED:SECRET>" {
+			t.Errorf("rendered %s = %q, want secret marker", field, value)
+		}
 	}
 }
 
@@ -362,5 +375,5 @@ type longNumberJSONFixture struct{}
 func (longNumberJSONFixture) OutputSafe() {}
 
 func (longNumberJSONFixture) MarshalJSON() ([]byte, error) {
-	return []byte(`{"message":"Authorization: Bearer numeric-authorization-canary","credential":"A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v","value":1234567890123456.789012345678901e+2}`), nil
+	return []byte(`{"message":"Authorization: Bearer numeric-authorization-canary","credential":"A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v","escaped_credential":"A7b9C2d\u0034E6f8G1h\u0033J5k7L9m\u0032N4p6Q8r\u0030S2t4U6v","value":1234567890123456.789012345678901e+2}`), nil
 }

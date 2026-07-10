@@ -229,6 +229,13 @@ type jsonSensitiveValue struct {
 	end      int
 	ruleName string
 	marker   string
+	priority int
+}
+
+type jsonSensitiveClassification struct {
+	ruleName string
+	marker   string
+	priority int
 }
 
 type jsonReplacement struct {
@@ -275,7 +282,7 @@ func scanJSONDocument(in string, scanString jsonStringScanner, classifySensitive
 				start:    sensitive.start,
 				end:      sensitive.end,
 				value:    encodeJSONString(sensitive.marker),
-				priority: 1,
+				priority: sensitive.priority,
 			})
 		}
 	}
@@ -390,13 +397,17 @@ func (p *jsonDocumentParser) parseObject() bool {
 		// Match the existing assignment-rule surface: scalar values are replaced,
 		// while structured values continue to be scanned recursively by token.
 		structuredValue := p.in[valueStart] == '{' || p.in[valueStart] == '['
-		if ruleName, marker, sensitive := classifyJSONKey(key.value); sensitive && !structuredValue {
-			p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
-				start:    valueStart,
-				end:      valueEnd,
-				ruleName: ruleName,
-				marker:   marker,
-			})
+		if !structuredValue {
+			classifications, count := classifyJSONKey(key.value)
+			for _, classification := range classifications[:count] {
+				p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
+					start:    valueStart,
+					end:      valueEnd,
+					ruleName: classification.ruleName,
+					marker:   classification.marker,
+					priority: classification.priority,
+				})
+			}
 		}
 
 		p.skipSpace()
@@ -508,7 +519,10 @@ const (
 
 func (r Redactor) scanStringWithEntropy(in string, context highEntropyContext) (string, Report) {
 	out, report := r.ScanString(in)
-	if !highEntropyFreeTextTokenRE.MatchString(out) {
+	// JSON escapes can split one decoded token into raw fragments too short for
+	// the entropy regex. An escape therefore requires token-aware inspection
+	// even when the serialized bytes have no contiguous candidate.
+	if !strings.Contains(out, `\`) && !highEntropyFreeTextTokenRE.MatchString(out) {
 		return out, report
 	}
 	entropyScanner := func(value string) (string, Report) {
@@ -689,17 +703,34 @@ var publicHexFingerprintRE = regexp.MustCompile(`(?i)^(?:[0-9a-f]{40}|[0-9a-f]{6
 var gitSHARE = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
 var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b[\s:=#-]*)$`)
 
-func classifyJSONKey(key string) (string, string, bool) {
-	switch {
-	case jsonProvisioningAssignmentKeyRE.MatchString(key):
-		return "provisioning_key_assignment", markerProvisioningKey, true
-	case jsonPrivateKeyAssignmentKeyRE.MatchString(key):
-		return "private_key_assignment", markerPrivateKey, true
-	case jsonSecretAssignmentKeyRE.MatchString(key):
-		return "secret_assignment", markerSecret, true
-	default:
-		return "", "", false
+func classifyJSONKey(key string) ([3]jsonSensitiveClassification, int) {
+	var classifications [3]jsonSensitiveClassification
+	count := 0
+	if jsonProvisioningAssignmentKeyRE.MatchString(key) {
+		classifications[count] = jsonSensitiveClassification{
+			ruleName: "provisioning_key_assignment",
+			marker:   markerProvisioningKey,
+			priority: 1,
+		}
+		count++
 	}
+	if jsonPrivateKeyAssignmentKeyRE.MatchString(key) {
+		classifications[count] = jsonSensitiveClassification{
+			ruleName: "private_key_assignment",
+			marker:   markerPrivateKey,
+			priority: 2,
+		}
+		count++
+	}
+	if jsonSecretAssignmentKeyRE.MatchString(key) {
+		classifications[count] = jsonSensitiveClassification{
+			ruleName: "secret_assignment",
+			marker:   markerSecret,
+			priority: 3,
+		}
+		count++
+	}
+	return classifications, count
 }
 
 func buildBaseRules() []rule {

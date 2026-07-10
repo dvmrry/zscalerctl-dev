@@ -410,6 +410,37 @@ func TestScanRenderedStringPreservesJSONWithLongNumber(t *testing.T) {
 	}
 }
 
+func TestScanRenderedStringRedactsEscapedHighEntropyJSONToken(t *testing.T) {
+	t.Parallel()
+
+	const token = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	input := `{"credential":"A7b9C2d\u0034E6f8G1h\u0033J5k7L9m\u0032N4p6Q8r\u0030S2t4U6v"}`
+
+	r := redact.New(redact.ModeStandard)
+	got, report := r.ScanRenderedString(input)
+	if !json.Valid([]byte(got)) {
+		t.Fatalf("Redactor.ScanRenderedString(%q) = invalid JSON %q", input, got)
+	}
+	var decoded struct {
+		Credential string `json:"credential"`
+	}
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(Redactor.ScanRenderedString(%q)) error = %v", input, err)
+	}
+	if decoded.Credential == token {
+		t.Errorf("Redactor.ScanRenderedString(%q) leaked decoded token %q", input, token)
+	}
+	if decoded.Credential != "<REDACTED:SECRET>" {
+		t.Errorf("redacted credential = %q, want secret marker", decoded.Credential)
+	}
+	if gotCount := report.Counts["high_entropy_rendered_token"]; gotCount != 1 {
+		t.Errorf("Redactor.ScanRenderedString(%q) report count = %d, want 1", input, gotCount)
+	}
+	if gotTwice, _ := r.ScanRenderedString(got); gotTwice != got {
+		t.Errorf("Redactor.ScanRenderedString(Redactor.ScanRenderedString(%q)) = %q, want idempotent %q", input, gotTwice, got)
+	}
+}
+
 func TestRedactorPreservesJSONSyntaxForEscapedDigestAuthorization(t *testing.T) {
 	t.Parallel()
 

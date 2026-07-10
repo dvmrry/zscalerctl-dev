@@ -97,6 +97,7 @@ func FuzzJSONSensitiveKeyClassificationMatchesLegacyAssignments(f *testing.F) {
 		"appSecret",
 		"tenant_private_key",
 		"customProvisioningKey",
+		"provisionToken",
 		"tokenEndpoint",
 		"secretPolicy",
 		"publicKey",
@@ -128,12 +129,10 @@ func FuzzJSONSensitiveKeyClassificationMatchesLegacyAssignments(f *testing.F) {
 		if err != nil {
 			t.Fatalf("json.Marshal(%q) error = %v", key, err)
 		}
-		legacy, _ := scanRulesWithoutPrefilters(string(body), Report{}, legacyRules)
-		got := New(ModeStandard).String(string(body))
-		legacyLeaked := strings.Contains(legacy, canary)
-		gotLeaked := strings.Contains(got, canary)
-		if gotLeaked != legacyLeaked {
-			t.Fatalf("JSON key %q classification changed: legacy=%q, got=%q", key, legacy, got)
+		legacy, legacyReport := scanRulesWithoutPrefilters(string(body), Report{}, legacyRules)
+		got, gotReport := New(ModeStandard).ScanString(string(body))
+		if got != legacy || !reflect.DeepEqual(gotReport, legacyReport) {
+			t.Fatalf("JSON key %q classification changed: legacy=(%q, %#v), got=(%q, %#v)", key, legacy, legacyReport, got, gotReport)
 		}
 	})
 }
