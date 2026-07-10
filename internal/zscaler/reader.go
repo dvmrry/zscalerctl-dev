@@ -129,7 +129,7 @@ func (e *MissingCredentialsError) Error() string {
 func (e *MissingCredentialsError) Unwrap() error { return ErrMissingCredentials }
 
 var (
-	ErrInvalidResourceID  = errors.New("invalid zscaler resource id")
+	ErrInvalidResourceID  = resources.ErrInvalidResourceID
 	ErrResourceNotFound   = errors.New("zscaler resource not found")
 	ErrLiveAccessFailed   = errors.New("zscaler API request failed")
 	ErrInvalidProxyConfig = errors.New("invalid zscaler proxy config")

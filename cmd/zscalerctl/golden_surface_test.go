@@ -42,8 +42,9 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 var goldenBinary string
 
 const (
-	goldenSurfaceFixtureEnv  = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
-	goldenSurfaceReadFixture = "resource-read"
+	goldenSurfaceFixtureEnv       = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture      = "resource-read"
+	goldenSurfaceInvalidIDFixture = "invalid-resource-id"
 )
 
 // TestMain builds the binary once for all golden tests.
@@ -325,6 +326,9 @@ func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, 
 }
 
 func (r goldenSurfaceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceInvalidIDFixture && product == resources.ProductZIA && resource == "locations" {
+		return resources.SourceRecord{}, fmt.Errorf("%w: %q", resources.ErrInvalidResourceID, id)
+	}
 	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" && id == "42" {
 		return resources.NewSourceRecord(map[string]any{
 			"id":             "42",
@@ -544,6 +548,13 @@ func TestGoldenSurface(t *testing.T) {
 			fixture:  goldenSurfaceReadFixture,
 			wantCode: 0,
 			note:     "pretty-resource-get-shape",
+		},
+		{
+			name:     "zia-locations-get-invalid-id-json",
+			args:     []string{"--format", "json", "zia", "locations", "get", "not-a-number"},
+			fixture:  goldenSurfaceInvalidIDFixture,
+			wantCode: 2,
+			note:     "invalid-resource-id-contract",
 		},
 		// ── singleton show (offline fixture → pretty success) ───────────────────
 		{

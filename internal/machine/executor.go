@@ -30,6 +30,9 @@ const (
 	// exist.
 	ErrorKindNotFound = "not_found"
 
+	// ErrorKindInvalidResourceID reports an ID that cannot identify a resource.
+	ErrorKindInvalidResourceID = "invalid_resource_id"
+
 	// ErrorKindLiveAccessFailed reports a sanitized resource-loading failure.
 	ErrorKindLiveAccessFailed = "live_access_failed"
 
@@ -397,6 +400,15 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
+		}
+	case errors.Is(err, resources.ErrInvalidResourceID):
+		return MachineError{
+			Kind:      ErrorKindInvalidResourceID,
+			Message:   "invalid resource ID",
+			Operation: op,
+			Product:   product,
+			Resource:  resource,
+			cause:     resources.ErrInvalidResourceID,
 		}
 	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField):
 		return MachineError{

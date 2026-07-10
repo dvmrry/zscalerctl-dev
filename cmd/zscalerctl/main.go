@@ -194,6 +194,8 @@ func exitCodeForError(err error) int {
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
 		switch machineErr.Kind {
+		case machine.ErrorKindInvalidResourceID:
+			return exitUsageError
 		case machine.ErrorKindNotFound:
 			return exitNotFound
 		case machine.ErrorKindLiveAccessFailed:

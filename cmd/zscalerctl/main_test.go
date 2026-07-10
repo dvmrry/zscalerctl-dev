@@ -40,6 +40,7 @@ func TestExitCodeForError(t *testing.T) {
 		{"resource_not_found", zscaler.ErrResourceNotFound, exitNotFound},
 		{"wrapped_resource_not_found", fmt.Errorf("zia get: %w", zscaler.ErrResourceNotFound), exitNotFound},
 		{"machine_not_found", &machine.MachineError{Kind: machine.ErrorKindNotFound}, exitNotFound},
+		{"machine_invalid_resource_id", &machine.MachineError{Kind: machine.ErrorKindInvalidResourceID}, exitUsageError},
 		{"machine_live_access_failed", &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}, exitLiveAccessFailure},
 		{"machine_deadline_exceeded", &machine.MachineError{Kind: machine.ErrorKindDeadlineExceeded}, exitLiveAccessFailure},
 		{"machine_canceled", &machine.MachineError{Kind: machine.ErrorKindCanceled}, exitInternalError},
@@ -178,6 +179,39 @@ func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
 	}
 	if env.Error.Kind != machine.ErrorKindLiveAccessFailed {
 		t.Errorf("stderr error.kind = %q, want %q", env.Error.Kind, machine.ErrorKindLiveAccessFailed)
+	}
+}
+
+func TestRunInvalidResourceIDReturnsUsageWithoutNetwork(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeMainConfig(t, "profiles:\n  default: {}\n")
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"--config", configPath,
+		"--format", "json",
+		"zia", "locations", "get", "not-a-number",
+	}, &stdout, &stderr, []string{
+		config.EnvClientID + "=test-value",
+		config.EnvClientSecret + "=test-value",
+		config.EnvVanityDomain + "=example",
+		config.EnvCloud + "=PRODUCTION",
+	})
+	if code != exitUsageError {
+		t.Fatalf("run(invalid resource ID) exit code = %d, want %d; stderr = %q", code, exitUsageError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(invalid resource ID) stdout = %q, want empty", stdout.String())
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != machine.ErrorKindInvalidResourceID {
+		t.Errorf("run(invalid resource ID) kind = %q, want %q", got.Error.Kind, machine.ErrorKindInvalidResourceID)
+	}
+	if got.Error.Message != "invalid resource ID" {
+		t.Errorf("run(invalid resource ID) message = %q, want sanitized message", got.Error.Message)
+	}
+	if got.Error.Operation != "get" || got.Error.Product != "zia" || got.Error.Resource != "locations" {
+		t.Errorf("run(invalid resource ID) context = %q/%q/%q, want get/zia/locations", got.Error.Operation, got.Error.Product, got.Error.Resource)
 	}
 }
 
