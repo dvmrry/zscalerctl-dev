@@ -33,6 +33,12 @@ carry versioned `schema` ids; drift tests keep them in sync with the emitting
 structs. Backward-compatible schema additions are minor releases; incompatible
 schema changes are breaking changes.
 
+Published schema URLs are immutable once a released payload embeds them. A new
+introspection contract therefore gets a new version-specific file and `$schema`
+URL (for example, `introspect-v2.schema.json`); the legacy
+`introspect.schema.json` path remains frozen for v1 validation. Never repoint an
+older embedded URL at an incompatible shape.
+
 The 1.0 supported surface is defined in
 [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md). In short, it covers
 the audited read-only CLI command/flag/output/error/dump/diff/schema surfaces,

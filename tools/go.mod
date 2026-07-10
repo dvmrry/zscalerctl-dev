@@ -1,8 +1,6 @@
 module github.com/dvmrry/zscalerctl/tools
 
-go 1.26
-
-toolchain go1.26.4
+go 1.26.5
 
 tool (
 	github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod

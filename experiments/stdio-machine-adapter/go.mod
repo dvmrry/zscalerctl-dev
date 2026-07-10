@@ -1,8 +1,6 @@
 module github.com/dvmrry/zscalerctl/experiments/stdio-machine-adapter
 
-go 1.26
-
-toolchain go1.26.4
+go 1.26.5
 
 require github.com/dvmrry/zscalerctl v0.0.0
 
@@ -26,7 +24,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/zscaler/zscaler-sdk-go/v3 v3.8.38 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

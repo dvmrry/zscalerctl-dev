@@ -102,6 +102,17 @@ chosen, picks a validated baseline commit.
    policy (`format_policy.go`). Mechanical moves only; boundary and golden
    tests pass after each move; not interleaved with Phase 3 PRs.
    `semver:none`.
+5. **`refactor(resources,zscaler)`: split dominant catalog and adapter files by
+   reviewed resource family.** Move `catalog_zia.go` entries and the large
+   source-record conversion blocks in `reader.go` into cohesive family files
+   without changing catalog order, field classifications, source mappings, or
+   runtime registration. Land this as small mechanical PRs, each gated by field
+   coverage, SDK-shape, resource-reference, CLI-doc, introspection, and golden
+   checks. Generators may remove repetitive syntax only when their inputs are
+   reviewed declarations; they must never infer safe fields, redaction modes,
+   ignored SDK fields, or sensitivity classifications from SDK names. Add a
+   per-file size/ownership inventory before the first move and record unchanged
+   resource/field counts in every handoff. `semver:none`.
 
 ## Phase 3 — Human CLI polish (can run parallel to Phase 2 if PRs stay small)
 

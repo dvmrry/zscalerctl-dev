@@ -6,6 +6,8 @@ These are the stable, versioned JSON Schemas for the machine-readable output
 | Artifact | Where | Schema | `schema` id |
 | --- | --- | --- | --- |
 | Config file | `~/.config/zscalerctl/config.yaml` (or `--config PATH`) | [config.schema.json](config.schema.json) | — (YAML; no in-payload schema id) |
+| CLI introspection v1 (legacy, frozen) | stdout from released v1 clients | [introspect.schema.json](introspect.schema.json) | `introspect_version: 1` |
+| CLI introspection v2 (current) | stdout from `zscalerctl --format json introspect` | [introspect-v2.schema.json](introspect-v2.schema.json) | `introspect_version: 2` |
 | Machine manifest | stdout from `zscalerctl --format json machine manifest` | [machine-manifest.schema.json](machine-manifest.schema.json) | `machine.v1` |
 | Manifest | `manifest.json` in the dump | [manifest.schema.json](manifest.schema.json) | `zscalerctl.dump.manifest.v2` |
 | Redaction report | `redaction_report.json` in the dump | [redaction-report.schema.json](redaction-report.schema.json) | `zscalerctl.redaction_report.v1` |
@@ -19,6 +21,12 @@ can route on it. The stderr error envelope carries no in-payload `schema` field
 (its `$id` lives in the schema file); it is written when a command fails and the
 resolved output format is JSON — an explicit `--format json`, or the default
 `auto` on a non-terminal stdout.
+CLI introspection carries its contract version in `introspect_version`; version
+2 uses its own version-specific schema URL, adds structured command effects,
+and makes `mutating` a conservative derived compatibility summary. The original
+`introspect.schema.json` path remains byte-for-byte frozen because released v1
+documents embed that URL. Future versions must add a new versioned schema path
+rather than replace either published file.
 The schemas are JSON Schema draft 2020-12 and use `additionalProperties: false`,
 so a new field is a breaking change — bump the `schema` id (and these files) when
 the artifact shape changes, per [VERSIONING.md](../VERSIONING.md).
@@ -46,3 +54,6 @@ file schema: every YAML-tagged field on `profileFile` and `profileData` must
 appear in `config.schema.json`, and vice versa.
 `scripts/verify-machine-contract.sh` validates the committed machine manifest
 fixture against `machine-manifest.schema.json`.
+`internal/cli/introspect_schema_test.go` freezes the legacy v1 schema hash and
+applies the struct/schema drift and identity guards to the v2 document and its
+structured effects.

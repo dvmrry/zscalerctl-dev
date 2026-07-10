@@ -16,7 +16,6 @@ import (
 // can never silently drift behind the flag set. This is the agent-facing twin of
 // TestManPageDocumentsFlagsAndCommands.
 var agentDocExemptFlags = map[string]string{
-	"--output":   "writes output to a file instead of stdout; agents read stdout, no effect on content",
 	"--color":    "human TTY styling; agents use --format json",
 	"--no-color": "human TTY styling; agents use --format json",
 	"--no-cache": "live reads already bypass the SDK cache regardless; config/status surface, not part of the agent data path",

@@ -13,6 +13,14 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
+// fakePrivateKeyBlock assembles a PEM-shaped redaction canary without placing
+// a complete private-key detector signature in the repository source.
+func fakePrivateKeyBlock(body string) string {
+	const begin = "-----BEGIN PRIVATE" + " KEY-----"
+	const end = "-----END PRIVATE" + " KEY-----"
+	return begin + "\n" + body + "\n" + end
+}
+
 func TestReadOperationsDoNotMutate(t *testing.T) {
 	t.Parallel()
 
@@ -623,7 +631,7 @@ func TestCatalogRenderedFieldsRedactSecretShapes(t *testing.T) {
 		},
 		{
 			name:      "private_key",
-			value:     "-----BEGIN PRIVATE KEY-----\nshape-test-private-key-canary\n-----END PRIVATE KEY-----",
+			value:     fakePrivateKeyBlock("shape-test-private-key-canary"),
 			forbidden: []string{"shape-test-private-key-canary"},
 		},
 	}

@@ -40,6 +40,17 @@ is [machine-manifest.schema.json](../schema/machine-manifest.schema.json), and
 against it. Changing the supported manifest shape after 1.0 requires semver
 treatment.
 
+`zscalerctl introspect` is a separate supported CLI-surface contract, currently
+version `2`. Its top-level `read_only` field is tenant-scoped. Each command has
+structured `effects` with a `kind`, an `always` or `flag_set` condition, and an
+optional flag name, plus `configuration_dependent` effects enabled by effective
+config, environment, provider choice, or platform. Local reads and configured
+provider process execution are explicit. The legacy `mutating` boolean remains
+as a conservative derived summary so older consumers fail closed; new consumers
+should evaluate the effect conditions directly. This metadata belongs to the
+CLI adapter and does not change the transport-neutral `machine.v1`
+resource-read manifest.
+
 `machine.Request`, `machine.Response`, `MachineError`, the in-process executor
 shape, `internal/runtime`, and `internal/machineio` remain candidate/internal
 surfaces for 1.0. Request/response version fields are not required before 1.0

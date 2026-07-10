@@ -33,7 +33,7 @@ See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/
 
 Release archives for macOS, Linux, and Windows include checksums, CycloneDX SBOMs, and GitHub provenance attestations. See [docs/INSTALL.md](docs/INSTALL.md) for verification, credentials, proxy, completions, and platform notes.
 
-With a Go toolchain (no checkout needed):
+With Go 1.26.5 or newer (no checkout needed):
 
 ```sh
 go install github.com/dvmrry/zscalerctl/cmd/zscalerctl@latest
@@ -72,7 +72,7 @@ zscalerctl dump --products zia --out ./scratch-live-dump
 zscalerctl diff ./scratch-live-dump-old ./scratch-live-dump-new --fail-on-drift
 ```
 
-Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to write a single command's output to a restricted file; use `dump --out <dir>` for dump directories (the two are intentionally not combined). Dump refuses to overwrite by default; add `--force` only to replace an existing zscalerctl dump directory.
+Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to create or atomically replace a restricted regular file with one command's output; use `dump --out <dir>` for dump directories (the two are intentionally not combined). Dump refuses to overwrite by default; add `--force` only to replace an existing zscalerctl dump directory. Agents should inspect the structured `effects` in `zscalerctl --format json introspect` before authorizing local reads, writes, network access, or configured provider execution.
 
 The examples above are written for interactive use. Scripts and agents should pass `--format json` explicitly rather than rely on auto-detection — a PTY-based harness can read as a terminal and receive the `pretty` view. Dump directories and diff reports contain sanitized but still confidential tenant inventory; keep them in ignored scratch paths and do not paste payloads into tickets or chats. `diff` compares two dump directories you already collected; use cron, CI, or another external scheduler if you want recurring drift checks. The agent-oriented guide is in [AGENTS.md](AGENTS.md).
 
@@ -123,6 +123,11 @@ zscalerctl zia locations list --filter country=US --filter name~branch
 - Defensive administration only — not an exploitation, credential-discovery, bypass, or traffic-interception tool.
 - Primary leak control is **allow-list projection** into safe view records; redaction and secret scanning are defense-in-depth, not a license to render raw API responses.
 - **v1 ships no write commands and no generic raw API executor.**
+- The read-only guarantee is tenant-scoped. `config init`, `dump --out`, and
+  global `--output` have explicit local filesystem effects described by
+  `zscalerctl introspect` version 2. Commands that load configuration may read
+  local config or secret files, and live reads may execute an operator-configured
+  credential provider; those possibilities are also explicit effects.
 
 Full model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · [docs/DATA_CLASSIFICATION.md](docs/DATA_CLASSIFICATION.md).
 

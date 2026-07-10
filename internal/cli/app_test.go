@@ -148,6 +148,48 @@ profiles:
 	}
 }
 
+func TestCredentialedReadAdvertisesConfiguredProviderExecution(t *testing.T) {
+	t.Parallel()
+
+	sentinel := filepath.Join(t.TempDir(), "provider-ran")
+	configPath := writeCLIConfig(t, fmt.Sprintf(`
+profiles:
+  default:
+    client_id: client-id
+    client_secret_ref:
+      cmd:
+        argv: [%q, "-test.run=^TestCLIConfigCmdHelperProcess$", "--", "touch", %q]
+`, os.Args[0], sentinel))
+
+	app := cli.New(io.Discard, io.Discard, nil)
+	err := app.Run(context.Background(), []string{"--config", configPath, "zia", "locations", "list"})
+	if err == nil {
+		t.Fatal("credentialed resource read error = nil, want provider-output error")
+	}
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Fatalf("credentialed resource read did not execute configured provider; stat %q: %v", sentinel, statErr)
+	}
+
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	for _, command := range doc.Commands {
+		if command.Path != "zia locations list" {
+			continue
+		}
+		want := map[cli.EffectDoc]bool{
+			{Kind: "local_filesystem_read", When: "configuration_dependent"}: true,
+			{Kind: "process_execution", When: "configuration_dependent"}:     true,
+		}
+		for _, effect := range command.Effects {
+			delete(want, effect)
+		}
+		if len(want) != 0 {
+			t.Fatalf("zia locations list effects omit observed provider boundary: missing %#v", want)
+		}
+		return
+	}
+	t.Fatal("zia locations list missing from introspection")
+}
+
 func TestStatusCommandJSONShapesRemainStable(t *testing.T) {
 	t.Parallel()
 

@@ -32,6 +32,31 @@ need the complete Cobra command and flag surface, and use
 Use `--help` only as a syntax fallback for a command you already identified
 from the machine or schema surfaces.
 
+## Inspect Effects Before Execution
+
+`zscalerctl --format json introspect` version 2 describes each command's
+possible observable `effects`. Each effect has a stable `kind` and a `when`
+value of `always`, `flag_set`, or `configuration_dependent`; flag-conditioned
+effects name the flag. Configuration-dependent effects may be enabled by the
+effective config, environment, provider choice, or platform and should be
+treated as possible unless that execution environment is reviewed and pinned.
+The top-level `read_only: true` guarantee is tenant-scoped; it does not mean an
+invocation cannot read or mutate local files, execute a configured provider, or
+contact the read-only API.
+
+The compatibility `mutating` boolean is deliberately conservative: it is true
+when a command can mutate local or tenant state or execute a configured process,
+even when that effect is conditional. New consumers should evaluate `effects`
+directly. Normal resource reads carry `network_access`, configuration-dependent
+`local_filesystem_read` and `process_execution`, plus a flag-conditioned local
+write for global `--output`. The process effect covers configured `cmd:`
+providers and platform keyring helpers. `dump` always writes a local directory
+and contacts Zscaler, while `--force` conditionally reads and deletes a prior
+validated dump tree.
+
+Prefer stdout for agent reads. Use `--output PATH`, `dump --out DIR`, or
+`config init` only when the local filesystem effect is explicitly authorized.
+
 ## Execute Reads As Machine Output
 
 Agents should request deterministic output explicitly:

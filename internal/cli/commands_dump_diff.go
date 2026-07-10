@@ -22,6 +22,15 @@ func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dump",
 		Short: "write a full or filtered resource dump to a directory",
+		Annotations: map[string]string{
+			effectsAnnotation: credentialedReadEffects + "," +
+				effectKindLocalFilesystemRead + "@force," +
+				effectKindLocalFilesystemWrite + "," +
+				effectKindLocalFilesystemDelete + "@force",
+			// App.Run rejects --output for normal dump execution. Dump owns its
+			// output directory through --out instead.
+			suppressGlobalFlagEffectsAnnotation: "output",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject --format ndjson first, before any config work.
 			if opts.format == output.FormatNDJSON {
@@ -83,6 +92,7 @@ func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 			// Exactly 2 positionals required; Use suffix alone is not enough for
 			// buildArgsDoc to infer this — the annotation makes it explicit.
 			"introspect/args-policy": "exact:2",
+			effectsAnnotation:        effectKindLocalFilesystemRead,
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject --format ndjson first, before any work.

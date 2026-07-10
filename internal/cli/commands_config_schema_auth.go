@@ -55,12 +55,15 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "write a starter config file with owner-only permissions",
-		// config init writes a LOCAL config file (os.MkdirAll +
-		// fileperm.WriteOwnerOnly); it never mutates the Zscaler tenant. The
-		// introspect/mutating annotation marks the local side effect so the
-		// surface map reports it accurately — the CLI-wide read_only guarantee
-		// is tenant-scoped, not "no side effects at all".
-		Annotations: map[string]string{"introspect/mutating": "true"},
+		// config init always creates a local file; --force first removes an
+		// existing config. Windows owner-only permission hardening invokes the
+		// fixed icacls system helper. These effects are local only—the CLI-wide
+		// read_only guarantee remains tenant-scoped.
+		Annotations: map[string]string{
+			effectsAnnotation: effectKindProcessExecution + "@" + effectWhenConfigurationDependent + "," +
+				effectKindLocalFilesystemWrite + "," +
+				effectKindLocalFilesystemDelete + "@force",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject extra positional args before any filesystem work.
 			if cmd.Flags().NArg() != 0 {
@@ -133,8 +136,9 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW i
 // post-verb positional args and can enforce len(args)==0 cleanly.
 func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show",
-		Short: "show the active configuration (redacted)",
+		Use:         "show",
+		Short:       "show the active configuration (redacted)",
+		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
@@ -172,8 +176,9 @@ func (a *App) newSchemaCmd(opts globalOptions) *cobra.Command {
 // (normally empty) so runSchema receives only the post-verb positional args.
 func (a *App) newSchemaListCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "list all catalog resources and their supported operations",
+		Use:         "list",
+		Short:       "list all catalog resources and their supported operations",
+		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
@@ -211,8 +216,9 @@ func (a *App) newAuthCmd(opts globalOptions) *cobra.Command {
 // (normally empty) so runAuth receives only the post-verb positional args.
 func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "show authentication status for the active profile",
+		Use:         "status",
+		Short:       "show authentication status for the active profile",
+		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,

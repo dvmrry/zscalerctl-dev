@@ -33,8 +33,9 @@ func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
 // the same UsageError message as before, preserving the surface.
 func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "doctor",
-		Short: "check configuration, credentials, and connectivity",
+		Use:         "doctor",
+		Short:       "check configuration, credentials, and connectivity",
+		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,

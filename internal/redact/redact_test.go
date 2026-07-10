@@ -8,6 +8,16 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 )
 
+// fakePrivateKeyBlock assembles a PEM-shaped redaction canary without placing
+// a complete private-key detector signature in the repository source. Tests
+// still exercise the exact runtime shape, while Gitleaks needs no exception
+// that could also suppress real key material.
+func fakePrivateKeyBlock(body string) string {
+	const begin = "-----BEGIN PRIVATE" + " KEY-----"
+	const end = "-----END PRIVATE" + " KEY-----"
+	return begin + "\n" + body + "\n" + end
+}
+
 func TestRedactorRemovesCredentialPatterns(t *testing.T) {
 	t.Parallel()
 
@@ -173,14 +183,16 @@ func TestRedactorRemovesZscalerCredentialFields(t *testing.T) {
 func TestRedactorPreservesJSONSyntaxForSecretAssignments(t *testing.T) {
 	t.Parallel()
 
+	privateKey := strings.ReplaceAll(fakePrivateKeyBlock("key-material"), "\n", `\\n`)
+	certBlob := strings.ReplaceAll(fakePrivateKeyBlock("cert-blob-private-key-material"), "\n", `\\n`)
 	input := `{
 		"apiKey": "zia-cloud-key",
 		"secretKey": "client-connector-secret",
 		"sandboxApiToken": "sandbox-token-value",
 		"bearerToken": "bearer-token-value",
 		"provisioningKey": "1|api.private.example.net|abcdefghiJKLMNOP1234567890abcdefghijklmnopqrstuvwxyz",
-		"privateKey": "-----BEGIN PRIVATE KEY-----\\nkey-material\\n-----END PRIVATE KEY-----",
-		"certBlob": "-----BEGIN PRIVATE KEY-----\\ncert-blob-private-key-material\\n-----END PRIVATE KEY-----",
+		"privateKey": "` + privateKey + `",
+		"certBlob": "` + certBlob + `",
 		"zrsaencryptedprivatekey": "encrypted-private-key-material",
 		"zrsaencryptedsessionkey": "encrypted-session-key-material",
 		"description": "temporary shared secret abcdefghijklmnop in free text"
@@ -416,11 +428,7 @@ func TestRedactorRemovesZscalerShapedProvisioningKey(t *testing.T) {
 func TestRedactorRemovesPrivateKeyBlocks(t *testing.T) {
 	t.Parallel()
 
-	input := strings.Join([]string{
-		"-----BEGIN PRIVATE KEY-----",
-		"abc123secretkeymaterial",
-		"-----END PRIVATE KEY-----",
-	}, "\n")
+	input := fakePrivateKeyBlock("abc123secretkeymaterial")
 	got := redact.New(redact.ModeStandard).String(input)
 	if strings.Contains(got, "abc123secretkeymaterial") {
 		t.Errorf("Redactor.String(private key) = %q, want key material redacted", got)

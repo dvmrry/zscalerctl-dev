@@ -119,7 +119,7 @@ func scrub(s, homeDir, binPath string) string {
 
 	// Pseudo-version: v0.68.1-0.20260620073434-79678e7c1f63
 	s = rePseudoVersion.ReplaceAllString(s, "<VERSION>")
-	// Go runtime version: go1.22.3 — must run BEFORE reSemver so "go1.26.4" is
+	// Go runtime version: go1.22.3 — must run BEFORE reSemver so "go1.26.5" is
 	// consumed as a unit (→ go<GOVERSION>) and reSemver does not strip the digits
 	// first (which would yield the wrong "go<VERSION>" placeholder).
 	s = reGoVersion.ReplaceAllString(s, "go<GOVERSION>")
