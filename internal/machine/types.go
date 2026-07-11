@@ -54,6 +54,7 @@ type MachineError struct {
 	Operation Operation `json:"operation,omitempty"`
 	Product   string    `json:"product,omitempty"`
 	Resource  string    `json:"resource,omitempty"`
+	cause     error
 }
 
 // Error returns a stable human fallback for callers that handle MachineError as
@@ -67,6 +68,10 @@ func (e MachineError) Error() string {
 	}
 	return "machine error"
 }
+
+// Unwrap preserves a sanitized sentinel classification for in-process callers
+// without exposing backend details or adding fields to the JSON contract.
+func (e MachineError) Unwrap() error { return e.cause }
 
 // OutputSafe marks MachineError as eligible for the existing safe JSON
 // renderer. The message must already be sanitized by the core error boundary.

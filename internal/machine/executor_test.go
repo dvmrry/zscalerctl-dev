@@ -388,6 +388,36 @@ func TestExecutorGetRecordNotFoundReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestExecutorGetInvalidResourceIDReturnsSanitizedUsageError(t *testing.T) {
+	const invalidID = "not-a-number"
+	loader := &fakeBrowserLoader{
+		getErr: fmt.Errorf("%w: %q", resources.ErrInvalidResourceID, invalidID),
+	}
+	executor := machine.Executor{Browser: loader}
+	req := machine.Request{
+		RequestID:  "req-invalid-id",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationGet,
+		Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: invalidID},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(invalid resource ID) error = nil, want MachineError")
+	}
+	machineErr := assertMachineError(t, err, machine.ErrorKindInvalidResourceID, machine.OperationGet, "zia", "locations")
+	if machineErr.Message != "invalid resource ID" {
+		t.Fatalf("MachineError.Message = %q, want sanitized invalid-resource-ID message", machineErr.Message)
+	}
+	if strings.Contains(machineErr.Message, invalidID) {
+		t.Fatalf("MachineError.Message = %q, want no raw resource ID", machineErr.Message)
+	}
+	if !errors.Is(err, resources.ErrInvalidResourceID) {
+		t.Fatalf("Executor.Execute(invalid resource ID) error = %v, want sanitized sentinel bridge", err)
+	}
+	assertResponseError(t, got, machine.ErrorKindInvalidResourceID)
+}
+
 func TestExecutorAppliesFieldsFiltersAndSearchAfterProjection(t *testing.T) {
 	loader := &fakeBrowserLoader{
 		records: projectedRecordsFromFields(t,

@@ -4528,6 +4528,9 @@ func TestReaderGetLocationRejectsNonNumericID(t *testing.T) {
 	if !errors.Is(err, ErrInvalidResourceID) {
 		t.Fatalf("SDKReader.Get(non-numeric id) error = %v, want ErrInvalidResourceID", err)
 	}
+	if !errors.Is(err, resources.ErrInvalidResourceID) {
+		t.Fatalf("SDKReader.Get(non-numeric id) error = %v, want resources.ErrInvalidResourceID bridge", err)
+	}
 }
 
 func TestReaderGetRuleLabelDispatchesByResource(t *testing.T) {
