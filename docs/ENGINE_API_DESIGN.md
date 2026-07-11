@@ -82,6 +82,7 @@ reader per operation. The narrower `runtime.Machine` remains the already-built
 live resource executor used inside a read action.
 
 ```go
+NewEngine(Options) (*Engine, error)
 Manifest() machine.Manifest // supported machine.v1 compatibility surface
 EngineManifest() machine.EngineManifest
 DiscoverCatalog(ctx, machine.CatalogRequest) (machine.CatalogResult, error)
@@ -91,10 +92,16 @@ Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
 ```
 
+Construction is config-free but validates the injected static catalog and
+rejects any tenant-mutating operation before a capability can be advertised.
+
 Config-backed status is assembled through `runtime.StatusInspector` and its
 typed `Inspect(ctx, machine.StatusRequest)` method. Construction computes and
 retains only sanitized doctor/auth/config views; it does not retain raw config,
-resolve deferred providers, construct an SDK reader, or contact Zscaler.
+resolve deferred providers, construct an SDK reader, or contact Zscaler. Its
+error boundary emits static machine-safe classifications and preserves only
+safe sentinels; status values cannot carry terminal-control or Unicode-format
+runes into a frontend.
 
 `ExecuteStream` is the semantic path. Both typed `Read` and compatibility
 `Execute` consume it, so the CLI and interactive adapters cannot acquire

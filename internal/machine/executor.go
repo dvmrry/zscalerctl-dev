@@ -42,6 +42,9 @@ const (
 	// ErrorKindDeadlineExceeded reports a request that exceeded its deadline.
 	ErrorKindDeadlineExceeded = "deadline_exceeded"
 
+	// ErrorKindInvalidConfig reports invalid effective runtime configuration.
+	ErrorKindInvalidConfig = "invalid_config"
+
 	// ErrorKindInternal reports executor wiring errors.
 	ErrorKindInternal = "internal"
 )

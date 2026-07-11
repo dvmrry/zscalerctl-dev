@@ -46,10 +46,20 @@ a generic boolean.
 `engine.manifest` and `catalog.schema` are derived from the static resource
 catalog. Calling either does not load config, resolve a provider, construct an
 SDK client, access the local filesystem, execute a process, or contact Zscaler.
+`runtime.NewEngine` rejects any injected catalog containing a mutating
+operation. The lower-level manifest derivation also fails closed by omitting
+catalog and resource-read capabilities for such a catalog, so discovery never
+advertises an operation that the typed catalog executor would reject.
 `status.inspect` may load config and explicitly selected secret files, but it
 does not resolve deferred `env:`, `file:`, `keyring:`, or `cmd:` providers,
 construct a reader, execute a process, or contact Zscaler. It retains only
-precomputed sanitized status values, not raw config or secret sources. The
+precomputed sanitized status values, not raw config or secret sources. Status
+strings are redacted and normalize Unicode control and format runes before
+crossing the engine boundary. Configuration failures become static machine
+errors that preserve only safe sentinel classification, never paths, provider
+details, or backend text. Supported status operations honor canceled and
+expired contexts; unsupported operations are rejected before config loading
+without echoing caller-controlled operation text. The
 `resources.read` effects describe construction and execution of the normal
 live runtime: config or secret files and provider helpers may be used before
 the always-possible network read.

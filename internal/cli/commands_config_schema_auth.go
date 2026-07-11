@@ -145,7 +145,7 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 				ConfigPath: opts.configPath,
 			})
 			if err != nil {
-				return err
+				return machineruntime.StatusConfigError(machine.OperationConfigStatus, err)
 			}
 			applyOptions(&cfg, opts)
 			return a.runConfig(cmd.Context(), cfg, opts, args)
@@ -225,7 +225,7 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 				ConfigPath: opts.configPath,
 			})
 			if err != nil {
-				return err
+				return machineruntime.StatusConfigError(machine.OperationAuthStatus, err)
 			}
 			applyOptions(&cfg, opts)
 			return a.runAuth(cmd.Context(), cfg, opts, args)

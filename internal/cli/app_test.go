@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -264,6 +265,89 @@ func TestStatusCommandJSONShapesRemainStable(t *testing.T) {
 	}
 }
 
+func TestStatusCommandsNormalizeInjectedTerminalControls(t *testing.T) {
+	t.Parallel()
+
+	const injected = "safe\nFORGED\x1b[31m\u0085\u202e"
+	env := []string{
+		"XDG_CONFIG_HOME=" + t.TempDir(),
+		config.EnvProfile + "=profile:" + injected,
+		config.EnvCloud + "=cloud:" + injected,
+	}
+	commands := []struct {
+		name string
+		args []string
+	}{
+		{name: "config show", args: []string{"config", "show"}},
+		{name: "doctor", args: []string{"doctor"}},
+		{name: "auth status", args: []string{"auth", "status"}},
+	}
+	for _, command := range commands {
+		for _, format := range []string{"json", "table", "pretty"} {
+			t.Run(command.name+"/"+format, func(t *testing.T) {
+				var out, errOut bytes.Buffer
+				app := cli.New(&out, &errOut, env)
+				args := append([]string{"--format", format}, command.args...)
+				if err := app.Run(context.Background(), args); err != nil {
+					t.Fatalf("App.Run(%s %s) error = %v, want nil", command.name, format, err)
+				}
+				if errOut.Len() != 0 {
+					t.Fatalf("App.Run(%s %s) stderr = %q, want empty", command.name, format, errOut.String())
+				}
+				if format == "json" {
+					var decoded any
+					if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+						t.Fatalf("json.Unmarshal(%s) error = %v; body = %q", command.name, err, out.String())
+					}
+					assertNoUnsafeDecodedStrings(t, decoded)
+					return
+				}
+				got := out.String()
+				for _, forbidden := range []string{"\x1b", "\u0085", "\u202e", "\nFORGED"} {
+					if strings.Contains(got, forbidden) {
+						t.Fatalf("App.Run(%s %s) output = %q, want no injected control %q", command.name, format, got, forbidden)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestStatusCommandsSanitizeConfigLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private-status-config-canary.yaml")
+	tests := []struct {
+		name      string
+		args      []string
+		operation machine.Operation
+	}{
+		{name: "config show", args: []string{"config", "show"}, operation: machine.OperationConfigStatus},
+		{name: "doctor", args: []string{"doctor"}, operation: machine.OperationDoctor},
+		{name: "auth status", args: []string{"auth", "status"}, operation: machine.OperationAuthStatus},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := cli.New(io.Discard, io.Discard, nil)
+			args := append([]string{"--config", path}, tt.args...)
+			err := app.Run(context.Background(), args)
+			if !errors.Is(err, config.ErrInvalidConfig) {
+				t.Fatalf("App.Run(%s invalid config) error = %v, want ErrInvalidConfig", tt.name, err)
+			}
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidConfig {
+				t.Fatalf("App.Run(%s invalid config) error = %v, want invalid-config MachineError", tt.name, err)
+			}
+			if machineErr.Operation != tt.operation {
+				t.Fatalf("App.Run(%s invalid config) operation = %q, want %q", tt.name, machineErr.Operation, tt.operation)
+			}
+			if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "canary") {
+				t.Fatalf("App.Run(%s invalid config) error = %q, want no path details", tt.name, err)
+			}
+		})
+	}
+}
+
 func assertJSONTopLevelKeys(t *testing.T, name string, body []byte, want []string) {
 	t.Helper()
 
@@ -279,6 +363,31 @@ func assertJSONTopLevelKeys(t *testing.T, name string, body []byte, want []strin
 			t.Fatalf("App.Run(%s) JSON keys = %#v, want key %q", name, mapKeys(got), key)
 		}
 	}
+}
+
+func assertNoUnsafeDecodedStrings(t *testing.T, value any) {
+	t.Helper()
+
+	var visit func(any)
+	visit = func(current any) {
+		switch current := current.(type) {
+		case string:
+			for _, ch := range current {
+				if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+					t.Fatalf("decoded status value %q contains unsafe rune U+%04X", current, ch)
+				}
+			}
+		case []any:
+			for _, item := range current {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range current {
+				visit(item)
+			}
+		}
+	}
+	visit(value)
 }
 
 func mapKeys(values map[string]json.RawMessage) []string {

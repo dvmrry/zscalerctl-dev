@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/browser"
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -202,10 +203,14 @@ func TestStatusInspectorReturnsClosedViewsWithoutConstructingReader(t *testing.T
 		}
 	}
 
-	_, err = inspector.Inspect(context.Background(), machine.StatusRequest{Operation: "unknown"})
+	const unknownCanary = "unknown-status-operation-canary"
+	_, err = inspector.Inspect(context.Background(), machine.StatusRequest{Operation: unknownCanary})
 	var machineErr *machine.MachineError
 	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindUnsupportedOperation {
 		t.Fatalf("StatusInspector.Inspect(unknown) error = %v, want unsupported-operation MachineError", err)
+	}
+	if machineErr.Operation != "" || strings.Contains(err.Error(), unknownCanary) {
+		t.Fatalf("StatusInspector.Inspect(unknown) error = %#v, want no echoed operation", machineErr)
 	}
 }
 
@@ -269,6 +274,81 @@ func TestStatusInspectorSanitizesStringsBeforeReturning(t *testing.T) {
 	}
 }
 
+func TestStatusInspectorNormalizesTerminalControlAndFormatRunes(t *testing.T) {
+	t.Parallel()
+
+	const injected = "safe\nFORGED\x1b[31m\u0085\u202e"
+	provider := &statusProviderSecret{scheme: "cmd:" + injected}
+	cfg := config.Config{
+		Profile: "profile:" + injected,
+		Cloud:   "cloud:" + injected,
+		Credentials: config.Credentials{
+			ClientSecret: provider,
+		},
+		Defaults: config.Defaults{Redaction: redact.ModeStandard},
+	}
+	inspector, err := NewStatusInspectorFromConfig(context.Background(), cfg, Options{})
+	if err != nil {
+		t.Fatalf("NewStatusInspectorFromConfig(control strings) error = %v, want nil", err)
+	}
+	for _, operation := range []machine.Operation{
+		machine.OperationDoctor,
+		machine.OperationAuthStatus,
+		machine.OperationConfigStatus,
+	} {
+		result, err := inspector.Inspect(context.Background(), machine.StatusRequest{Operation: operation})
+		if err != nil {
+			t.Fatalf("StatusInspector.Inspect(%s) error = %v, want nil", operation, err)
+		}
+		var value any
+		switch operation {
+		case machine.OperationDoctor:
+			value, _ = result.Doctor()
+		case machine.OperationAuthStatus:
+			value, _ = result.Auth()
+		case machine.OperationConfigStatus:
+			value, _ = result.Config()
+		}
+		assertNoUnsafeStatusRunes(t, operation, value)
+	}
+	if provider.resolveCalls != 0 {
+		t.Fatalf("status control normalization provider resolves = %d, want 0", provider.resolveCalls)
+	}
+}
+
+func TestNewStatusInspectorFromConfigSanitizesOptionErrors(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewStatusInspectorFromConfig(context.Background(), config.Config{}, Options{
+		Redaction:    redact.Mode("private-option-canary"),
+		RedactionSet: true,
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidConfig {
+		t.Fatalf("NewStatusInspectorFromConfig(invalid option) error = %v, want invalid-config MachineError", err)
+	}
+	if !errors.Is(err, config.ErrInvalidConfig) {
+		t.Fatalf("NewStatusInspectorFromConfig(invalid option) error = %v, want ErrInvalidConfig", err)
+	}
+	if strings.Contains(err.Error(), "canary") {
+		t.Fatalf("NewStatusInspectorFromConfig(invalid option) error = %q, want no raw option", err)
+	}
+}
+
+func TestStatusConfigErrorDoesNotEchoUnknownOperation(t *testing.T) {
+	t.Parallel()
+
+	const canary = "unknown-status-error-operation-canary"
+	err := StatusConfigError(machine.Operation(canary), config.ErrInvalidConfig)
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidConfig {
+		t.Fatalf("StatusConfigError(unknown operation) = %v, want invalid-config MachineError", err)
+	}
+	if machineErr.Operation != "" || strings.Contains(err.Error(), canary) {
+		t.Fatalf("StatusConfigError(unknown operation) = %#v, want no echoed operation", machineErr)
+	}
+}
+
 func TestStatusInspectorMapsCanceledContext(t *testing.T) {
 	t.Parallel()
 
@@ -282,6 +362,28 @@ func TestStatusInspectorMapsCanceledContext(t *testing.T) {
 	var machineErr *machine.MachineError
 	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindCanceled {
 		t.Fatalf("StatusInspector.Inspect(canceled) error = %v, want canceled MachineError", err)
+	}
+	if machineErr.Operation != machine.OperationDoctor || !errors.Is(err, context.Canceled) {
+		t.Fatalf("StatusInspector.Inspect(canceled) error = %#v, want doctor operation and context.Canceled", machineErr)
+	}
+}
+
+func TestStatusInspectorMapsDeadlineContext(t *testing.T) {
+	t.Parallel()
+
+	inspector, err := NewStatusInspectorFromConfig(context.Background(), config.Config{}, Options{})
+	if err != nil {
+		t.Fatalf("NewStatusInspectorFromConfig(empty config) error = %v, want nil", err)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, err = inspector.Inspect(ctx, machine.StatusRequest{Operation: machine.OperationAuthStatus})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindDeadlineExceeded {
+		t.Fatalf("StatusInspector.Inspect(deadline) error = %v, want deadline-exceeded MachineError", err)
+	}
+	if machineErr.Operation != machine.OperationAuthStatus || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("StatusInspector.Inspect(deadline) error = %#v, want auth operation and context.DeadlineExceeded", machineErr)
 	}
 }
 
@@ -299,13 +401,52 @@ func TestStatusHelpersTreatTypedNilSecretSourceAsUnset(t *testing.T) {
 
 type statusProviderSecret struct {
 	resolveCalls int
+	scheme       string
 }
 
-func (*statusProviderSecret) Scheme() string { return "cmd" }
+func (s *statusProviderSecret) Scheme() string {
+	if s.scheme == "" {
+		return "cmd"
+	}
+	return s.scheme
+}
 
 func (*statusProviderSecret) IsConfigured() bool { return true }
 
 func (s *statusProviderSecret) Resolve(context.Context) (secret.Secret, error) {
 	s.resolveCalls++
 	return secret.Secret{}, errors.New("status must not resolve providers")
+}
+
+func assertNoUnsafeStatusRunes(t *testing.T, operation machine.Operation, value any) {
+	t.Helper()
+
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal(status %s) error = %v", operation, err)
+	}
+	var decoded any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(status %s) error = %v; body = %s", operation, err, body)
+	}
+	var visit func(any)
+	visit = func(current any) {
+		switch current := current.(type) {
+		case string:
+			for _, ch := range current {
+				if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+					t.Fatalf("status %s value %q contains unsafe rune U+%04X", operation, current, ch)
+				}
+			}
+		case []any:
+			for _, item := range current {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range current {
+				visit(item)
+			}
+		}
+	}
+	visit(decoded)
 }

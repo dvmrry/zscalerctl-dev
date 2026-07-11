@@ -205,13 +205,16 @@ func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 		t.Fatalf("config.LoadConfig(status fixture) error = %v, want nil", err)
 	}
 	configLoads := 0
-	engine := NewEngine(Options{
+	engine, err := NewEngine(Options{
 		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
 		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
 			configLoads++
 			return statusConfig, nil
 		},
 	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
 	first := engine.EngineManifest()
 	if len(first.Capabilities) != 4 || first.Capabilities[3].Name != machine.CapabilityResourcesRead {
 		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, and resource-read capabilities", first)

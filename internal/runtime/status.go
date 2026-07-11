@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
@@ -39,11 +40,19 @@ type StatusInspector struct {
 // NewStatusInspector loads effective config without resolving provider-backed
 // secret references or constructing an SDK reader.
 func NewStatusInspector(ctx context.Context, opts Options) (*StatusInspector, error) {
+	return newStatusInspector(ctx, opts, machine.OperationConfigStatus)
+}
+
+func newStatusInspector(
+	ctx context.Context,
+	opts Options,
+	operation machine.Operation,
+) (*StatusInspector, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, statusContextError(err, machine.OperationConfigStatus)
+		return nil, statusContextError(err, operation)
 	}
 	env := append([]string(nil), opts.Env...)
 	loadConfig := opts.loadConfig
@@ -55,9 +64,9 @@ func NewStatusInspector(ctx context.Context, opts Options) (*StatusInspector, er
 		ConfigPath: opts.ConfigPath,
 	})
 	if err != nil {
-		return nil, err
+		return nil, StatusConfigError(operation, err)
 	}
-	return NewStatusInspectorFromConfig(ctx, cfg, opts)
+	return newStatusInspectorFromConfig(ctx, cfg, opts, operation)
 }
 
 // NewStatusInspectorFromConfig computes sanitized status views from an
@@ -67,15 +76,24 @@ func NewStatusInspectorFromConfig(
 	cfg config.Config,
 	opts Options,
 ) (*StatusInspector, error) {
+	return newStatusInspectorFromConfig(ctx, cfg, opts, machine.OperationConfigStatus)
+}
+
+func newStatusInspectorFromConfig(
+	ctx context.Context,
+	cfg config.Config,
+	opts Options,
+	operation machine.Operation,
+) (*StatusInspector, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, statusContextError(err, machine.OperationConfigStatus)
+		return nil, statusContextError(err, operation)
 	}
 	cfg = normalizeStatusConfig(cfg)
 	if err := applyOptions(&cfg, opts); err != nil {
-		return nil, err
+		return nil, StatusConfigError(operation, err)
 	}
 	doctor, doctorErr := NewDoctorStatus(cfg, StatusOptions{Timeout: opts.Timeout})
 	return &StatusInspector{
@@ -95,6 +113,9 @@ func (s *StatusInspector) Inspect(
 	if s == nil {
 		return machine.StatusResult{}, errors.New("status inspector is nil")
 	}
+	if !isSupportedStatusOperation(req.Operation) {
+		return machine.StatusResult{}, unsupportedStatusOperationError()
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -111,13 +132,8 @@ func (s *StatusInspector) Inspect(
 		return machine.NewAuthStatusResult(s.auth), nil
 	case machine.OperationConfigStatus:
 		return machine.NewConfigStatusResult(s.config), nil
-	default:
-		return machine.StatusResult{}, &machine.MachineError{
-			Kind:      machine.ErrorKindUnsupportedOperation,
-			Message:   "unsupported status operation",
-			Operation: req.Operation,
-		}
 	}
+	return machine.StatusResult{}, unsupportedStatusOperationError()
 }
 
 // NewDoctorStatus validates status-relevant runtime configuration and returns
@@ -204,20 +220,88 @@ func NewConfigStatus(cfg config.Config) ConfigStatus {
 
 func sanitizeStatusString(r redact.Redactor, value string) string {
 	value, _ = r.ScanRenderedString(value)
-	return value
+	return strings.Map(func(ch rune) rune {
+		if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+			return ' '
+		}
+		return ch
+	}, value)
 }
 
 func statusContextError(err error, operation machine.Operation) error {
 	kind := machine.ErrorKindCanceled
 	message := "request canceled"
+	sentinel := context.Canceled
 	if errors.Is(err, context.DeadlineExceeded) {
 		kind = machine.ErrorKindDeadlineExceeded
 		message = "request deadline exceeded"
+		sentinel = context.DeadlineExceeded
 	}
-	return &machine.MachineError{
+	return newStatusBoundaryError(&machine.MachineError{
 		Kind:      kind,
 		Message:   message,
 		Operation: operation,
+	}, sentinel)
+}
+
+// StatusConfigError converts a status configuration failure into a static
+// machine-safe error. It preserves only safe sentinel identity for in-process
+// classification and never retains the original error or its details.
+func StatusConfigError(operation machine.Operation, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !isSupportedStatusOperation(operation) {
+		operation = ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return statusContextError(err, operation)
+	}
+	if errors.Is(err, config.ErrInvalidConfig) {
+		return newStatusBoundaryError(&machine.MachineError{
+			Kind:      machine.ErrorKindInvalidConfig,
+			Message:   "invalid configuration",
+			Operation: operation,
+		}, config.ErrInvalidConfig)
+	}
+	return &machine.MachineError{
+		Kind:      machine.ErrorKindInternal,
+		Message:   "status configuration load failed",
+		Operation: operation,
+	}
+}
+
+type statusBoundaryError struct {
+	machineErr *machine.MachineError
+	sentinel   error
+}
+
+func (e *statusBoundaryError) Error() string { return e.machineErr.Error() }
+
+func (e *statusBoundaryError) Unwrap() []error {
+	return []error{e.machineErr, e.sentinel}
+}
+
+func newStatusBoundaryError(machineErr *machine.MachineError, sentinel error) error {
+	if sentinel == nil {
+		return machineErr
+	}
+	return &statusBoundaryError{machineErr: machineErr, sentinel: sentinel}
+}
+
+func isSupportedStatusOperation(operation machine.Operation) bool {
+	switch operation {
+	case machine.OperationDoctor, machine.OperationAuthStatus, machine.OperationConfigStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+func unsupportedStatusOperationError() error {
+	return &machine.MachineError{
+		Kind:    machine.ErrorKindUnsupportedOperation,
+		Message: "unsupported status operation",
 	}
 }
 

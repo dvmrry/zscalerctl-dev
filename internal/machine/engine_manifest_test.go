@@ -14,13 +14,6 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 	catalog := resources.ResourceCatalog{
 		testMachineSpec(resources.ProductZIA, "singleton", resources.ShowOperation()),
 		testMachineSpec(resources.ProductZPA, "groups", resources.ReadOperations()),
-		{
-			Product: resources.ProductZIA,
-			Name:    "write-only",
-			Operations: []resources.Operation{
-				{Name: "delete", Capability: resources.CapabilityWrite},
-			},
-		},
 	}
 
 	got := machine.EngineManifestFromCatalog(catalog)
@@ -99,6 +92,31 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		!reflect.DeepEqual(readCapability.Effects, wantEffects) {
 		t.Fatalf("resource-read engine capability = %#v, want ops %#v effects %#v",
 			readCapability, wantOperations, wantEffects)
+	}
+}
+
+func TestEngineManifestSuppressesCatalogCapabilitiesForMutatingCatalog(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		testMachineSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+		{
+			Product: resources.ProductZIA,
+			Name:    "write-only",
+			Operations: []resources.Operation{{
+				Name: "delete", Capability: resources.CapabilityWrite,
+			}},
+		},
+	}
+	got := machine.EngineManifestFromCatalog(catalog)
+	want := []string{machine.CapabilityEngineManifest, machine.CapabilityStatusInspect}
+	if len(got.Capabilities) != len(want) {
+		t.Fatalf("EngineManifestFromCatalog(mutating) capabilities = %#v, want %v", got.Capabilities, want)
+	}
+	for i, name := range want {
+		if got.Capabilities[i].Name != name {
+			t.Fatalf("EngineManifestFromCatalog(mutating) capability %d = %q, want %q", i, got.Capabilities[i].Name, name)
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
+	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -42,7 +43,7 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 				ConfigPath: opts.configPath,
 			})
 			if err != nil {
-				return err
+				return machineruntime.StatusConfigError(machine.OperationDoctor, err)
 			}
 			applyOptions(&cfg, opts)
 			return a.runDoctor(cmd.Context(), cfg, opts, args)

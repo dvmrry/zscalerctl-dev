@@ -105,14 +105,21 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 		Result:         EngineResultManifest,
 		TenantReadOnly: true,
 		Effects:        []EngineEffect{},
-	}, {
-		Name:           CapabilityCatalogSchema,
-		Operations:     []Operation{OperationList},
-		Input:          EngineInputNone,
-		Result:         EngineResultCatalog,
-		TenantReadOnly: true,
-		Effects:        []EngineEffect{},
-	}, {
+	}}
+
+	catalogReadOnly := resources.AssertReadOnly(catalog...) == nil
+	if catalogReadOnly {
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityCatalogSchema,
+			Operations:     []Operation{OperationList},
+			Input:          EngineInputNone,
+			Result:         EngineResultCatalog,
+			TenantReadOnly: true,
+			Effects:        []EngineEffect{},
+		})
+	}
+
+	capabilities = append(capabilities, EngineCapability{
 		Name: CapabilityStatusInspect,
 		Operations: []Operation{
 			OperationDoctor,
@@ -126,13 +133,15 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 			Kind: EngineEffectLocalFilesystemRead,
 			When: EngineEffectConfigurationDependent,
 		}},
-	}}
+	})
 
 	readOps := map[Operation]bool{}
-	for _, spec := range catalog {
-		for _, op := range readOperationsFromSpec(spec) {
-			if isSupportedReadOperation(op) {
-				readOps[op] = true
+	if catalogReadOnly {
+		for _, spec := range catalog {
+			for _, op := range readOperationsFromSpec(spec) {
+				if isSupportedReadOperation(op) {
+					readOps[op] = true
+				}
 			}
 		}
 	}

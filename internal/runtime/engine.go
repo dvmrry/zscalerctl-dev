@@ -3,8 +3,10 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
+	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 // Engine is the common local operation coordinator. It owns host-supplied
@@ -16,10 +18,13 @@ type Engine struct {
 
 // NewEngine constructs a coordinator without loading config, resolving a
 // provider, constructing an SDK reader, or contacting Zscaler.
-func NewEngine(opts Options) *Engine {
+func NewEngine(opts Options) (*Engine, error) {
 	opts.Env = append([]string(nil), opts.Env...)
 	opts.Catalog = catalogFromOptions(opts.Catalog)
-	return &Engine{opts: opts}
+	if err := resources.AssertReadOnly(opts.Catalog...); err != nil {
+		return nil, fmt.Errorf("construct engine: catalog must be tenant read-only: %w", err)
+	}
+	return &Engine{opts: opts}, nil
 }
 
 // Manifest returns the supported machine.v1 compatibility manifest for the
@@ -62,7 +67,10 @@ func (e *Engine) InspectStatus(
 	if e == nil {
 		return machine.StatusResult{}, errors.New("engine runtime is nil")
 	}
-	inspector, err := NewStatusInspector(ctx, e.options())
+	if !isSupportedStatusOperation(req.Operation) {
+		return machine.StatusResult{}, unsupportedStatusOperationError()
+	}
+	inspector, err := newStatusInspector(ctx, e.options(), req.Operation)
 	if err != nil {
 		return machine.StatusResult{}, err
 	}
