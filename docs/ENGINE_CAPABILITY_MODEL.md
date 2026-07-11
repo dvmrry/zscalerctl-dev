@@ -64,7 +64,9 @@ verification barrier while consuming `Machine.Read` directly.
 
 Input slices are copied before execution. Returned manifests and result
 collections are fresh, so caller mutation cannot change runtime catalog state
-or later discovery results.
+or later discovery results. Projected values with cycles, non-data handles, or
+mutable state hidden in unexported struct fields fail closed as invalid
+projected values instead of retaining aliases or reaching a renderer.
 
 ## Compatibility boundary
 

@@ -13,6 +13,20 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
+type cyclicProjectedNode struct {
+	Next *cyclicProjectedNode `json:"next"`
+}
+
+type privateProjectedBytes struct {
+	raw []byte
+}
+
+func (v privateProjectedBytes) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Raw []byte `json:"raw"`
+	}{Raw: v.raw})
+}
+
 // fakePrivateKeyBlock assembles a PEM-shaped redaction canary without placing
 // a complete private-key detector signature in the repository source.
 func fakePrivateKeyBlock(body string) string {
@@ -261,6 +275,73 @@ func TestProjectedRecordsDefensivelyCopyArbitraryCompositeValues(t *testing.T) {
 	fields["pointer"].(*nestedFixture).Values[0] = 9
 	if got := projected.Records()[0].Fields(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("ProjectedRecord.Fields() after returned-value mutation = %#v, want %#v", got, want)
+	}
+}
+
+func TestProjectedRecordsRejectUnsupportedCompositeValues(t *testing.T) {
+	t.Parallel()
+
+	cyclePointer := &cyclicProjectedNode{}
+	cyclePointer.Next = cyclePointer
+	cycleMap := map[string]any{}
+	cycleMap["self"] = cycleMap
+	cycleSlice := make([]any, 1)
+	cycleSlice[0] = cycleSlice
+	privateBytes := privateProjectedBytes{raw: []byte("private mutable bytes")}
+	if _, err := json.Marshal(privateBytes); err != nil {
+		t.Fatalf("json.Marshal(privateProjectedBytes) error = %v, want valid custom JSON", err)
+	}
+
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "cyclic pointer", value: cyclePointer},
+		{name: "cyclic map", value: cycleMap},
+		{name: "cyclic slice", value: cycleSlice},
+		{name: "mutable unexported field", value: privateBytes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := resources.ResourceSpec{
+				Product:    resources.ProductZIA,
+				Name:       "composite-test",
+				Operations: resources.ListOperations(),
+				Fields: []resources.FieldSpec{{
+					Name:           "id",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				}},
+			}
+			input := []map[string]any{{
+				"id": tt.value,
+			}}
+			projected := resources.NewProjectedRecordsFromProjectedFields(input)
+			if err := resources.VerifyProjectedRecords(spec, redact.ModeStandard, projected); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("VerifyProjectedRecords(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if _, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(
+				spec,
+				redact.ModeStandard,
+				input,
+			); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if _, _, err := resources.ProjectRecordsAndVerify(
+				spec,
+				redact.ModeStandard,
+				[]resources.SourceRecord{resources.NewSourceRecord(input[0])},
+			); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("ProjectRecordsAndVerify(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			body, err := json.Marshal(projected)
+			if !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("json.Marshal(ProjectedRecords with %s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if strings.Contains(string(body), "private mutable bytes") {
+				t.Fatalf("json.Marshal(ProjectedRecords with %s) body = %q, want no unsupported value bytes", tt.name, body)
+			}
+		})
 	}
 }
 
