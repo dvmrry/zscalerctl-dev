@@ -15,6 +15,15 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 		`{"clientSecret":true}`,
 		`{"password":null}`,
 		`{"authorization":"Bearer abcdefghijklmnopqrstuvwxyz"}`,
+		`{"message":"set the Authorization: Bearer fuzz-authorization-canary header","count":42}`,
+		`{"message":"Authorization:","count":42}`,
+		`{"message":"Authoriz\u0061tion: Bearer fuzz-escaped-auth-canary","count":42}`,
+		`{"message":"Authorization: Bearer fuzz-multiline-canary\nsafe-status-line","count":42}`,
+		`{"authorizationInfo":"public","sessionToken":"fuzz-suffix-canary"}`,
+		`{"message":"Authorization: Bearer fuzz-number-canary","value":1234567890123456.789012345678901e+2}`,
+		`{"message":"Authorization:","url":"https://user:fuzz-cross-token-canary@host.invalid","owner":"alice@example.com"}`,
+		`{"message":"Authorization:","wrapper":{"\u0061uthorization":"fuzz-nested-canary"}}`,
+		`["Authorization: Digest username=\"fuzz-user\", response=\"fuzz-response\"",42,true,null]`,
 		`{"url":"https://user:password@example.invalid/private"}`,
 		`{"nested":{"secretKey":"nested-secret"},"items":[{"apiToken":"item-token"}]}`,
 		`{"ordinary":{"tokenEndpoint":"https://example.invalid/oauth/token"}}`,
@@ -38,6 +47,131 @@ func FuzzRedactorPreservesValidJSON(f *testing.F) {
 			gotBytes := r.Bytes([]byte(input))
 			if !json.Valid(gotBytes) {
 				t.Fatalf("Redactor.Bytes(%q, mode %s) = invalid JSON %q, want valid JSON", input, mode, string(gotBytes))
+			}
+
+			gotRendered, _ := r.ScanRenderedString(input)
+			if !json.Valid([]byte(gotRendered)) {
+				t.Fatalf("Redactor.ScanRenderedString(%q, mode %s) = invalid JSON %q, want valid JSON", input, mode, gotRendered)
+			}
+			if gotTwice := r.String(got); gotTwice != got {
+				t.Fatalf("Redactor.String(Redactor.String(%q), mode %s) = %q, want idempotent %q", input, mode, gotTwice, got)
+			}
+			if gotRenderedTwice, _ := r.ScanRenderedString(gotRendered); gotRenderedTwice != gotRendered {
+				t.Fatalf("Redactor.ScanRenderedString(Redactor.ScanRenderedString(%q), mode %s) = %q, want idempotent %q", input, mode, gotRenderedTwice, gotRendered)
+			}
+		}
+	})
+}
+
+func FuzzRedactorPreservesValidNDJSON(f *testing.F) {
+	for _, seed := range []struct {
+		first  string
+		second string
+	}{
+		{first: "ordinary note", second: "branch office"},
+		{first: "escaped quote \" and slash \\", second: "unicode 東京"},
+		{first: "owner alice@example.com", second: "address 192.0.2.10"},
+	} {
+		f.Add(seed.first, seed.second)
+	}
+
+	const authorizationCanary = "fuzz-ndjson-authorization-canary"
+	f.Fuzz(func(t *testing.T, first, second string) {
+		if len(first)+len(second) > 8192 {
+			return
+		}
+		line1, err := json.Marshal(map[string]string{
+			"message": "Authorization: Bearer " + authorizationCanary,
+			"note":    first,
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(first record) error = %v", err)
+		}
+		line2, err := json.Marshal(map[string]string{
+			"message": "Authorization:",
+			"note":    second,
+		})
+		if err != nil {
+			t.Fatalf("json.Marshal(second record) error = %v", err)
+		}
+		input := string(line1) + "\n" + string(line2) + "\n"
+
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			got := redact.New(mode).String(input)
+			if strings.Contains(got, authorizationCanary) {
+				t.Fatalf("Redactor.String(NDJSON, mode %s) leaked authorization canary: %q", mode, got)
+			}
+			lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("Redactor.String(NDJSON, mode %s) produced %d lines, want 2: %q", mode, len(lines), got)
+			}
+			for i, line := range lines {
+				if !json.Valid([]byte(line)) {
+					t.Fatalf("Redactor.String(NDJSON, mode %s) line %d = invalid JSON %q", mode, i+1, line)
+				}
+			}
+			if gotTwice := redact.New(mode).String(got); gotTwice != got {
+				t.Fatalf("Redactor.String(Redactor.String(NDJSON), mode %s) = %q, want idempotent %q", mode, gotTwice, got)
+			}
+		}
+	})
+}
+
+func FuzzScanRenderedStringRedactsEscapedJSONHighEntropyCanary(f *testing.F) {
+	for _, seed := range []struct {
+		note   string
+		ndjson bool
+	}{
+		{note: "ordinary note"},
+		{note: "escaped quote \" and slash \\", ndjson: true},
+		{note: "unicode 東京", ndjson: true},
+	} {
+		f.Add(seed.note, seed.ndjson)
+	}
+
+	const escapedToken = `A7b9C2d\u0034E6f8G1h\u0033J5k7L9m\u0032N4p6Q8r\u0030S2t4U6v`
+	f.Fuzz(func(t *testing.T, note string, ndjson bool) {
+		if len(note) > 8192 {
+			return
+		}
+		noteJSON, err := json.Marshal(note)
+		if err != nil {
+			t.Fatalf("json.Marshal(note) error = %v", err)
+		}
+		record := `{"credential":"` + escapedToken + `","note":` + string(noteJSON) + `}`
+		input := record
+		wantRecords := 1
+		if ndjson {
+			input = record + "\n" + record + "\n"
+			wantRecords = 2
+		}
+
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			r := redact.New(mode)
+			got, report := r.ScanRenderedString(input)
+			lines := []string{got}
+			if ndjson {
+				lines = strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			}
+			if len(lines) != wantRecords {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) records = %d, want %d: %q", mode, len(lines), wantRecords, got)
+			}
+			for i, line := range lines {
+				var decoded struct {
+					Credential string `json:"credential"`
+				}
+				if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+					t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) record %d invalid: %v; body = %q", mode, i+1, err, line)
+				}
+				if decoded.Credential != "<REDACTED:SECRET>" {
+					t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) record %d credential = %q, want marker", mode, i+1, decoded.Credential)
+				}
+			}
+			if report.Counts["high_entropy_rendered_token"] < wantRecords {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON, %s) report count = %d, want at least %d", mode, report.Counts["high_entropy_rendered_token"], wantRecords)
+			}
+			if gotTwice, _ := r.ScanRenderedString(got); gotTwice != got {
+				t.Fatalf("Redactor.ScanRenderedString(escaped JSON twice, %s) = %q, want idempotent %q", mode, gotTwice, got)
 			}
 		}
 	})
