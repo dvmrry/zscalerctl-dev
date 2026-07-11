@@ -209,7 +209,7 @@ type SourceRecord struct {
 }
 
 func NewSourceRecord(fields map[string]any) SourceRecord {
-	return SourceRecord{fields: copyMap(fields)}
+	return SourceRecord{fields: copySourceMap(fields)}
 }
 
 type ProjectedRecord struct {
@@ -582,6 +582,9 @@ func projectValue(
 	path string,
 	report *ProjectionReport,
 ) (any, bool, bool) {
+	if _, unsupported := value.(unsupportedProjectedValue); unsupported {
+		return unsupportedProjectedValue{}, false, true
+	}
 	if len(field.Fields) > 0 {
 		return projectNestedValue(mode, field, value, path, report)
 	}
@@ -754,7 +757,80 @@ func sanitizeScalar(mode redact.Mode, field FieldSpec, value any) (any, bool, bo
 			}
 			return out, redacted, true
 		}
+		if valueOf.IsValid() &&
+			(valueOf.Kind() == reflect.Slice || valueOf.Kind() == reflect.Array) &&
+			isCopyableSourceSequenceType(valueOf.Type()) &&
+			!isSupportedSequenceType(valueOf.Type()) {
+			out, ok := normalizeSourceScalarSequence(valueOf)
+			return out, false, ok
+		}
+		if valueOf.IsValid() &&
+			isCopyableSourceScalarType(valueOf.Type()) &&
+			!isSupportedScalarType(valueOf.Type()) {
+			out, ok := normalizeSourceScalar(valueOf)
+			return out, false, ok
+		}
 		return copyAny(value), false, true
+	}
+}
+
+func normalizeSourceScalar(value reflect.Value) (any, bool) {
+	builtin := builtinScalarType(value.Type())
+	if builtin == nil {
+		return nil, false
+	}
+	return value.Convert(builtin).Interface(), true
+}
+
+func normalizeSourceScalarSequence(value reflect.Value) (any, bool) {
+	builtin := builtinScalarType(value.Type().Elem())
+	if builtin == nil {
+		return nil, false
+	}
+	out := reflect.MakeSlice(reflect.SliceOf(builtin), value.Len(), value.Len())
+	for i := range value.Len() {
+		out.Index(i).Set(value.Index(i).Convert(builtin))
+	}
+	return out.Interface(), true
+}
+
+func builtinScalarType(valueType reflect.Type) reflect.Type {
+	if valueType == reflect.TypeOf(json.Number("")) {
+		return valueType
+	}
+	switch valueType.Kind() {
+	case reflect.Bool:
+		return reflect.TypeOf(false)
+	case reflect.Float32:
+		return reflect.TypeOf(float32(0))
+	case reflect.Float64:
+		return reflect.TypeOf(float64(0))
+	case reflect.Int:
+		return reflect.TypeOf(int(0))
+	case reflect.Int8:
+		return reflect.TypeOf(int8(0))
+	case reflect.Int16:
+		return reflect.TypeOf(int16(0))
+	case reflect.Int32:
+		return reflect.TypeOf(int32(0))
+	case reflect.Int64:
+		return reflect.TypeOf(int64(0))
+	case reflect.String:
+		return reflect.TypeOf("")
+	case reflect.Uint:
+		return reflect.TypeOf(uint(0))
+	case reflect.Uint8:
+		return reflect.TypeOf(uint8(0))
+	case reflect.Uint16:
+		return reflect.TypeOf(uint16(0))
+	case reflect.Uint32:
+		return reflect.TypeOf(uint32(0))
+	case reflect.Uint64:
+		return reflect.TypeOf(uint64(0))
+	case reflect.Uintptr:
+		return reflect.TypeOf(uintptr(0))
+	default:
+		return nil
 	}
 }
 
@@ -1291,17 +1367,29 @@ func sortReport(report *ProjectionReport) {
 }
 
 func copyMap(in map[string]any) map[string]any {
+	return copyMapForDomain(in, projectedValueDomain)
+}
+
+func copySourceMap(in map[string]any) map[string]any {
+	return copyMapForDomain(in, sourceValueDomain)
+}
+
+func copyMapForDomain(in map[string]any, domain valueCopyDomain) map[string]any {
 	if in == nil {
 		return nil
 	}
 	out := make(map[string]any, len(in))
 	for key, value := range in {
-		out[key] = copyAny(value)
+		out[key] = copyAnyForDomain(value, domain)
 	}
 	return out
 }
 
 func copyAny(value any) any {
+	return copyAnyForDomain(value, projectedValueDomain)
+}
+
+func copyAnyForDomain(value any, domain valueCopyDomain) any {
 	if value == nil {
 		return nil
 	}
@@ -1322,19 +1410,30 @@ func copyAny(value any) any {
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.String,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		if !scalarTypeAllowedForDomain(valueOf.Type(), domain) {
+			return unsupportedProjectedValue{}
+		}
 		return value
 	case reflect.Float32, reflect.Float64:
-		if math.IsNaN(valueOf.Float()) || math.IsInf(valueOf.Float(), 0) {
+		if !scalarTypeAllowedForDomain(valueOf.Type(), domain) ||
+			math.IsNaN(valueOf.Float()) || math.IsInf(valueOf.Float(), 0) {
 			return unsupportedProjectedValue{}
 		}
 		return value
 	}
-	cloned, ok := cloneCompositeValue(valueOf, make(map[copyVisit]bool))
+	cloned, ok := cloneCompositeValue(valueOf, make(map[copyVisit]bool), domain)
 	if !ok {
 		return unsupportedProjectedValue{}
 	}
 	return cloned.Interface()
 }
+
+type valueCopyDomain uint8
+
+const (
+	projectedValueDomain valueCopyDomain = iota
+	sourceValueDomain
+)
 
 type copyVisit struct {
 	typeOf   reflect.Type
@@ -1351,12 +1450,14 @@ func (unsupportedProjectedValue) MarshalJSON() ([]byte, error) {
 	return nil, ErrInvalidProjectedValue
 }
 
-// cloneCompositeValue preserves supported sequence types while recursively
-// copying the closed projected-value domain. Cyclic, unmodeled, or non-data
-// values are rejected so copying cannot expose shared mutable state.
+// cloneCompositeValue recursively copies either the private source domain or
+// the narrower projected-output domain. Source-only named scalars remain
+// private until projection normalizes them; cyclic, unmodeled, or non-data
+// values are quarantined so copying cannot expose shared mutable state.
 func cloneCompositeValue(
 	value reflect.Value,
 	active map[copyVisit]bool,
+	domain valueCopyDomain,
 ) (reflect.Value, bool) {
 	if !value.IsValid() {
 		return reflect.Value{}, true
@@ -1374,7 +1475,7 @@ func cloneCompositeValue(
 		if value.IsNil() {
 			return reflect.Zero(value.Type()), true
 		}
-		cloned, ok := cloneCompositeValue(value.Elem(), active)
+		cloned, ok := cloneCompositeValue(value.Elem(), active, domain)
 		if !ok {
 			return reflect.Value{}, false
 		}
@@ -1382,7 +1483,7 @@ func cloneCompositeValue(
 		out.Set(cloned)
 		return out, true
 	case reflect.Slice:
-		if !isSupportedSequenceType(value.Type()) {
+		if !sequenceTypeAllowedForDomain(value.Type(), domain) {
 			return reflect.Value{}, false
 		}
 		if value.IsNil() {
@@ -1398,7 +1499,7 @@ func cloneCompositeValue(
 		defer delete(active, visit)
 		out := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for i := range value.Len() {
-			cloned, ok := cloneCompositeValue(value.Index(i), active)
+			cloned, ok := cloneCompositeValue(value.Index(i), active, domain)
 			if !ok {
 				return reflect.Value{}, false
 			}
@@ -1421,7 +1522,7 @@ func cloneCompositeValue(
 		out := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			cloned, ok := cloneCompositeValue(iter.Value(), active)
+			cloned, ok := cloneCompositeValue(iter.Value(), active, domain)
 			if !ok {
 				cloned = reflect.New(value.Type().Elem()).Elem()
 				cloned.Set(reflect.ValueOf(unsupportedProjectedValue{}))
@@ -1430,12 +1531,13 @@ func cloneCompositeValue(
 		}
 		return out, true
 	case reflect.Array:
-		if !isSupportedScalarType(value.Type().Elem()) {
+		if !scalarTypeAllowedForDomain(value.Type().Elem(), domain) ||
+			(domain == projectedValueDomain && value.Type().PkgPath() != "") {
 			return reflect.Value{}, false
 		}
 		out := reflect.New(value.Type()).Elem()
 		for i := range value.Len() {
-			cloned, ok := cloneCompositeValue(value.Index(i), active)
+			cloned, ok := cloneCompositeValue(value.Index(i), active, domain)
 			if !ok {
 				return reflect.Value{}, false
 			}
@@ -1443,7 +1545,8 @@ func cloneCompositeValue(
 		}
 		return out, true
 	case reflect.Float32, reflect.Float64:
-		if math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
+		if !scalarTypeAllowedForDomain(value.Type(), domain) ||
+			math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
 			return reflect.Value{}, false
 		}
 		return value, true
@@ -1451,7 +1554,7 @@ func cloneCompositeValue(
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.String,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return value, true
+		return value, scalarTypeAllowedForDomain(value.Type(), domain)
 	case reflect.Chan, reflect.Complex64, reflect.Complex128, reflect.Func,
 		reflect.Pointer, reflect.Struct, reflect.UnsafePointer:
 		return reflect.Value{}, false
@@ -1465,23 +1568,39 @@ func isSupportedSequenceType(valueType reflect.Type) bool {
 		valueType == reflect.TypeOf([]map[string]any(nil)) {
 		return true
 	}
-	return isSupportedScalarType(valueType.Elem())
+	return valueType.PkgPath() == "" && isSupportedScalarType(valueType.Elem())
+}
+
+func isCopyableSourceSequenceType(valueType reflect.Type) bool {
+	if valueType == reflect.TypeOf([]any(nil)) ||
+		valueType == reflect.TypeOf([]map[string]any(nil)) {
+		return true
+	}
+	return (valueType.Kind() == reflect.Slice || valueType.Kind() == reflect.Array) &&
+		isCopyableSourceScalarType(valueType.Elem())
 }
 
 func isSupportedScalarType(valueType reflect.Type) bool {
-	if valueType == reflect.TypeOf(json.Number("")) {
-		return true
+	builtin := builtinScalarType(valueType)
+	return builtin != nil && valueType == builtin
+}
+
+func isCopyableSourceScalarType(valueType reflect.Type) bool {
+	return builtinScalarType(valueType) != nil
+}
+
+func scalarTypeAllowedForDomain(valueType reflect.Type, domain valueCopyDomain) bool {
+	if domain == sourceValueDomain {
+		return isCopyableSourceScalarType(valueType)
 	}
-	switch valueType.Kind() {
-	case reflect.Bool,
-		reflect.Float32, reflect.Float64,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.String,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return true
-	default:
-		return false
+	return isSupportedScalarType(valueType)
+}
+
+func sequenceTypeAllowedForDomain(valueType reflect.Type, domain valueCopyDomain) bool {
+	if domain == sourceValueDomain {
+		return isCopyableSourceSequenceType(valueType)
 	}
+	return isSupportedSequenceType(valueType)
 }
 
 func isSupportedProjectedValue(value reflect.Value, active map[copyVisit]bool) bool {
@@ -1539,7 +1658,7 @@ func isSupportedProjectedValue(value reflect.Value, active map[copyVisit]bool) b
 		}
 		return true
 	case reflect.Array:
-		if !isSupportedScalarType(value.Type().Elem()) {
+		if !isSupportedSequenceType(value.Type()) {
 			return false
 		}
 		for i := range value.Len() {
@@ -1549,12 +1668,13 @@ func isSupportedProjectedValue(value reflect.Value, active map[copyVisit]bool) b
 		}
 		return true
 	case reflect.Float32, reflect.Float64:
-		return !math.IsNaN(value.Float()) && !math.IsInf(value.Float(), 0)
+		return isSupportedScalarType(value.Type()) &&
+			!math.IsNaN(value.Float()) && !math.IsInf(value.Float(), 0)
 	case reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.String,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return true
+		return isSupportedScalarType(value.Type())
 	default:
 		return false
 	}

@@ -1,8 +1,10 @@
 package resources_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
@@ -31,6 +34,36 @@ type exportedProjectedStruct struct {
 type namedProjectedString string
 
 type namedProjectedStrings []namedProjectedString
+
+const methodProjectedCanary = "METHOD_PROJECTED_CANARY_MUST_NOT_RENDER"
+
+type methodProjectedInt int
+
+type methodProjectedBool bool
+
+type methodProjectedInts []methodProjectedInt
+
+func (methodProjectedInt) MarshalJSON() ([]byte, error) {
+	return []byte(`{"unmodeled":"` + methodProjectedCanary + `"}`), nil
+}
+
+func (methodProjectedInt) MarshalText() ([]byte, error) {
+	return []byte(methodProjectedCanary), nil
+}
+
+func (methodProjectedInt) String() string { return methodProjectedCanary }
+
+func (methodProjectedBool) MarshalJSON() ([]byte, error) {
+	return []byte(`{"unmodeled":"` + methodProjectedCanary + `"}`), nil
+}
+
+func (methodProjectedBool) String() string { return methodProjectedCanary }
+
+func (methodProjectedInts) MarshalJSON() ([]byte, error) {
+	return []byte(`{"unmodeled":"` + methodProjectedCanary + `"}`), nil
+}
+
+func (methodProjectedInts) String() string { return methodProjectedCanary }
 
 func (v privateProjectedBytes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -719,6 +752,111 @@ func TestProjectRecordScansNamedStringValues(t *testing.T) {
 	}
 }
 
+func TestMethodBearingSourceScalarsAreNormalizedBeforeProjection(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "method-bearing-scalars",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
+	}
+	tests := []struct {
+		name     string
+		value    any
+		want     any
+		wantText string
+	}{
+		{name: "defined integer", value: methodProjectedInt(7), want: int(7), wantText: "7"},
+		{name: "defined boolean", value: methodProjectedBool(true), want: true, wantText: "true"},
+		{
+			name:     "defined integer slice",
+			value:    methodProjectedInts{1, 2},
+			want:     []int{1, 2},
+			wantText: "[1 2]",
+		},
+		{
+			name:     "slice of defined integers",
+			value:    []methodProjectedInt{3, 4},
+			want:     []int{3, 4},
+			wantText: "[3 4]",
+		},
+	}
+	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := map[string]any{"id": tt.value}
+			if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, raw); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("AssertRenderedSubset(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if _, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(
+				spec,
+				redact.ModeStandard,
+				[]map[string]any{raw},
+			); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+
+			unchecked := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{raw})
+			body, err := json.Marshal(unchecked)
+			if !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("json.Marshal(unchecked %s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if strings.Contains(string(body), methodProjectedCanary) || strings.Contains(string(body), "unmodeled") {
+				t.Fatalf("json.Marshal(unchecked %s) body = %q, want no method output", tt.name, body)
+			}
+			var blockedNDJSON bytes.Buffer
+			err = renderer.WriteNDJSON(
+				&blockedNDJSON,
+				[]output.SafeJSON{unchecked.Records()[0]},
+			)
+			if !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("WriteNDJSON(unchecked %s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+			if strings.Contains(blockedNDJSON.String(), methodProjectedCanary) ||
+				strings.Contains(blockedNDJSON.String(), "unmodeled") {
+				t.Fatalf("WriteNDJSON(unchecked %s) = %q, want no method output", tt.name, blockedNDJSON.String())
+			}
+
+			projected, _, err := resources.ProjectRecordAndVerify(
+				spec,
+				redact.ModeStandard,
+				resources.NewSourceRecord(raw),
+			)
+			if err != nil {
+				t.Fatalf("ProjectRecordAndVerify(%s) error = %v, want nil", tt.name, err)
+			}
+			got, ok := projected.Value("id")
+			if !ok || !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("ProjectRecordAndVerify(%s).Value(id) = %#v (present %t), want %#v", tt.name, got, ok, tt.want)
+			}
+			if gotText := fmt.Sprint(got); gotText != tt.wantText {
+				t.Fatalf("fmt.Sprint(ProjectRecordAndVerify(%s).Value(id)) = %q, want %q", tt.name, gotText, tt.wantText)
+			}
+
+			var jsonOut bytes.Buffer
+			if err := renderer.WriteJSON(&jsonOut, projected); err != nil {
+				t.Fatalf("WriteJSON(projected %s) error = %v, want nil", tt.name, err)
+			}
+			var ndjsonOut bytes.Buffer
+			if err := renderer.WriteNDJSON(&ndjsonOut, []output.SafeJSON{projected}); err != nil {
+				t.Fatalf("WriteNDJSON(projected %s) error = %v, want nil", tt.name, err)
+			}
+			for format, rendered := range map[string]string{
+				"json": jsonOut.String(), "ndjson": ndjsonOut.String(),
+			} {
+				if strings.Contains(rendered, methodProjectedCanary) || strings.Contains(rendered, "unmodeled") {
+					t.Fatalf("%s(projected %s) = %q, want no method output", format, tt.name, rendered)
+				}
+			}
+		})
+	}
+}
+
 func TestProjectRecordRedactsBareHighEntropyFreeText(t *testing.T) {
 	t.Parallel()
 
@@ -1224,6 +1362,16 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 					Name:           "preSharedKey",
 					Classification: resources.ClassSecret,
 				},
+				{
+					Name:           "validationInfo",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+					Fields: []resources.FieldSpec{{
+						Name:           "status",
+						Classification: resources.ClassOperational,
+						AllowedModes:   []redact.Mode{redact.ModeStandard},
+					}},
+				},
 			},
 		}},
 	}
@@ -1272,6 +1420,38 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 	)
 	if !errors.Is(err, resources.ErrInvalidProjectedValue) {
 		t.Fatalf("ProjectRecordAndVerify(unsupported allowed child) error = %v, want ErrInvalidProjectedValue", err)
+	}
+
+	tests := []struct {
+		name   string
+		fields map[string]any
+	}{
+		{
+			name: "top-level allowed structured field",
+			fields: map[string]any{
+				"vpnCredentials": exportedProjectedStruct{Secret: canary},
+			},
+		},
+		{
+			name: "allowed structured child",
+			fields: map[string]any{
+				"vpnCredentials": map[string]any{
+					"validationInfo": exportedProjectedStruct{Secret: canary},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := resources.ProjectRecordAndVerify(
+				spec,
+				redact.ModeStandard,
+				resources.NewSourceRecord(tt.fields),
+			)
+			if !errors.Is(err, resources.ErrInvalidProjectedValue) {
+				t.Fatalf("ProjectRecordAndVerify(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			}
+		})
 	}
 }
 

@@ -69,12 +69,16 @@ mutable state hidden in unexported struct fields fail closed as invalid
 projected values instead of retaining aliases or reaching a renderer.
 
 The projected-value domain is intentionally narrower than arbitrary Go values:
-JSON-safe primitive scalars and finite numbers, supported scalar sequences,
-and the catalog-modeled `map[string]any`, `[]any`, and
-`[]map[string]any` families. Structs, pointers, complex or non-finite numbers,
-typed maps, nested typed containers, and process-like handles are rejected as
-invalid projected values. New value families require an explicit projection,
-redaction, copy, verification, and rendering design before admission.
+method-free built-in primitive scalars, valid `json.Number` values, finite
+numbers, supported method-free scalar sequences, and the catalog-modeled
+`map[string]any`, `[]any`, and `[]map[string]any` families. Named source
+scalars and scalar sequences are normalized to built-in values before they can
+enter a projected record; the already-projected constructors reject them so
+custom JSON, text, or string methods cannot run during rendering. Structs,
+pointers, complex or non-finite numbers, typed maps, nested typed containers,
+and process-like handles are rejected as invalid projected values. New value
+families require an explicit projection, redaction, copy, verification, and
+rendering design before admission.
 
 ## Compatibility boundary
 
