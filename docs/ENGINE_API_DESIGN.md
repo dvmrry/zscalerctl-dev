@@ -107,7 +107,8 @@ runes into a frontend.
 Typed ZIA URL lookup validates and copies a complete batch before config
 loading. Its accepted syntax is a hierarchical absolute URL or ZIA's bare
 `host[/path]` form; it rejects unsafe controls on the original boundary value
-before trimming ordinary surrounding spaces, rejects invalid UTF-8, and does
+before trimming surrounding ASCII spaces, rejects invalid UTF-8 and other
+Unicode whitespace in raw or retained decoded components, and does
 not admit userinfo-like or escaped delimiter forms as a bare host. It removes
 userinfo/query/fragment data from requests and SDK-returned URLs and pre-redacts
 every returned string. It performs one synchronous SDK call, preserves response

@@ -137,29 +137,9 @@ func TestURLLookupNormalizesInputAndSanitizesResponse(t *testing.T) {
 func TestURLLookupRejectsInvalidRequestsWithoutCallingReader(t *testing.T) {
 	t.Parallel()
 
-	invalidUTF8 := string([]byte{'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff})
-	tests := []machine.URLLookupRequest{
-		{},
-		{URLs: []string{""}},
-		{URLs: []string{"\nhttps://example.com"}},
-		{URLs: []string{"https://example.com\t"}},
-		{URLs: []string{"\u0085https://example.com"}},
-		{URLs: []string{"https://example.com\u0085"}},
-		{URLs: []string{"/path"}},
-		{URLs: []string{"//example.com/path"}},
-		{URLs: []string{"http:"}},
-		{URLs: []string{"http:/path"}},
-		{URLs: []string{"user@example.com/path"}},
-		{URLs: []string{"user%40example.com/path"}},
-		{URLs: []string{"example .com/path"}},
-		{URLs: []string{"example%00.com/path"}},
-		{URLs: []string{"example%2fcom/path"}},
-		{URLs: []string{"%2e/path"}},
-		{URLs: []string{invalidUTF8}},
-		{URLs: []string{"https://example.com/%"}},
-		{URLs: []string{"mailto:user@example.com?token=secret"}},
-		{URLs: []string{"https://example.com/\nFORGED"}},
-		{URLs: []string{"https://example.com/\u202eFORGED"}},
+	tests := []machine.URLLookupRequest{{}}
+	for _, rawURL := range invalidURLLookupInputs() {
+		tests = append(tests, machine.URLLookupRequest{URLs: []string{rawURL}})
 	}
 	for _, req := range tests {
 		reader := &runtimeURLLookupReader{}
@@ -189,11 +169,12 @@ func TestURLLookupAcceptsAbsoluteAndBareHostForms(t *testing.T) {
 	_, err = lookup.Lookup(context.Background(), machine.URLLookupRequest{URLs: []string{
 		"  https://example.com/path  ",
 		"example.net/path",
+		"https://example.org/a%20path",
 	}})
 	if err != nil {
 		t.Fatalf("URLLookup.Lookup(supported URL forms) error = %v, want nil", err)
 	}
-	want := [][]string{{"https://example.com/path", "example.net/path"}}
+	want := [][]string{{"https://example.com/path", "example.net/path", "https://example.org/a%20path"}}
 	if !reflect.DeepEqual(reader.calls, want) {
 		t.Fatalf("URLLookup.Lookup(supported URL forms) calls = %#v, want %#v", reader.calls, want)
 	}
@@ -217,6 +198,16 @@ func TestURLLookupRejectsMalformedSDKResponseWithoutLeaking(t *testing.T) {
 		{name: "escaped bare userinfo", url: canary + "%40example.com/path"},
 		{name: "escaped bare control", url: "example%00.com/" + canary},
 		{name: "invalid UTF-8", url: invalidUTF8 + "/" + canary},
+		{name: "absolute decoded C0", url: "https://example.com/%00/" + canary},
+		{name: "absolute decoded C1", url: "https://example.com/%C2%85/" + canary},
+		{name: "absolute decoded format", url: "https://example.com/%E2%80%AE/" + canary},
+		{name: "absolute decoded invalid UTF-8", url: "https://example.com/%ff/" + canary},
+		{name: "bare decoded C0", url: "example.com/%00/" + canary},
+		{name: "bare decoded format", url: "example.com/%E2%80%AE/" + canary},
+		{name: "bare decoded invalid UTF-8", url: "example.com/%ff/" + canary},
+		{name: "absolute invalid host UTF-8", url: "https://%ff.example/" + canary},
+		{name: "absolute whitespace host", url: "https://exa\u00a0mple.com/" + canary},
+		{name: "unicode boundary whitespace", url: "\u2002https://example.com/" + canary},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,16 +244,7 @@ func TestEngineURLLookupValidatesBeforeConfigAndPreservesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEngine() error = %v, want nil", err)
 	}
-	for _, rawURL := range []string{
-		"https://example.com/%",
-		"\nhttps://example.com",
-		"https://example.com\t",
-		"\u0085https://example.com",
-		"https://example.com\u0085",
-		"user@example.com/path",
-		"user%40example.com/path",
-		string([]byte{'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff}),
-	} {
+	for _, rawURL := range invalidURLLookupInputs() {
 		_, err = engine.LookupURL(context.Background(), machine.URLLookupRequest{
 			URLs: []string{rawURL},
 		})
@@ -285,6 +267,44 @@ func TestEngineURLLookupValidatesBeforeConfigAndPreservesContext(t *testing.T) {
 	}
 	if configLoads != 0 {
 		t.Fatalf("Engine.LookupURL(canceled) config loads = %d, want 0", configLoads)
+	}
+}
+
+func invalidURLLookupInputs() []string {
+	return []string{
+		"",
+		"\nhttps://example.com",
+		"https://example.com\t",
+		"\u0085https://example.com",
+		"https://example.com\u0085",
+		"\u2002https://example.com",
+		"https://example.com\u00a0",
+		"/path",
+		"//example.com/path",
+		"http:",
+		"http:/path",
+		"user@example.com/path",
+		"user%40example.com/path",
+		"example .com/path",
+		"example%00.com/path",
+		"example%2fcom/path",
+		"%2e/path",
+		string([]byte{'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff}),
+		"https://%ff.example/path",
+		"https://exa\u00a0mple.com/path",
+		"https://example.com/a b",
+		"https://example.com/%",
+		"https://example.com/%00",
+		"https://example.com/%C2%85",
+		"https://example.com/%E2%80%AE",
+		"https://example.com/%ff",
+		"example.com/%00",
+		"example.com/%C2%85",
+		"example.com/%E2%80%AE",
+		"example.com/%ff",
+		"mailto:user@example.com?token=secret",
+		"https://example.com/\nFORGED",
+		"https://example.com/\u202eFORGED",
 	}
 }
 

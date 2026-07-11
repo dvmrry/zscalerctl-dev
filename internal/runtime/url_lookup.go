@@ -149,25 +149,26 @@ func prepareURLLookupRequest(
 }
 
 func normalizeLookupURL(raw string) (string, bool) {
-	// Validate the original boundary value before trimming. TrimSpace removes
-	// several C0/C1 controls, which would otherwise let malformed request or
-	// SDK-response values become valid only after the unsafe runes disappeared.
-	if !utf8.ValidString(raw) || hasUnsafeLookupRune(raw) {
+	// Validate the original boundary value before trimming. Broad whitespace
+	// trimming removes C0/C1 and Unicode separators, which would otherwise let
+	// malformed request or SDK-response values become valid only after unsafe
+	// runes disappeared. Only surrounding ASCII spaces are accepted here.
+	if !utf8.ValidString(raw) || hasUnsafeLookupRune(raw) || hasNonASCIIWhitespace(raw) {
 		return "", false
 	}
-	value := strings.TrimSpace(raw)
-	if value == "" {
+	value := strings.Trim(raw, " ")
+	if value == "" || strings.ContainsRune(value, ' ') {
 		return "", false
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Opaque != "" {
+	if err != nil || parsed.Opaque != "" || !validDecodedLookupPath(parsed.Path) {
 		return "", false
 	}
 	// Accept hierarchical absolute URLs and the bare host[/path] form supported
 	// by the ZIA endpoint. Root-relative, scheme-relative, and hostless
 	// scheme-only references have no independently classifiable target.
 	switch {
-	case parsed.Scheme != "" && parsed.Host == "":
+	case parsed.Scheme != "" && !validAbsoluteLookupURL(parsed):
 		return "", false
 	case parsed.Scheme == "" && (parsed.Host != "" || !validBareLookupURL(parsed)):
 		return "", false
@@ -177,7 +178,25 @@ func normalizeLookupURL(raw string) (string, bool) {
 	parsed.ForceQuery = false
 	parsed.Fragment = ""
 	normalized := parsed.String()
-	return normalized, strings.TrimSpace(normalized) != ""
+	return normalized, normalized != ""
+}
+
+func validAbsoluteLookupURL(parsed *url.URL) bool {
+	hostname := parsed.Hostname()
+	if parsed.Host == "" || hostname == "" ||
+		!utf8.ValidString(parsed.Host) || !utf8.ValidString(hostname) {
+		return false
+	}
+	for _, ch := range parsed.Host {
+		if unicode.IsSpace(ch) || unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func validDecodedLookupPath(path string) bool {
+	return utf8.ValidString(path) && !hasUnsafeLookupRune(path)
 }
 
 func validBareLookupURL(parsed *url.URL) bool {
@@ -202,6 +221,15 @@ func validBareLookupURL(parsed *url.URL) bool {
 func hasUnsafeLookupRune(value string) bool {
 	for _, ch := range value {
 		if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNonASCIIWhitespace(value string) bool {
+	for _, ch := range value {
+		if ch != ' ' && unicode.IsSpace(ch) {
 			return true
 		}
 	}
