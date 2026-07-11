@@ -12,6 +12,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -52,8 +53,11 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 	// ordering: the status notice that follows must not race with a live spinner.
 	defer s.Stop()
 	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError,
-		func(done, total int, p resources.Product, r string) {
-			s.Update(fmt.Sprintf("[%d/%d] %s/%s", done, total, p, r))
+		func(event machine.Event) error {
+			if event.Kind == machine.EventProgress {
+				s.Update(fmt.Sprintf("[%d/%d] %s/%s", event.Done, event.Total, event.Product, event.Resource))
+			}
+			return nil
 		})
 	s.Stop()
 	if err != nil {
@@ -403,7 +407,7 @@ func (a *App) collectDump(
 	products map[resources.Product]bool,
 	selectedResources map[dumpResourceKey]bool,
 	continueOnError bool,
-	progress func(done, total int, product resources.Product, resource string),
+	sink machine.EventSink,
 ) (dump.Result, error) {
 	catalog := a.resourceCatalog()
 	selectedSpecs := selectedDumpSpecs(catalog, products, selectedResources)
@@ -415,14 +419,18 @@ func (a *App) collectDump(
 	if err != nil {
 		return dump.Result{}, err
 	}
-	return collector.Collect(ctx, selectedSpecs, machineruntime.DumpCollectOptions{
+	return collector.CollectStream(ctx, selectedSpecs, machineruntime.DumpCollectOptions{
 		ContinueOnError: continueOnError,
-		Progress: func(done, total int, product resources.Product, resource string) {
-			if progress != nil {
-				progress(done, total, product, resource)
+	}, func(event machine.Event) error {
+		if sink != nil {
+			if err := sink(event); err != nil {
+				return err
 			}
-			a.diagLogger().Info("dump reading resource", "product", product, "resource", resource)
-		},
+		}
+		if event.Kind == machine.EventProgress {
+			a.diagLogger().Info("dump reading resource", "product", event.Product, "resource", event.Resource)
+		}
+		return nil
 	})
 }
 

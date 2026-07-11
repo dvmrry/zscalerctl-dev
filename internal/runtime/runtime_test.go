@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,6 +204,216 @@ func TestNewDumpCollectorAssemblesReaderConfigAndCollects(t *testing.T) {
 	}
 	if gotCalls := reader.calls; !reflect.DeepEqual(gotCalls, []string{"list:zia/locations"}) {
 		t.Fatalf("DumpCollector.Collect(locations) reader calls = %#v, want list call", gotCalls)
+	}
+}
+
+func TestDumpCollectorCollectStreamEmitsProjectedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id":       "loc-1",
+					"name":     "HQ",
+					"rawNoise": "must-not-cross-event-boundary",
+				}),
+				resources.NewSourceRecord(map[string]any{"id": "loc-2", "name": "Branch"}),
+			},
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	if events[0].Total != 1 {
+		t.Errorf("CollectStream started total = %d, want 1", events[0].Total)
+	}
+	if events[1].Done != 1 || events[1].Total != 1 || events[1].Product != "zia" || events[1].Resource != "locations" {
+		t.Errorf("CollectStream progress = %#v, want 1/1 zia/locations", events[1])
+	}
+	for i, event := range events[2:4] {
+		if event.Record == nil {
+			t.Fatalf("CollectStream record event %d has nil record", i)
+		}
+		if _, ok := event.Record.Value("rawNoise"); ok {
+			t.Errorf("CollectStream record event %d exposes dropped rawNoise field", i)
+		}
+	}
+	completed := events[len(events)-1]
+	if completed.Records != 2 || completed.Resources != 1 || completed.Warnings != 0 {
+		t.Errorf("CollectStream completed counts = records:%d resources:%d warnings:%d, want 2/1/0",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Entries), 1; got != want {
+		t.Errorf("CollectStream result entries = %d, want %d", got, want)
+	}
+}
+
+func TestDumpCollectorCollectStreamEmitsValueFreeWarning(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+		runtimeDumpListSpec(resources.ProductZIA, "rule-labels"),
+	}
+	const rawBackendError = "client_secret=must-not-cross-event-boundary"
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{"id": "loc-1", "name": "HQ"}),
+			},
+		},
+		failures: map[runtimeResourceKey]error{
+			{product: resources.ProductZIA, resource: "rule-labels"}: errors.New(rawBackendError),
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{
+		ContinueOnError: true,
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(continue on error) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventProgress,
+		machine.EventWarning,
+		machine.EventCompleted,
+	})
+	warning := events[4]
+	if warning.Err == nil {
+		t.Fatal("CollectStream warning error = nil, want value-free MachineError")
+	}
+	if warning.Product != "zia" || warning.Resource != "rule-labels" ||
+		warning.Err.Kind != "list_failed" || warning.Err.Operation != machine.OperationList ||
+		warning.Err.Product != "zia" || warning.Err.Resource != "rule-labels" {
+		t.Errorf("CollectStream warning = %#v, want list_failed metadata for zia/rule-labels", warning)
+	}
+	if strings.Contains(warning.Err.Message, rawBackendError) || strings.Contains(warning.Err.Error(), rawBackendError) {
+		t.Errorf("CollectStream warning error = %q, want no backend error value", warning.Err.Message)
+	}
+	completed := events[len(events)-1]
+	if completed.Records != 1 || completed.Resources != 1 || completed.Warnings != 1 {
+		t.Errorf("CollectStream completed counts = records:%d resources:%d warnings:%d, want 1/1/1",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Errors), 1; got != want {
+		t.Fatalf("CollectStream result errors = %d, want %d", got, want)
+	}
+	resourceErr := result.Errors[0]
+	if resourceErr.Product != warning.Err.Product || resourceErr.Name != warning.Err.Resource ||
+		resourceErr.Operation != string(warning.Err.Operation) || resourceErr.Kind != warning.Err.Kind {
+		t.Errorf("CollectStream warning metadata = %#v, want errors.ndjson metadata %#v", warning.Err, resourceErr)
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesContextErrorWithTerminalEvent(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	collector := NewDumpCollectorFromReader(&runtimeDumpReader{}, catalog, redact.ModeStandard)
+	tests := []struct {
+		name         string
+		ctx          context.Context
+		wantErr      error
+		wantKind     string
+		wantTerminal machine.EventKind
+	}{
+		{
+			name:         "canceled",
+			ctx:          canceledRuntimeContext(),
+			wantErr:      context.Canceled,
+			wantKind:     machine.ErrorKindCanceled,
+			wantTerminal: machine.EventCanceled,
+		},
+		{
+			name:         "deadline",
+			ctx:          expiredRuntimeContext(),
+			wantErr:      context.DeadlineExceeded,
+			wantKind:     machine.ErrorKindDeadlineExceeded,
+			wantTerminal: machine.EventFailed,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var events []machine.Event
+			_, err := collector.CollectStream(tt.ctx, catalog, DumpCollectOptions{}, func(event machine.Event) error {
+				events = append(events, event)
+				return nil
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CollectStream(%s) error = %v, want errors.Is(%v)", tt.name, err, tt.wantErr)
+			}
+			assertRuntimeEventKinds(t, events, []machine.EventKind{machine.EventStarted, tt.wantTerminal})
+			terminal := events[1]
+			if terminal.Err == nil || terminal.Err.Kind != tt.wantKind {
+				t.Errorf("CollectStream(%s) terminal error = %#v, want kind %q", tt.name, terminal.Err, tt.wantKind)
+			}
+		})
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesFatalErrorIdentityAndSanitizesEvent(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	const rawBackendError = "client_secret=trusted-in-process-cause"
+	sentinel := errors.New(rawBackendError)
+	reader := &runtimeDumpReader{
+		failures: map[runtimeResourceKey]error{
+			{product: resources.ProductZIA, resource: "locations"}: sentinel,
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	_, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("CollectStream(fatal read) error = %v, want original sentinel identity", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventFailed,
+	})
+	terminal := events[len(events)-1]
+	if terminal.Err == nil || terminal.Err.Kind != machine.ErrorKindLiveAccessFailed ||
+		terminal.Err.Operation != machine.OperationList || terminal.Err.Product != "zia" || terminal.Err.Resource != "locations" {
+		t.Fatalf("CollectStream(fatal read) terminal error = %#v, want sanitized list failure", terminal.Err)
+	}
+	if strings.Contains(terminal.Err.Message, rawBackendError) || strings.Contains(terminal.Err.Error(), rawBackendError) {
+		t.Errorf("CollectStream(fatal read) terminal error = %q, want no backend value", terminal.Err.Message)
 	}
 }
 
@@ -617,6 +828,30 @@ func runtimeWriteConfig(t *testing.T, body string) string {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
 	}
 	return path
+}
+
+func canceledRuntimeContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
+func expiredRuntimeContext() context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+	cancel()
+	return ctx
+}
+
+func assertRuntimeEventKinds(t *testing.T, events []machine.Event, want []machine.EventKind) {
+	t.Helper()
+	if len(events) != len(want) {
+		t.Fatalf("event count = %d, want %d (events = %#v)", len(events), len(want), events)
+	}
+	for i, kind := range want {
+		if events[i].Kind != kind {
+			t.Fatalf("event[%d].Kind = %q, want %q (events = %#v)", i, events[i].Kind, kind, events)
+		}
+	}
 }
 
 func runtimeDumpListSpec(product resources.Product, resource string) resources.ResourceSpec {

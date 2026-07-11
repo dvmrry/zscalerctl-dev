@@ -59,9 +59,151 @@ func (*Event) UnmarshalJSON([]byte) error {
 	return errEventHasNoWireFormat
 }
 
-// EventSink receives events synchronously on the ExecuteStream caller's
-// goroutine. Returning an error aborts the operation.
+// EventSink receives events synchronously on the producer caller's goroutine.
+// Returning an error aborts the operation.
 type EventSink func(Event) error
+
+// EventStream owns one candidate in-process event lifecycle. It emits the
+// started event during construction, accepts only non-terminal events through
+// Emit, and owns completion/failure delivery so producers cannot accidentally
+// bypass the terminal-exactly-once rules.
+//
+// Fail reports only a terminal-delivery failure. When delivery succeeds, the
+// producer remains responsible for returning its own operation error. This
+// keeps a sanitized event payload separate from richer in-process errors whose
+// sentinel identity an existing adapter may need to preserve.
+type EventStream struct {
+	emitter   eventEmitter
+	operation Operation
+	product   string
+	resource  string
+}
+
+// StartEventStream starts one synchronous event lifecycle.
+func StartEventStream(
+	sink EventSink,
+	operation Operation,
+	product string,
+	resource string,
+	total int,
+) (*EventStream, error) {
+	stream := &EventStream{
+		emitter:   eventEmitter{sink: sink},
+		operation: operation,
+		product:   product,
+		resource:  resource,
+	}
+	if failure := stream.emitter.emit(Event{
+		Kind:     EventStarted,
+		Product:  product,
+		Resource: resource,
+		Total:    total,
+	}); failure != nil {
+		return nil, stream.emitter.failAfterDelivery(*failure, operation, product, resource)
+	}
+	return stream, nil
+}
+
+// Emit delivers one non-terminal progress, record, or warning event.
+func (s *EventStream) Emit(event Event) error {
+	if s == nil {
+		return &MachineError{Kind: ErrorKindInternal, Message: "event stream is nil"}
+	}
+	if message := invalidNonTerminalEvent(event); message != "" {
+		return s.failProducer(message)
+	}
+	s.applyDefaultScope(&event)
+	if failure := s.emitter.emit(event); failure != nil {
+		return s.emitter.failAfterDelivery(*failure, s.operation, event.Product, event.Resource)
+	}
+	return nil
+}
+
+// Complete delivers the successful terminal event. Kind may be empty or
+// EventCompleted; the stream sets it to EventCompleted before delivery.
+func (s *EventStream) Complete(event Event) error {
+	if s == nil {
+		return &MachineError{Kind: ErrorKindInternal, Message: "event stream is nil"}
+	}
+	if event.Kind != "" && event.Kind != EventCompleted {
+		return s.failProducer("completion has a non-completed event kind")
+	}
+	if event.Records < 0 || event.Resources < 0 || event.Warnings < 0 {
+		return s.failProducer("completion has a negative count")
+	}
+	event.Kind = EventCompleted
+	s.applyDefaultScope(&event)
+	if failure := s.emitter.emit(event); failure != nil {
+		return s.emitter.failAfterDelivery(*failure, s.operation, event.Product, event.Resource)
+	}
+	return nil
+}
+
+// Fail delivers a failed or canceled terminal event. A nil return means the
+// terminal event was delivered; it does not mean the producer operation
+// succeeded. The caller should then return its original operation error.
+func (s *EventStream) Fail(machineErr MachineError) error {
+	if s == nil {
+		return &MachineError{Kind: ErrorKindInternal, Message: "event stream is nil"}
+	}
+	machineErr = machineErrorWithContext(
+		machineErr,
+		s.operation,
+		s.product,
+		s.resource,
+	)
+	kind := EventFailed
+	if machineErr.Kind == ErrorKindCanceled {
+		kind = EventCanceled
+	}
+	if failure := s.emitter.emitTerminalError(kind, machineErr); failure != nil {
+		return failure
+	}
+	return nil
+}
+
+func (s *EventStream) applyDefaultScope(event *Event) {
+	if event.Product == "" {
+		event.Product = s.product
+	}
+	if event.Resource == "" {
+		event.Resource = s.resource
+	}
+}
+
+func (s *EventStream) failProducer(message string) error {
+	machineErr := MachineError{
+		Kind:      ErrorKindInternal,
+		Message:   message,
+		Operation: s.operation,
+		Product:   s.product,
+		Resource:  s.resource,
+	}
+	if err := s.Fail(machineErr); err != nil {
+		return err
+	}
+	return &machineErr
+}
+
+func invalidNonTerminalEvent(event Event) string {
+	switch event.Kind {
+	case EventProgress:
+		if event.Done < 0 || event.Total < 0 || (event.Total > 0 && event.Done > event.Total) {
+			return "progress event has invalid counters"
+		}
+	case EventRecord:
+		if event.Record == nil {
+			return "record event has no record"
+		}
+	case EventWarning:
+		if event.Err == nil {
+			return "warning event has no machine error"
+		}
+	default:
+		return "event stream received an invalid non-terminal event kind"
+	}
+	return ""
+}
 
 type eventEmitter struct {
 	sink     EventSink
@@ -134,10 +276,13 @@ func (e *eventEmitter) failAfterDelivery(
 	if !e.started || e.terminal {
 		return &failure
 	}
-	return e.finishError(EventFailed, failure)
+	if deliveryFailure := e.emitTerminalError(EventFailed, failure); deliveryFailure != nil {
+		return deliveryFailure
+	}
+	return &failure
 }
 
-func (e *eventEmitter) finishError(kind EventKind, machineErr MachineError) error {
+func (e *eventEmitter) emitTerminalError(kind EventKind, machineErr MachineError) *MachineError {
 	machineErr = copyMachineError(machineErr)
 	failure := e.emit(Event{
 		Kind:     kind,
@@ -154,15 +299,7 @@ func (e *eventEmitter) finishError(kind EventKind, machineErr MachineError) erro
 		)
 		return &failureWithContext
 	}
-	return &machineErr
-}
-
-func (e *eventEmitter) finishMachineError(machineErr MachineError) error {
-	kind := EventFailed
-	if machineErr.Kind == ErrorKindCanceled {
-		kind = EventCanceled
-	}
-	return e.finishError(kind, machineErr)
+	return nil
 }
 
 func isTerminalEvent(kind EventKind) bool {

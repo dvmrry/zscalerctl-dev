@@ -8,18 +8,17 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/browser"
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/dump"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
-// DumpProgressFunc observes value-free dump collection progress.
-type DumpProgressFunc func(done, total int, product resources.Product, resource string)
+const dumpEventOperation machine.Operation = "dump"
 
 // DumpCollectOptions configures one dump collection run.
 type DumpCollectOptions struct {
 	ContinueOnError bool
-	Progress        DumpProgressFunc
 }
 
 // DumpCollector is the trusted live dump collection facade.
@@ -83,32 +82,61 @@ func NewDumpCollectorFromReader(
 }
 
 // Collect reads, projects, and verifies the selected resource specs into a dump
-// result. Fatal runtime failures return errors; per-resource failures are
-// recorded when ContinueOnError is set.
+// result through the same event-producing path used by streaming consumers.
+// Fatal runtime failures return errors; per-resource failures are recorded when
+// ContinueOnError is set.
 func (c *DumpCollector) Collect(
 	ctx context.Context,
 	specs []resources.ResourceSpec,
 	opts DumpCollectOptions,
 ) (dump.Result, error) {
+	return c.CollectStream(ctx, specs, opts, func(machine.Event) error { return nil })
+}
+
+// CollectStream reads, projects, and verifies selected resource specs while
+// delivering ordered candidate events synchronously on the caller's goroutine.
+// It starts no goroutines. Record events cross the boundary only after
+// projection and verification; fatal events are sanitized while the returned
+// Go error preserves the original in-process error identity.
+func (c *DumpCollector) CollectStream(
+	ctx context.Context,
+	specs []resources.ResourceSpec,
+	opts DumpCollectOptions,
+	sink machine.EventSink,
+) (dump.Result, error) {
 	result := dump.Result{}
+	selectedSpecs := copyResourceSpecs(specs)
+	stream, err := machine.StartEventStream(sink, dumpEventOperation, "", "", len(selectedSpecs))
+	if err != nil {
+		return result, err
+	}
 	if c == nil {
-		return result, errors.New("dump collector is nil")
+		err := errors.New("dump collector is nil")
+		return result, finishDumpStreamFailure(
+			stream, err, dumpEventOperation, "", "", machine.ErrorKindInternal,
+		)
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := resources.AssertReadOnly(c.catalog...); err != nil {
-		return result, err
+		return result, finishDumpStreamFailure(
+			stream, err, dumpEventOperation, "", "", machine.ErrorKindUnsupportedOperation,
+		)
 	}
-	selectedSpecs := copyResourceSpecs(specs)
 	if err := resources.AssertReadOnly(selectedSpecs...); err != nil {
-		return result, err
+		return result, finishDumpStreamFailure(
+			stream, err, dumpEventOperation, "", "", machine.ErrorKindUnsupportedOperation,
+		)
 	}
 
 	readers := make(map[resources.Product]browser.RecordReader)
+	recordCount := 0
 	for i, spec := range selectedSpecs {
 		if err := ctx.Err(); err != nil {
-			return result, err
+			return result, finishDumpStreamFailure(
+				stream, err, dumpReadOperation(spec), string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+			)
 		}
 		reader, ok := readers[spec.Product]
 		if !ok {
@@ -116,23 +144,42 @@ func (c *DumpCollector) Collect(
 			var err error
 			reader, cleanup, err = c.readerForProduct(ctx, spec.Product)
 			if err != nil {
-				return result, err
+				return result, finishDumpStreamFailure(
+					stream, err, dumpReadOperation(spec), string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+				)
 			}
 			readers[spec.Product] = reader
 			defer cleanup()
 		}
-		if opts.Progress != nil {
-			opts.Progress(i+1, len(selectedSpecs), spec.Product, spec.Name)
-		}
-		if spec.SupportsReadOperation("show") {
-			if err := c.collectShow(ctx, reader, spec, opts.ContinueOnError, &result); err != nil {
-				return result, err
-			}
-			continue
-		}
-		if err := c.collectList(ctx, reader, spec, opts.ContinueOnError, &result); err != nil {
+		if err := stream.Emit(machine.Event{
+			Kind:     machine.EventProgress,
+			Product:  string(spec.Product),
+			Resource: spec.Name,
+			Done:     i + 1,
+			Total:    len(selectedSpecs),
+		}); err != nil {
 			return result, err
 		}
+		if spec.SupportsReadOperation("show") {
+			count, err := c.collectShow(ctx, reader, spec, opts.ContinueOnError, stream, &result)
+			if err != nil {
+				return result, err
+			}
+			recordCount += count
+			continue
+		}
+		count, err := c.collectList(ctx, reader, spec, opts.ContinueOnError, stream, &result)
+		if err != nil {
+			return result, err
+		}
+		recordCount += count
+	}
+	if err := stream.Complete(machine.Event{
+		Records:   recordCount,
+		Resources: len(result.Entries),
+		Warnings:  len(result.Errors),
+	}); err != nil {
+		return result, err
 	}
 	return result, nil
 }
@@ -166,34 +213,53 @@ func (c *DumpCollector) collectShow(
 	reader browser.RecordReader,
 	spec resources.ResourceSpec,
 	continueOnError bool,
+	stream *machine.EventStream,
 	result *dump.Result,
-) error {
+) (int, error) {
 	record, err := reader.Show(ctx, spec.Product, spec.Name)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return 0, finishDumpStreamFailure(
+				stream, ctxErr, machine.OperationShow, string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+			)
 		}
 		if continueOnError {
-			result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed"))
-			return nil
+			resourceErr := dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed")
+			result.Errors = append(result.Errors, resourceErr)
+			return 0, emitDumpWarning(stream, resourceErr)
 		}
-		return fmt.Errorf("dump %s/%s show failed: %w", spec.Product, spec.Name, err)
+		resultErr := fmt.Errorf("dump %s/%s show failed: %w", spec.Product, spec.Name, err)
+		return 0, finishDumpStreamFailure(
+			stream, resultErr, machine.OperationShow, string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+		)
 	}
 	projected, report, err := resources.ProjectRecordAndVerify(spec, c.redaction, record)
 	if err != nil {
 		operation, kind := dumpProjectionErrorKind(err)
 		if continueOnError {
-			result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
-			return nil
+			resourceErr := dump.NewResourceError(spec.Product, spec.Name, operation, kind)
+			result.Errors = append(result.Errors, resourceErr)
+			return 0, emitDumpWarning(stream, resourceErr)
 		}
-		return fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
+		resultErr := fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
+		return 0, finishDumpStreamFailure(
+			stream, resultErr, machine.Operation(operation), string(spec.Product), spec.Name, machine.ErrorKindInternal,
+		)
+	}
+	if err := stream.Emit(machine.Event{
+		Kind:     machine.EventRecord,
+		Product:  string(spec.Product),
+		Resource: spec.Name,
+		Record:   &projected,
+	}); err != nil {
+		return 0, err
 	}
 	result.Entries = append(result.Entries, dump.ResourceDump{
 		Spec:    spec,
 		Record:  &projected,
 		Reports: []resources.ProjectionReport{report},
 	})
-	return nil
+	return 1, nil
 }
 
 func (c *DumpCollector) collectList(
@@ -201,34 +267,124 @@ func (c *DumpCollector) collectList(
 	reader browser.RecordReader,
 	spec resources.ResourceSpec,
 	continueOnError bool,
+	stream *machine.EventStream,
 	result *dump.Result,
-) error {
+) (int, error) {
 	records, err := reader.List(ctx, spec.Product, spec.Name)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return 0, finishDumpStreamFailure(
+				stream, ctxErr, machine.OperationList, string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+			)
 		}
 		if continueOnError {
-			result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed"))
-			return nil
+			resourceErr := dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed")
+			result.Errors = append(result.Errors, resourceErr)
+			return 0, emitDumpWarning(stream, resourceErr)
 		}
-		return fmt.Errorf("dump %s/%s list failed: %w", spec.Product, spec.Name, err)
+		resultErr := fmt.Errorf("dump %s/%s list failed: %w", spec.Product, spec.Name, err)
+		return 0, finishDumpStreamFailure(
+			stream, resultErr, machine.OperationList, string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
+		)
 	}
 	projected, reports, err := resources.ProjectRecordsAndVerify(spec, c.redaction, records)
 	if err != nil {
 		operation, kind := dumpProjectionErrorKind(err)
 		if continueOnError {
-			result.Errors = append(result.Errors, dump.NewResourceError(spec.Product, spec.Name, operation, kind))
-			return nil
+			resourceErr := dump.NewResourceError(spec.Product, spec.Name, operation, kind)
+			result.Errors = append(result.Errors, resourceErr)
+			return 0, emitDumpWarning(stream, resourceErr)
 		}
-		return fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
+		resultErr := fmt.Errorf("dump %s/%s %s failed: %w", spec.Product, spec.Name, operation, err)
+		return 0, finishDumpStreamFailure(
+			stream, resultErr, machine.Operation(operation), string(spec.Product), spec.Name, machine.ErrorKindInternal,
+		)
+	}
+	projectedRecords := projected.Records()
+	for i := range projectedRecords {
+		record := projectedRecords[i]
+		if err := stream.Emit(machine.Event{
+			Kind:     machine.EventRecord,
+			Product:  string(spec.Product),
+			Resource: spec.Name,
+			Record:   &record,
+		}); err != nil {
+			return 0, err
+		}
 	}
 	result.Entries = append(result.Entries, dump.ResourceDump{
 		Spec:    spec,
 		Records: projected,
 		Reports: reports,
 	})
-	return nil
+	return len(projectedRecords), nil
+}
+
+func emitDumpWarning(stream *machine.EventStream, resourceErr dump.ResourceError) error {
+	machineErr := machine.MachineError{
+		Kind:      resourceErr.Kind,
+		Message:   "dump resource failed",
+		Operation: machine.Operation(resourceErr.Operation),
+		Product:   resourceErr.Product,
+		Resource:  resourceErr.Name,
+	}
+	return stream.Emit(machine.Event{
+		Kind:     machine.EventWarning,
+		Product:  resourceErr.Product,
+		Resource: resourceErr.Name,
+		Err:      &machineErr,
+	})
+}
+
+func finishDumpStreamFailure(
+	stream *machine.EventStream,
+	resultErr error,
+	operation machine.Operation,
+	product string,
+	resource string,
+	fallbackKind string,
+) error {
+	machineErr := dumpMachineError(resultErr, operation, product, resource, fallbackKind)
+	if err := stream.Fail(machineErr); err != nil {
+		return err
+	}
+	return resultErr
+}
+
+func dumpMachineError(
+	err error,
+	operation machine.Operation,
+	product string,
+	resource string,
+	fallbackKind string,
+) machine.MachineError {
+	machineErr := machine.MachineError{
+		Kind:      fallbackKind,
+		Message:   "dump collection failed",
+		Operation: operation,
+		Product:   product,
+		Resource:  resource,
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		machineErr.Kind = machine.ErrorKindCanceled
+		machineErr.Message = "request canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		machineErr.Kind = machine.ErrorKindDeadlineExceeded
+		machineErr.Message = "request deadline exceeded"
+	case fallbackKind == machine.ErrorKindLiveAccessFailed:
+		machineErr.Message = "resource read failed"
+	case fallbackKind == machine.ErrorKindUnsupportedOperation:
+		machineErr.Message = "unsupported dump resource operation"
+	}
+	return machineErr
+}
+
+func dumpReadOperation(spec resources.ResourceSpec) machine.Operation {
+	if spec.SupportsReadOperation("show") {
+		return machine.OperationShow
+	}
+	return machine.OperationList
 }
 
 func dumpProjectionErrorKind(err error) (operation string, kind string) {

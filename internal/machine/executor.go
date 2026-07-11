@@ -95,21 +95,17 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 // operation and is converted to a machine-safe failure.
 func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink) error {
 	product, resource := inputResource(req)
-	emitter := eventEmitter{sink: sink}
-	if failure := emitter.emit(Event{
-		Kind:     EventStarted,
-		Product:  product,
-		Resource: resource,
-	}); failure != nil {
-		return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+	stream, err := StartEventStream(sink, req.Operation, product, resource, 0)
+	if err != nil {
+		return err
 	}
 
 	if machineErr := validateRequestSemantics(req, product, resource); machineErr != nil {
-		return emitter.finishError(EventFailed, *machineErr)
+		return failEventStream(stream, *machineErr)
 	}
 	if req.Operation == OperationManifest {
 		if req.Capability != "" && req.Capability != CapabilityResourcesRead {
-			return emitter.finishError(EventFailed, MachineError{
+			return failEventStream(stream, MachineError{
 				Kind:      ErrorKindUnsupportedCapability,
 				Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 				Operation: req.Operation,
@@ -118,18 +114,14 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 			})
 		}
 		manifest := ManifestFromCatalog(e.catalog())
-		if failure := emitter.emit(Event{
-			Kind:     EventCompleted,
+		return stream.Complete(Event{
 			Product:  product,
 			Resource: resource,
 			Manifest: &manifest,
-		}); failure != nil {
-			return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
-		}
-		return nil
+		})
 	}
 	if req.Capability != CapabilityResourcesRead {
-		return emitter.finishError(EventFailed, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedCapability,
 			Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 			Operation: req.Operation,
@@ -138,7 +130,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 		})
 	}
 	if !isSupportedReadOperation(req.Operation) {
-		return emitter.finishError(EventFailed, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedOperation,
 			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
 			Operation: req.Operation,
@@ -149,7 +141,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 
 	product, resource, recordID, missing := requiredInput(req)
 	if len(missing) > 0 {
-		return emitter.finishError(EventFailed, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   "missing required input: " + strings.Join(missing, ", "),
 			Missing:   missing,
@@ -160,7 +152,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 	}
 
 	if e.Browser == nil {
-		return emitter.finishError(EventFailed, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindInternal,
 			Message:   "browser loader is not configured",
 			Operation: req.Operation,
@@ -171,35 +163,38 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 
 	projected, err := e.loadProjected(ctx, req.Operation, product, resource, recordID)
 	if err != nil {
-		return emitter.finishMachineError(machineErrorFromLoadError(err, req.Operation, product, resource))
+		return failEventStream(stream, machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
 	projected, err = e.narrowProjected(req, product, resource, projected)
 	if err != nil {
-		return emitter.finishMachineError(machineErrorFromLoadError(err, req.Operation, product, resource))
+		return failEventStream(stream, machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
 
 	records := projected.Records()
 	for i := range records {
 		record := records[i]
-		if failure := emitter.emit(Event{
+		if err := stream.Emit(Event{
 			Kind:     EventRecord,
 			Product:  product,
 			Resource: resource,
 			Record:   &record,
-		}); failure != nil {
-			return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+		}); err != nil {
+			return err
 		}
 	}
-	if failure := emitter.emit(Event{
-		Kind:      EventCompleted,
+	return stream.Complete(Event{
 		Product:   product,
 		Resource:  resource,
 		Records:   len(records),
 		Resources: 1,
-	}); failure != nil {
-		return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+	})
+}
+
+func failEventStream(stream *EventStream, machineErr MachineError) error {
+	if err := stream.Fail(machineErr); err != nil {
+		return err
 	}
-	return nil
+	return &machineErr
 }
 
 func isSupportedReadOperation(op Operation) bool {

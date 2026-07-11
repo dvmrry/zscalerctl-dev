@@ -163,8 +163,9 @@ full-copy generation of records) in addition to keeping the existing gate.
   completion reconstruction, and direct-serialization rejection.
 - Contract: existing golden fixtures over reconstructed Execute (no new
   fixtures — that is the point).
-- Dump: progress-event sequence test replacing the DumpProgressFunc test;
-  memory baseline unchanged.
+- Dump: progress-event sequence test replacing the DumpProgressFunc test; keep
+  the existing write-pipeline baseline and add a peak-heap baseline that crosses
+  `DumpCollector.CollectStream` with an accumulating event sink.
 
 ## Owner decisions
 

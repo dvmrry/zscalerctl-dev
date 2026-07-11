@@ -139,6 +139,53 @@ func TestExecutorExecuteManifestPreservesEmptyCapabilities(t *testing.T) {
 	}
 }
 
+func TestEventStreamOwnsTerminalDelivery(t *testing.T) {
+	var events []machine.Event
+	stream, err := machine.StartEventStream(func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	}, machine.Operation("dump"), "", "", 2)
+	if err != nil {
+		t.Fatalf("StartEventStream() error = %v, want nil", err)
+	}
+
+	operationErr := machine.MachineError{
+		Kind:      machine.ErrorKindCanceled,
+		Message:   "request canceled",
+		Operation: machine.OperationList,
+		Product:   "zia",
+		Resource:  "locations",
+	}
+	if err := stream.Fail(operationErr); err != nil {
+		t.Fatalf("EventStream.Fail(delivered terminal) error = %v, want nil delivery error", err)
+	}
+	assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventCanceled})
+	if events[0].Total != 2 {
+		t.Errorf("EventStream started.Total = %d, want 2", events[0].Total)
+	}
+	if events[1].Err == nil || events[1].Err.Kind != machine.ErrorKindCanceled {
+		t.Errorf("EventStream canceled error = %#v, want canceled", events[1].Err)
+	}
+}
+
+func TestEventStreamRejectsTerminalBypassThroughEmit(t *testing.T) {
+	var events []machine.Event
+	stream, err := machine.StartEventStream(func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	}, machine.OperationList, "zia", "locations", 0)
+	if err != nil {
+		t.Fatalf("StartEventStream() error = %v, want nil", err)
+	}
+
+	err = stream.Emit(machine.Event{Kind: machine.EventCompleted})
+	assertMachineError(t, err, machine.ErrorKindInternal, machine.OperationList, "zia", "locations")
+	assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+	if events[1].Err == nil || events[1].Err.Message != "event stream received an invalid non-terminal event kind" {
+		t.Errorf("EventStream invalid emit terminal error = %#v, want producer failure", events[1].Err)
+	}
+}
+
 func TestExecutorExecuteStreamRecordFieldsAreDefensiveCopies(t *testing.T) {
 	executor := machine.Executor{Browser: &fakeBrowserLoader{
 		records: projectedRecordsFromFields(t, map[string]any{"name": "HQ", "ports": []int{80, 443}}),
