@@ -88,6 +88,7 @@ EngineManifest() machine.EngineManifest
 DiscoverCatalog(ctx, machine.CatalogRequest) (machine.CatalogResult, error)
 InspectStatus(ctx, machine.StatusRequest) (machine.StatusResult, error)
 LookupURL(ctx, machine.URLLookupRequest) (machine.URLLookupResult, error)
+Dump(ctx, machine.DumpRequest, machine.EventSink) (machine.DumpResult, error)
 Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
@@ -116,6 +117,17 @@ order and duplicates, and returns a defensively copied closed result. Cobra
 preserves its existing JSON/table/pretty DTO and usage surface as an adapter
 over this method; unsupported format policy is resolved before engine input
 validation.
+
+Typed dump validates and copies exact product/resource selectors before config
+or reader construction. It collects through the shared projected event path,
+then performs force validation and context-aware artifact writing. Local
+deletion remains request-dependent and occurs only after collection succeeds.
+The terminal `completed` event is emitted only after resource files,
+redaction/error metadata, and the final manifest are on disk. `DumpResult`
+contains only counts, effective redaction mode, and defensively copied
+value-free resource failures; it never contains records, the output path,
+config, SDK values, or backend errors. Cobra keeps flag parsing, status prose,
+partial-dump exit policy, and terminal presentation as adapter behavior.
 
 `ExecuteStream` is the semantic path. Both typed `Read` and compatibility
 `Execute` consume it, so the CLI and interactive adapters cannot acquire

@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,13 +120,37 @@ type resourceTarget struct {
 	path    string
 }
 
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func checkContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func Write(dir string, mode redact.Mode, result Result) error {
+	return WriteContext(context.Background(), dir, mode, result)
+}
+
+// WriteContext writes a sanitized dump to dir, honoring cancellation at the
+// filesystem boundaries of the dump operation.
+func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Result) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("%w: missing dump directory", ErrUnsafePath)
 	}
 	mode = redact.EffectiveMode(mode)
 
-	targets, err := buildResourceTargets(dir, result.Entries)
+	targets, err := buildResourceTargetsContext(ctx, dir, result.Entries)
 	if err != nil {
 		return err
 	}
@@ -137,11 +162,17 @@ func Write(dir string, mode redact.Mode, result Result) error {
 		targetPaths = append(targetPaths, target.path)
 	}
 	for _, path := range targetPaths {
-		if err := rejectExisting(path); err != nil {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		if err := rejectExistingContext(ctx, path); err != nil {
 			return err
 		}
 	}
-	if err := ensureDir(dir); err != nil {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := ensureDirContext(ctx, dir); err != nil {
 		return err
 	}
 
@@ -161,11 +192,23 @@ func Write(dir string, mode redact.Mode, result Result) error {
 	report := RedactionReport{Schema: "zscalerctl.redaction_report.v1", Redaction: string(mode)}
 
 	for _, target := range targets {
-		if err := ensureDirChain(dir, filepath.Dir(target.relPath)); err != nil {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		if err := ensureDirChainContext(ctx, dir, filepath.Dir(target.relPath)); err != nil {
+			return err
+		}
+		if err := checkContext(ctx); err != nil {
 			return err
 		}
 		payload, recordCount := target.entry.payload()
-		if err := writeJSONFile(target.path, mode, payload); err != nil {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		if err := writeJSONFileContext(ctx, target.path, mode, payload); err != nil {
+			return err
+		}
+		if err := checkContext(ctx); err != nil {
 			return err
 		}
 		manifest.Resources = append(manifest.Resources, ManifestResource{
@@ -179,6 +222,9 @@ func Write(dir string, mode redact.Mode, result Result) error {
 		report.Resources = append(report.Resources, buildResourceReport(target.product, target.name, target.relPath, recordCount, target.entry.Reports))
 	}
 	for _, resourceError := range result.Errors {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
 		manifest.Resources = append(manifest.Resources, ManifestResource{
 			Product:   resourceError.Product,
 			Name:      resourceError.Name,
@@ -188,16 +234,28 @@ func Write(dir string, mode redact.Mode, result Result) error {
 		})
 	}
 
-	if err := writeJSONFile(filepath.Join(dir, "manifest.json"), mode, manifest); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	if err := writeJSONFile(filepath.Join(dir, "redaction_report.json"), mode, report); err != nil {
+	if err := writeJSONFileContext(ctx, filepath.Join(dir, "redaction_report.json"), mode, report); err != nil {
 		return err
 	}
 	if len(result.Errors) > 0 {
-		if err := writeNDJSONFile(filepath.Join(dir, "errors.ndjson"), mode, result.Errors); err != nil {
+		if err := checkContext(ctx); err != nil {
 			return err
 		}
+		if err := writeNDJSONFileContext(ctx, filepath.Join(dir, "errors.ndjson"), mode, result.Errors); err != nil {
+			return err
+		}
+	}
+	// Finalize the ownership marker last. A canceled or failed write may leave
+	// partial files, but never a manifest that falsely declares the artifact
+	// complete or makes an incomplete directory eligible for --force removal.
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := writeJSONFileContext(ctx, filepath.Join(dir, "manifest.json"), mode, manifest); err != nil {
+		return err
 	}
 	return nil
 }
@@ -210,9 +268,13 @@ func manifestResourceShape(spec resources.ResourceSpec) string {
 	return string(shape)
 }
 
-func buildResourceTargets(dir string, entries []ResourceDump) ([]resourceTarget, error) {
+func buildResourceTargetsContext(ctx context.Context, dir string, entries []ResourceDump) ([]resourceTarget, error) {
+	ctx = contextOrBackground(ctx)
 	targets := make([]resourceTarget, 0, len(entries))
 	for _, entry := range entries {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		product, err := safeSegment(string(entry.Spec.Product))
 		if err != nil {
 			return nil, fmt.Errorf("dump product %q: %w", entry.Spec.Product, err)
@@ -275,7 +337,15 @@ func uniqueFields(
 }
 
 func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
-	if err := rejectExisting(path); err != nil {
+	return writeJSONFileContext(context.Background(), path, mode, value)
+}
+
+func writeJSONFileContext(ctx context.Context, path string, mode redact.Mode, value safeJSON) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := rejectExistingContext(ctx, path); err != nil {
 		return err
 	}
 	body, err := json.MarshalIndent(value, "", "  ")
@@ -284,15 +354,25 @@ func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
 	}
 	body = append(body, '\n')
 	body = redact.New(mode).Bytes(body)
-	return writeFileExclusive(path, body)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return writeFileExclusiveContext(ctx, path, body)
 }
 
-func writeNDJSONFile(path string, mode redact.Mode, values []ResourceError) error {
-	if err := rejectExisting(path); err != nil {
+func writeNDJSONFileContext(ctx context.Context, path string, mode redact.Mode, values []ResourceError) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := rejectExistingContext(ctx, path); err != nil {
 		return err
 	}
 	var body []byte
 	for _, value := range values {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
 		line, err := json.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("marshal dump ndjson: %w", err)
@@ -301,21 +381,44 @@ func writeNDJSONFile(path string, mode redact.Mode, values []ResourceError) erro
 		body = append(body, '\n')
 	}
 	body = redact.New(mode).Bytes(body)
-	return writeFileExclusive(path, body)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return writeFileExclusiveContext(ctx, path, body)
 }
 
-func rejectExisting(path string) error {
-	if _, err := os.Lstat(path); err == nil {
+func rejectExistingContext(ctx context.Context, path string) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	_, err := os.Lstat(path)
+	if contextErr := checkContext(ctx); contextErr != nil {
+		return contextErr
+	}
+	if err == nil {
 		return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, path)
-	} else if !errors.Is(err, os.ErrNotExist) {
+	}
+	if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect dump path: %w", err)
 	}
 	return nil
 }
 
 func writeFileExclusive(path string, body []byte) error {
+	return writeFileExclusiveContext(context.Background(), path, body)
+}
+
+func writeFileExclusiveContext(ctx context.Context, path string, body []byte) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
-	if err := ensureDir(dir); err != nil {
+	if err := ensureDirContext(ctx, dir); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	// Write to a temp file in the same directory, fsync it, then atomically
@@ -333,24 +436,48 @@ func writeFileExclusive(path string, body []byte) error {
 			_ = os.Remove(tmpPath)
 		}
 	}()
+	if err := checkContext(ctx); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Chmod(filePerm); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("set dump file mode: %w", err)
 	}
+	if err := checkContext(ctx); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	// Check immediately before writing the temp file so cancellation leaves no
+	// finalized or intermediate output for this file.
 	if _, err := tmp.Write(body); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write dump file: %w", err)
+	}
+	if err := checkContext(ctx); err != nil {
+		_ = tmp.Close()
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("sync dump file: %w", err)
 	}
+	if err := checkContext(ctx); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close dump file: %w", err)
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	// Preserve the no-overwrite guarantee at the final path: nothing should have
 	// created it between the up-front rejectExisting sweep and now.
-	if err := rejectExisting(path); err != nil {
+	if err := rejectExistingContext(ctx, path); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
@@ -361,15 +488,35 @@ func writeFileExclusive(path string, body []byte) error {
 }
 
 func ensureDir(dir string) error {
+	return ensureDirContext(context.Background(), dir)
+}
+
+func ensureDirContext(ctx context.Context, dir string) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	info, err := os.Lstat(dir)
+	if contextErr := checkContext(ctx); contextErr != nil {
+		return contextErr
+	}
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("inspect dump directory: %w", err)
 		}
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
 		if err := os.MkdirAll(dir, dirPerm); err != nil {
 			return fmt.Errorf("create dump directory: %w", err)
 		}
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
 		info, err = os.Lstat(dir)
+		if contextErr := checkContext(ctx); contextErr != nil {
+			return contextErr
+		}
 		if err != nil {
 			return fmt.Errorf("inspect dump directory: %w", err)
 		}
@@ -380,22 +527,35 @@ func ensureDir(dir string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrUnsafePath, dir)
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	if err := os.Chmod(dir, dirPerm); err != nil {
 		return fmt.Errorf("chmod dump directory: %w", err)
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
 	}
 	return nil
 }
 
-func ensureDirChain(root string, relDir string) error {
-	if err := ensureDir(root); err != nil {
+func ensureDirChainContext(ctx context.Context, root string, relDir string) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := ensureDirContext(ctx, root); err != nil {
 		return err
 	}
 	for _, part := range strings.Split(filepath.Clean(relDir), string(os.PathSeparator)) {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
 		if part == "." || part == "" {
 			continue
 		}
 		root = filepath.Join(root, part)
-		if err := ensureDir(root); err != nil {
+		if err := ensureDirContext(ctx, root); err != nil {
 			return err
 		}
 	}

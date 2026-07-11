@@ -38,6 +38,9 @@ func NewDumpCollector(ctx context.Context, opts Options) (*DumpCollector, error)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	env := append([]string(nil), opts.Env...)
 	loadConfig := opts.loadConfig
 	if loadConfig == nil {
@@ -63,6 +66,9 @@ func NewDumpCollectorFromConfig(
 ) (*DumpCollector, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	reader, err := newReaderFromConfig(ctx, &cfg, opts)
 	if err != nil {
@@ -108,26 +114,53 @@ func (c *DumpCollector) CollectStream(
 ) (dump.Result, error) {
 	result := dump.Result{}
 	selectedSpecs := copyResourceSpecs(specs)
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	stream, err := machine.StartEventStream(sink, dumpEventOperation, "", "", len(selectedSpecs))
 	if err != nil {
 		return result, err
 	}
+	result, counts, err := c.collectIntoStream(ctx, selectedSpecs, opts, stream)
+	if err != nil {
+		return result, err
+	}
+	if err := stream.Complete(machine.Event{
+		Records:   counts.records,
+		Resources: counts.resources,
+		Warnings:  counts.warnings,
+	}); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+type dumpCollectionCounts struct {
+	records   int
+	resources int
+	warnings  int
+}
+
+func (c *DumpCollector) collectIntoStream(
+	ctx context.Context,
+	selectedSpecs []resources.ResourceSpec,
+	opts DumpCollectOptions,
+	stream *machine.EventStream,
+) (dump.Result, dumpCollectionCounts, error) {
+	result := dump.Result{}
 	if c == nil {
 		err := errors.New("dump collector is nil")
-		return result, finishDumpStreamFailure(
+		return result, dumpCollectionCounts{}, finishDumpStreamFailure(
 			stream, err, dumpEventOperation, "", "", machine.ErrorKindInternal,
 		)
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := resources.AssertReadOnly(c.catalog...); err != nil {
-		return result, finishDumpStreamFailure(
+		return result, dumpCollectionCounts{}, finishDumpStreamFailure(
 			stream, err, dumpEventOperation, "", "", machine.ErrorKindUnsupportedOperation,
 		)
 	}
 	if err := resources.AssertReadOnly(selectedSpecs...); err != nil {
-		return result, finishDumpStreamFailure(
+		return result, dumpCollectionCounts{}, finishDumpStreamFailure(
 			stream, err, dumpEventOperation, "", "", machine.ErrorKindUnsupportedOperation,
 		)
 	}
@@ -136,7 +169,7 @@ func (c *DumpCollector) CollectStream(
 	recordCount := 0
 	for i, spec := range selectedSpecs {
 		if err := ctx.Err(); err != nil {
-			return result, finishDumpStreamFailure(
+			return result, dumpCollectionCounts{}, finishDumpStreamFailure(
 				stream, err, dumpReadOperation(spec), string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
 			)
 		}
@@ -146,7 +179,7 @@ func (c *DumpCollector) CollectStream(
 			var err error
 			reader, cleanup, err = c.readerForProduct(ctx, spec.Product)
 			if err != nil {
-				return result, finishDumpStreamFailure(
+				return result, dumpCollectionCounts{}, finishDumpStreamFailure(
 					stream, err, dumpReadOperation(spec), string(spec.Product), spec.Name, machine.ErrorKindLiveAccessFailed,
 				)
 			}
@@ -160,30 +193,27 @@ func (c *DumpCollector) CollectStream(
 			Done:     i + 1,
 			Total:    len(selectedSpecs),
 		}); err != nil {
-			return result, err
+			return result, dumpCollectionCounts{}, err
 		}
 		if spec.SupportsReadOperation("show") {
 			count, err := c.collectShow(ctx, reader, spec, opts.ContinueOnError, stream, &result)
 			if err != nil {
-				return result, err
+				return result, dumpCollectionCounts{}, err
 			}
 			recordCount += count
 			continue
 		}
 		count, err := c.collectList(ctx, reader, spec, opts.ContinueOnError, stream, &result)
 		if err != nil {
-			return result, err
+			return result, dumpCollectionCounts{}, err
 		}
 		recordCount += count
 	}
-	if err := stream.Complete(machine.Event{
-		Records:   recordCount,
-		Resources: len(result.Entries),
-		Warnings:  len(result.Errors),
-	}); err != nil {
-		return result, err
-	}
-	return result, nil
+	return result, dumpCollectionCounts{
+		records:   recordCount,
+		resources: len(result.Entries),
+		warnings:  len(result.Errors),
+	}, nil
 }
 
 func (c *DumpCollector) readerForProduct(
@@ -347,11 +377,24 @@ func finishDumpStreamFailure(
 	fallbackKind string,
 ) error {
 	machineErr := dumpMachineError(resultErr, operation, product, resource, fallbackKind)
+	producerErr := &dumpStreamError{cause: resultErr, machineErr: machineErr}
 	if err := stream.Fail(machineErr); err != nil {
-		return errors.Join(resultErr, err)
+		return errors.Join(producerErr, err)
 	}
-	return resultErr
+	return producerErr
 }
+
+// dumpStreamError retains the lower collector's trusted in-process cause while
+// making the exact sanitized terminal classification available to the typed
+// engine boundary. Its Error and Unwrap behavior preserve CollectStream's
+// existing error identity and text for compatibility callers.
+type dumpStreamError struct {
+	cause      error
+	machineErr machine.MachineError
+}
+
+func (e *dumpStreamError) Error() string { return e.cause.Error() }
+func (e *dumpStreamError) Unwrap() error { return e.cause }
 
 func dumpMachineError(
 	err error,
@@ -374,6 +417,23 @@ func dumpMachineError(
 	case errors.Is(err, context.DeadlineExceeded):
 		machineErr.Kind = machine.ErrorKindDeadlineExceeded
 		machineErr.Message = "request deadline exceeded"
+	case errors.Is(err, config.ErrInvalidConfig):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message = "invalid configuration"
+	case errors.Is(err, zscaler.ErrInvalidProxyConfig):
+		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
+		machineErr.Message = "invalid proxy configuration"
+	case errors.Is(err, zscaler.ErrMissingCredentials):
+		machineErr.Kind = machine.ErrorKindMissingCredentials
+		message, safe := sanitizedDumpMissingCredentials(err)
+		machineErr.Message = message
+		var missingErr *zscaler.MissingCredentialsError
+		if errors.As(safe, &missingErr) {
+			machineErr.Missing = append([]string(nil), missingErr.Missing...)
+		}
+	case errors.Is(err, zscaler.ErrUnsupportedResource):
+		machineErr.Kind = machine.ErrorKindUnsupportedResource
+		machineErr.Message = "unsupported dump resource"
 	case fallbackKind == machine.ErrorKindLiveAccessFailed:
 		machineErr.Message = "resource read failed"
 	case fallbackKind == machine.ErrorKindUnsupportedOperation:

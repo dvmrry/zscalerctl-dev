@@ -3002,6 +3002,10 @@ func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 	if !errors.Is(err, dump.ErrUnsafeOverwrite) {
 		t.Fatalf("App.Run(dump overwrite) error = %v, want ErrUnsafeOverwrite", err)
 	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		t.Fatalf("App.Run(dump overwrite) error = %#v, want legacy local-output envelope without machine operation context", machineErr)
+	}
 	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
 	if _, err := os.Stat(resourcePath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", resourcePath, err)

@@ -19,6 +19,7 @@ const (
 	OperationAuthStatus   Operation = "auth_status"
 	OperationConfigStatus Operation = "config_status"
 	OperationLookup       Operation = "lookup"
+	OperationDump         Operation = "dump"
 )
 
 // Request is the typed in-process input envelope for a future machine

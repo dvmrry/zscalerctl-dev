@@ -1,15 +1,15 @@
 package cli
 
-// dump_progress_test.go — White-box tests for collectDump's event plumbing.
+// dump_progress_test.go — White-box tests for the typed dump adapter's event plumbing.
 // These exercise the same event stream that drives TTY progress without
 // needing a TTY (the spinner is inactive in tests → zero stderr bytes).
 
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"testing"
 
-	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
@@ -36,7 +36,7 @@ func TestCollectDumpProgressEvents(t *testing.T) {
 	t.Parallel()
 
 	// Build a small 3-resource, 2-product catalog.  ListOperations() gives list+get
-	// (both read-only); none has a "show" op, so collectDump calls reader.List.
+	// (both read-only); none has a "show" op, so the engine calls reader.List.
 	productA := resources.Product("testa")
 	productB := resources.Product("testb")
 	catalog := resources.ResourceCatalog{
@@ -50,32 +50,26 @@ func TestCollectDumpProgressEvents(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{
-		productA: true,
-		productB: true,
-	}
-	// Select all three resources.
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-		{product: productA, name: "beta"}:  true,
-		{product: productB, name: "gamma"}: true,
-	}
-
 	var events []machine.Event
-	_, err := a.collectDump(
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false, // continueOnError
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA), string(productB)},
+			Resources: []machine.DumpResourceSelector{
+				{Product: string(productA), Resource: "alpha"},
+				{Product: string(productA), Resource: "beta"},
+				{Product: string(productB), Resource: "gamma"},
+			},
+		},
 		func(event machine.Event) error {
 			events = append(events, event)
 			return nil
 		},
 	)
 	if err != nil {
-		t.Fatalf("collectDump() error = %v, want nil", err)
+		t.Fatalf("executeDump() error = %v, want nil", err)
 	}
 
 	wantKinds := []machine.EventKind{
@@ -86,11 +80,11 @@ func TestCollectDumpProgressEvents(t *testing.T) {
 		machine.EventCompleted,
 	}
 	if len(events) != len(wantKinds) {
-		t.Fatalf("collectDump() events = %d, want %d", len(events), len(wantKinds))
+		t.Fatalf("executeDump() events = %d, want %d", len(events), len(wantKinds))
 	}
 	for i, want := range wantKinds {
 		if events[i].Kind != want {
-			t.Fatalf("collectDump() event[%d].Kind = %q, want %q", i, events[i].Kind, want)
+			t.Fatalf("executeDump() event[%d].Kind = %q, want %q", i, events[i].Kind, want)
 		}
 	}
 
@@ -137,8 +131,8 @@ func TestCollectDumpProgressEvents(t *testing.T) {
 	}
 }
 
-// TestCollectDumpEventSinkNil verifies that a nil observer is safe. collectDump
-// still supplies its internal logging sink to the collector.
+// TestCollectDumpEventSinkNil verifies that a nil observer is safe. The CLI
+// adapter still supplies its internal logging sink to the engine.
 func TestCollectDumpEventSinkNil(t *testing.T) {
 	t.Parallel()
 
@@ -152,22 +146,18 @@ func TestCollectDumpEventSinkNil(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{productA: true}
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-	}
-
-	_, err := a.collectDump(
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false,
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA)},
+			Resources: []machine.DumpResourceSelector{{Product: string(productA), Resource: "alpha"}},
+		},
 		nil, // nil observer must not panic
 	)
 	if err != nil {
-		t.Fatalf("collectDump(nil event sink) error = %v, want nil", err)
+		t.Fatalf("executeDump(nil observer) error = %v, want nil", err)
 	}
 }
 
@@ -188,21 +178,18 @@ func TestCollectDumpProgressEventSubset(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{productA: true}
-	// Only select 2 of the 3 resources.
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-		{product: productA, name: "gamma"}: true,
-	}
-
 	var progressEvents []machine.Event
-	_, err := a.collectDump(
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false,
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA)},
+			Resources: []machine.DumpResourceSelector{
+				{Product: string(productA), Resource: "alpha"},
+				{Product: string(productA), Resource: "gamma"},
+			},
+		},
 		func(event machine.Event) error {
 			if event.Kind == machine.EventProgress {
 				progressEvents = append(progressEvents, event)
@@ -211,7 +198,7 @@ func TestCollectDumpProgressEventSubset(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("collectDump() error = %v, want nil", err)
+		t.Fatalf("executeDump() error = %v, want nil", err)
 	}
 
 	const wantTotal = 2 // only 2 of 3 selected

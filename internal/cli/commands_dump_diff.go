@@ -1,15 +1,13 @@
 package cli
 
 import (
-	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/spf13/cobra"
 )
 
-// newDumpCmd returns the Cobra "dump" subcommand. Dump requires a loaded config,
-// so RunE loads it lazily — replicating the pattern used by newDoctorCmd and
-// newProductCmd. Local flags (--out, --products, --resources, --continue-on-error,
-// --force) are declared as Cobra local flags and read inside RunE after parsing.
+// newDumpCmd returns the Cobra "dump" subcommand. Local flags (--out,
+// --products, --resources, --continue-on-error, --force) are declared as Cobra
+// local flags and translated into the typed engine request after parsing.
 //
 // --format ndjson is rejected before LoadConfig.
 // --out validation (non-empty) is enforced inside runDumpWithOptions.
@@ -40,20 +38,12 @@ func (a *App) newDumpCmd(opts globalOptions) *cobra.Command {
 			if cmd.Flags().NArg() != 0 {
 				return UsageError{Message: dumpUsage(a.resourceCatalog())}
 			}
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
-			if err != nil {
-				return err
-			}
-			applyOptions(&cfg, opts)
 			outDir, _ := cmd.Flags().GetString("out")
 			productsFlag, _ := cmd.Flags().GetString("products")
 			resourcesFlag, _ := cmd.Flags().GetString("resources")
 			continueOnError, _ := cmd.Flags().GetBool("continue-on-error")
 			force, _ := cmd.Flags().GetBool("force")
-			return a.runDumpWithOptions(cmd.Context(), cfg, opts, dumpOptions{
+			return a.runDumpWithOptions(cmd.Context(), opts, dumpOptions{
 				out:             outDir,
 				products:        productsFlag,
 				resources:       resourcesFlag,

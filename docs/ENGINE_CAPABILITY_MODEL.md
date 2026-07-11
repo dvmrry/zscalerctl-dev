@@ -38,11 +38,12 @@ capabilities. It does not define a public Go API, CLI surface, or wire protocol.
 | `status.inspect` | `doctor`, `auth_status`, `config_status` | status | sanitized status | configuration-dependent local read |
 | `zia.url_lookup` | `lookup` | URL lookup | sanitized URL classifications | configuration-dependent local read; network access; configuration-dependent process execution |
 | `resources.read` | catalog-derived union of `list`, `get`, `show` | resource read | projected records | configuration-dependent local read; network access; configuration-dependent process execution |
+| `dump.write` | `dump` | dump | value-free dump summary | local filesystem read and write; request-dependent local delete; network access; configuration-dependent process execution |
 
-All capabilities are tenant-read-only. The current set has no local write or
-delete effect. Those effect kinds exist in the closed model so later operations
-such as dump writing or config initialization cannot hide local mutation behind
-a generic boolean.
+All capabilities are tenant-read-only. `dump.write` has explicit local read,
+write, and request-dependent delete effects; tenant read-only does not hide
+local mutation. Config initialization remains a later capability and must
+declare its own effects before admission.
 
 `engine.manifest` and `catalog.schema` are derived from the static resource
 catalog. Calling either does not load config, resolve a provider, construct an
@@ -82,6 +83,18 @@ The `resources.read` and `zia.url_lookup` effects describe construction and
 execution of normal live runtimes: config or secret files and provider helpers
 may be used before the always-possible network read.
 
+`dump.write` is advertised only for a valid, duplicate-free, tenant-read-only
+catalog with at least one executable list/show resource. Requests carry an
+output directory plus canonical product and exact product/resource selectors;
+adapters may resolve shorthand, but the engine validates the resulting
+selection again before config access. Collection remains in catalog order and
+emits projected records and value-free warnings. Force safety rejects empty,
+cwd, root, home, symlink, non-directory, and non-dump targets and performs no
+delete until collection succeeds. The context-aware writer preserves
+owner-only permissions, exclusive file creation, same-directory temporary-file
+fsync and rename finalization, and writes the ownership manifest last. `completed` means
+the full artifact exists, while failed/canceled writes never emit completion.
+
 ## Trust and copying boundaries
 
 The engine produces projected and redacted records through the trusted browser
@@ -112,6 +125,13 @@ fresh result collection. Both request and result reject direct JSON. Raw URL
 input, SDK response types, config, credentials, and backend errors cannot enter
 the result.
 
+`DumpResult` owns a copied, value-free failure list and exposes only record,
+resource, and warning counts plus the effective redaction mode. `DumpRequest`
+and `DumpResult` reject direct JSON. The result never retains the output path,
+projected records, dump writer state, config, credentials, SDK values, or raw
+errors. Record events remain projected/redacted values governed by the shared
+event boundary; dump artifacts remain confidential tenant inventory on disk.
+
 The projected-value domain is intentionally narrower than arbitrary Go values:
 method-free built-in primitive scalars, valid `json.Number` values, finite
 numbers, supported method-free scalar sequences, and the catalog-modeled
@@ -131,6 +151,8 @@ This checkpoint deliberately leaves these supported surfaces unchanged:
 - `zscalerctl --format json machine manifest` and its `machine.v1` schema
 - resource list/get/show JSON, NDJSON, table, and pretty output
 - `zia url-lookup` JSON, table, pretty, usage, and unsupported-format behavior
+- dump directory schemas/bytes, status prose, partial-dump exit 6, and force
+  safety behavior
 - CLI stderr error envelopes and exit-code mapping
 - `introspect` v1/v2 schemas and goldens
 - `machineio` request/response transport behavior, except that strict decoding
@@ -141,12 +163,13 @@ remain as compatibility adapters over the event path. New in-process resource
 consumers use the typed `Read` method. The existing `schema list`, `doctor`,
 `auth status`, and `config show` commands adapt typed catalog/status results
 back to their unchanged supported render shapes. `zia url-lookup` adapts the
-typed URL result into its existing output DTO. No `engine.v1` CLI command or
-JSON schema is introduced by this checkpoint.
+typed URL result into its existing output DTO. `dump` adapts the typed summary
+and events into its existing spinner, diagnostics, local artifact, and partial
+exit behavior. No `engine.v1` CLI command or JSON schema is introduced by this
+checkpoint.
 
 ## Next extensions
 
-Dump and diff each get their own typed request/result family and engine-manifest
-entry in separate reviewable slices. Local-write and local-delete operations
-must expose those effects before an adapter can invoke them. Wire DTO and stdio
-work remains blocked on the dedicated protocol-design checkpoint.
+Diff gets its own typed request/result family and engine-manifest entry in the
+next reviewable slice. Wire DTO and stdio work remains blocked on the dedicated
+protocol-design checkpoint.

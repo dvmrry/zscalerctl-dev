@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,12 +16,145 @@ import (
 
 const dumpCanary = "dump-canary-secret"
 
+type cancelWhenTempContext struct {
+	dir      string
+	done     chan struct{}
+	canceled bool
+}
+
+func (c *cancelWhenTempContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (c *cancelWhenTempContext) Done() <-chan struct{} { return c.done }
+
+func (c *cancelWhenTempContext) Err() error {
+	if c.canceled {
+		return context.Canceled
+	}
+	entries, err := os.ReadDir(c.dir)
+	if err == nil {
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".tmp-") {
+				c.canceled = true
+				close(c.done)
+				return context.Canceled
+			}
+		}
+	}
+	return nil
+}
+
+func (c *cancelWhenTempContext) Value(any) any { return nil }
+
+type cancelWhenPathExistsContext struct {
+	path     string
+	done     chan struct{}
+	canceled bool
+}
+
+func (c *cancelWhenPathExistsContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *cancelWhenPathExistsContext) Done() <-chan struct{}       { return c.done }
+func (c *cancelWhenPathExistsContext) Value(any) any               { return nil }
+
+func (c *cancelWhenPathExistsContext) Err() error {
+	if c.canceled {
+		return context.Canceled
+	}
+	if _, err := os.Stat(c.path); err == nil {
+		c.canceled = true
+		close(c.done)
+		return context.Canceled
+	}
+	return nil
+}
+
 type authorizationJSONFixture struct {
 	Message string `json:"message"`
 	Count   int    `json:"count"`
 }
 
 func (authorizationJSONFixture) OutputSafe() {}
+
+func TestWriteContextPreCanceledCreatesNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		make func() (context.Context, context.CancelFunc)
+		want error
+	}{
+		{
+			name: "canceled",
+			make: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, func() {}
+			},
+			want: context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			make: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			want: context.DeadlineExceeded,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := tt.make()
+			defer cancel()
+			dir := filepath.Join(t.TempDir(), "dump")
+			err := WriteContext(ctx, dir, redact.ModeStandard, Result{})
+			if err != tt.want {
+				t.Fatalf("WriteContext(%q) error = %v, want identity %v", dir, err, tt.want)
+			}
+			if _, statErr := os.Stat(dir); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", dir, statErr)
+			}
+		})
+	}
+}
+
+func TestWriteContextCancellationBeforeFinalizationCleansTempAndFinal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	ctx := &cancelWhenTempContext{dir: dir, done: make(chan struct{})}
+	err := writeFileExclusiveContext(ctx, path, []byte("payload"))
+	if err != context.Canceled {
+		t.Fatalf("writeFileExclusiveContext(%q) error = %v, want identity %v", path, err, context.Canceled)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", path, statErr)
+	}
+	leftovers, globErr := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+	if globErr != nil {
+		t.Fatalf("glob temp files error = %v", globErr)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("temp files left after canceled finalization = %v, want none", leftovers)
+	}
+}
+
+func TestWriteContextFinalizesManifestLast(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	reportPath := filepath.Join(dir, "redaction_report.json")
+	ctx := &cancelWhenPathExistsContext{path: reportPath, done: make(chan struct{})}
+	err := WriteContext(ctx, dir, redact.ModeStandard, Result{})
+	if err != context.Canceled {
+		t.Fatalf("WriteContext(cancel after report) error = %v, want context.Canceled", err)
+	}
+	if _, statErr := os.Stat(reportPath); statErr != nil {
+		t.Fatalf("os.Stat(redaction report) error = %v, want finalized report", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "manifest.json")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("os.Stat(manifest) error = %v, want no ownership marker for incomplete dump", statErr)
+	}
+}
 
 func TestEnsureDirRejectsSymlink(t *testing.T) {
 	t.Parallel()

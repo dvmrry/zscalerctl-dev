@@ -20,6 +20,10 @@ const (
 
 	// CapabilityZIAURLLookup identifies the specialized ZIA URL classifier.
 	CapabilityZIAURLLookup = "zia.url_lookup"
+
+	// CapabilityDumpWrite identifies sanitized tenant collection plus local
+	// dump-artifact writing.
+	CapabilityDumpWrite = "dump.write"
 )
 
 // EngineInputKind identifies one closed family of typed engine inputs.
@@ -30,6 +34,7 @@ const (
 	EngineInputResourceRead EngineInputKind = "resource_read"
 	EngineInputStatus       EngineInputKind = "status"
 	EngineInputURLLookup    EngineInputKind = "url_lookup"
+	EngineInputDump         EngineInputKind = "dump"
 )
 
 // EngineResultKind identifies one closed family of safe engine results.
@@ -41,6 +46,7 @@ const (
 	EngineResultStatus             EngineResultKind = "status"
 	EngineResultProjectedRecords   EngineResultKind = "projected_records"
 	EngineResultURLClassifications EngineResultKind = "url_classifications"
+	EngineResultDumpSummary        EngineResultKind = "dump_summary"
 )
 
 // EngineEffectKind identifies a possible observable engine effect.
@@ -196,9 +202,60 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 		})
 	}
 
+	if catalogReadOnly && catalogSupportsDump(catalog) {
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityDumpWrite,
+			Operations:     []Operation{OperationDump},
+			Input:          EngineInputDump,
+			Result:         EngineResultDumpSummary,
+			TenantReadOnly: true,
+			Effects: []EngineEffect{
+				{
+					Kind: EngineEffectLocalFilesystemRead,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectLocalFilesystemWrite,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectLocalFilesystemDelete,
+					When: EngineEffectRequestDependent,
+				},
+				{
+					Kind: EngineEffectNetworkAccess,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectProcessExecution,
+					When: EngineEffectConfigurationDependent,
+				},
+			},
+		})
+	}
+
 	return EngineManifest{
 		Version:        EngineManifestVersion,
 		TenantReadOnly: true,
 		Capabilities:   capabilities,
 	}
+}
+
+func catalogSupportsDump(catalog resources.ResourceCatalog) bool {
+	seen := make(map[string]bool, len(catalog))
+	hasDumpResource := false
+	for _, spec := range catalog {
+		if err := spec.Validate(); err != nil {
+			return false
+		}
+		key := string(spec.Product) + "/" + spec.Name
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		if spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show") {
+			hasDumpResource = true
+		}
+	}
+	return hasDumpResource
 }

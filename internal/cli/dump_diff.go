@@ -2,16 +2,13 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
-	"github.com/dvmrry/zscalerctl/internal/dump"
+	dumpartifact "github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -29,10 +26,9 @@ type dumpOptions struct {
 	force           bool
 }
 
-// runDumpWithOptions executes the dump logic after flags have been parsed into d.
-// All validation/collect/write/status/PartialDumpError behaviour is identical to
-// the former inline runDump; only flag parsing has moved to the Cobra RunE.
-func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts globalOptions, d dumpOptions) error {
+// runDumpWithOptions resolves CLI shorthand, adapts the typed dump operation,
+// and retains status rendering and partial-dump exit policy at the CLI layer.
+func (a *App) runDumpWithOptions(ctx context.Context, opts globalOptions, d dumpOptions) error {
 	if d.out == "" {
 		return UsageError{Message: dumpUsage(a.resourceCatalog())}
 	}
@@ -44,15 +40,16 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 	if err != nil {
 		return err
 	}
+	req := newDumpRequest(d, products, selectedResources, a.resourceCatalog())
 	s := a.newSpinner(opts)
 	s.Start("dumping")
-	// defer s.Stop() covers a panic inside collectDump: without it, the spinner
-	// goroutine would stay live and keep writing to stderr after main.run
+	// defer s.Stop() covers a panic inside the typed dump operation: without it,
+	// the spinner goroutine would stay live and keep writing to stderr after main.run
 	// recovers the panic. The explicit s.Stop() below still runs on the normal
 	// path (and is a no-op for the deferred call) to preserve Stop-before-render
 	// ordering: the status notice that follows must not race with a live spinner.
 	defer s.Stop()
-	result, err := a.collectDump(ctx, cfg, opts, products, selectedResources, d.continueOnError,
+	result, err := a.executeDump(ctx, opts, req,
 		func(event machine.Event) error {
 			if event.Kind == machine.EventProgress {
 				s.Update(fmt.Sprintf("[%d/%d] %s/%s", event.Done, event.Total, event.Product, event.Resource))
@@ -61,33 +58,135 @@ func (a *App) runDumpWithOptions(ctx context.Context, cfg config.Config, opts gl
 		})
 	s.Stop()
 	if err != nil {
-		return err
+		return cliErrorFromDump(err, a.resourceCatalog())
 	}
-	for _, re := range result.Errors {
+	for _, re := range result.Errors() {
 		a.diagLogger().Warn("dump resource failed",
-			"product", re.Product, "resource", re.Name, "operation", re.Operation, "kind", re.Kind)
+			"product", re.Product, "resource", re.Resource, "operation", re.Operation, "kind", re.Kind)
 	}
 	a.diagLogger().Info("dump complete",
-		"resources", len(result.Entries), "errors", len(result.Errors))
-	if err := prepareForcedDumpDir(d.out, d.force); err != nil {
-		return err
-	}
-	if err := dump.Write(d.out, cfg.Defaults.Redaction, result); err != nil {
-		return err
-	}
+		"resources", result.Resources(), "errors", result.Warnings())
+	renderer := output.NewRenderer(redact.New(redact.Mode(result.Redaction())))
 	// Dump emits no resource data on stdout (it writes files), so its status
 	// notice is a diagnostic and goes to stderr, keeping stdout clean per the
 	// stdout=data / stderr=diagnostics contract.
-	if len(result.Errors) > 0 {
-		if err := a.renderer(cfg, opts).WriteText(
+	if result.Partial() {
+		if err := renderer.WriteText(
 			a.err,
-			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", d.out, len(result.Errors))),
+			output.NewSafeText(fmt.Sprintf("partial dump written: %s (%d errors; see errors.ndjson)\n", d.out, result.Warnings())),
 		); err != nil {
 			return err
 		}
-		return PartialDumpError{Dir: d.out, Errors: len(result.Errors)}
+		return PartialDumpError{Dir: d.out, Errors: result.Warnings()}
 	}
-	return a.renderer(cfg, opts).WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", d.out)))
+	return renderer.WriteText(a.err, output.NewSafeText(fmt.Sprintf("dump written: %s\n", d.out)))
+}
+
+func newDumpRequest(
+	d dumpOptions,
+	products map[resources.Product]bool,
+	selected map[dumpResourceKey]bool,
+	catalog resources.ResourceCatalog,
+) machine.DumpRequest {
+	req := machine.DumpRequest{
+		OutputDir:       d.out,
+		ContinueOnError: d.continueOnError,
+		Force:           d.force,
+	}
+	for _, product := range knownProducts(catalog) {
+		if products[product] {
+			req.Products = append(req.Products, string(product))
+		}
+	}
+	if selected != nil {
+		for _, spec := range catalog {
+			key := dumpResourceKey{product: spec.Product, name: spec.Name}
+			if selected[key] {
+				req.Resources = append(req.Resources, machine.DumpResourceSelector{
+					Product:  string(spec.Product),
+					Resource: spec.Name,
+				})
+			}
+		}
+	}
+	return req
+}
+
+func (a *App) executeDump(
+	ctx context.Context,
+	opts globalOptions,
+	req machine.DumpRequest,
+	observer machine.EventSink,
+) (machine.DumpResult, error) {
+	sink := func(event machine.Event) error {
+		if observer != nil {
+			if err := observer(event); err != nil {
+				return err
+			}
+		}
+		switch event.Kind {
+		case machine.EventStarted:
+			a.diagLogger().Info("dump starting", "resources", event.Total)
+		case machine.EventProgress:
+			a.diagLogger().Info("dump reading resource", "product", event.Product, "resource", event.Resource)
+		}
+		return nil
+	}
+
+	if a.reader != nil {
+		cfg, err := config.LoadConfig(a.env, config.LoadOptions{
+			Profile:    opts.profile,
+			ConfigPath: opts.configPath,
+		})
+		if err != nil {
+			return machine.DumpResult{}, err
+		}
+		applyOptions(&cfg, opts)
+		collector := machineruntime.NewDumpCollectorFromReader(
+			a.reader,
+			a.resourceCatalog(),
+			cfg.Defaults.Redaction,
+		)
+		return collector.Dump(ctx, req, sink)
+	}
+
+	engine, err := machineruntime.NewEngine(machineruntime.Options{
+		Env:          a.env,
+		Profile:      opts.profile,
+		ConfigPath:   opts.configPath,
+		Timeout:      opts.timeout,
+		Redaction:    opts.redaction,
+		RedactionSet: opts.redactionSet,
+		NoCache:      opts.noCache,
+		Catalog:      a.resourceCatalog(),
+		DiagLogger:   a.sdkDiagLogger(opts),
+	})
+	if err != nil {
+		return machine.DumpResult{}, err
+	}
+	return engine.Dump(ctx, req, sink)
+}
+
+func cliErrorFromDump(err error, catalog resources.ResourceCatalog) error {
+	if err == nil {
+		return nil
+	}
+	machineErr, ok := asMachineError(err)
+	if ok && machineErr.Kind == machine.ErrorKindUsage {
+		return UsageError{Message: dumpUsage(catalog)}
+	}
+	if ok && machineErr.Kind == machine.ErrorKindInternal &&
+		machineErr.Operation == machine.OperationDump && machineErr.Message == "dump output failed" {
+		switch {
+		case errors.Is(err, dumpartifact.ErrUnsafePath):
+			return fmt.Errorf("dump output failed: %w", dumpartifact.ErrUnsafePath)
+		case errors.Is(err, dumpartifact.ErrUnsafeOverwrite):
+			return fmt.Errorf("dump output failed: %w", dumpartifact.ErrUnsafeOverwrite)
+		default:
+			return errors.New("dump output failed")
+		}
+	}
+	return err
 }
 
 // diffOptions holds the parsed local flags for the diff command.
@@ -258,182 +357,6 @@ func isBidiControl(r rune) bool {
 	return (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
-func prepareForcedDumpDir(dir string, force bool) error {
-	if !force {
-		return nil
-	}
-	if strings.TrimSpace(dir) == "" {
-		return fmt.Errorf("%w: missing dump directory", dump.ErrUnsafePath)
-	}
-	if err := rejectDangerousForceTarget(dir); err != nil {
-		return err
-	}
-	info, err := os.Lstat(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("%w: inspect dump directory for --force: %v", dump.ErrUnsafePath, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: --force target %s is a symlink", dump.ErrUnsafePath, dir)
-	}
-	target, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return fmt.Errorf("%w: resolve --force target symlinks: %v", dump.ErrUnsafePath, err)
-	}
-	if err := rejectDangerousForceTarget(target); err != nil {
-		return err
-	}
-	info, err = os.Lstat(target)
-	if err != nil {
-		return fmt.Errorf("%w: inspect resolved dump directory for --force: %v", dump.ErrUnsafePath, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%w: --force target %s is not a directory", dump.ErrUnsafePath, dir)
-	}
-	empty, err := isDirEmpty(target)
-	if err != nil {
-		return err
-	}
-	if empty {
-		return nil
-	}
-	if err := validateExistingDumpDir(target); err != nil {
-		return err
-	}
-	// The target was resolved after rejecting a final symlink. If a same-host
-	// actor swaps the directory after validation, RemoveAll on a symlink removes
-	// the link itself, not its target; the command still refuses cwd/home/root
-	// after symlink resolution before reaching this point.
-	if err := os.RemoveAll(target); err != nil {
-		return fmt.Errorf("%w: remove dump directory for --force: %v", dump.ErrUnsafePath, err)
-	}
-	return nil
-}
-
-func rejectDangerousForceTarget(dir string) error {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("%w: resolve --force target: %v", dump.ErrUnsafePath, err)
-	}
-	clean := filepath.Clean(abs)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("%w: resolve current directory: %v", dump.ErrUnsafePath, err)
-	}
-	if clean == filepath.Clean(cwd) {
-		return fmt.Errorf("%w: --force target cannot be the current directory", dump.ErrUnsafePath)
-	}
-	if filepath.Dir(clean) == clean {
-		return fmt.Errorf("%w: --force target cannot be the filesystem root", dump.ErrUnsafePath)
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" && clean == filepath.Clean(home) {
-		return fmt.Errorf("%w: --force target cannot be the home directory", dump.ErrUnsafePath)
-	}
-	return nil
-}
-
-func isDirEmpty(dir string) (bool, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false, fmt.Errorf("%w: inspect dump directory for --force: %v", dump.ErrUnsafePath, err)
-	}
-	return len(entries) == 0, nil
-}
-
-func validateExistingDumpDir(dir string) error {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return fmt.Errorf("%w: open dump directory for --force: %v", dump.ErrUnsafePath, err)
-	}
-	defer root.Close()
-
-	info, err := root.Lstat("manifest.json")
-	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
-	}
-	if err != nil {
-		return fmt.Errorf("%w: inspect dump manifest for --force: %v", dump.ErrUnsafePath, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: --force target manifest is a symlink", dump.ErrUnsafePath)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%w: --force target manifest is not a regular file", dump.ErrUnsafePath)
-	}
-	if info.Size() > 1<<20 {
-		return fmt.Errorf("%w: --force target manifest is too large", dump.ErrUnsafePath)
-	}
-	body, err := root.ReadFile("manifest.json")
-	if err != nil {
-		return fmt.Errorf("%w: read dump manifest for --force: %v", dump.ErrUnsafePath, err)
-	}
-	var manifest struct {
-		Schema string `json:"schema"`
-	}
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
-	}
-	if !strings.HasPrefix(manifest.Schema, "zscalerctl.dump.manifest.") {
-		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", dump.ErrUnsafePath, dir)
-	}
-	return nil
-}
-
-func (a *App) dumpCollector(
-	ctx context.Context,
-	cfg config.Config,
-	opts globalOptions,
-) (*machineruntime.DumpCollector, error) {
-	if a.reader != nil {
-		return machineruntime.NewDumpCollectorFromReader(
-			a.reader,
-			a.resourceCatalog(),
-			cfg.Defaults.Redaction,
-		), nil
-	}
-	return machineruntime.NewDumpCollectorFromConfig(ctx, cfg, machineruntime.Options{
-		Timeout:    opts.timeout,
-		Catalog:    a.resourceCatalog(),
-		DiagLogger: a.sdkDiagLogger(opts),
-	})
-}
-
-func (a *App) collectDump(
-	ctx context.Context,
-	cfg config.Config,
-	opts globalOptions,
-	products map[resources.Product]bool,
-	selectedResources map[dumpResourceKey]bool,
-	continueOnError bool,
-	sink machine.EventSink,
-) (dump.Result, error) {
-	catalog := a.resourceCatalog()
-	selectedSpecs := selectedDumpSpecs(catalog, products, selectedResources)
-	// A full dump can run for minutes; at info, operators get the selection
-	// size up front and one progress event per resource below.
-	a.diagLogger().Info("dump starting", "resources", len(selectedSpecs))
-
-	collector, err := a.dumpCollector(ctx, cfg, opts)
-	if err != nil {
-		return dump.Result{}, err
-	}
-	return collector.CollectStream(ctx, selectedSpecs, machineruntime.DumpCollectOptions{
-		ContinueOnError: continueOnError,
-	}, func(event machine.Event) error {
-		if sink != nil {
-			if err := sink(event); err != nil {
-				return err
-			}
-		}
-		if event.Kind == machine.EventProgress {
-			a.diagLogger().Info("dump reading resource", "product", event.Product, "resource", event.Resource)
-		}
-		return nil
-	})
-}
-
 func parseProducts(value string, catalog resources.ResourceCatalog) (map[resources.Product]bool, error) {
 	if strings.TrimSpace(value) == "" {
 		products := map[resources.Product]bool{}
@@ -552,31 +475,6 @@ func catalogHasProduct(catalog resources.ResourceCatalog, product resources.Prod
 
 func resourceSupportsDump(spec resources.ResourceSpec) bool {
 	return spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show")
-}
-
-func dumpResourceSelected(selected map[dumpResourceKey]bool, spec resources.ResourceSpec) bool {
-	if selected == nil {
-		return true
-	}
-	return selected[dumpResourceKey{product: spec.Product, name: spec.Name}]
-}
-
-func selectedDumpSpecs(
-	catalog resources.ResourceCatalog,
-	products map[resources.Product]bool,
-	selected map[dumpResourceKey]bool,
-) []resources.ResourceSpec {
-	specs := make([]resources.ResourceSpec, 0)
-	for _, spec := range catalog {
-		if !products[spec.Product] {
-			continue
-		}
-		if !dumpResourceSelected(selected, spec) {
-			continue
-		}
-		specs = append(specs, spec)
-	}
-	return specs
 }
 
 func diffResourceSelection(selected map[dumpResourceKey]bool) map[dumpdiff.ResourceKey]bool {

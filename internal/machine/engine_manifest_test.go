@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
+	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 	catalog := resources.ResourceCatalog{
-		testMachineSpec(resources.ProductZIA, "singleton", resources.ShowOperation()),
-		testMachineSpec(resources.ProductZPA, "groups", resources.ReadOperations()),
+		engineManifestSpec(resources.ProductZIA, "singleton", resources.ShowOperation()),
+		engineManifestSpec(resources.ProductZPA, "groups", resources.ReadOperations()),
 	}
 
 	got := machine.EngineManifestFromCatalog(catalog)
@@ -21,8 +22,8 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		t.Fatalf("EngineManifestFromCatalog version/read-only = %q/%t, want %q/true",
 			got.Version, got.TenantReadOnly, machine.EngineManifestVersion)
 	}
-	if len(got.Capabilities) != 5 {
-		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, URL lookup, and resource read", got.Capabilities)
+	if len(got.Capabilities) != 6 {
+		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, URL lookup, resource read, and dump", got.Capabilities)
 	}
 	manifestCapability := got.Capabilities[0]
 	if manifestCapability.Name != machine.CapabilityEngineManifest ||
@@ -103,13 +104,30 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		t.Fatalf("resource-read engine capability = %#v, want ops %#v effects %#v",
 			readCapability, wantOperations, wantLiveEffects)
 	}
+
+	dumpCapability := got.Capabilities[5]
+	wantDumpEffects := []machine.EngineEffect{
+		{Kind: machine.EngineEffectLocalFilesystemRead, When: machine.EngineEffectAlways},
+		{Kind: machine.EngineEffectLocalFilesystemWrite, When: machine.EngineEffectAlways},
+		{Kind: machine.EngineEffectLocalFilesystemDelete, When: machine.EngineEffectRequestDependent},
+		{Kind: machine.EngineEffectNetworkAccess, When: machine.EngineEffectAlways},
+		{Kind: machine.EngineEffectProcessExecution, When: machine.EngineEffectConfigurationDependent},
+	}
+	if dumpCapability.Name != machine.CapabilityDumpWrite ||
+		!reflect.DeepEqual(dumpCapability.Operations, []machine.Operation{machine.OperationDump}) ||
+		dumpCapability.Input != machine.EngineInputDump ||
+		dumpCapability.Result != machine.EngineResultDumpSummary ||
+		!dumpCapability.TenantReadOnly ||
+		!reflect.DeepEqual(dumpCapability.Effects, wantDumpEffects) {
+		t.Fatalf("dump engine capability = %#v, want dump effects %#v", dumpCapability, wantDumpEffects)
+	}
 }
 
 func TestEngineManifestSuppressesCatalogCapabilitiesForMutatingCatalog(t *testing.T) {
 	t.Parallel()
 
 	catalog := resources.ResourceCatalog{
-		testMachineSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+		engineManifestSpec(resources.ProductZIA, "locations", resources.ListOperations()),
 		{
 			Product: resources.ProductZIA,
 			Name:    "write-only",
@@ -166,8 +184,8 @@ func TestEngineManifestAdvertisesOnlyExecutableResourceReadOperations(t *testing
 	}
 
 	got := machine.EngineManifestFromCatalog(catalog)
-	if len(got.Capabilities) != 5 {
-		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want fixed capabilities and resource read", got.Capabilities)
+	if len(got.Capabilities) != 6 {
+		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want fixed capabilities, resource read, and dump", got.Capabilities)
 	}
 	want := []machine.Operation{machine.OperationList}
 	if !reflect.DeepEqual(got.Capabilities[4].Operations, want) {
@@ -178,7 +196,7 @@ func TestEngineManifestAdvertisesOnlyExecutableResourceReadOperations(t *testing
 
 func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 	catalog := resources.ResourceCatalog{
-		testMachineSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
+		engineManifestSpec(resources.ProductZIA, "locations", resources.ReadOperations()),
 	}
 	first := machine.EngineManifestFromCatalog(catalog)
 	first.Capabilities[0].Name = "mutated"
@@ -186,20 +204,57 @@ func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 	first.Capabilities[2].Effects[0].Kind = machine.EngineEffectLocalFilesystemDelete
 	first.Capabilities[3].Effects[0].Kind = machine.EngineEffectLocalFilesystemDelete
 	first.Capabilities[4].Operations[0] = machine.Operation("mutated")
+	first.Capabilities[5].Effects[0].Kind = machine.EngineEffectProcessExecution
 
 	second := machine.EngineManifestFromCatalog(catalog)
 	if second.Capabilities[0].Name != machine.CapabilityEngineManifest ||
 		second.Capabilities[0].Operations[0] != machine.OperationManifest ||
 		second.Capabilities[2].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
 		second.Capabilities[3].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
-		second.Capabilities[4].Operations[0] != machine.OperationList {
+		second.Capabilities[4].Operations[0] != machine.OperationList ||
+		second.Capabilities[5].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead {
 		t.Fatalf("EngineManifestFromCatalog after caller mutation = %#v, want fresh manifest", second)
+	}
+}
+
+func TestEngineManifestSuppressesUnexecutableDumpCapability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		catalog resources.ResourceCatalog
+	}{
+		{
+			name: "get only",
+			catalog: resources.ResourceCatalog{
+				engineManifestSpec(resources.ProductZIA, "get-only", []resources.Operation{{
+					Name: "get", Capability: resources.CapabilityRead,
+				}}),
+			},
+		},
+		{
+			name: "duplicate key",
+			catalog: resources.ResourceCatalog{
+				engineManifestSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+				engineManifestSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := machine.EngineManifestFromCatalog(tt.catalog)
+			for _, capability := range manifest.Capabilities {
+				if capability.Name == machine.CapabilityDumpWrite {
+					t.Fatalf("EngineManifestFromCatalog(%s) advertised unexecutable dump: %#v", tt.name, capability)
+				}
+			}
+		})
 	}
 }
 
 func TestEngineManifestRejectsDirectJSON(t *testing.T) {
 	manifest := machine.EngineManifestFromCatalog(resources.ResourceCatalog{
-		testMachineSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+		engineManifestSpec(resources.ProductZIA, "locations", resources.ListOperations()),
 	})
 	body, err := json.Marshal(manifest)
 	if err == nil {
@@ -212,4 +267,20 @@ func TestEngineManifestRejectsDirectJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"Version":"engine.v1"}`), &decoded); err == nil {
 		t.Fatalf("json.Unmarshal(EngineManifest) error = nil; manifest = %#v, want no wire format", decoded)
 	}
+}
+
+func engineManifestSpec(
+	product resources.Product,
+	name string,
+	operations []resources.Operation,
+) resources.ResourceSpec {
+	spec := testMachineSpec(product, name, operations)
+	if spec.SupportsReadOperation("get") {
+		spec.Fields = []resources.FieldSpec{{
+			Name:           "id",
+			Classification: resources.ClassOperational,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}}
+	}
+	return spec
 }

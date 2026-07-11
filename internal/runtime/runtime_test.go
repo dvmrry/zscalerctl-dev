@@ -216,9 +216,10 @@ func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 		t.Fatalf("NewEngine() error = %v, want nil", err)
 	}
 	first := engine.EngineManifest()
-	if len(first.Capabilities) != 5 || first.Capabilities[3].Name != machine.CapabilityZIAURLLookup ||
-		first.Capabilities[4].Name != machine.CapabilityResourcesRead {
-		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, URL lookup, and resource-read capabilities", first)
+	if len(first.Capabilities) != 6 || first.Capabilities[3].Name != machine.CapabilityZIAURLLookup ||
+		first.Capabilities[4].Name != machine.CapabilityResourcesRead ||
+		first.Capabilities[5].Name != machine.CapabilityDumpWrite {
+		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, URL lookup, resource-read, and dump capabilities", first)
 	}
 	if configLoads != 0 {
 		t.Fatalf("Engine.EngineManifest() config loads = %d, want 0", configLoads)

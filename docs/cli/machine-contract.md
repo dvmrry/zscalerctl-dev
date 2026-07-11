@@ -126,10 +126,10 @@ The supported CLI read model remains intentionally single-shot. A
 supported CLI `list`, `get`, and `show` flows render that response as JSON,
 NDJSON, table, or pretty output. Under that adapter, candidate
 `ExecuteStream` emits synchronous in-process operation events and `Execute`
-reconstructs the existing response from them. Runtime dump collection still
-reports progress through its existing trusted callback until its separate event
-migration, while dump data remains a dump artifact rather than a machine
-response envelope.
+reconstructs the existing response from them. Runtime dump collection uses the
+same candidate event lifecycle, while dump data remains a local artifact rather
+than a machine response envelope. Its typed engine operation emits `completed`
+only after the artifact writer returns successfully.
 
 This remains valid for bounded resource reads and small operator workflows:
 the response is already projected, redacted, verified, and easy for scripts to
@@ -178,13 +178,13 @@ versioned DTOs and schemas. No current CLI JSON, NDJSON, table, pretty, stderr
 error envelope, exit code, or dump behavior changes until a separate promotion
 explicitly changes the supported surface.
 
-Dump should remain a separate artifact model unless a later design deliberately
-promotes a dump event schema into the machine contract. Runtime dump collection
-can eventually consume structured progress or operation events, but dump file
-schemas, manifest files, and partial dump error records should not be folded
-into `machine.Response` accidentally. Partial dump errors must remain
-value-free, preserving the current safety property that failure metadata can be
-reported without leaking tenant record values.
+Dump remains a separate artifact model unless a later design deliberately
+promotes a dump event schema into the machine contract. Its candidate typed
+request/result and in-process events are not wire types; dump file schemas,
+manifest files, and partial dump error records are not folded into
+`machine.Response`. Partial dump errors remain value-free, preserving the
+current safety property that failure metadata can be reported without leaking
+tenant record values.
 
 Semver follows the surface being changed:
 
