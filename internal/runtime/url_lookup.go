@@ -148,17 +148,27 @@ func prepareURLLookupRequest(
 }
 
 func normalizeLookupURL(raw string) (string, bool) {
+	// Validate the original boundary value before trimming. TrimSpace removes
+	// several C0/C1 controls, which would otherwise let malformed request or
+	// SDK-response values become valid only after the unsafe runes disappeared.
+	if hasUnsafeLookupRune(raw) {
+		return "", false
+	}
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return "", false
 	}
-	for _, ch := range value {
-		if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
-			return "", false
-		}
-	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Opaque != "" {
+		return "", false
+	}
+	// Accept hierarchical absolute URLs and the bare host[/path] form supported
+	// by the ZIA endpoint. Root-relative, scheme-relative, and hostless
+	// scheme-only references have no independently classifiable target.
+	switch {
+	case parsed.Scheme != "" && parsed.Host == "":
+		return "", false
+	case parsed.Scheme == "" && (parsed.Host != "" || strings.HasPrefix(parsed.Path, "/")):
 		return "", false
 	}
 	parsed.User = nil
@@ -167,6 +177,15 @@ func normalizeLookupURL(raw string) (string, bool) {
 	parsed.Fragment = ""
 	normalized := parsed.String()
 	return normalized, strings.TrimSpace(normalized) != ""
+}
+
+func hasUnsafeLookupRune(value string) bool {
+	for _, ch := range value {
+		if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+			return true
+		}
+	}
+	return false
 }
 
 func urlClassificationsFromZscaler(

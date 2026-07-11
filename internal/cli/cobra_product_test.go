@@ -509,12 +509,17 @@ func TestProductCmd_URLLookup_NDJsonRejected(t *testing.T) {
 		results: []zscaler.URLClassification{{URL: "example.com"}},
 	}
 	a, _, _ := newProductApp(t, reader)
-	err := a.Run(context.Background(), []string{"--format", "ndjson", "zia", "url-lookup", "example.com"})
+	// Format policy wins before URL parsing, even when the supplied URL would
+	// independently fail the engine boundary.
+	err := a.Run(context.Background(), []string{"--format", "ndjson", "zia", "url-lookup", "\nhttps://example.com"})
 	if err == nil {
 		t.Fatal("App.Run(--format ndjson zia url-lookup) error = nil, want UsageError")
 	}
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("error = %v (%T), want ErrUsage (exit 2)", err, err)
+	}
+	if !strings.Contains(err.Error(), "does not support ndjson") {
+		t.Errorf("error = %q, want unsupported-format precedence", err.Error())
 	}
 	if len(reader.calls) != 0 {
 		t.Errorf("URLLookup calls = %#v, want none before unsupported-format rejection", reader.calls)

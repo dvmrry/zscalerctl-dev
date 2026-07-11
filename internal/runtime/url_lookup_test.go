@@ -140,6 +140,14 @@ func TestURLLookupRejectsInvalidRequestsWithoutCallingReader(t *testing.T) {
 	tests := []machine.URLLookupRequest{
 		{},
 		{URLs: []string{""}},
+		{URLs: []string{"\nhttps://example.com"}},
+		{URLs: []string{"https://example.com\t"}},
+		{URLs: []string{"\u0085https://example.com"}},
+		{URLs: []string{"https://example.com\u0085"}},
+		{URLs: []string{"/path"}},
+		{URLs: []string{"//example.com/path"}},
+		{URLs: []string{"http:"}},
+		{URLs: []string{"http:/path"}},
 		{URLs: []string{"https://example.com/%"}},
 		{URLs: []string{"mailto:user@example.com?token=secret"}},
 		{URLs: []string{"https://example.com/\nFORGED"}},
@@ -162,24 +170,59 @@ func TestURLLookupRejectsInvalidRequestsWithoutCallingReader(t *testing.T) {
 	}
 }
 
-func TestURLLookupRejectsMalformedSDKResponseWithoutLeaking(t *testing.T) {
+func TestURLLookupAcceptsAbsoluteAndBareHostForms(t *testing.T) {
 	t.Parallel()
 
-	const canary = "malformed-response-query-canary"
-	reader := &runtimeURLLookupReader{results: []zscaler.URLClassification{{
-		URL: "https://example.com/path?token=" + canary + "\x7f",
-	}}}
+	reader := &runtimeURLLookupReader{}
 	lookup, err := NewURLLookupFromReader(reader, redact.ModeStandard)
 	if err != nil {
 		t.Fatalf("NewURLLookupFromReader() error = %v, want nil", err)
 	}
-	_, err = lookup.Lookup(context.Background(), machine.URLLookupRequest{URLs: []string{"example.com"}})
-	var machineErr *machine.MachineError
-	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindLiveAccessFailed {
-		t.Fatalf("URLLookup.Lookup(malformed response) error = %v, want live-access MachineError", err)
+	_, err = lookup.Lookup(context.Background(), machine.URLLookupRequest{URLs: []string{
+		"  https://example.com/path  ",
+		"example.net/path",
+	}})
+	if err != nil {
+		t.Fatalf("URLLookup.Lookup(supported URL forms) error = %v, want nil", err)
 	}
-	if !errors.Is(err, zscaler.ErrLiveAccessFailed) || strings.Contains(err.Error(), canary) {
-		t.Fatalf("URLLookup.Lookup(malformed response) error = %q, want safe live sentinel", err)
+	want := [][]string{{"https://example.com/path", "example.net/path"}}
+	if !reflect.DeepEqual(reader.calls, want) {
+		t.Fatalf("URLLookup.Lookup(supported URL forms) calls = %#v, want %#v", reader.calls, want)
+	}
+}
+
+func TestURLLookupRejectsMalformedSDKResponseWithoutLeaking(t *testing.T) {
+	t.Parallel()
+
+	const canary = "malformed-response-query-canary"
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "embedded C0", url: "https://example.com/path?token=" + canary + "\x7f"},
+		{name: "leading C0", url: "\nhttps://example.com/path?token=" + canary},
+		{name: "trailing C0", url: "https://example.com/path?token=" + canary + "\t"},
+		{name: "leading C1", url: "\u0085https://example.com/path?token=" + canary},
+		{name: "trailing C1", url: "https://example.com/path?token=" + canary + "\u0085"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reader := &runtimeURLLookupReader{results: []zscaler.URLClassification{{URL: tt.url}}}
+			lookup, err := NewURLLookupFromReader(reader, redact.ModeStandard)
+			if err != nil {
+				t.Fatalf("NewURLLookupFromReader() error = %v, want nil", err)
+			}
+			_, err = lookup.Lookup(context.Background(), machine.URLLookupRequest{URLs: []string{"example.com"}})
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindLiveAccessFailed {
+				t.Fatalf("URLLookup.Lookup(malformed response) error = %v, want live-access MachineError", err)
+			}
+			if !errors.Is(err, zscaler.ErrLiveAccessFailed) || strings.Contains(err.Error(), canary) {
+				t.Fatalf("URLLookup.Lookup(malformed response) error = %q, want safe live sentinel", err)
+			}
+		})
 	}
 }
 
@@ -197,20 +240,29 @@ func TestEngineURLLookupValidatesBeforeConfigAndPreservesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEngine() error = %v, want nil", err)
 	}
-	_, err = engine.LookupURL(context.Background(), machine.URLLookupRequest{
-		URLs: []string{"https://example.com/%"},
-	})
-	var machineErr *machine.MachineError
-	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindUsage {
-		t.Fatalf("Engine.LookupURL(invalid request) error = %v, want usage MachineError", err)
-	}
-	if configLoads != 0 {
-		t.Fatalf("Engine.LookupURL(invalid request) config loads = %d, want 0", configLoads)
+	for _, rawURL := range []string{
+		"https://example.com/%",
+		"\nhttps://example.com",
+		"https://example.com\t",
+		"\u0085https://example.com",
+		"https://example.com\u0085",
+	} {
+		_, err = engine.LookupURL(context.Background(), machine.URLLookupRequest{
+			URLs: []string{rawURL},
+		})
+		var machineErr *machine.MachineError
+		if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindUsage {
+			t.Fatalf("Engine.LookupURL(invalid request) error = %v, want usage MachineError", err)
+		}
+		if configLoads != 0 {
+			t.Fatalf("Engine.LookupURL(invalid request) config loads = %d, want 0", configLoads)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = engine.LookupURL(ctx, machine.URLLookupRequest{URLs: []string{"example.com"}})
+	var machineErr *machine.MachineError
 	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindCanceled ||
 		!errors.Is(err, context.Canceled) {
 		t.Fatalf("Engine.LookupURL(canceled) error = %v, want canceled MachineError", err)
