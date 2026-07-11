@@ -335,12 +335,15 @@ func VerifyProjectedRecords(spec ResourceSpec, mode redact.Mode, records Project
 func (ProjectedRecords) OutputSafe() {}
 
 func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {
-	out := make([]map[string]any, len(rs.records))
-	for i, record := range rs.records {
-		out[i] = record.Fields()
+	if len(rs.records) == 0 {
+		return []byte("[]"), nil
 	}
-	return json.Marshal(out)
+	return json.Marshal(rs.records)
 }
+
+// Len returns the number of projected records without exposing the backing
+// slice or any record fields.
+func (rs ProjectedRecords) Len() int { return len(rs.records) }
 
 // Select narrows every record to keys (see ProjectedRecord.Select).
 func (rs ProjectedRecords) Select(keys []string) ProjectedRecords {
@@ -422,12 +425,12 @@ func FilterProjectedRecords(
 		return records
 	}
 	kept := make([]ProjectedRecord, 0)
-	for _, record := range records.Records() {
-		if projectedRecordMatches(record.Fields(), filters, search) {
+	for _, record := range records.records {
+		if projectedRecordMatches(record.fields, filters, search) {
 			kept = append(kept, record)
 		}
 	}
-	return NewProjectedRecords(kept)
+	return ProjectedRecords{records: kept}
 }
 
 func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
@@ -570,7 +573,7 @@ func ProjectRecordAndVerify(spec ResourceSpec, mode redact.Mode, record SourceRe
 	if err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
 	}
-	if err := AssertRenderedSubset(spec, mode, projected.Fields()); err != nil {
+	if err := AssertRenderedSubset(spec, mode, projected.fields); err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
 	}
 	return projected, report, nil

@@ -299,7 +299,7 @@ func (d ResourceDump) payload() (safeJSON, int) {
 	if d.Record != nil {
 		return *d.Record, 1
 	}
-	return d.Records, len(d.Records.Records())
+	return d.Records, d.Records.Len()
 }
 
 func buildResourceReport(

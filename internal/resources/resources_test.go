@@ -304,6 +304,69 @@ func TestProjectedRecordsDefensivelyCopySupportedSlices(t *testing.T) {
 	}
 }
 
+func TestProjectedRecordsMarshalJSONPreservesCollectionContract(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		records resources.ProjectedRecords
+		want    string
+	}{
+		{
+			name: "zero value",
+			want: "[]",
+		},
+		{
+			name:    "empty collection",
+			records: resources.NewProjectedRecords(nil),
+			want:    "[]",
+		},
+		{
+			name: "nested records",
+			records: resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+				"name": "HQ",
+				"metadata": map[string]any{
+					"region": "us-east",
+					"labels": []string{"branch", "managed"},
+				},
+			}}),
+			want: `[{"metadata":{"labels":["branch","managed"],"region":"us-east"},"name":"HQ"}]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.records)
+			if err != nil {
+				t.Fatalf("json.Marshal(ProjectedRecords %s) error = %v, want nil", tt.name, err)
+			}
+			if got := string(body); got != tt.want {
+				t.Errorf("json.Marshal(ProjectedRecords %s) = %s, want %s", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProjectedRecordsLenDoesNotExposeBackingSlice(t *testing.T) {
+	t.Parallel()
+
+	projected := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{
+		{"id": 1},
+		{"id": 2},
+	})
+	if got := projected.Len(); got != 2 {
+		t.Fatalf("ProjectedRecords.Len() = %d, want 2", got)
+	}
+
+	returned := projected.Records()
+	returned[0] = resources.ProjectedRecord{}
+	if got := projected.Len(); got != 2 {
+		t.Errorf("ProjectedRecords.Len() after returned slice mutation = %d, want 2", got)
+	}
+	if got, ok := projected.Records()[0].Value("id"); !ok || got != 1 {
+		t.Errorf("ProjectedRecords first id after returned slice mutation = %v (present %t), want 1 (present true)", got, ok)
+	}
+}
+
 func TestProjectedRecordsRejectUnsupportedCompositeValues(t *testing.T) {
 	t.Parallel()
 
@@ -562,6 +625,44 @@ func TestFilterProjectedRecordsCannotReachDroppedFields(t *testing.T) {
 	got = resources.FilterProjectedRecords(records, nil, "secret-token")
 	if len(got.Records()) != 0 {
 		t.Fatalf("FilterProjectedRecords(secret search) records = %#v, want empty", got.Records())
+	}
+}
+
+func TestFilterProjectedRecordsPreservesDefensiveBoundaries(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{
+			"id":          1,
+			"name":        "Branch East",
+			"country":     "US",
+			"ipAddresses": []any{"192.0.2.10"},
+		},
+	)
+	filtered := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{{
+		Field:     "name",
+		Value:     "branch",
+		Substring: true,
+	}}, "")
+	if got := filtered.Len(); got != 1 {
+		t.Fatalf("FilterProjectedRecords(branch) records = %d, want 1", got)
+	}
+
+	fields := filtered.Records()[0].Fields()
+	fields["name"] = "mutated"
+	fields["ipAddresses"].([]any)[0] = "mutated"
+	want := map[string]any{
+		"id":          1,
+		"name":        "Branch East",
+		"country":     "US",
+		"ipAddresses": []any{"192.0.2.10"},
+	}
+	if got := filtered.Records()[0].Fields(); !reflect.DeepEqual(got, want) {
+		t.Errorf("filtered record after Fields mutation = %#v, want %#v", got, want)
+	}
+	if got := records.Records()[0].Fields(); !reflect.DeepEqual(got, want) {
+		t.Errorf("source record after filtered Fields mutation = %#v, want %#v", got, want)
 	}
 }
 
