@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -701,7 +702,29 @@ func sanitizeScalar(mode redact.Mode, field FieldSpec, value any) (any, bool, bo
 			}
 		}
 		return out, redacted, true
+	case json.Number:
+		return copyAny(v), false, true
 	default:
+		valueOf := reflect.ValueOf(value)
+		if valueOf.IsValid() && valueOf.Kind() == reflect.String {
+			out, report := scanStringValue(r, field, valueOf.String())
+			return out, !report.Empty(), true
+		}
+		if valueOf.IsValid() &&
+			(valueOf.Kind() == reflect.Slice || valueOf.Kind() == reflect.Array) &&
+			valueOf.Type().Elem().Kind() == reflect.String &&
+			valueOf.Type().Elem() != reflect.TypeOf(json.Number("")) {
+			out := make([]string, valueOf.Len())
+			redacted := false
+			for i := range valueOf.Len() {
+				sanitized, report := scanStringValue(r, field, valueOf.Index(i).String())
+				out[i] = sanitized
+				if !report.Empty() {
+					redacted = true
+				}
+			}
+			return out, redacted, true
+		}
 		return copyAny(value), false, true
 	}
 }
@@ -784,7 +807,7 @@ func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records P
 }
 
 func assertValueSubset(spec ResourceSpec, mode redact.Mode, field FieldSpec, value any, path string) error {
-	if _, unsupported := value.(unsupportedProjectedValue); unsupported {
+	if !isSupportedProjectedValue(reflect.ValueOf(value), make(map[copyVisit]bool)) {
 		return fmt.Errorf("%w: %s/%s field %s", ErrInvalidProjectedValue, spec.Product, spec.Name, path)
 	}
 	if !hasStructuredValue(value) {
@@ -1258,14 +1281,23 @@ func copyAny(value any) any {
 		return slices.Clone(v)
 	case []int:
 		return slices.Clone(v)
+	case json.Number:
+		if _, err := json.Marshal(v); err != nil {
+			return unsupportedProjectedValue{}
+		}
+		return v
 	}
 	valueOf := reflect.ValueOf(value)
 	switch valueOf.Kind() {
-	case reflect.Bool, reflect.Complex64, reflect.Complex128,
-		reflect.Float32, reflect.Float64,
+	case reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.String,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return value
+	case reflect.Float32, reflect.Float64:
+		if math.IsNaN(valueOf.Float()) || math.IsInf(valueOf.Float(), 0) {
+			return unsupportedProjectedValue{}
+		}
 		return value
 	}
 	cloned, ok := cloneCompositeValue(valueOf, make(map[copyVisit]bool))
@@ -1276,10 +1308,10 @@ func copyAny(value any) any {
 }
 
 type copyVisit struct {
-	typeOf  reflect.Type
-	pointer uintptr
-	length  int
-	cap     int
+	typeOf   reflect.Type
+	pointer  uintptr
+	length   int
+	capacity int
 }
 
 // unsupportedProjectedValue fails closed when a projected value cannot be
@@ -1290,15 +1322,23 @@ func (unsupportedProjectedValue) MarshalJSON() ([]byte, error) {
 	return nil, ErrInvalidProjectedValue
 }
 
-// cloneCompositeValue preserves concrete Go types while recursively copying
-// mutable composite values. Cyclic or non-data values are rejected so copying
-// cannot recurse forever or expose shared mutable state.
+// cloneCompositeValue preserves supported sequence types while recursively
+// copying the closed projected-value domain. Cyclic, unmodeled, or non-data
+// values are rejected so copying cannot expose shared mutable state.
 func cloneCompositeValue(
 	value reflect.Value,
 	active map[copyVisit]bool,
 ) (reflect.Value, bool) {
 	if !value.IsValid() {
 		return reflect.Value{}, true
+	}
+	if value.CanInterface() {
+		if number, ok := value.Interface().(json.Number); ok {
+			if _, err := json.Marshal(number); err != nil {
+				return reflect.Value{}, false
+			}
+			return value, true
+		}
 	}
 	switch value.Kind() {
 	case reflect.Interface:
@@ -1312,29 +1352,15 @@ func cloneCompositeValue(
 		out := reflect.New(value.Type()).Elem()
 		out.Set(cloned)
 		return out, true
-	case reflect.Pointer:
-		if value.IsNil() {
-			return reflect.Zero(value.Type()), true
-		}
-		visit := copyVisit{typeOf: value.Type(), pointer: value.Pointer()}
-		if active[visit] {
-			return reflect.Value{}, false
-		}
-		active[visit] = true
-		defer delete(active, visit)
-		cloned, ok := cloneCompositeValue(value.Elem(), active)
-		if !ok {
-			return reflect.Value{}, false
-		}
-		out := reflect.New(value.Type().Elem())
-		out.Elem().Set(cloned)
-		return out, true
 	case reflect.Slice:
+		if !isSupportedSequenceType(value.Type()) {
+			return reflect.Value{}, false
+		}
 		if value.IsNil() {
 			return reflect.Zero(value.Type()), true
 		}
 		visit := copyVisit{
-			typeOf: value.Type(), pointer: value.Pointer(), length: value.Len(), cap: value.Cap(),
+			typeOf: value.Type(), pointer: value.Pointer(), length: value.Len(), capacity: value.Cap(),
 		}
 		if active[visit] {
 			return reflect.Value{}, false
@@ -1351,6 +1377,9 @@ func cloneCompositeValue(
 		}
 		return out, true
 	case reflect.Map:
+		if value.Type() != reflect.TypeOf(map[string]any(nil)) {
+			return reflect.Value{}, false
+		}
 		if value.IsNil() {
 			return reflect.Zero(value.Type()), true
 		}
@@ -1363,18 +1392,17 @@ func cloneCompositeValue(
 		out := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			clonedKey, ok := cloneCompositeValue(iter.Key(), active)
-			if !ok {
-				return reflect.Value{}, false
-			}
 			cloned, ok := cloneCompositeValue(iter.Value(), active)
 			if !ok {
 				return reflect.Value{}, false
 			}
-			out.SetMapIndex(clonedKey, cloned)
+			out.SetMapIndex(iter.Key(), cloned)
 		}
 		return out, true
 	case reflect.Array:
+		if !isSupportedScalarType(value.Type().Elem()) {
+			return reflect.Value{}, false
+		}
 		out := reflect.New(value.Type()).Elem()
 		for i := range value.Len() {
 			cloned, ok := cloneCompositeValue(value.Index(i), active)
@@ -1384,73 +1412,122 @@ func cloneCompositeValue(
 			out.Index(i).Set(cloned)
 		}
 		return out, true
-	case reflect.Struct:
-		if hasMutableUnexportedField(value.Type(), make(map[reflect.Type]bool)) {
+	case reflect.Float32, reflect.Float64:
+		if math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
 			return reflect.Value{}, false
 		}
-		out := reflect.New(value.Type()).Elem()
-		out.Set(value)
-		for i := range value.NumField() {
-			if value.Type().Field(i).IsExported() {
-				cloned, ok := cloneCompositeValue(value.Field(i), active)
-				if !ok {
-					return reflect.Value{}, false
-				}
-				out.Field(i).Set(cloned)
-			}
-		}
-		return out, true
-	case reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		return value, true
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return value, true
+	case reflect.Chan, reflect.Complex64, reflect.Complex128, reflect.Func,
+		reflect.Pointer, reflect.Struct, reflect.UnsafePointer:
 		return reflect.Value{}, false
 	default:
-		return value, true
+		return reflect.Value{}, false
 	}
 }
 
-func hasMutableUnexportedField(valueType reflect.Type, seen map[reflect.Type]bool) bool {
-	if seen[valueType] {
+func isSupportedSequenceType(valueType reflect.Type) bool {
+	if valueType == reflect.TypeOf([]any(nil)) ||
+		valueType == reflect.TypeOf([]map[string]any(nil)) {
+		return true
+	}
+	return isSupportedScalarType(valueType.Elem())
+}
+
+func isSupportedScalarType(valueType reflect.Type) bool {
+	if valueType == reflect.TypeOf(json.Number("")) {
+		return true
+	}
+	switch valueType.Kind() {
+	case reflect.Bool,
+		reflect.Float32, reflect.Float64,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return true
+	default:
 		return false
 	}
-	seen[valueType] = true
-	switch valueType.Kind() {
-	case reflect.Pointer, reflect.Slice, reflect.Array:
-		return hasMutableUnexportedField(valueType.Elem(), seen)
-	case reflect.Map:
-		return hasMutableUnexportedField(valueType.Key(), seen) ||
-			hasMutableUnexportedField(valueType.Elem(), seen)
-	case reflect.Struct:
-		for i := range valueType.NumField() {
-			field := valueType.Field(i)
-			if !field.IsExported() && typeContainsMutableReference(field.Type, make(map[reflect.Type]bool)) {
-				return true
-			}
-			if hasMutableUnexportedField(field.Type, seen) {
-				return true
-			}
+}
+
+func isSupportedProjectedValue(value reflect.Value, active map[copyVisit]bool) bool {
+	if !value.IsValid() {
+		return true
+	}
+	if value.CanInterface() {
+		if number, ok := value.Interface().(json.Number); ok {
+			_, err := json.Marshal(number)
+			return err == nil
 		}
 	}
-	return false
-}
-
-func typeContainsMutableReference(valueType reflect.Type, seen map[reflect.Type]bool) bool {
-	if seen[valueType] {
-		return false
-	}
-	seen[valueType] = true
-	switch valueType.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+	switch value.Kind() {
+	case reflect.Interface:
+		return value.IsNil() || isSupportedProjectedValue(value.Elem(), active)
+	case reflect.Slice:
+		if !isSupportedSequenceType(value.Type()) {
+			return false
+		}
+		if value.IsNil() {
+			return true
+		}
+		visit := copyVisit{
+			typeOf: value.Type(), pointer: value.Pointer(), length: value.Len(), capacity: value.Cap(),
+		}
+		if active[visit] {
+			return false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		for i := range value.Len() {
+			if !isSupportedProjectedValue(value.Index(i), active) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if value.Type() != reflect.TypeOf(map[string]any(nil)) {
+			return false
+		}
+		if value.IsNil() {
+			return true
+		}
+		visit := copyVisit{typeOf: value.Type(), pointer: value.Pointer()}
+		if active[visit] {
+			return false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		iter := value.MapRange()
+		for iter.Next() {
+			if !isSupportedProjectedValue(iter.Value(), active) {
+				return false
+			}
+		}
 		return true
 	case reflect.Array:
-		return typeContainsMutableReference(valueType.Elem(), seen)
-	case reflect.Struct:
-		for i := range valueType.NumField() {
-			if typeContainsMutableReference(valueType.Field(i).Type, seen) {
-				return true
+		if !isSupportedScalarType(value.Type().Elem()) {
+			return false
+		}
+		for i := range value.Len() {
+			if !isSupportedProjectedValue(value.Index(i), active) {
+				return false
 			}
 		}
+		return true
+	case reflect.Float32, reflect.Float64:
+		return !math.IsNaN(value.Float()) && !math.IsInf(value.Float(), 0)
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // SecretLikeFieldName reports whether a JSON field name looks likely to carry

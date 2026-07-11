@@ -68,6 +68,14 @@ or later discovery results. Projected values with cycles, non-data handles, or
 mutable state hidden in unexported struct fields fail closed as invalid
 projected values instead of retaining aliases or reaching a renderer.
 
+The projected-value domain is intentionally narrower than arbitrary Go values:
+JSON-safe primitive scalars and finite numbers, supported scalar sequences,
+and the catalog-modeled `map[string]any`, `[]any`, and
+`[]map[string]any` families. Structs, pointers, complex or non-finite numbers,
+typed maps, nested typed containers, and process-like handles are rejected as
+invalid projected values. New value families require an explicit projection,
+redaction, copy, verification, and rendering design before admission.
+
 ## Compatibility boundary
 
 This checkpoint deliberately leaves these supported surfaces unchanged:
