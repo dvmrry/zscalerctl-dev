@@ -456,6 +456,9 @@ func LegacyDumpAdapterError(err error) (error, bool) {
 	if !errors.As(err, &outputErr) {
 		return nil, false
 	}
+	if errors.Is(outputErr.safe, context.Canceled) || errors.Is(outputErr.safe, context.DeadlineExceeded) {
+		return nil, false
+	}
 	return &legacyDumpAdapterError{
 		message:  outputErr.adapterMessage,
 		sentinel: outputErr.adapterSentinel,

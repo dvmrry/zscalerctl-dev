@@ -386,6 +386,38 @@ func TestTypedDumpOutputFailureIsStaticAndHasNoCompletedEvent(t *testing.T) {
 	}
 }
 
+func TestLegacyDumpAdapterErrorPreservesContextMachineErrors(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		kind string
+	}{
+		{name: "canceled", err: context.Canceled, kind: machine.ErrorKindCanceled},
+		{name: "deadline", err: context.DeadlineExceeded, kind: machine.ErrorKindDeadlineExceeded},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := dumpOutputBoundaryError(tc.err)
+			if adapterErr, ok := LegacyDumpAdapterError(err); ok {
+				t.Fatalf("LegacyDumpAdapterError(%s) = (%v, true), want typed context error", tc.name, adapterErr)
+			}
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != tc.kind ||
+				machineErr.Operation != machine.OperationDump {
+				t.Fatalf("dumpOutputBoundaryError(%s) = %#v, want %s/dump", tc.name, machineErr, tc.kind)
+			}
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("dumpOutputBoundaryError(%s) = %v, want sentinel identity", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestTypedDumpCancellationBeforeForcePreservesPreviousArtifact(t *testing.T) {
 	t.Parallel()
 

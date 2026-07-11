@@ -11,16 +11,20 @@ import (
 )
 
 // PrepareOutputDir validates an existing output directory and, when force is
-// true, removes it only when it is an owned zscalerctl dump directory.
+// true, clears it only when it is an owned zscalerctl dump directory.
 func PrepareOutputDir(ctx context.Context, dir string, force bool) error {
-	return prepareOutputDir(ctx, dir, force, nil)
+	return prepareOutputDir(ctx, dir, force, prepareOutputDirHooks{})
 }
 
-// prepareOutputDir accepts a test-only boundary callback that runs after the
-// validated directory identity has been checked and immediately before its
-// contents are cleared. Keeping the callback per-call avoids mutable package
-// hooks in production and makes replacement-race tests deterministic.
-func prepareOutputDir(ctx context.Context, dir string, force bool, beforeClear func()) error {
+type prepareOutputDirHooks struct {
+	beforeClear      func()
+	beforeFinalCheck func()
+}
+
+// prepareOutputDir accepts per-call test-only boundary callbacks around the
+// destructive phase. This avoids mutable package hooks in production and makes
+// replacement-race tests deterministic.
+func prepareOutputDir(ctx context.Context, dir string, force bool, hooks prepareOutputDirHooks) error {
 	ctx = contextOrBackground(ctx)
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -118,8 +122,8 @@ func prepareOutputDir(ctx context.Context, dir string, force bool, beforeClear f
 	if err != nil || !os.SameFile(openedInfo, currentInfo) {
 		return fmt.Errorf("%w: --force target changed during validation", ErrUnsafePath)
 	}
-	if beforeClear != nil {
-		beforeClear()
+	if hooks.beforeClear != nil {
+		hooks.beforeClear()
 	}
 	// Clear through the still-open directory root, not through target's path.
 	// On supported desktop/server platforms the root remains bound to the
@@ -131,23 +135,19 @@ func prepareOutputDir(ctx context.Context, dir string, force bool, beforeClear f
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
+	if hooks.beforeFinalCheck != nil {
+		hooks.beforeFinalCheck()
+	}
 	currentInfo, err = os.Lstat(target)
 	if contextErr := checkContext(ctx); contextErr != nil {
 		return contextErr
 	}
 	if err != nil || !os.SameFile(openedInfo, currentInfo) {
-		return fmt.Errorf("%w: --force target changed before removal", ErrUnsafePath)
+		return fmt.Errorf("%w: --force target changed after clearing", ErrUnsafePath)
 	}
-	// The recursively destructive work is complete and was identity-bound. A
-	// final path-based Remove can remove only the now-empty directory. If a race
-	// substitutes a non-empty directory after the identity check, os.Remove
-	// fails instead of deleting its contents.
-	if err := os.Remove(target); err != nil {
-		return fmt.Errorf("%w: remove empty dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
+	// Leave the identity-checked directory in place for WriteContext to reuse.
+	// Removing even an empty pathname would reopen a final substitution race in
+	// which an unvalidated regular file could be deleted after the check.
 	return nil
 }
 

@@ -2864,6 +2864,60 @@ func TestDumpContinueOnErrorTreatsContextCancellationAsFatal(t *testing.T) {
 	}
 }
 
+func TestDumpOutputPhasePreservesContextMachineClassification(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		kind     string
+		sentinel error
+	}{
+		{
+			name:     "canceled",
+			kind:     machine.ErrorKindCanceled,
+			sentinel: context.Canceled,
+		},
+		{
+			name:     "deadline",
+			kind:     machine.ErrorKindDeadlineExceeded,
+			sentinel: context.DeadlineExceeded,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := newFinishedOnDemandContext(tc.sentinel)
+			reader := finishingContextResourceReader{finish: func(context.Context) { ctx.finish() }}
+			var out, errOut bytes.Buffer
+			outDir := filepath.Join(t.TempDir(), "dump")
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+			err := app.Run(ctx, []string{
+				"dump",
+				"--products", "zia",
+				"--resources", "locations",
+				"--out", outDir,
+			})
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != tc.kind ||
+				machineErr.Operation != machine.OperationDump {
+				t.Fatalf("App.Run(dump output-phase %s) error = %#v, want %s/dump", tc.name, machineErr, tc.kind)
+			}
+			if !errors.Is(err, tc.sentinel) {
+				t.Fatalf("App.Run(dump output-phase %s) error = %v, want sentinel %v", tc.name, err, tc.sentinel)
+			}
+			if _, statErr := os.Stat(outDir); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("os.Stat(%q) after output-phase %s = %v, want os.ErrNotExist", outDir, tc.name, statErr)
+			}
+			if out.Len() != 0 || errOut.Len() != 0 {
+				t.Errorf("App.Run(dump output-phase %s) output = %q / %q, want empty", tc.name, out.String(), errOut.String())
+			}
+		})
+	}
+}
+
 func TestDumpContinueOnErrorTreatsSessionFailureAsFatal(t *testing.T) {
 	t.Parallel()
 
@@ -3265,6 +3319,55 @@ func (f cancelingResourceReader) Get(context.Context, resources.Product, string,
 }
 
 func (f cancelingResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("show must not be called")
+}
+
+type finishingContextResourceReader struct {
+	finish func(context.Context)
+}
+
+type finishedOnDemandContext struct {
+	context.Context
+	done chan struct{}
+	err  error
+}
+
+func newFinishedOnDemandContext(err error) *finishedOnDemandContext {
+	return &finishedOnDemandContext{
+		Context: context.Background(),
+		done:    make(chan struct{}),
+		err:     err,
+	}
+}
+
+func (c *finishedOnDemandContext) Done() <-chan struct{} { return c.done }
+
+func (c *finishedOnDemandContext) Err() error {
+	select {
+	case <-c.done:
+		return c.err
+	default:
+		return nil
+	}
+}
+
+func (c *finishedOnDemandContext) finish() { close(c.done) }
+
+func (f finishingContextResourceReader) List(ctx context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	if f.finish != nil {
+		f.finish(ctx)
+	}
+	return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+		"id":   "123",
+		"name": "HQ",
+	})}, nil
+}
+
+func (f finishingContextResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("get must not be called")
+}
+
+func (f finishingContextResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
 	return resources.SourceRecord{}, errors.New("show must not be called")
 }
 
