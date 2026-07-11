@@ -143,15 +143,7 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 					return cmd.Help()
 				}
 			}
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
-			if err != nil {
-				return err
-			}
-			applyOptions(&cfg, opts)
-			return a.runURLLookup(cmd.Context(), cfg, opts, args)
+			return a.runURLLookup(cmd.Context(), opts, args)
 		},
 	}
 }

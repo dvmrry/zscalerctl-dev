@@ -13,9 +13,9 @@ The in-process candidate contract types live in `internal/machine`. Adapters may
 translate Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed internal boundary, not a 1.0 public API.
-Typed catalog discovery and sanitized doctor/auth/config status are separate
-candidate engine families; the existing CLI commands adapt their results back
-to the unchanged supported render shapes.
+Typed catalog discovery, sanitized doctor/auth/config status, and typed ZIA URL
+lookup are separate candidate engine families; the existing CLI commands adapt
+their results back to unchanged supported render shapes.
 Stdio-style adapters that need a small JSON transport convention can use
 `internal/machineio` to decode one bounded request, execute it, and encode the
 response without importing CLI rendering. `machineio.ExecuteJSON` rejects
@@ -77,17 +77,17 @@ stable compatibility surface.
 | Scenario | Machine kind | Envelope kind | Exit code | Internal sentinel | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Usage error | `usage` | `usage` | `2` for `cli.ErrUsage`; `1` if an unadapted `MachineError{Kind: usage}` reaches `main.go` | `cli.ErrUsage`; `resources.ErrMissingID`; `resources.ErrUnknownField` | `machineErrorFromLoadError` maps missing IDs and unknown projected fields to machine usage. Command usage reaches `main.go` as `cli.ErrUsage`. |
-| Unknown/unsupported resource | `unknown_resource` | `unknown_resource` for machine errors; `unsupported_resource` for the Zscaler sentinel; `not_found` for CLI catalog misses | `4` for command-boundary unsupported/not-found errors; `1` if an unadapted `MachineError{Kind: unknown_resource}` reaches `main.go` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | The executor vocabulary is `unknown_resource`. `main.go` maps `zscaler.ErrUnsupportedResource` to `unsupported_resource`, and CLI catalog misses unwrap to `cli.ErrNotFound`. |
+| Unknown/unsupported resource | `unknown_resource`; specialized engine capabilities may use `unsupported_resource` | `unknown_resource` for catalog machine errors; `unsupported_resource` for the Zscaler or typed URL sentinel; `not_found` for CLI catalog misses | `4` for command-boundary unsupported/not-found errors; `1` if an unadapted `MachineError{Kind: unknown_resource}` reaches `main.go` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | The catalog executor vocabulary is `unknown_resource`. Typed URL lookup preserves the safe Zscaler sentinel with `unsupported_resource`; CLI catalog misses unwrap to `cli.ErrNotFound`. |
 | Record not found (get of nonexistent id) | `not_found` | `not_found` | `4` | `resources.ErrRecordNotFound`; `zscaler.ErrResourceNotFound`; `cli.ErrNotFound` | `main.go` special-cases `machine.ErrorKindNotFound` to the not-found exit code. |
-| Missing credentials | — | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | No executor machine kind; config/runtime construction reports the Zscaler sentinel. |
+| Missing credentials | `missing_credentials` for typed live engine setup | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | Typed URL lookup carries only allow-listed missing variable names and the safe sentinel; legacy runtime construction may report the sentinel directly. |
 | Invalid resource id | `invalid_resource_id` | `invalid_resource_id` | `2` | `resources.ErrInvalidResourceID`; `zscaler.ErrInvalidResourceID` | The reader aliases the shared sentinel; `machineErrorFromLoadError` emits a sanitized machine error whose unexported cause preserves only that sentinel, and `main.go` maps the kind to exit 2. |
 | Live access failure | `live_access_failed` | `live_access_failed` | `5` | `zscaler.ErrLiveAccessFailed` (non-machine paths); executor default branch | Kind-driven since PR #102: `exitCodeForError` maps `MachineError{Kind: live_access_failed}` to exit 5 directly; the Zscaler sentinel still covers non-machine paths such as dump collection. The executor default hides backend details. |
 | Deadline exceeded | `deadline_exceeded` | `deadline_exceeded` | `5` | `context.DeadlineExceeded` | `main.go` special-cases `machine.ErrorKindDeadlineExceeded` to the live-access failure exit code. |
 | Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
 | Partial dump | — | `partial_dump` | `6` | `cli.ErrPartialDump` | For non-JSON formats, `run` returns the code without writing the JSON envelope. |
 | Drift detected | — | `drift_detected` | `7` | `cli.ErrDriftDetected` | Set by `diff --fail-on-drift`. |
-| Invalid config | — | `invalid_config` | `2` | `config.ErrInvalidConfig` | Config parsing/loading is outside `internal/machine`. |
-| Invalid proxy config | — | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Proxy validation is outside `internal/machine`. |
+| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. |
+| Invalid proxy config | `invalid_proxy_config` for typed status/URL setup | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Typed engine boundaries return static wording and preserve only the sentinel. |
 | Internal | `internal` | `internal` | `1` | `machine.ErrorKindInternal`; default branch | Executor wiring errors use machine `internal`; otherwise unmapped command errors fall through to internal. |
 
 ## Machine Contract

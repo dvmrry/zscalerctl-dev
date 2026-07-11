@@ -516,6 +516,9 @@ func TestProductCmd_URLLookup_NDJsonRejected(t *testing.T) {
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("error = %v (%T), want ErrUsage (exit 2)", err, err)
 	}
+	if len(reader.calls) != 0 {
+		t.Errorf("URLLookup calls = %#v, want none before unsupported-format rejection", reader.calls)
+	}
 }
 
 // TestProductCmd_URLLookup_JsonWorks verifies that --format json works for

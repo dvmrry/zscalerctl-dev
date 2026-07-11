@@ -216,15 +216,16 @@ func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 		t.Fatalf("NewEngine() error = %v, want nil", err)
 	}
 	first := engine.EngineManifest()
-	if len(first.Capabilities) != 4 || first.Capabilities[3].Name != machine.CapabilityResourcesRead {
-		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, and resource-read capabilities", first)
+	if len(first.Capabilities) != 5 || first.Capabilities[3].Name != machine.CapabilityZIAURLLookup ||
+		first.Capabilities[4].Name != machine.CapabilityResourcesRead {
+		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, URL lookup, and resource-read capabilities", first)
 	}
 	if configLoads != 0 {
 		t.Fatalf("Engine.EngineManifest() config loads = %d, want 0", configLoads)
 	}
-	first.Capabilities[3].Operations[0] = machine.Operation("mutated")
+	first.Capabilities[4].Operations[0] = machine.Operation("mutated")
 	second := engine.EngineManifest()
-	if second.Capabilities[3].Operations[0] != machine.OperationList {
+	if second.Capabilities[4].Operations[0] != machine.OperationList {
 		t.Fatalf("Engine.EngineManifest() after caller mutation = %#v, want fresh manifest", second)
 	}
 	if _, err := engine.DiscoverCatalog(context.Background(), machine.CatalogRequest{}); err != nil {

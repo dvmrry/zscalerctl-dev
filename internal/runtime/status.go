@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
@@ -222,13 +221,7 @@ func NewConfigStatus(cfg config.Config) ConfigStatus {
 }
 
 func sanitizeStatusString(r redact.Redactor, value string) string {
-	value, _ = r.ScanRenderedString(value)
-	return strings.Map(func(ch rune) rune {
-		if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
-			return ' '
-		}
-		return ch
-	}, value)
+	return sanitizeEngineString(r, value)
 }
 
 func statusContextError(err error, operation machine.Operation) error {
@@ -240,7 +233,7 @@ func statusContextError(err error, operation machine.Operation) error {
 		message = "request deadline exceeded"
 		sentinel = context.DeadlineExceeded
 	}
-	return newStatusBoundaryError(&machine.MachineError{
+	return newBoundaryError(&machine.MachineError{
 		Kind:      kind,
 		Message:   message,
 		Operation: operation,
@@ -261,14 +254,14 @@ func StatusConfigError(operation machine.Operation, err error) error {
 		return statusContextError(err, operation)
 	}
 	if errors.Is(err, config.ErrInvalidConfig) {
-		return newStatusBoundaryError(&machine.MachineError{
+		return newBoundaryError(&machine.MachineError{
 			Kind:      machine.ErrorKindInvalidConfig,
 			Message:   "invalid configuration",
 			Operation: operation,
 		}, config.ErrInvalidConfig)
 	}
 	if errors.Is(err, zscaler.ErrInvalidProxyConfig) {
-		return newStatusBoundaryError(&machine.MachineError{
+		return newBoundaryError(&machine.MachineError{
 			Kind:      machine.ErrorKindInvalidProxyConfig,
 			Message:   "invalid proxy configuration",
 			Operation: operation,
@@ -279,24 +272,6 @@ func StatusConfigError(operation machine.Operation, err error) error {
 		Message:   "status configuration load failed",
 		Operation: operation,
 	}
-}
-
-type statusBoundaryError struct {
-	machineErr *machine.MachineError
-	sentinel   error
-}
-
-func (e *statusBoundaryError) Error() string { return e.machineErr.Error() }
-
-func (e *statusBoundaryError) Unwrap() []error {
-	return []error{e.machineErr, e.sentinel}
-}
-
-func newStatusBoundaryError(machineErr *machine.MachineError, sentinel error) error {
-	if sentinel == nil {
-		return machineErr
-	}
-	return &statusBoundaryError{machineErr: machineErr, sentinel: sentinel}
 }
 
 func isSupportedStatusOperation(operation machine.Operation) bool {

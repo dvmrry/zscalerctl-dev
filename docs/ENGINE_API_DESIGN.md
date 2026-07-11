@@ -87,6 +87,7 @@ Manifest() machine.Manifest // supported machine.v1 compatibility surface
 EngineManifest() machine.EngineManifest
 DiscoverCatalog(ctx, machine.CatalogRequest) (machine.CatalogResult, error)
 InspectStatus(ctx, machine.StatusRequest) (machine.StatusResult, error)
+LookupURL(ctx, machine.URLLookupRequest) (machine.URLLookupResult, error)
 Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
@@ -102,6 +103,13 @@ resolve deferred providers, construct an SDK reader, or contact Zscaler. Its
 error boundary emits static machine-safe classifications and preserves only
 safe sentinels; status values cannot carry terminal-control or Unicode-format
 runes into a frontend.
+
+Typed ZIA URL lookup validates and copies a complete batch before config
+loading, removes userinfo/query/fragment data from requests and SDK-returned
+URLs, and pre-redacts every returned string. It performs one synchronous SDK
+call, preserves response order and duplicates, and returns a defensively copied
+closed result. Cobra preserves its existing JSON/table/pretty DTO and usage
+surface as an adapter over this method.
 
 `ExecuteStream` is the semantic path. Both typed `Read` and compatibility
 `Execute` consume it, so the CLI and interactive adapters cannot acquire

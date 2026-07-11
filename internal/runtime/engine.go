@@ -77,6 +77,27 @@ func (e *Engine) InspectStatus(
 	return inspector.Inspect(ctx, req)
 }
 
+// LookupURL validates one typed URL-classification batch before loading config
+// or constructing a live reader, then returns only sanitized SDK-free values.
+func (e *Engine) LookupURL(
+	ctx context.Context,
+	req machine.URLLookupRequest,
+) (machine.URLLookupResult, error) {
+	if e == nil {
+		return machine.URLLookupResult{}, errors.New("engine runtime is nil")
+	}
+	ctx = nonNilContext(ctx)
+	urls, err := prepareURLLookupRequest(ctx, req)
+	if err != nil {
+		return machine.URLLookupResult{}, err
+	}
+	lookup, err := NewURLLookup(ctx, e.options())
+	if err != nil {
+		return machine.URLLookupResult{}, err
+	}
+	return lookup.lookupPrepared(ctx, urls)
+}
+
 // Read constructs one live runtime and executes a typed resource read.
 func (e *Engine) Read(
 	ctx context.Context,

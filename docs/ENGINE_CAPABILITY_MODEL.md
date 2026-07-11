@@ -36,6 +36,7 @@ capabilities. It does not define a public Go API, CLI surface, or wire protocol.
 | `engine.manifest` | `manifest` | none | engine manifest | none |
 | `catalog.schema` | `list` | none | resource catalog | none |
 | `status.inspect` | `doctor`, `auth_status`, `config_status` | status | sanitized status | configuration-dependent local read |
+| `zia.url_lookup` | `lookup` | URL lookup | sanitized URL classifications | configuration-dependent local read; network access; configuration-dependent process execution |
 | `resources.read` | catalog-derived union of `list`, `get`, `show` | resource read | projected records | configuration-dependent local read; network access; configuration-dependent process execution |
 
 All capabilities are tenant-read-only. The current set has no local write or
@@ -59,10 +60,19 @@ crossing the engine boundary. Configuration failures become static machine
 errors that preserve only safe sentinel classification, never paths, provider
 details, or backend text. Supported status operations honor canceled and
 expired contexts; unsupported operations are rejected before config loading
-without echoing caller-controlled operation text. The
-`resources.read` effects describe construction and execution of the normal
-live runtime: config or secret files and provider helpers may be used before
-the always-possible network read.
+without echoing caller-controlled operation text.
+
+`zia.url_lookup` validates and normalizes the complete request before config
+loading. Userinfo, query, and fragment data are removed before the URL reaches
+Zscaler. SDK-returned URLs cross the same normalization boundary again, so an
+echoed or independently supplied response cannot reintroduce those fields.
+Malformed response URLs fail closed. Every returned string is redacted and
+control-normalized before entering the closed result. One call handles the
+whole batch synchronously and preserves SDK order and duplicates.
+
+The `resources.read` and `zia.url_lookup` effects describe construction and
+execution of normal live runtimes: config or secret files and provider helpers
+may be used before the always-possible network read.
 
 ## Trust and copying boundaries
 
@@ -89,6 +99,10 @@ allowed-mode, and nested-field slices. `StatusResult` is a closed union whose
 doctor/auth/config values are sanitized before return. Status construction
 precomputes those values and discards raw config, credentials, secret sources,
 provider commands, and proxy values before the inspector can be retained.
+`URLLookupResult` owns recursively copied classification slices and returns a
+fresh result collection. Both request and result reject direct JSON. Raw URL
+input, SDK response types, config, credentials, and backend errors cannot enter
+the result.
 
 The projected-value domain is intentionally narrower than arbitrary Go values:
 method-free built-in primitive scalars, valid `json.Number` values, finite
@@ -108,6 +122,7 @@ This checkpoint deliberately leaves these supported surfaces unchanged:
 
 - `zscalerctl --format json machine manifest` and its `machine.v1` schema
 - resource list/get/show JSON, NDJSON, table, and pretty output
+- `zia url-lookup` JSON, table, pretty, usage, and unsupported-format behavior
 - CLI stderr error envelopes and exit-code mapping
 - `introspect` v1/v2 schemas and goldens
 - `machineio` request/response transport behavior, except that strict decoding
@@ -117,13 +132,13 @@ The legacy candidate `machine.Request`/`machine.Response` execution methods
 remain as compatibility adapters over the event path. New in-process resource
 consumers use the typed `Read` method. The existing `schema list`, `doctor`,
 `auth status`, and `config show` commands adapt typed catalog/status results
-back to their unchanged supported render shapes. No `engine.v1` CLI command or
+back to their unchanged supported render shapes. `zia url-lookup` adapts the
+typed URL result into its existing output DTO. No `engine.v1` CLI command or
 JSON schema is introduced by this checkpoint.
 
 ## Next extensions
 
-URL lookup, dump, and diff each get their own typed request/result family and
-engine-manifest entry in separate reviewable slices. Local-write and
-local-delete operations must expose those effects before an adapter can invoke
-them. Wire DTO and stdio work remains blocked on the dedicated protocol-design
-checkpoint.
+Dump and diff each get their own typed request/result family and engine-manifest
+entry in separate reviewable slices. Local-write and local-delete operations
+must expose those effects before an adapter can invoke them. Wire DTO and stdio
+work remains blocked on the dedicated protocol-design checkpoint.

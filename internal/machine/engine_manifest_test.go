@@ -21,8 +21,8 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		t.Fatalf("EngineManifestFromCatalog version/read-only = %q/%t, want %q/true",
 			got.Version, got.TenantReadOnly, machine.EngineManifestVersion)
 	}
-	if len(got.Capabilities) != 4 {
-		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, and resource read", got.Capabilities)
+	if len(got.Capabilities) != 5 {
+		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, URL lookup, and resource read", got.Capabilities)
 	}
 	manifestCapability := got.Capabilities[0]
 	if manifestCapability.Name != machine.CapabilityEngineManifest ||
@@ -64,13 +64,8 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 			statusCapability, wantStatusOperations, wantStatusEffects)
 	}
 
-	readCapability := got.Capabilities[3]
-	wantOperations := []machine.Operation{
-		machine.OperationList,
-		machine.OperationGet,
-		machine.OperationShow,
-	}
-	wantEffects := []machine.EngineEffect{
+	urlLookupCapability := got.Capabilities[3]
+	wantLiveEffects := []machine.EngineEffect{
 		{
 			Kind: machine.EngineEffectLocalFilesystemRead,
 			When: machine.EngineEffectConfigurationDependent,
@@ -84,14 +79,29 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 			When: machine.EngineEffectConfigurationDependent,
 		},
 	}
+	if urlLookupCapability.Name != machine.CapabilityZIAURLLookup ||
+		!reflect.DeepEqual(urlLookupCapability.Operations, []machine.Operation{machine.OperationLookup}) ||
+		urlLookupCapability.Input != machine.EngineInputURLLookup ||
+		urlLookupCapability.Result != machine.EngineResultURLClassifications ||
+		!urlLookupCapability.TenantReadOnly ||
+		!reflect.DeepEqual(urlLookupCapability.Effects, wantLiveEffects) {
+		t.Fatalf("URL-lookup engine capability = %#v, want lookup effects %#v", urlLookupCapability, wantLiveEffects)
+	}
+
+	readCapability := got.Capabilities[4]
+	wantOperations := []machine.Operation{
+		machine.OperationList,
+		machine.OperationGet,
+		machine.OperationShow,
+	}
 	if readCapability.Name != machine.CapabilityResourcesRead ||
 		!reflect.DeepEqual(readCapability.Operations, wantOperations) ||
 		readCapability.Input != machine.EngineInputResourceRead ||
 		readCapability.Result != machine.EngineResultProjectedRecords ||
 		!readCapability.TenantReadOnly ||
-		!reflect.DeepEqual(readCapability.Effects, wantEffects) {
+		!reflect.DeepEqual(readCapability.Effects, wantLiveEffects) {
 		t.Fatalf("resource-read engine capability = %#v, want ops %#v effects %#v",
-			readCapability, wantOperations, wantEffects)
+			readCapability, wantOperations, wantLiveEffects)
 	}
 }
 
@@ -109,7 +119,11 @@ func TestEngineManifestSuppressesCatalogCapabilitiesForMutatingCatalog(t *testin
 		},
 	}
 	got := machine.EngineManifestFromCatalog(catalog)
-	want := []string{machine.CapabilityEngineManifest, machine.CapabilityStatusInspect}
+	want := []string{
+		machine.CapabilityEngineManifest,
+		machine.CapabilityStatusInspect,
+		machine.CapabilityZIAURLLookup,
+	}
 	if len(got.Capabilities) != len(want) {
 		t.Fatalf("EngineManifestFromCatalog(mutating) capabilities = %#v, want %v", got.Capabilities, want)
 	}
@@ -126,6 +140,7 @@ func TestEngineManifestFromEmptyCatalogStillAdvertisesDiscovery(t *testing.T) {
 		machine.CapabilityEngineManifest,
 		machine.CapabilityCatalogSchema,
 		machine.CapabilityStatusInspect,
+		machine.CapabilityZIAURLLookup,
 	}
 	if len(got.Capabilities) != len(want) {
 		t.Fatalf("EngineManifestFromCatalog(nil) capabilities = %#v, want %v", got.Capabilities, want)
@@ -151,13 +166,13 @@ func TestEngineManifestAdvertisesOnlyExecutableResourceReadOperations(t *testing
 	}
 
 	got := machine.EngineManifestFromCatalog(catalog)
-	if len(got.Capabilities) != 4 {
+	if len(got.Capabilities) != 5 {
 		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want fixed capabilities and resource read", got.Capabilities)
 	}
 	want := []machine.Operation{machine.OperationList}
-	if !reflect.DeepEqual(got.Capabilities[3].Operations, want) {
+	if !reflect.DeepEqual(got.Capabilities[4].Operations, want) {
 		t.Fatalf("EngineManifestFromCatalog(future read operation) resource operations = %#v, want %#v",
-			got.Capabilities[3].Operations, want)
+			got.Capabilities[4].Operations, want)
 	}
 }
 
@@ -169,13 +184,15 @@ func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 	first.Capabilities[0].Name = "mutated"
 	first.Capabilities[0].Operations[0] = machine.Operation("mutated")
 	first.Capabilities[2].Effects[0].Kind = machine.EngineEffectLocalFilesystemDelete
-	first.Capabilities[3].Operations[0] = machine.Operation("mutated")
+	first.Capabilities[3].Effects[0].Kind = machine.EngineEffectLocalFilesystemDelete
+	first.Capabilities[4].Operations[0] = machine.Operation("mutated")
 
 	second := machine.EngineManifestFromCatalog(catalog)
 	if second.Capabilities[0].Name != machine.CapabilityEngineManifest ||
 		second.Capabilities[0].Operations[0] != machine.OperationManifest ||
 		second.Capabilities[2].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
-		second.Capabilities[3].Operations[0] != machine.OperationList {
+		second.Capabilities[3].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
+		second.Capabilities[4].Operations[0] != machine.OperationList {
 		t.Fatalf("EngineManifestFromCatalog after caller mutation = %#v, want fresh manifest", second)
 	}
 }

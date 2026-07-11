@@ -173,6 +173,36 @@ func TestURLLookupStripsUserinfoCredentials(t *testing.T) {
 	}
 }
 
+func TestURLLookupSanitizesSDKReturnedURLAgain(t *testing.T) {
+	t.Parallel()
+
+	const (
+		userinfoCanary = "sdk-response-userinfo-canary"
+		queryCanary    = "sdk-response-query-canary"
+	)
+	reader := &fakeURLLookupReader{
+		results: []zscaler.URLClassification{{
+			URL: "https://user:" + userinfoCanary + "@response.example/app?token=" + queryCanary + "#fragment",
+		}},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+	if err := app.Run(context.Background(), []string{"--format", "json", "zia", "url-lookup", "example.com"}); err != nil {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) error = %v, want nil", err)
+	}
+	for _, forbidden := range []string{userinfoCanary, queryCanary, "user:", "?token=", "#fragment"} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Fatalf("App.Run(zia url-lookup malicious echo) output = %q, want no %q", out.String(), forbidden)
+		}
+	}
+	if !strings.Contains(out.String(), `"url": "https://response.example/app"`) {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) output = %q, want sanitized URL", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestURLLookupRejectsUnparseableURLWithoutForwardingValue(t *testing.T) {
 	t.Parallel()
 

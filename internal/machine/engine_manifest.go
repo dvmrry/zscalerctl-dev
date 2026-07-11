@@ -17,6 +17,9 @@ const (
 
 	// CapabilityStatusInspect identifies config-backed, SDK-free status views.
 	CapabilityStatusInspect = "status.inspect"
+
+	// CapabilityZIAURLLookup identifies the specialized ZIA URL classifier.
+	CapabilityZIAURLLookup = "zia.url_lookup"
 )
 
 // EngineInputKind identifies one closed family of typed engine inputs.
@@ -26,16 +29,18 @@ const (
 	EngineInputNone         EngineInputKind = "none"
 	EngineInputResourceRead EngineInputKind = "resource_read"
 	EngineInputStatus       EngineInputKind = "status"
+	EngineInputURLLookup    EngineInputKind = "url_lookup"
 )
 
 // EngineResultKind identifies one closed family of safe engine results.
 type EngineResultKind string
 
 const (
-	EngineResultManifest         EngineResultKind = "engine_manifest"
-	EngineResultCatalog          EngineResultKind = "resource_catalog"
-	EngineResultStatus           EngineResultKind = "status"
-	EngineResultProjectedRecords EngineResultKind = "projected_records"
+	EngineResultManifest           EngineResultKind = "engine_manifest"
+	EngineResultCatalog            EngineResultKind = "resource_catalog"
+	EngineResultStatus             EngineResultKind = "status"
+	EngineResultProjectedRecords   EngineResultKind = "projected_records"
+	EngineResultURLClassifications EngineResultKind = "url_classifications"
 )
 
 // EngineEffectKind identifies a possible observable engine effect.
@@ -133,6 +138,28 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 			Kind: EngineEffectLocalFilesystemRead,
 			When: EngineEffectConfigurationDependent,
 		}},
+	})
+
+	capabilities = append(capabilities, EngineCapability{
+		Name:           CapabilityZIAURLLookup,
+		Operations:     []Operation{OperationLookup},
+		Input:          EngineInputURLLookup,
+		Result:         EngineResultURLClassifications,
+		TenantReadOnly: true,
+		Effects: []EngineEffect{
+			{
+				Kind: EngineEffectLocalFilesystemRead,
+				When: EngineEffectConfigurationDependent,
+			},
+			{
+				Kind: EngineEffectNetworkAccess,
+				When: EngineEffectAlways,
+			},
+			{
+				Kind: EngineEffectProcessExecution,
+				When: EngineEffectConfigurationDependent,
+			},
+		},
 	})
 
 	readOps := map[Operation]bool{}

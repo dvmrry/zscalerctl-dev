@@ -329,6 +329,32 @@ func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestRunURLLookupCredentialErrorPreservesEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		context.Background(),
+		[]string{"--format", "json", "zia", "url-lookup", "example.com"},
+		&stdout,
+		&stderr,
+		[]string{"XDG_CONFIG_HOME=" + t.TempDir()},
+	)
+	if code != exitCredentialError {
+		t.Fatalf("run(URL lookup missing credentials) exit code = %d, want %d; stderr = %q", code, exitCredentialError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("run(URL lookup missing credentials) stdout = %q, want empty", stdout.String())
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != "missing_credentials" || len(got.Error.Missing) == 0 {
+		t.Fatalf("run(URL lookup missing credentials) envelope = %#v, want missing kind and names", got.Error)
+	}
+	if got.Error.Operation != "" || got.Error.Product != "" || got.Error.Resource != "" {
+		t.Fatalf("run(URL lookup missing credentials) context = %q/%q/%q, want legacy empty context", got.Error.Operation, got.Error.Product, got.Error.Resource)
+	}
+}
+
 func TestRunDeferredSecretResolveFailureIsCredentialError(t *testing.T) {
 	t.Parallel()
 

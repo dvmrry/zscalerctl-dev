@@ -48,6 +48,12 @@ const (
 	// ErrorKindInvalidProxyConfig reports conflicting or malformed proxy settings.
 	ErrorKindInvalidProxyConfig = "invalid_proxy_config"
 
+	// ErrorKindMissingCredentials reports incomplete live-access credentials.
+	ErrorKindMissingCredentials = "missing_credentials"
+
+	// ErrorKindUnsupportedResource reports an unavailable specialized reader.
+	ErrorKindUnsupportedResource = "unsupported_resource"
+
 	// ErrorKindInternal reports executor wiring errors.
 	ErrorKindInternal = "internal"
 )

@@ -753,7 +753,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	// that invoke runProduct directly (e.g. tests) and as protection against any
 	// future routing changes.
 	if product == resources.ProductZIA && resource == urlLookupCommandName {
-		return a.runURLLookup(ctx, cfg, opts, args[1:])
+		return a.runURLLookup(ctx, opts, args[1:])
 	}
 	// When the resource is recognized, prefer help that lists its actual
 	// operations and renderable fields over the generic per-product usage.
