@@ -94,11 +94,13 @@ semver guarantees, but they must not weaken supported behavior.
 Current candidate adapter-facing seams and trusted adapter assembly packages
 include:
 
-- `internal/machine` request, response, manifest, executor, and error types
+- `internal/machine` request, response, manifest, executor, error, and
+  synchronous operation-event types
 - `internal/machineio` JSON request/response helpers over the machine contract
 - `internal/browser` projected catalog/resource loading interfaces
 - `internal/resources` projected-record containers and catalog metadata
-- `internal/runtime` trusted read-only machine runtime assembly for adapters
+- `internal/runtime` trusted read-only machine runtime assembly and synchronous
+  event forwarding for adapters
 - package-boundary checks that keep overlays away from raw runtime packages
 
 These are candidate seams for in-repo overlays and future promotion. They are

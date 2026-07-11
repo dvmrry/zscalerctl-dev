@@ -1,10 +1,10 @@
 # Operation Event Stream — Design Checkpoint (Roadmap Phase 4.1)
 
-Status: DRAFT for owner review. This is the design checkpoint required by
-[ROADMAP.md](ROADMAP.md) Phase 4 before any event-stream code is written. It
-answers the questions machine-contract.md's "Streaming And Progress Direction"
-section deliberately left open. Items marked **DECISION** need an owner call;
-everything else is a recommendation with rationale.
+Status: ACCEPTED for candidate implementation on 2026-07-10. This is the design
+checkpoint required by [ROADMAP.md](ROADMAP.md) Phase 4. The owner accepted the
+recommended D1-D3 choices: one record per event, immediate removal of the
+candidate `DumpProgressFunc` when dump migrates, and atomic single-resource
+reads.
 
 ## Goals and non-goals
 
@@ -19,7 +19,7 @@ supported JSON event schema, no CLI streaming command, no change to one-shot
 ## Shape: synchronous callback, not channels or iterators
 
 ```go
-// package machine (safe seam) — types only, no emission logic
+// package machine (safe seam) — lifecycle types and state machine
 
 type EventKind string
 
@@ -42,6 +42,9 @@ type Event struct {
     // Record is set only on EventRecord: one already-projected,
     // already-redacted, already-verified record.
     Record *resources.ProjectedRecord
+    // Manifest is set only on successful manifest completion. It is derived
+    // entirely from the config-free resource catalog.
+    Manifest *Manifest
     // Err is set only on warning/failed/canceled: a MachineError
     // (sanitized kind + value-free message), never a raw SDK error.
     Err *MachineError
@@ -111,32 +114,32 @@ producer; do not start there.
    property of the stream.
 6. **Redaction boundary.** `record` events carry `resources.ProjectedRecord`
    only — the same post-projection, post-verification type machine responses
-   are built from. `started`/`progress`/`completed` are value-free by type
-   construction (ints and catalog names only). There is no code path from a
-   source record to an event.
-7. **Schema status.** Candidate, in-process only. Event types live in
-   `internal/machine` (safe seam; types + kinds), emission lives in
-   `internal/runtime` (trusted). There is no committed wire form for events
-   in v1. Note: omitting JSON tags is NOT a guard — encoding/json marshals
-   exported untagged fields by name — so the mechanical guard is a unit test
-   in `internal/machine` asserting no production code path marshals `Event`
-   (grep-style check over non-test sources, same pattern as
-   verify-machine-contract.sh's constructor scan). JSON serialization is
-   added only by the future MCP-notification or supported-streaming
-   promotion, with schemas and fixtures at that time.
+   are built from. Lifecycle metadata is value-free by type construction (ints
+   and catalog names only). Manifest completion may additionally carry the
+   config-free catalog-derived manifest. There is no code path from a source
+   record to an event.
+7. **Schema status.** Candidate, in-process only. Event types and lifecycle
+   enforcement live in `internal/machine`, where only projected loaders are
+   visible. `internal/runtime` supplies the trusted projected loader and
+   forwards the stream. There is no committed wire form for events in v1.
+   Omitting JSON tags is NOT a guard — encoding/json marshals exported untagged
+   fields by name — so `Event.MarshalJSON` fails closed. A transport must
+   convert events to separate, explicitly versioned DTOs with schemas and
+   fixtures rather than serializing the in-process type.
 8. **One-shot reconstruction.** `Executor.Execute` becomes: run the
    event-producing path with an accumulating sink; build `machine.Response`
    from accumulated records; map terminal `failed`/`canceled` to the
    existing `MachineError` returns. Equivalence proof: the existing machine
-   contract golden fixtures (all nine error kinds + list/get/show/manifest)
-   must pass unchanged against the reconstructed path — the fixtures ARE the
-   equivalence test. `verify-machine-contract.sh` stays the gate.
+   contract golden fixtures (all error kinds plus list/get/show/manifest) must
+   pass unchanged against the reconstructed path — the fixtures ARE the
+   equivalence test. Manifest completion carries the config-free payload needed
+   for its reconstruction. `verify-machine-contract.sh` stays the gate.
 
 ## Dump integration
 
 `DumpCollector.Collect` becomes an event producer; `DumpProgressFunc` is
-reimplemented as a thin sink adapter (kept for one release, deprecated, then
-removed — it is a candidate seam, so removal is `semver:minor` at most).
+removed in the same migration because it is a candidate seam with only an
+in-repo CLI consumer.
 Dump file writing consumes `record` events per resource instead of a fully
 accumulated slice **only if** the write path can stream marshaling; otherwise
 buffering stays as-is and the memory-baseline work is a separate follow-up.
@@ -152,24 +155,20 @@ full-copy generation of records) in addition to keeping the existing gate.
 - Unit: ordering property tests (terminal-exactly-once, no-events-after-
   terminal, non-terminal sink panic emits one failed/internal terminal, and
   terminal sink panic does not retry a second terminal), cancellation from both
-  paths, deadline mapping, warning accounting, sink-error abort.
+  paths, deadline mapping, warning accounting, sink-error abort, manifest
+  completion reconstruction, and direct-serialization rejection.
 - Contract: existing golden fixtures over reconstructed Execute (no new
   fixtures — that is the point).
 - Dump: progress-event sequence test replacing the DumpProgressFunc test;
   memory baseline unchanged.
 
-## DECISION points for the owner
+## Owner decisions
 
-- **D1 — record batching.** `Record *ProjectedRecord` (one per event,
-  recommended: simplest, backpressure-friendly) vs a batch slice per event.
-  Recommendation: single record; batching is a consumer-side concern.
-- **D2 — DumpProgressFunc deprecation window.** Remove immediately in the
-  same PR (nothing external consumes candidate seams) vs keep one release.
-  Recommendation: remove immediately; the CLI is the only consumer.
-- **D3 — where warning events live for single-resource reads.** list/get/show
-  currently fail atomically (no partials). Keep it that way (recommended) or
-  allow warnings for pagination-level soft failures. Recommendation: atomic;
-  warnings are a dump/multi-resource concept until a concrete need appears.
+- **D1 — record batching: single record.** Batching is a consumer-side concern.
+- **D2 — DumpProgressFunc: remove during migration.** Nothing external consumes
+  this candidate seam.
+- **D3 — warnings: atomic single-resource reads.** Warnings remain a
+  dump/multi-resource concept until a concrete need appears.
 
 ## Semver and sequencing
 

@@ -118,12 +118,15 @@ projected-record reconstruction guard together as the mechanical contract gate.
 
 ## Streaming And Progress Direction
 
-The current core read model is intentionally single-shot. A
+The supported CLI read model remains intentionally single-shot. A
 `machine.Executor.Execute` call returns one complete `machine.Response`, and the
 supported CLI `list`, `get`, and `show` flows render that response as JSON,
-NDJSON, table, or pretty output. Runtime dump collection reports progress
-through a trusted callback used by CLI logging/progress paths, while dump data
-is still written as dump files rather than as machine response envelopes.
+NDJSON, table, or pretty output. Under that adapter, candidate
+`ExecuteStream` emits synchronous in-process operation events and `Execute`
+reconstructs the existing response from them. Runtime dump collection still
+reports progress through its existing trusted callback until its separate event
+migration, while dump data remains a dump artifact rather than a machine
+response envelope.
 
 This remains valid for bounded resource reads and small operator workflows:
 the response is already projected, redacted, verified, and easy for scripts to
@@ -134,7 +137,7 @@ need structured progress without importing the CLI, while machine consumers
 need stable data streams that do not depend on spinners, table layout, or
 stderr prose.
 
-Future streaming or progress work should keep these boundaries:
+Streaming or progress work must keep these boundaries:
 
 - shared libraries may provide iterators, cursors, or event streams over
   already-owned operation semantics
@@ -147,8 +150,8 @@ Future streaming or progress work should keep these boundaries:
   duplicating config, credential, secret, SDK, or raw reader setup
 - safe seams must still avoid importing trusted runtime assembly
 
-One candidate model is an internal operation event stream. This is not a
-committed schema, but it gives future changes a vocabulary:
+The candidate model is an internal operation event stream. It is not a
+committed wire schema:
 
 - `started`: value-free operation metadata such as operation kind, product,
   resource, selected count when known, and redaction mode
@@ -164,12 +167,13 @@ committed schema, but it gives future changes a vocabulary:
 - `failed` or `canceled`: stable error kind and sanitized message, with context
   cancellation and deadline behavior mapped deliberately
 
-The compatibility strategy is additive. Existing `Execute` remains the stable
-one-shot adapter for current resource reads. A future event API can start as an
-internal runtime/core helper, and a one-shot `machine.Response` can be built
-from that stream later if the event model proves correct. No current CLI JSON,
-NDJSON, table, pretty, stderr error envelope, exit code, or dump behavior
-changes until a separate promotion explicitly changes the supported surface.
+The compatibility strategy is additive. Existing `Execute` remains the
+one-shot adapter for current resource reads and is reconstructed from the
+candidate stream. `machine.Event` deliberately rejects direct JSON
+serialization; a future transport must define separate, versioned DTOs and
+schemas. No current CLI JSON, NDJSON, table, pretty, stderr error envelope, exit
+code, or dump behavior changes until a separate promotion explicitly changes
+the supported surface.
 
 Dump should remain a separate artifact model unless a later design deliberately
 promotes a dump event schema into the machine contract. Runtime dump collection

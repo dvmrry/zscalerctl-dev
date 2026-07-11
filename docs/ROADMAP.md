@@ -159,6 +159,38 @@ throughout.
 5. **Tests** for cancel/deadline/partial-error event sequences.
 `semver:minor` (candidate seam).
 
+## Phase 4.5 — Common local engine and cross-language protocol
+
+The accepted architecture is in
+[ENGINE_API_DESIGN.md](ENGINE_API_DESIGN.md). The official Go SDK remains the
+only Zscaler API implementation; the CLI and every frontend consume one
+zscalerctl operation engine above it.
+
+1. **Engine contract checkpoint.** Define domain-operation scope versus
+   adapter-only behavior, trusted-runtime boundaries, effect metadata,
+   candidate/support status, and the no-network-listener rule. `semver:none`.
+2. **Typed capability model.** Replace the loose candidate `Input.Options`
+   escape hatch before adding non-resource operations. Add capability-specific
+   inputs, safe result/item families, execution settings, and a separately
+   versioned engine capability manifest. Keep supported `machine.v1` byte
+   frozen. `semver:minor` when exposed through a supported CLI command.
+3. **CLI dogfooding.** Move catalog/status/URL-lookup/dump/diff semantics behind
+   the engine in small PRs. Cobra remains an in-process parser/renderer and does
+   not spawn the stdio adapter. Existing CLI goldens, error envelopes, and exit
+   codes remain unchanged unless deliberately versioned.
+4. **Wire design before process code.** Specify strict bounded NDJSON frames,
+   handshake and version negotiation, request IDs and event sequences,
+   cancellation, one-active-operation backpressure, protocol errors, stdout /
+   stderr separation, and EOF/broken-pipe/signal behavior. Internal `Event`
+   values are converted to explicit transport DTOs, never serialized directly.
+5. **Long-lived stdio experiment.** One coordinator owns process state and
+   output; one operation worker calls the synchronous engine; every goroutine
+   has cancellation and a wait path. No TCP, HTTP, SSE, or local web server.
+6. **Reference clients and conformance.** Go codec plus TypeScript and Rust
+   clients run the same transcript fixtures. Promotion requires the CLI and at
+   least two independent consumers, cross-platform lifecycle tests, immutable
+   protocol schemas, and fresh-context compatibility/security review.
+
 ## Phase 5 — MCP experiment
 
 - **D0 `docs(security)`: MCP threat model + redaction posture — gates all MCP
