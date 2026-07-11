@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
@@ -345,6 +346,67 @@ func TestStatusCommandsSanitizeConfigLoadErrors(t *testing.T) {
 				t.Fatalf("App.Run(%s invalid config) error = %q, want no path details", tt.name, err)
 			}
 		})
+	}
+}
+
+func TestStatusCommandsRejectFinishedContextBeforeConfigLoad(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "finished-context-config-canary.yaml")
+	commands := []struct {
+		name      string
+		args      []string
+		operation machine.Operation
+	}{
+		{name: "config show", args: []string{"config", "show"}, operation: machine.OperationConfigStatus},
+		{name: "doctor", args: []string{"doctor"}, operation: machine.OperationDoctor},
+		{name: "auth status", args: []string{"auth", "status"}, operation: machine.OperationAuthStatus},
+	}
+	contexts := []struct {
+		name     string
+		new      func() (context.Context, context.CancelFunc)
+		kind     string
+		sentinel error
+	}{
+		{
+			name: "canceled",
+			new: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, func() {}
+			},
+			kind:     machine.ErrorKindCanceled,
+			sentinel: context.Canceled,
+		},
+		{
+			name: "deadline",
+			new: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			kind:     machine.ErrorKindDeadlineExceeded,
+			sentinel: context.DeadlineExceeded,
+		},
+	}
+	for _, command := range commands {
+		for _, contextCase := range contexts {
+			t.Run(command.name+"/"+contextCase.name, func(t *testing.T) {
+				ctx, cancel := contextCase.new()
+				defer cancel()
+				app := cli.New(io.Discard, io.Discard, nil)
+				args := append([]string{"--config", path}, command.args...)
+				err := app.Run(ctx, args)
+				var machineErr *machine.MachineError
+				if !errors.As(err, &machineErr) || machineErr.Kind != contextCase.kind {
+					t.Fatalf("App.Run(%s %s) error = %v, want MachineError kind %q", command.name, contextCase.name, err, contextCase.kind)
+				}
+				if machineErr.Operation != command.operation || !errors.Is(err, contextCase.sentinel) {
+					t.Fatalf("App.Run(%s %s) error = %#v, want operation %q and sentinel %v", command.name, contextCase.name, machineErr, command.operation, contextCase.sentinel)
+				}
+				if errors.Is(err, config.ErrInvalidConfig) || strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "canary") {
+					t.Fatalf("App.Run(%s %s) error = %q, config load superseded finished context", command.name, contextCase.name, err)
+				}
+			})
+		}
 	}
 }
 

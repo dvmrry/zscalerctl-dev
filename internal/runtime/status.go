@@ -247,9 +247,9 @@ func statusContextError(err error, operation machine.Operation) error {
 	}, sentinel)
 }
 
-// StatusConfigError converts a status configuration failure into a static
-// machine-safe error. It preserves only safe sentinel identity for in-process
-// classification and never retains the original error or its details.
+// StatusConfigError converts a status configuration or context failure into a
+// static machine-safe error. It preserves only safe sentinel identity for
+// in-process classification and never retains the original error or details.
 func StatusConfigError(operation machine.Operation, err error) error {
 	if err == nil {
 		return nil

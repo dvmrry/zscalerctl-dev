@@ -140,6 +140,12 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 		Short:       "show the active configuration (redacted)",
 		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return UsageError{Message: "usage: zscalerctl config show"}
+			}
+			if err := cmd.Context().Err(); err != nil {
+				return machineruntime.StatusConfigError(machine.OperationConfigStatus, err)
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,
@@ -220,6 +226,12 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 		Short:       "show authentication status for the active profile",
 		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return UsageError{Message: "usage: zscalerctl auth status"}
+			}
+			if err := cmd.Context().Err(); err != nil {
+				return machineruntime.StatusConfigError(machine.OperationAuthStatus, err)
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,

@@ -38,6 +38,12 @@ func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 		Short:       "check configuration, credentials, and connectivity",
 		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireNoArgs("doctor", args); err != nil {
+				return err
+			}
+			if err := cmd.Context().Err(); err != nil {
+				return machineruntime.StatusConfigError(machine.OperationDoctor, err)
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,
@@ -76,11 +82,6 @@ func (a *App) runVersion(opts globalOptions, args []string) error {
 func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
 	if err := requireNoArgs("doctor", args); err != nil {
 		return err
-	}
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
-	default:
 	}
 	result, err := inspectRuntimeStatus(ctx, cfg, opts, machine.OperationDoctor)
 	if err != nil {
