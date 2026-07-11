@@ -13,9 +13,10 @@ The in-process candidate contract types live in `internal/machine`. Adapters may
 translate Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed internal boundary, not a 1.0 public API.
-Typed catalog discovery, sanitized doctor/auth/config status, and typed ZIA URL
-lookup are separate candidate engine families; the existing CLI commands adapt
-their results back to unchanged supported render shapes.
+Typed catalog discovery, sanitized doctor/auth/config status, ZIA URL lookup,
+dump, and local diff are separate candidate engine families; the existing CLI
+commands adapt their results back to unchanged supported render shapes and exit
+policies.
 Stdio-style adapters that need a small JSON transport convention can use
 `internal/machineio` to decode one bounded request, execute it, and encode the
 response without importing CLI rendering. `machineio.ExecuteJSON` rejects
@@ -129,7 +130,10 @@ NDJSON, table, or pretty output. Under that adapter, candidate
 reconstructs the existing response from them. Runtime dump collection uses the
 same candidate event lifecycle, while dump data remains a local artifact rather
 than a machine response envelope. Its typed engine operation emits `completed`
-only after the artifact writer returns successfully.
+only after the artifact writer returns successfully. Typed local diff uses the
+same lifecycle for deterministic resource progress, while its closed result
+contains only a recursively copied report admitted against the catalog and the
+input manifests' redaction mode.
 
 This remains valid for bounded resource reads and small operator workflows:
 the response is already projected, redacted, verified, and easy for scripts to
@@ -175,8 +179,8 @@ one-shot adapter for current resource reads and is reconstructed from the
 candidate stream. `machine.Event` deliberately rejects direct JSON
 serialization and deserialization; a future transport must define separate,
 versioned DTOs and schemas. No current CLI JSON, NDJSON, table, pretty, stderr
-error envelope, exit code, or dump behavior changes until a separate promotion
-explicitly changes the supported surface.
+error envelope, exit code, dump behavior, or diff behavior changes until a
+separate promotion explicitly changes the supported surface.
 
 Dump remains a separate artifact model unless a later design deliberately
 promotes a dump event schema into the machine contract. Its candidate typed

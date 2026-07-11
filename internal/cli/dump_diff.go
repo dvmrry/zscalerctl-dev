@@ -195,12 +195,15 @@ type diffOptions struct {
 	failOnDrift       bool
 }
 
-// runDiffWithOptions executes the diff logic after flags have been parsed into d.
-// All Compare/error-mapping/ModeStandard render/DriftDetectedError behaviour is
-// identical to the former inline runDiff; only flag parsing has moved to the
-// Cobra RunE. Config-FREE: diff compares two local dump dirs and never needs
-// LoadConfig.
-func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newDir string) error {
+// runDiffWithOptions resolves CLI shorthand, adapts the typed local diff
+// operation, and retains ModeStandard rendering plus DriftDetectedError policy
+// at the CLI layer. Diff is config-free.
+func (a *App) runDiffWithOptions(
+	ctx context.Context,
+	opts globalOptions,
+	d diffOptions,
+	oldDir, newDir string,
+) error {
 	catalog := a.resourceCatalog()
 	products, err := parseProducts(d.products, catalog)
 	if err != nil {
@@ -210,21 +213,12 @@ func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newD
 	if err != nil {
 		return err
 	}
-	report, err := dumpdiff.Compare(oldDir, newDir, dumpdiff.Options{
-		Catalog:           catalog,
-		Products:          products,
-		Resources:         diffResourceSelection(selectedResources),
-		IgnoreOperational: d.ignoreOperational,
-		AllowPartial:      d.allowPartial,
-	})
+	req := newDiffRequest(d, oldDir, newDir, products, selectedResources, catalog)
+	result, err := a.executeDiff(ctx, req, nil)
 	if err != nil {
-		if errors.Is(err, dumpdiff.ErrInvalidDump) ||
-			errors.Is(err, dumpdiff.ErrPartialDumpInput) ||
-			errors.Is(err, dumpdiff.ErrRedactionMismatch) {
-			return UsageError{Message: err.Error()}
-		}
-		return err
+		return cliErrorFromDiff(err, catalog)
 	}
+	report := result.Report()
 	// ModeStandard is always used for diff — independent of any configured
 	// redaction mode (diff compares local dump dirs, not live API data).
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
@@ -240,10 +234,73 @@ func (a *App) runDiffWithOptions(opts globalOptions, d diffOptions, oldDir, newD
 	default:
 		return rejectUnsupportedFormat("diff", opts.format)
 	}
-	if d.failOnDrift && report.HasDrift() {
+	if d.failOnDrift && result.HasDrift() {
 		return DriftDetectedError{}
 	}
 	return nil
+}
+
+func newDiffRequest(
+	d diffOptions,
+	oldDir, newDir string,
+	products map[resources.Product]bool,
+	selected map[dumpResourceKey]bool,
+	catalog resources.ResourceCatalog,
+) machine.DiffRequest {
+	req := machine.DiffRequest{
+		OldDir:            oldDir,
+		NewDir:            newDir,
+		IgnoreOperational: d.ignoreOperational,
+		AllowPartial:      d.allowPartial,
+	}
+	for _, product := range knownProducts(catalog) {
+		if products[product] {
+			req.Products = append(req.Products, string(product))
+		}
+	}
+	if selected != nil {
+		for _, spec := range catalog {
+			key := dumpResourceKey{product: spec.Product, name: spec.Name}
+			if selected[key] {
+				req.Resources = append(req.Resources, machine.DiffResourceSelector{
+					Product:  string(spec.Product),
+					Resource: spec.Name,
+				})
+			}
+		}
+	}
+	return req
+}
+
+func (a *App) executeDiff(
+	ctx context.Context,
+	req machine.DiffRequest,
+	observer machine.EventSink,
+) (machine.DiffResult, error) {
+	sink := observer
+	if sink == nil {
+		sink = func(machine.Event) error { return nil }
+	}
+	engine, err := machineruntime.NewEngine(machineruntime.Options{
+		Catalog: a.resourceCatalog(),
+	})
+	if err != nil {
+		return machine.DiffResult{}, err
+	}
+	return engine.Diff(ctx, req, sink)
+}
+
+func cliErrorFromDiff(err error, catalog resources.ResourceCatalog) error {
+	if err == nil {
+		return nil
+	}
+	if adapterErr, ok := machineruntime.LegacyDiffAdapterError(err); ok {
+		return UsageError{Message: adapterErr.Error()}
+	}
+	if machineErr, ok := asMachineError(err); ok && machineErr.Kind == machine.ErrorKindUsage {
+		return UsageError{Message: diffUsage(catalog)}
+	}
+	return err
 }
 
 func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) output.SafeText {
@@ -470,15 +527,4 @@ func catalogHasProduct(catalog resources.ResourceCatalog, product resources.Prod
 
 func resourceSupportsDump(spec resources.ResourceSpec) bool {
 	return spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show")
-}
-
-func diffResourceSelection(selected map[dumpResourceKey]bool) map[dumpdiff.ResourceKey]bool {
-	if selected == nil {
-		return nil
-	}
-	out := make(map[dumpdiff.ResourceKey]bool, len(selected))
-	for key := range selected {
-		out[dumpdiff.ResourceKey{Product: key.product, Name: key.name}] = true
-	}
-	return out
 }

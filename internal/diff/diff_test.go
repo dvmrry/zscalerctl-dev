@@ -1,10 +1,12 @@
 package diff
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -301,6 +303,315 @@ func TestCompareIgnoreOperationalSuppressesKeyedOperationalChanges(t *testing.T)
 	}
 }
 
+func TestCompareWrapperMatchesContextReportBytes(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":"same"}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":"changed"}]`}},
+	})
+
+	compat, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	contextReport, err := CompareContext(context.Background(), oldDir, newDir, Options{Catalog: catalog}, nil)
+	if err != nil {
+		t.Fatalf("CompareContext() error = %v", err)
+	}
+	compatBody, err := json.Marshal(compat)
+	if err != nil {
+		t.Fatalf("json.Marshal(Compare()) error = %v", err)
+	}
+	contextBody, err := json.Marshal(contextReport)
+	if err != nil {
+		t.Fatalf("json.Marshal(CompareContext()) error = %v", err)
+	}
+	if string(compatBody) != string(contextBody) {
+		t.Fatalf("Compare and CompareContext report bytes differ:\ncompat=%s\ncontext=%s", compatBody, contextBody)
+	}
+}
+
+func TestCompareRejectsUnknownTopLevelAndNestedFieldsWithoutLeakage(t *testing.T) {
+	const canary = "unknown-field-canary"
+	tests := []struct {
+		name    string
+		spec    resources.ResourceSpec
+		payload string
+	}{
+		{
+			name:    "top-level",
+			spec:    testKeyedSpec(),
+			payload: `[{"id":"1","name":"safe","` + canary + `":"must-not-render"}]`,
+		},
+		{
+			name:    "nested",
+			spec:    testNestedSpec(),
+			payload: `[{"id":"1","nested":{"allowed":"safe","` + canary + `":"must-not-render"}}]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := resources.ResourceCatalog{tt.spec}
+			oldDir := writeTestDump(t, catalog, dumpFixture{
+				entries: []dumpEntryFixture{{spec: tt.spec, payload: tt.payload}},
+			})
+			newDir := writeTestDump(t, catalog, dumpFixture{})
+
+			report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+			if !errors.Is(err, ErrInvalidDump) {
+				t.Fatalf("Compare() error = %v, want ErrInvalidDump", err)
+			}
+			if strings.Contains(err.Error(), canary) {
+				t.Fatalf("Compare() error = %q contains input canary", err)
+			}
+			body, marshalErr := json.Marshal(report)
+			if marshalErr != nil {
+				t.Fatalf("json.Marshal(error report) error = %v", marshalErr)
+			}
+			if strings.Contains(string(body), canary) {
+				t.Fatalf("error report = %s contains input canary", body)
+			}
+		})
+	}
+}
+
+func TestCompareRejectsSecretAndUnrenderableFields(t *testing.T) {
+	tests := []struct {
+		name string
+		spec resources.ResourceSpec
+		mode redact.Mode
+	}{
+		{name: "secret", spec: testSecretSpec(), mode: redact.ModeStandard},
+		{name: "unrenderable", spec: testUnrenderableSpec(), mode: redact.ModeShare},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := resources.ResourceCatalog{tt.spec}
+			payload := `[{"id":"1","token":"secret-field-canary"}]`
+			if tt.name == "unrenderable" {
+				payload = `[{"standardOnly":"mode-canary"}]`
+			}
+			oldDir := writeTestDump(t, catalog, dumpFixture{
+				redaction: tt.mode,
+				entries:   []dumpEntryFixture{{spec: tt.spec, payload: payload}},
+			})
+			newDir := writeTestDump(t, catalog, dumpFixture{redaction: tt.mode})
+
+			report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+			if !errors.Is(err, ErrInvalidDump) {
+				t.Fatalf("Compare() error = %v, want ErrInvalidDump", err)
+			}
+			for _, canary := range []string{"secret-field-canary", "mode-canary"} {
+				if strings.Contains(err.Error(), canary) {
+					t.Fatalf("Compare() error = %q contains input canary %q", err, canary)
+				}
+			}
+			body, marshalErr := json.Marshal(report)
+			if marshalErr != nil {
+				t.Fatalf("json.Marshal(error report) error = %v", marshalErr)
+			}
+			if strings.Contains(string(body), "secret-field-canary") || strings.Contains(string(body), "mode-canary") {
+				t.Fatalf("error report = %s contains input canary", body)
+			}
+		})
+	}
+}
+
+func TestCompareRejectsNonIdempotentRedactionWithoutLeakage(t *testing.T) {
+	const canary = "self-describing-secret-canary"
+	spec := testSelfDescribingSecretSpec()
+	catalog := resources.ResourceCatalog{spec}
+	payload := `[{"name":"Authorization: Bearer ` + canary + `"}]`
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: spec, payload: payload}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare() error = %v, want ErrInvalidDump", err)
+	}
+	if !strings.Contains(err.Error(), "non-idempotent") {
+		t.Fatalf("Compare() error = %v, want non-idempotent admission context", err)
+	}
+	if strings.Contains(err.Error(), canary) {
+		t.Fatalf("Compare() error = %q contains input canary", err)
+	}
+	body, marshalErr := json.Marshal(report)
+	if marshalErr != nil {
+		t.Fatalf("json.Marshal(error report) error = %v", marshalErr)
+	}
+	if strings.Contains(string(body), canary) {
+		t.Fatalf("error report = %s contains input canary", body)
+	}
+}
+
+func TestCompareRejectsDuplicateManifestResource(t *testing.T) {
+	spec := testKeyedSpec()
+	catalog := resources.ResourceCatalog{spec}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{
+			{spec: spec, payload: `[{"id":"1","name":"same"}]`},
+			{spec: spec, payload: `[{"id":"1","name":"same"}]`},
+		},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{})
+
+	_, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare() error = %v, want ErrInvalidDump", err)
+	}
+	if !strings.Contains(err.Error(), "more than once") {
+		t.Fatalf("Compare() error = %v, want duplicate-resource context", err)
+	}
+}
+
+func TestCompareContextPreCanceledContextWinsBeforeFilesystem(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	_, err := CompareContext(ctx, filepath.Join(t.TempDir(), "missing-old"), filepath.Join(t.TempDir(), "missing-new"), Options{
+		Catalog: resources.ResourceCatalog{testKeyedSpec()},
+	}, func(Progress) error {
+		called = true
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("CompareContext() error = %v, want context.Canceled", err)
+	}
+	if called {
+		t.Fatal("CompareContext() invoked progress callback for pre-canceled context")
+	}
+}
+
+func TestCompareContextProgressIsOrderedAndNilSafe(t *testing.T) {
+	aSpec := testProgressSpec("a-resource")
+	zSpec := testProgressSpec("z-resource")
+	catalog := resources.ResourceCatalog{zSpec, aSpec}
+	fixture := dumpFixture{entries: []dumpEntryFixture{
+		{spec: zSpec, payload: `[{"label":"z"}]`},
+		{spec: aSpec, payload: `[{"label":"a"}]`},
+	}}
+	oldDir := writeTestDump(t, catalog, fixture)
+	newDir := writeTestDump(t, catalog, fixture)
+
+	var got []Progress
+	if _, err := CompareContext(context.Background(), oldDir, newDir, Options{Catalog: catalog}, func(progress Progress) error {
+		got = append(got, progress)
+		return nil
+	}); err != nil {
+		t.Fatalf("CompareContext(progress) error = %v", err)
+	}
+	want := []Progress{
+		{Product: resources.ProductZIA, Resource: "a-resource", Done: 1, Total: 2},
+		{Product: resources.ProductZIA, Resource: "z-resource", Done: 2, Total: 2},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("progress = %#v, want %#v", got, want)
+	}
+	//lint:ignore SA1012 CompareContext deliberately accepts nil as a compatibility boundary.
+	if _, err := CompareContext(nil, oldDir, newDir, Options{Catalog: catalog}, nil); err != nil {
+		t.Fatalf("CompareContext(nil context, nil progress) error = %v", err)
+	}
+}
+
+func TestCompareContextProgressCallbackErrorIsReturnedUnchanged(t *testing.T) {
+	spec := testProgressSpec("only-resource")
+	catalog := resources.ResourceCatalog{spec}
+	fixture := dumpFixture{entries: []dumpEntryFixture{{spec: spec, payload: `[{"label":"same"}]`}}}
+	oldDir := writeTestDump(t, catalog, fixture)
+	newDir := writeTestDump(t, catalog, fixture)
+	want := errors.New("stop progress")
+
+	_, err := CompareContext(context.Background(), oldDir, newDir, Options{Catalog: catalog}, func(Progress) error {
+		return want
+	})
+	if err != want {
+		t.Fatalf("CompareContext() error = %v, want exact callback error %v", err, want)
+	}
+}
+
+func TestCloneReportRecursivelyCopiesReportValues(t *testing.T) {
+	source := Report{Resources: []ResourceDiff{{
+		Added: []RecordRef{{Record: map[string]any{
+			"nested": map[string]any{"items": []any{map[string]any{"value": "source"}}},
+			"labels": []string{"one"},
+		}}},
+		Changed: []RecordChange{{Changes: []FieldChange{{
+			Field: "nested",
+			Old:   map[string]any{"items": []any{map[string]any{"value": "old"}}},
+			New:   []any{map[string]any{"value": "new"}},
+		}}}},
+	}}}
+	clone := CloneReport(source)
+
+	source.Resources[0].Added[0].Record["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"] = "mutated-source"
+	source.Resources[0].Changed[0].Changes[0].Old.(map[string]any)["items"].([]any)[0].(map[string]any)["value"] = "mutated-old"
+	if got := clone.Resources[0].Added[0].Record["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"]; got != "source" {
+		t.Fatalf("clone changed after source mutation = %#v, want source", got)
+	}
+	if got := clone.Resources[0].Changed[0].Changes[0].Old.(map[string]any)["items"].([]any)[0].(map[string]any)["value"]; got != "old" {
+		t.Fatalf("clone field change changed after source mutation = %#v, want old", got)
+	}
+
+	clone.Resources[0].Added[0].Record["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"] = "mutated-clone"
+	clone.Resources[0].Changed[0].Changes[0].New.([]any)[0].(map[string]any)["value"] = "mutated-new"
+	if got := source.Resources[0].Added[0].Record["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"]; got != "mutated-source" {
+		t.Fatalf("source changed after clone mutation = %#v, want mutated-source", got)
+	}
+	if got := source.Resources[0].Changed[0].Changes[0].New.([]any)[0].(map[string]any)["value"]; got != "new" {
+		t.Fatalf("source field change changed after clone mutation = %#v, want new", got)
+	}
+}
+
+func TestCloneReportPreservesNilSlicesForJSONCompatibility(t *testing.T) {
+	t.Parallel()
+
+	source := Report{Schema: SchemaID}
+	clone := CloneReport(source)
+	if clone.Resources != nil {
+		t.Fatalf("CloneReport().Resources = %#v, want nil", clone.Resources)
+	}
+	body, err := json.Marshal(clone)
+	if err != nil {
+		t.Fatalf("json.Marshal(CloneReport()) error = %v", err)
+	}
+	if !strings.Contains(string(body), `"resources":null`) {
+		t.Fatalf("json.Marshal(CloneReport()) = %s, want resources:null", body)
+	}
+}
+
+func TestContextReaderStopsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reader := contextReader{ctx: ctx, reader: strings.NewReader("abcdef")}
+	buf := make([]byte, 3)
+	if n, err := reader.Read(buf); n != 3 || err != nil {
+		t.Fatalf("contextReader.Read() = %d, %v, want 3, nil", n, err)
+	}
+	cancel()
+	if _, err := reader.Read(buf); !errors.Is(err, context.Canceled) {
+		t.Fatalf("contextReader.Read() after cancellation error = %v, want context.Canceled", err)
+	}
+}
+
+func TestCompareContextRejectsUnsafeCatalogWithoutLeakingValues(t *testing.T) {
+	const canary = "catalog-canary"
+	invalid := testKeyedSpec()
+	invalid.Name = "rules/" + canary
+	_, err := CompareContext(context.Background(), filepath.Join(t.TempDir(), "old"), filepath.Join(t.TempDir(), "new"), Options{
+		Catalog: resources.ResourceCatalog{invalid},
+	}, nil)
+	if !errors.Is(err, ErrInvalidCatalog) {
+		t.Fatalf("CompareContext() error = %v, want ErrInvalidCatalog", err)
+	}
+	if strings.Contains(err.Error(), canary) {
+		t.Fatalf("CompareContext() error = %q contains catalog canary", err)
+	}
+}
+
 type dumpFixture struct {
 	redaction redact.Mode
 	status    string
@@ -440,9 +751,9 @@ func testKeyedSpec() resources.ResourceSpec {
 		Name:       "rules",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "id", Classification: resources.ClassOperational},
-			{Name: "name", Classification: resources.ClassTenantConfig},
-			{Name: "lastModifiedTime", Classification: resources.ClassOperational},
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
+			{Name: "lastModifiedTime", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
 		},
 	}
 }
@@ -452,9 +763,9 @@ func testSingletonSpec() resources.ResourceSpec {
 		Product:    resources.ProductZIA,
 		Name:       "advanced-settings",
 		Shape:      resources.ShapeSingleton,
-		Operations: resources.ShowOperation(),
+		Operations: resources.SingletonOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "enabled", Classification: resources.ClassTenantConfig},
+			{Name: "enabled", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
 		},
 	}
 }
@@ -465,9 +776,89 @@ func testIdentitylessSpec() resources.ResourceSpec {
 		Name:       "cloud-app-control",
 		Operations: resources.ListOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "name", Classification: resources.ClassTenantConfig},
-			{Name: "nested", Classification: resources.ClassTenantConfig},
-			{Name: "lastModifiedTime", Classification: resources.ClassOperational},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
+			{
+				Name:           "nested",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   testStandardShareModes(),
+				Fields: []resources.FieldSpec{
+					{Name: "a", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
+					{Name: "b", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
+				},
+			},
+			{Name: "lastModifiedTime", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
 		},
 	}
+}
+
+func testNestedSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "nested-rules",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
+			{
+				Name:           "nested",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   testStandardShareModes(),
+				Fields: []resources.FieldSpec{
+					{Name: "allowed", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
+				},
+			},
+		},
+	}
+}
+
+func testSecretSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "secret-rules",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
+			{Name: "token", Classification: resources.ClassSecret},
+		},
+	}
+}
+
+func testUnrenderableSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "unrenderable-rules",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "standardOnly", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}},
+		},
+	}
+}
+
+func testSelfDescribingSecretSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "self-describing-rules",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
+		},
+	}
+}
+
+func testProgressSpec(name string) resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       name,
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "label", Classification: resources.ClassTenantConfig, AllowedModes: testStandardShareModes()},
+		},
+	}
+}
+
+func testAllModes() []redact.Mode {
+	return []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
+}
+
+func testStandardShareModes() []redact.Mode {
+	return []redact.Mode{redact.ModeStandard, redact.ModeShare}
 }

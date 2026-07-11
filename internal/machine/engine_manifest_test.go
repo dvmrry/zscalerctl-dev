@@ -22,8 +22,8 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		t.Fatalf("EngineManifestFromCatalog version/read-only = %q/%t, want %q/true",
 			got.Version, got.TenantReadOnly, machine.EngineManifestVersion)
 	}
-	if len(got.Capabilities) != 6 {
-		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, URL lookup, resource read, and dump", got.Capabilities)
+	if len(got.Capabilities) != 7 {
+		t.Fatalf("EngineManifestFromCatalog capabilities = %#v, want manifest, catalog, status, URL lookup, resource read, dump, and diff", got.Capabilities)
 	}
 	manifestCapability := got.Capabilities[0]
 	if manifestCapability.Name != machine.CapabilityEngineManifest ||
@@ -121,6 +121,20 @@ func TestEngineManifestFromCatalogAdvertisesTypedCapabilities(t *testing.T) {
 		!reflect.DeepEqual(dumpCapability.Effects, wantDumpEffects) {
 		t.Fatalf("dump engine capability = %#v, want dump effects %#v", dumpCapability, wantDumpEffects)
 	}
+
+	diffCapability := got.Capabilities[6]
+	wantDiffEffects := []machine.EngineEffect{{
+		Kind: machine.EngineEffectLocalFilesystemRead,
+		When: machine.EngineEffectAlways,
+	}}
+	if diffCapability.Name != machine.CapabilityDiffCompare ||
+		!reflect.DeepEqual(diffCapability.Operations, []machine.Operation{machine.OperationDiff}) ||
+		diffCapability.Input != machine.EngineInputDiff ||
+		diffCapability.Result != machine.EngineResultDiffReport ||
+		!diffCapability.TenantReadOnly ||
+		!reflect.DeepEqual(diffCapability.Effects, wantDiffEffects) {
+		t.Fatalf("diff engine capability = %#v, want diff effects %#v", diffCapability, wantDiffEffects)
+	}
 }
 
 func TestEngineManifestSuppressesCatalogCapabilitiesForMutatingCatalog(t *testing.T) {
@@ -184,8 +198,8 @@ func TestEngineManifestAdvertisesOnlyExecutableResourceReadOperations(t *testing
 	}
 
 	got := machine.EngineManifestFromCatalog(catalog)
-	if len(got.Capabilities) != 6 {
-		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want fixed capabilities, resource read, and dump", got.Capabilities)
+	if len(got.Capabilities) != 7 {
+		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want fixed capabilities, resource read, dump, and diff", got.Capabilities)
 	}
 	want := []machine.Operation{machine.OperationList}
 	if !reflect.DeepEqual(got.Capabilities[4].Operations, want) {
@@ -205,6 +219,7 @@ func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 	first.Capabilities[3].Effects[0].Kind = machine.EngineEffectLocalFilesystemDelete
 	first.Capabilities[4].Operations[0] = machine.Operation("mutated")
 	first.Capabilities[5].Effects[0].Kind = machine.EngineEffectProcessExecution
+	first.Capabilities[6].Effects[0].Kind = machine.EngineEffectProcessExecution
 
 	second := machine.EngineManifestFromCatalog(catalog)
 	if second.Capabilities[0].Name != machine.CapabilityEngineManifest ||
@@ -212,7 +227,8 @@ func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 		second.Capabilities[2].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
 		second.Capabilities[3].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
 		second.Capabilities[4].Operations[0] != machine.OperationList ||
-		second.Capabilities[5].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead {
+		second.Capabilities[5].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead ||
+		second.Capabilities[6].Effects[0].Kind != machine.EngineEffectLocalFilesystemRead {
 		t.Fatalf("EngineManifestFromCatalog after caller mutation = %#v, want fresh manifest", second)
 	}
 }
@@ -244,8 +260,8 @@ func TestEngineManifestSuppressesUnexecutableDumpCapability(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			manifest := machine.EngineManifestFromCatalog(tt.catalog)
 			for _, capability := range manifest.Capabilities {
-				if capability.Name == machine.CapabilityDumpWrite {
-					t.Fatalf("EngineManifestFromCatalog(%s) advertised unexecutable dump: %#v", tt.name, capability)
+				if capability.Name == machine.CapabilityDumpWrite || capability.Name == machine.CapabilityDiffCompare {
+					t.Fatalf("EngineManifestFromCatalog(%s) advertised unexecutable snapshot capability: %#v", tt.name, capability)
 				}
 			}
 		})

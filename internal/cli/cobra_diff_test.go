@@ -53,8 +53,16 @@ func diffTestSpec() resources.ResourceSpec {
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "id", Classification: resources.ClassOperational},
-			{Name: "name", Classification: resources.ClassTenantConfig},
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
 		},
 	}
 }
@@ -107,6 +115,29 @@ func writeDiffDump(t *testing.T, fixture diffTestFixture) string {
 	return dir
 }
 
+func writeEmptyDiffDump(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	manifest := dump.Manifest{
+		Schema:      dump.ManifestSchemaID,
+		CollectedAt: "2026-01-01T00:00:00Z",
+		ToolVersion: "test",
+		Redaction:   string(redact.ModeStandard),
+		Warning:     "test fixture",
+		Status:      "complete",
+		Resources:   []dump.ManifestResource{},
+	}
+	body, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(empty manifest) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(empty manifest) error = %v", err)
+	}
+	return dir
+}
+
 // TestCobraDiff_NoDrift confirms that diffing two identical dumps exits 0 and
 // emits a report (with schema zscalerctl.diff.v1) with no drift.
 func TestCobraDiff_NoDrift(t *testing.T) {
@@ -140,6 +171,26 @@ func TestCobraDiff_NoDrift(t *testing.T) {
 	}
 	if report.Summary.RecordsChanged != 0 {
 		t.Errorf("records_changed = %d, want 0 (no drift)", report.Summary.RecordsChanged)
+	}
+}
+
+func TestCobraDiff_EmptyReportPreservesNullResources(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{diffTestSpec()}
+	oldDir := writeEmptyDiffDump(t)
+	newDir := writeEmptyDiffDump(t)
+	app, out, errBuf := newDiffApp(t, catalog, nil)
+
+	err := app.Run(context.Background(), []string{"--format", "json", "diff", oldDir, newDir})
+	if err != nil {
+		t.Fatalf("App.Run(diff, empty) error = %v, want nil", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(diff, empty) stderr = %q, want empty", errBuf.String())
+	}
+	if !strings.Contains(out.String(), `"resources": null`) {
+		t.Fatalf("App.Run(diff, empty) output = %s, want resources:null for v1 compatibility", out.String())
 	}
 }
 

@@ -24,6 +24,10 @@ const (
 	// CapabilityDumpWrite identifies sanitized tenant collection plus local
 	// dump-artifact writing.
 	CapabilityDumpWrite = "dump.write"
+
+	// CapabilityDiffCompare identifies local comparison of two admitted dump
+	// artifacts.
+	CapabilityDiffCompare = "diff.compare"
 )
 
 // EngineInputKind identifies one closed family of typed engine inputs.
@@ -35,6 +39,7 @@ const (
 	EngineInputStatus       EngineInputKind = "status"
 	EngineInputURLLookup    EngineInputKind = "url_lookup"
 	EngineInputDump         EngineInputKind = "dump"
+	EngineInputDiff         EngineInputKind = "diff"
 )
 
 // EngineResultKind identifies one closed family of safe engine results.
@@ -47,6 +52,7 @@ const (
 	EngineResultProjectedRecords   EngineResultKind = "projected_records"
 	EngineResultURLClassifications EngineResultKind = "url_classifications"
 	EngineResultDumpSummary        EngineResultKind = "dump_summary"
+	EngineResultDiffReport         EngineResultKind = "diff_report"
 )
 
 // EngineEffectKind identifies a possible observable engine effect.
@@ -231,6 +237,18 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 					When: EngineEffectConfigurationDependent,
 				},
 			},
+		})
+
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityDiffCompare,
+			Operations:     []Operation{OperationDiff},
+			Input:          EngineInputDiff,
+			Result:         EngineResultDiffReport,
+			TenantReadOnly: true,
+			Effects: []EngineEffect{{
+				Kind: EngineEffectLocalFilesystemRead,
+				When: EngineEffectAlways,
+			}},
 		})
 	}
 

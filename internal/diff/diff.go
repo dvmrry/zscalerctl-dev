@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -31,6 +32,7 @@ var (
 	ErrInvalidDump       = errors.New("invalid dump")
 	ErrPartialDumpInput  = errors.New("partial dump input")
 	ErrRedactionMismatch = errors.New("redaction mode mismatch")
+	ErrInvalidCatalog    = errors.New("invalid catalog")
 )
 
 type Options struct {
@@ -46,6 +48,15 @@ type ResourceKey struct {
 	Name    string
 }
 
+type Progress struct {
+	Product  resources.Product
+	Resource string
+	Done     int
+	Total    int
+}
+
+type ProgressFunc func(Progress) error
+
 type Report struct {
 	Schema    string         `json:"schema"`
 	Old       DumpRef        `json:"old"`
@@ -58,6 +69,125 @@ func (Report) OutputSafe() {}
 
 func (r Report) HasDrift() bool {
 	return r.Summary.RecordsAdded > 0 || r.Summary.RecordsRemoved > 0 || r.Summary.RecordsChanged > 0
+}
+
+// CloneReport returns a recursively independent copy of report. In particular,
+// values in field changes and records are copied rather than merely copying
+// the containing report structs.
+func CloneReport(report Report) Report {
+	out := report
+	if report.Resources != nil {
+		out.Resources = make([]ResourceDiff, len(report.Resources))
+		for i, resource := range report.Resources {
+			out.Resources[i] = cloneResourceDiff(resource)
+		}
+	}
+	return out
+}
+
+func cloneResourceDiff(resource ResourceDiff) ResourceDiff {
+	out := resource
+	out.Added = cloneRecordRefs(resource.Added)
+	out.Removed = cloneRecordRefs(resource.Removed)
+	if resource.Changed != nil {
+		out.Changed = make([]RecordChange, len(resource.Changed))
+		for i, change := range resource.Changed {
+			out.Changed[i] = change
+			if change.Changes != nil {
+				out.Changed[i].Changes = make([]FieldChange, len(change.Changes))
+				for j, fieldChange := range change.Changes {
+					out.Changed[i].Changes[j] = FieldChange{
+						Field: fieldChange.Field,
+						Old:   cloneReportAny(fieldChange.Old),
+						New:   cloneReportAny(fieldChange.New),
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func cloneRecordRefs(refs []RecordRef) []RecordRef {
+	if refs == nil {
+		return nil
+	}
+	out := make([]RecordRef, len(refs))
+	for i, ref := range refs {
+		out[i] = ref
+		out[i].Record = cloneReportMap(ref.Record)
+	}
+	return out
+}
+
+func cloneReportMap(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	out := make(map[string]any, len(value))
+	for key, item := range value {
+		out[key] = cloneReportAny(item)
+	}
+	return out
+}
+
+func cloneReportAny(value any) any {
+	if value == nil {
+		return nil
+	}
+	return cloneReportValue(reflect.ValueOf(value)).Interface()
+}
+
+func cloneReportValue(value reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return value
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		cloned := cloneReportValue(value.Elem())
+		out := reflect.New(value.Type()).Elem()
+		out.Set(cloned)
+		return out
+	case reflect.Map:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			key := cloneReportValue(iter.Key())
+			item := cloneReportValue(iter.Value())
+			out.SetMapIndex(key, item)
+		}
+		return out
+	case reflect.Slice:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for i := 0; i < value.Len(); i++ {
+			out.Index(i).Set(cloneReportValue(value.Index(i)))
+		}
+		return out
+	case reflect.Array:
+		out := reflect.New(value.Type()).Elem()
+		for i := 0; i < value.Len(); i++ {
+			out.Index(i).Set(cloneReportValue(value.Index(i)))
+		}
+		return out
+	case reflect.Pointer:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.New(value.Type().Elem())
+		out.Elem().Set(cloneReportValue(value.Elem()))
+		return out
+	default:
+		return value
+	}
 }
 
 type DumpRef struct {
@@ -124,16 +254,36 @@ type loadedResource struct {
 }
 
 func Compare(oldDir, newDir string, opts Options) (Report, error) {
+	return CompareContext(context.Background(), oldDir, newDir, opts, nil)
+}
+
+func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, progress ProgressFunc) (Report, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := checkContext(ctx); err != nil {
+		return Report{}, err
+	}
 	catalog := opts.Catalog
 	if len(catalog) == 0 {
 		catalog = resources.Catalog()
 	}
-	oldDump, err := loadDump(oldDir, catalog)
+	catalogSpecs, err := validateCatalog(catalog)
 	if err != nil {
 		return Report{}, err
 	}
-	newDump, err := loadDump(newDir, catalog)
+	if err := checkContext(ctx); err != nil {
+		return Report{}, err
+	}
+	oldDump, err := loadDump(ctx, oldDir, catalogSpecs)
 	if err != nil {
+		return Report{}, err
+	}
+	newDump, err := loadDump(ctx, newDir, catalogSpecs)
+	if err != nil {
+		return Report{}, err
+	}
+	if err := checkContext(ctx); err != nil {
 		return Report{}, err
 	}
 	if oldDump.manifest.Redaction != newDump.manifest.Redaction {
@@ -147,22 +297,45 @@ func Compare(oldDir, newDir string, opts Options) (Report, error) {
 			return Report{}, fmt.Errorf("%w: new dump %s is partial", ErrPartialDumpInput, newDir)
 		}
 	}
+	specs, err := selectedSpecs(ctx, catalog, opts)
+	if err != nil {
+		return Report{}, err
+	}
 
 	report := Report{
 		Schema: SchemaID,
 		Old:    oldDump.ref,
 		New:    newDump.ref,
 	}
-	for _, spec := range selectedSpecs(catalog, opts) {
+	for i, spec := range specs {
+		if err := checkContext(ctx); err != nil {
+			return Report{}, err
+		}
 		key := ResourceKey{Product: spec.Product, Name: spec.Name}
 		oldRes := oldDump.resources[key]
 		newRes := newDump.resources[key]
-		if len(oldRes.records) == 0 && len(newRes.records) == 0 {
-			continue
+		if progress != nil {
+			if err := checkContext(ctx); err != nil {
+				return Report{}, err
+			}
+			if err := progress(Progress{
+				Product:  spec.Product,
+				Resource: spec.Name,
+				Done:     i + 1,
+				Total:    len(specs),
+			}); err != nil {
+				return Report{}, err
+			}
+			if err := checkContext(ctx); err != nil {
+				return Report{}, err
+			}
 		}
-		resourceDiff, err := compareResource(spec, oldRes.records, newRes.records, opts.IgnoreOperational)
+		resourceDiff, err := compareResource(ctx, spec, oldRes.records, newRes.records, opts.IgnoreOperational)
 		if err != nil {
 			return Report{}, err
+		}
+		if len(oldRes.records) == 0 && len(newRes.records) == 0 {
+			continue
 		}
 		report.Summary.ResourcesCompared++
 		if resourceDiff.HasDrift() {
@@ -176,9 +349,133 @@ func Compare(oldDir, newDir string, opts Options) (Report, error) {
 	return report, nil
 }
 
-func selectedSpecs(catalog resources.ResourceCatalog, opts Options) []resources.ResourceSpec {
+type catalogValidationError struct {
+	cause error
+}
+
+func (e catalogValidationError) Error() string {
+	return ErrInvalidCatalog.Error()
+}
+
+func (e catalogValidationError) Unwrap() error {
+	return e.cause
+}
+
+func invalidCatalogError(cause error) error {
+	if cause == nil {
+		cause = ErrInvalidCatalog
+	} else {
+		cause = errors.Join(ErrInvalidCatalog, cause)
+	}
+	return catalogValidationError{cause: cause}
+}
+
+func validateCatalog(catalog resources.ResourceCatalog) (map[ResourceKey]resources.ResourceSpec, error) {
+	for _, spec := range catalog {
+		if err := spec.Validate(); err != nil {
+			return nil, invalidCatalogError(resources.ErrInvalidResourceSpec)
+		}
+	}
+	if err := resources.AssertReadOnly(catalog...); err != nil {
+		return nil, invalidCatalogError(resources.ErrMutatingOperation)
+	}
+
+	index := make(map[ResourceKey]resources.ResourceSpec, len(catalog))
+	for _, spec := range catalog {
+		key := ResourceKey{Product: spec.Product, Name: spec.Name}
+		if _, exists := index[key]; exists {
+			return nil, invalidCatalogError(nil)
+		}
+		index[key] = spec
+	}
+	return index, nil
+}
+
+func admitRecords(ctx context.Context, spec resources.ResourceSpec, mode redact.Mode, records []map[string]any) ([]map[string]any, error) {
+	ctx = normalizedContext(ctx)
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	verified, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(spec, mode, records)
+	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, invalidAdmissionError(spec, false)
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+
+	verifiedRecords := verified.Records()
+	admitted := make([]map[string]any, len(verifiedRecords))
+	for i := range verifiedRecords {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
+		fields := verifiedRecords[i].Fields()
+		projected, _, err := resources.ProjectRecordAndVerify(spec, mode, resources.NewSourceRecord(fields))
+		if err != nil {
+			if ctxErr := checkContext(ctx); ctxErr != nil {
+				return nil, ctxErr
+			}
+			return nil, invalidAdmissionError(spec, false)
+		}
+		projectedFields := projected.Fields()
+		if !reflect.DeepEqual(projectedFields, fields) {
+			return nil, invalidAdmissionError(spec, true)
+		}
+		admitted[i] = projectedFields
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	return admitted, nil
+}
+
+func invalidAdmissionError(spec resources.ResourceSpec, nonIdempotent bool) error {
+	if nonIdempotent {
+		return fmt.Errorf("%w: resource %s/%s contains a non-idempotent record", ErrInvalidDump, spec.Product, spec.Name)
+	}
+	return fmt.Errorf("%w: resource %s/%s contains a field or value that is not admitted", ErrInvalidDump, spec.Product, spec.Name)
+}
+
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
+}
+
+func normalizedContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := checkContext(r.ctx); err != nil {
+		return 0, err
+	}
+	n, err := r.reader.Read(p)
+	if ctxErr := checkContext(r.ctx); ctxErr != nil {
+		return n, ctxErr
+	}
+	return n, err
+}
+
+func selectedSpecs(ctx context.Context, catalog resources.ResourceCatalog, opts Options) ([]resources.ResourceSpec, error) {
 	specs := make([]resources.ResourceSpec, 0, len(catalog))
 	for _, spec := range catalog {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		if len(opts.Products) > 0 && !opts.Products[spec.Product] {
 			continue
 		}
@@ -190,47 +487,76 @@ func selectedSpecs(catalog resources.ResourceCatalog, opts Options) []resources.
 		}
 		specs = append(specs, spec)
 	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	sort.Slice(specs, func(i, j int) bool {
 		if specs[i].Product != specs[j].Product {
 			return specs[i].Product < specs[j].Product
 		}
 		return specs[i].Name < specs[j].Name
 	})
-	return specs
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	return specs, nil
 }
 
-func loadDump(dir string, catalog resources.ResourceCatalog) (loadedDump, error) {
+func loadDump(ctx context.Context, dir string, catalog map[ResourceKey]resources.ResourceSpec) (loadedDump, error) {
+	ctx = normalizedContext(ctx)
+	if err := checkContext(ctx); err != nil {
+		return loadedDump{}, err
+	}
 	info, err := os.Stat(dir)
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return loadedDump{}, ctxErr
+	}
 	if err != nil {
 		return loadedDump{}, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, dir, err)
 	}
 	if !info.IsDir() {
 		return loadedDump{}, fmt.Errorf("%w: %s is not a directory", ErrInvalidDump, dir)
 	}
+	if err := checkContext(ctx); err != nil {
+		return loadedDump{}, err
+	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return loadedDump{}, ctxErr
+		}
 		return loadedDump{}, fmt.Errorf("%w: open %s: %v", ErrInvalidDump, dir, err)
 	}
 	defer root.Close()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return loadedDump{}, ctxErr
+	}
 
-	body, err := readRootFile(root, "manifest.json", fmt.Sprintf("manifest for %s", dir), maxManifestBytes)
+	body, err := readRootFile(ctx, root, "manifest.json", fmt.Sprintf("manifest for %s", dir), maxManifestBytes)
 	if err != nil {
 		return loadedDump{}, err
 	}
 	var manifest dump.Manifest
 	if err := json.Unmarshal(body, &manifest); err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return loadedDump{}, ctxErr
+		}
 		return loadedDump{}, fmt.Errorf("%w: parse manifest for %s: %v", ErrInvalidDump, dir, err)
 	}
-	if manifest.Schema != dump.ManifestSchemaID {
-		return loadedDump{}, fmt.Errorf("%w: unsupported manifest schema %q (want %s; see docs/schema/manifest.schema.json)", ErrInvalidDump, manifest.Schema, dump.ManifestSchemaID)
+	if err := checkContext(ctx); err != nil {
+		return loadedDump{}, err
 	}
-	if _, err := redact.ParseMode(manifest.Redaction); err != nil {
-		return loadedDump{}, fmt.Errorf("%w: invalid redaction mode %q", ErrInvalidDump, manifest.Redaction)
+	if manifest.Schema != dump.ManifestSchemaID {
+		return loadedDump{}, fmt.Errorf("%w: unsupported manifest schema (want %s; see docs/schema/manifest.schema.json)", ErrInvalidDump, dump.ManifestSchemaID)
+	}
+	mode, err := redact.ParseMode(manifest.Redaction)
+	if err != nil {
+		return loadedDump{}, fmt.Errorf("%w: invalid redaction mode", ErrInvalidDump)
 	}
 	switch manifest.Status {
 	case "complete", "partial":
 	default:
-		return loadedDump{}, fmt.Errorf("%w: invalid manifest status %q (want complete or partial)", ErrInvalidDump, manifest.Status)
+		return loadedDump{}, fmt.Errorf("%w: invalid manifest status (want complete or partial)", ErrInvalidDump)
 	}
 	loaded := loadedDump{
 		ref: DumpRef{
@@ -243,73 +569,111 @@ func loadDump(dir string, catalog resources.ResourceCatalog) (loadedDump, error)
 		manifest:  manifest,
 		resources: make(map[ResourceKey]loadedResource),
 	}
+	seen := make(map[ResourceKey]struct{}, len(manifest.Resources))
 	for _, mr := range manifest.Resources {
-		key := ResourceKey{Product: resources.Product(mr.Product), Name: mr.Name}
-		_, ok := catalog.FindSpec(key.Product, key.Name)
-		if !ok {
-			return loadedDump{}, fmt.Errorf("%w: manifest references unknown resource %s/%s", ErrInvalidDump, mr.Product, mr.Name)
+		if err := checkContext(ctx); err != nil {
+			return loadedDump{}, err
 		}
+		key := ResourceKey{Product: resources.Product(mr.Product), Name: mr.Name}
+		spec, ok := catalog[key]
+		if !ok {
+			return loadedDump{}, fmt.Errorf("%w: manifest references an unknown resource", ErrInvalidDump)
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return loadedDump{}, fmt.Errorf("%w: resource %s/%s appears more than once in manifest", ErrInvalidDump, spec.Product, spec.Name)
+		}
+		seen[key] = struct{}{}
 		switch mr.Status {
 		case "ok":
 			if strings.TrimSpace(mr.Path) == "" {
-				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, mr.Product, mr.Name)
+				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, spec.Product, spec.Name)
 			}
-			records, err := readResource(root, mr)
+			records, err := readResource(ctx, root, mr, spec, mode)
 			if err != nil {
 				return loadedDump{}, err
 			}
 			if len(records) != mr.Records {
-				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest records=%d file records=%d", ErrInvalidDump, mr.Product, mr.Name, mr.Records, len(records))
+				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
 			}
 			loaded.resources[key] = loadedResource{manifest: mr, records: records}
 		case "error":
 			loaded.ref.Partial = true
 		default:
-			return loadedDump{}, fmt.Errorf("%w: resource %s/%s has invalid status %q", ErrInvalidDump, mr.Product, mr.Name, mr.Status)
+			return loadedDump{}, fmt.Errorf("%w: resource %s/%s has invalid status (want ok or error)", ErrInvalidDump, spec.Product, spec.Name)
 		}
 	}
 	return loaded, nil
 }
 
-func readResource(root *os.Root, mr dump.ManifestResource) ([]map[string]any, error) {
+func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, spec resources.ResourceSpec, mode redact.Mode) ([]map[string]any, error) {
+	ctx = normalizedContext(ctx)
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	path := filepath.Clean(filepath.FromSlash(mr.Path))
 	if !filepath.IsLocal(path) {
-		return nil, fmt.Errorf("%w: resource %s/%s has unsafe path %q", ErrInvalidDump, mr.Product, mr.Name, mr.Path)
+		return nil, fmt.Errorf("%w: resource %s/%s has unsafe path", ErrInvalidDump, spec.Product, spec.Name)
 	}
-	body, err := readRootFile(root, path, fmt.Sprintf("resource %s/%s", mr.Product, mr.Name), maxResourceBytes)
+	body, err := readRootFile(ctx, root, path, fmt.Sprintf("resource %s/%s", spec.Product, spec.Name), maxResourceBytes)
 	if err != nil {
 		return nil, err
 	}
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("%w: parse resource %s/%s: %v", ErrInvalidDump, mr.Product, mr.Name, err)
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("%w: parse resource %s/%s: %v", ErrInvalidDump, spec.Product, spec.Name, err)
 	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	var records []map[string]any
 	switch value := raw.(type) {
 	case []any:
-		records := make([]map[string]any, 0, len(value))
-		for i, item := range value {
+		records = make([]map[string]any, 0, len(value))
+		for _, item := range value {
+			if err := checkContext(ctx); err != nil {
+				return nil, err
+			}
 			record, ok := item.(map[string]any)
 			if !ok {
-				return nil, fmt.Errorf("%w: resource %s/%s record %d is not an object", ErrInvalidDump, mr.Product, mr.Name, i)
+				return nil, fmt.Errorf("%w: resource %s/%s contains a non-object record", ErrInvalidDump, spec.Product, spec.Name)
 			}
 			records = append(records, record)
 		}
-		return records, nil
 	case map[string]any:
-		return []map[string]any{value}, nil
+		records = []map[string]any{value}
 	default:
-		return nil, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, mr.Product, mr.Name)
+		return nil, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
 	}
+	return admitRecords(ctx, spec, mode, records)
 }
 
-func readRootFile(root *os.Root, name, label string, maxBytes int64) ([]byte, error) {
+func readRootFile(ctx context.Context, root *os.Root, name, label string, maxBytes int64) ([]byte, error) {
+	ctx = normalizedContext(ctx)
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	file, err := root.Open(name)
 	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
 	}
 	defer file.Close()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
 
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	info, err := file.Stat()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, label, err)
 	}
@@ -319,9 +683,18 @@ func readRootFile(root *os.Root, name, label string, maxBytes int64) ([]byte, er
 	if info.Size() > maxBytes {
 		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
 	}
-	body, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	body, err := io.ReadAll(io.LimitReader(contextReader{ctx: ctx, reader: file}, maxBytes+1))
 	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
 	}
 	if int64(len(body)) > maxBytes {
 		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
@@ -329,7 +702,10 @@ func readRootFile(root *os.Root, name, label string, maxBytes int64) ([]byte, er
 	return body, nil
 }
 
-func compareResource(spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool) (ResourceDiff, error) {
+func compareResource(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool) (ResourceDiff, error) {
+	if err := checkContext(ctx); err != nil {
+		return ResourceDiff{}, err
+	}
 	out := ResourceDiff{
 		Product:  string(spec.Product),
 		Resource: spec.Name,
@@ -340,28 +716,50 @@ func compareResource(spec resources.ResourceSpec, oldRecords, newRecords []map[s
 	switch {
 	case spec.EffectiveShape() == resources.ShapeSingleton:
 		out.Identity = Identity{Mode: "singleton"}
-		return compareSingleton(spec, oldRecords, newRecords, ignoreOperational, out)
+		return compareSingleton(ctx, spec, oldRecords, newRecords, ignoreOperational, out)
 	case spec.EffectiveGetKey() != "":
 		out.Identity = Identity{Mode: "get_key", Field: spec.EffectiveGetKey()}
-		return compareKeyed(spec, oldRecords, newRecords, ignoreOperational, out)
+		return compareKeyed(ctx, spec, oldRecords, newRecords, ignoreOperational, out)
 	default:
 		out.Identity = Identity{Mode: "content_hash"}
 		out.Note = "identity unavailable; compared by canonical content hash"
-		return compareContentHash(spec, oldRecords, newRecords, out)
+		return compareContentHash(ctx, spec, oldRecords, newRecords, out)
 	}
 }
 
-func compareSingleton(spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool, out ResourceDiff) (ResourceDiff, error) {
+func compareSingleton(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool, out ResourceDiff) (ResourceDiff, error) {
+	if err := checkContext(ctx); err != nil {
+		return out, err
+	}
 	if len(oldRecords) > 1 || len(newRecords) > 1 {
 		return out, fmt.Errorf("%w: singleton resource %s/%s has multiple records", ErrInvalidDump, spec.Product, spec.Name)
 	}
 	switch {
 	case len(oldRecords) == 0 && len(newRecords) == 1:
-		out.Added = append(out.Added, RecordRef{Key: "singleton", Record: filterRecord(spec, newRecords[0], ignoreOperational)})
+		record, err := filterRecordContext(ctx, spec, newRecords[0], ignoreOperational)
+		if err != nil {
+			return out, err
+		}
+		out.Added = append(out.Added, RecordRef{Key: "singleton", Record: record})
 	case len(oldRecords) == 1 && len(newRecords) == 0:
-		out.Removed = append(out.Removed, RecordRef{Key: "singleton", Record: filterRecord(spec, oldRecords[0], ignoreOperational)})
+		record, err := filterRecordContext(ctx, spec, oldRecords[0], ignoreOperational)
+		if err != nil {
+			return out, err
+		}
+		out.Removed = append(out.Removed, RecordRef{Key: "singleton", Record: record})
 	case len(oldRecords) == 1 && len(newRecords) == 1:
-		changes := diffFields(filterRecord(spec, oldRecords[0], ignoreOperational), filterRecord(spec, newRecords[0], ignoreOperational))
+		oldRecord, err := filterRecordContext(ctx, spec, oldRecords[0], ignoreOperational)
+		if err != nil {
+			return out, err
+		}
+		newRecord, err := filterRecordContext(ctx, spec, newRecords[0], ignoreOperational)
+		if err != nil {
+			return out, err
+		}
+		changes, err := diffFieldsContext(ctx, oldRecord, newRecord)
+		if err != nil {
+			return out, err
+		}
 		if len(changes) > 0 {
 			out.Changed = append(out.Changed, RecordChange{Key: "singleton", Changes: changes})
 		}
@@ -369,17 +767,23 @@ func compareSingleton(spec resources.ResourceSpec, oldRecords, newRecords []map[
 	return out, nil
 }
 
-func compareKeyed(spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool, out ResourceDiff) (ResourceDiff, error) {
+func compareKeyed(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool, out ResourceDiff) (ResourceDiff, error) {
+	if err := checkContext(ctx); err != nil {
+		return out, err
+	}
 	keyField := spec.EffectiveGetKey()
-	oldByKey, err := keyedRecords(spec, keyField, oldRecords, ignoreOperational)
+	oldByKey, err := keyedRecords(ctx, spec, keyField, oldRecords, ignoreOperational)
 	if err != nil {
 		return out, err
 	}
-	newByKey, err := keyedRecords(spec, keyField, newRecords, ignoreOperational)
+	newByKey, err := keyedRecords(ctx, spec, keyField, newRecords, ignoreOperational)
 	if err != nil {
 		return out, err
 	}
 	for _, key := range sortedKeys(oldByKey, newByKey) {
+		if err := checkContext(ctx); err != nil {
+			return out, err
+		}
 		oldRecord, oldOK := oldByKey[key]
 		newRecord, newOK := newByKey[key]
 		switch {
@@ -388,7 +792,10 @@ func compareKeyed(spec resources.ResourceSpec, oldRecords, newRecords []map[stri
 		case !newOK:
 			out.Removed = append(out.Removed, RecordRef{Key: key, Record: oldRecord})
 		default:
-			changes := diffFields(oldRecord, newRecord)
+			changes, err := diffFieldsContext(ctx, oldRecord, newRecord)
+			if err != nil {
+				return out, err
+			}
 			if len(changes) > 0 {
 				out.Changed = append(out.Changed, RecordChange{Key: key, Changes: changes})
 			}
@@ -397,9 +804,12 @@ func compareKeyed(spec resources.ResourceSpec, oldRecords, newRecords []map[stri
 	return out, nil
 }
 
-func keyedRecords(spec resources.ResourceSpec, keyField string, records []map[string]any, ignoreOperational bool) (map[string]map[string]any, error) {
+func keyedRecords(ctx context.Context, spec resources.ResourceSpec, keyField string, records []map[string]any, ignoreOperational bool) (map[string]map[string]any, error) {
 	out := make(map[string]map[string]any, len(records))
 	for i, record := range records {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		raw, ok := record[keyField]
 		if !ok || raw == nil {
 			return nil, fmt.Errorf("%w: resource %s/%s record %d missing identity field %q", ErrInvalidDump, spec.Product, spec.Name, i, keyField)
@@ -411,7 +821,11 @@ func keyedRecords(spec resources.ResourceSpec, keyField string, records []map[st
 		if _, exists := out[key]; exists {
 			return nil, fmt.Errorf("%w: resource %s/%s has duplicate identity %q", ErrInvalidDump, spec.Product, spec.Name, key)
 		}
-		out[key] = filterRecord(spec, record, ignoreOperational)
+		filtered, err := filterRecordContext(ctx, spec, record, ignoreOperational)
+		if err != nil {
+			return nil, err
+		}
+		out[key] = filtered
 	}
 	return out, nil
 }
@@ -429,25 +843,37 @@ func identityString(value any) string {
 	}
 }
 
-func compareContentHash(spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, out ResourceDiff) (ResourceDiff, error) {
-	oldByHash, err := hashedRecords(spec, oldRecords)
+func compareContentHash(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, out ResourceDiff) (ResourceDiff, error) {
+	if err := checkContext(ctx); err != nil {
+		return out, err
+	}
+	oldByHash, err := hashedRecords(ctx, spec, oldRecords)
 	if err != nil {
 		return out, err
 	}
-	newByHash, err := hashedRecords(spec, newRecords)
+	newByHash, err := hashedRecords(ctx, spec, newRecords)
 	if err != nil {
 		return out, err
 	}
 	for _, hash := range sortedHashKeys(oldByHash, newByHash) {
+		if err := checkContext(ctx); err != nil {
+			return out, err
+		}
 		oldBucket := oldByHash[hash]
 		newBucket := newByHash[hash]
 		switch {
 		case len(oldBucket) > len(newBucket):
 			for _, record := range oldBucket[len(newBucket):] {
+				if err := checkContext(ctx); err != nil {
+					return out, err
+				}
 				out.Removed = append(out.Removed, RecordRef{Hash: hash, Record: record})
 			}
 		case len(newBucket) > len(oldBucket):
 			for _, record := range newBucket[len(oldBucket):] {
+				if err := checkContext(ctx); err != nil {
+					return out, err
+				}
 				out.Added = append(out.Added, RecordRef{Hash: hash, Record: record})
 			}
 		}
@@ -457,12 +883,21 @@ func compareContentHash(spec resources.ResourceSpec, oldRecords, newRecords []ma
 	return out, nil
 }
 
-func hashedRecords(spec resources.ResourceSpec, records []map[string]any) (map[string][]map[string]any, error) {
+func hashedRecords(ctx context.Context, spec resources.ResourceSpec, records []map[string]any) (map[string][]map[string]any, error) {
 	out := make(map[string][]map[string]any, len(records))
 	for _, record := range records {
-		filtered := filterRecord(spec, record, true)
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
+		filtered, err := filterRecordContext(ctx, spec, record, true)
+		if err != nil {
+			return nil, err
+		}
 		hash, err := recordHash(filtered)
 		if err != nil {
+			return nil, err
+		}
+		if err := checkContext(ctx); err != nil {
 			return nil, err
 		}
 		out[hash] = append(out[hash], filtered)
@@ -479,16 +914,25 @@ func recordHash(record map[string]any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func filterRecord(spec resources.ResourceSpec, record map[string]any, ignoreOperational bool) map[string]any {
+func filterRecordContext(ctx context.Context, spec resources.ResourceSpec, record map[string]any, ignoreOperational bool) (map[string]any, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	out := make(map[string]any, len(record))
 	classes := fieldClasses(spec)
 	for key, value := range record {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		if ignoreOperational && classes[key] == resources.ClassOperational {
 			continue
 		}
 		out[key] = canonicalValue(value)
 	}
-	return out
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func fieldClasses(spec resources.ResourceSpec) map[string]resources.FieldClassification {
@@ -529,14 +973,23 @@ func normalizeFloat(value float64) any {
 	return value
 }
 
-func diffFields(oldRecord, newRecord map[string]any) []FieldChange {
+func diffFieldsContext(ctx context.Context, oldRecord, newRecord map[string]any) ([]FieldChange, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	var fields []string
 	seen := map[string]bool{}
 	for key := range oldRecord {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		seen[key] = true
 		fields = append(fields, key)
 	}
 	for key := range newRecord {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		if !seen[key] {
 			fields = append(fields, key)
 		}
@@ -544,6 +997,9 @@ func diffFields(oldRecord, newRecord map[string]any) []FieldChange {
 	sort.Strings(fields)
 	changes := make([]FieldChange, 0)
 	for _, field := range fields {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
 		oldValue, oldOK := oldRecord[field]
 		newValue, newOK := newRecord[field]
 		if !oldOK {
@@ -556,7 +1012,7 @@ func diffFields(oldRecord, newRecord map[string]any) []FieldChange {
 			changes = append(changes, FieldChange{Field: field, Old: oldValue, New: newValue})
 		}
 	}
-	return changes
+	return changes, nil
 }
 
 func sortedKeys(a, b map[string]map[string]any) []string {

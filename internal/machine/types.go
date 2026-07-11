@@ -20,6 +20,7 @@ const (
 	OperationConfigStatus Operation = "config_status"
 	OperationLookup       Operation = "lookup"
 	OperationDump         Operation = "dump"
+	OperationDiff         Operation = "diff"
 )
 
 // Request is the typed in-process input envelope for a future machine

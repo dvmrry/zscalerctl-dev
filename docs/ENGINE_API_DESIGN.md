@@ -89,6 +89,7 @@ DiscoverCatalog(ctx, machine.CatalogRequest) (machine.CatalogResult, error)
 InspectStatus(ctx, machine.StatusRequest) (machine.StatusResult, error)
 LookupURL(ctx, machine.URLLookupRequest) (machine.URLLookupResult, error)
 Dump(ctx, machine.DumpRequest, machine.EventSink) (machine.DumpResult, error)
+Diff(ctx, machine.DiffRequest, machine.EventSink) (machine.DiffResult, error)
 Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
@@ -128,6 +129,15 @@ contains only counts, effective redaction mode, and defensively copied
 value-free resource failures; it never contains records, the output path,
 config, SDK values, or backend errors. Cobra keeps flag parsing, status prose,
 partial-dump exit policy, and terminal presentation as adapter behavior.
+
+Typed diff is config-free and validates two local paths plus exact
+catalog-backed selectors before filesystem access. Existing dump JSON is
+treated as untrusted input: every record must be a valid rendered subset for
+its catalog spec and recorded redaction mode, and re-projection/redaction must
+be idempotent before a value can enter the report. Comparison remains
+context-aware and emits deterministic per-resource progress. `DiffResult` owns
+a recursively copied admitted report; Cobra keeps shorthand parsing, human
+detail rendering, `--output`, and `--fail-on-drift` exit 7 as adapter policy.
 
 `ExecuteStream` is the semantic path. Both typed `Read` and compatibility
 `Execute` consume it, so the CLI and interactive adapters cannot acquire

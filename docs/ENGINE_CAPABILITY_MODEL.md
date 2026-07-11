@@ -39,11 +39,13 @@ capabilities. It does not define a public Go API, CLI surface, or wire protocol.
 | `zia.url_lookup` | `lookup` | URL lookup | sanitized URL classifications | configuration-dependent local read; network access; configuration-dependent process execution |
 | `resources.read` | catalog-derived union of `list`, `get`, `show` | resource read | projected records | configuration-dependent local read; network access; configuration-dependent process execution |
 | `dump.write` | `dump` | dump | value-free dump summary | local filesystem read and write; request-dependent local delete; network access; configuration-dependent process execution |
+| `diff.compare` | `diff` | diff | admitted diff report | local filesystem read |
 
 All capabilities are tenant-read-only. `dump.write` has explicit local read,
-write, and request-dependent delete effects; tenant read-only does not hide
-local mutation. Config initialization remains a later capability and must
-declare its own effects before admission.
+write, and request-dependent delete effects, while `diff.compare` has an
+always-possible local read; tenant read-only does not hide local effects.
+Config initialization remains a later capability and must declare its own
+effects before admission.
 
 `engine.manifest` and `catalog.schema` are derived from the static resource
 catalog. Calling either does not load config, resolve a provider, construct an
@@ -95,6 +97,17 @@ owner-only permissions, exclusive file creation, same-directory temporary-file
 fsync and rename finalization, and writes the ownership manifest last. `completed` means
 the full artifact exists, while failed/canceled writes never emit completion.
 
+`diff.compare` is advertised under the same valid, duplicate-free,
+tenant-read-only catalog condition as dump. It loads no config, provider, SDK
+reader, or tenant connection. Requests carry two local dump directories plus
+canonical product and exact product/resource selectors. The engine validates
+and copies the selection before filesystem access; comparison then admits every
+local record against the exact catalog spec and manifest redaction mode.
+Unknown, secret, unrenderable, or non-idempotently redacted values fail closed
+instead of entering a report. Progress is synchronous and deterministic, and
+the closed result owns a recursively copied report. CLI detail rendering and
+drift exit policy remain outside the capability.
+
 ## Trust and copying boundaries
 
 The engine produces projected and redacted records through the trusted browser
@@ -132,6 +145,13 @@ projected records, dump writer state, config, credentials, SDK values, or raw
 errors. Record events remain projected/redacted values governed by the shared
 event boundary; dump artifacts remain confidential tenant inventory on disk.
 
+`DiffResult` owns a recursively copied admitted `diff.Report` and returns a
+fresh deep copy to each caller. `DiffRequest` and `DiffResult` reject direct
+JSON. Input paths and report path labels are caller-selected local values;
+dump-record values cross only after catalog subset verification and idempotent
+re-projection/redaction. Raw file, parser, or callback errors cannot enter the
+typed result or terminal event.
+
 The projected-value domain is intentionally narrower than arbitrary Go values:
 method-free built-in primitive scalars, valid `json.Number` values, finite
 numbers, supported method-free scalar sequences, and the catalog-modeled
@@ -153,6 +173,7 @@ This checkpoint deliberately leaves these supported surfaces unchanged:
 - `zia url-lookup` JSON, table, pretty, usage, and unsupported-format behavior
 - dump directory schemas/bytes, status prose, partial-dump exit 6, and force
   safety behavior
+- diff report schema/bytes, detail rendering, and drift exit 7
 - CLI stderr error envelopes and exit-code mapping
 - `introspect` v1/v2 schemas and goldens
 - `machineio` request/response transport behavior, except that strict decoding
@@ -165,11 +186,13 @@ consumers use the typed `Read` method. The existing `schema list`, `doctor`,
 back to their unchanged supported render shapes. `zia url-lookup` adapts the
 typed URL result into its existing output DTO. `dump` adapts the typed summary
 and events into its existing spinner, diagnostics, local artifact, and partial
-exit behavior. No `engine.v1` CLI command or JSON schema is introduced by this
-checkpoint.
+exit behavior. `diff` adapts the typed admitted report into its existing
+JSON/table/detail rendering and drift exit policy. No `engine.v1` CLI command
+or JSON schema is introduced by this checkpoint.
 
 ## Next extensions
 
-Diff gets its own typed request/result family and engine-manifest entry in the
-next reviewable slice. Wire DTO and stdio work remains blocked on the dedicated
-protocol-design checkpoint.
+The planned in-process read/status/URL/dump/diff operation set is now behind
+typed engine methods. Wire DTO and stdio work remains blocked on the dedicated
+protocol-design checkpoint; config initialization remains a separate later
+local-effectful capability.

@@ -100,7 +100,7 @@ func (a *App) newDiffCmd(opts globalOptions) *cobra.Command {
 			detail, _ := cmd.Flags().GetBool("detail")
 			allowPartial, _ := cmd.Flags().GetBool("allow-partial")
 			failOnDrift, _ := cmd.Flags().GetBool("fail-on-drift")
-			return a.runDiffWithOptions(opts, diffOptions{
+			return a.runDiffWithOptions(cmd.Context(), opts, diffOptions{
 				products:          products,
 				resources:         resources,
 				ignoreOperational: ignoreOperational,

@@ -3664,6 +3664,65 @@ func TestDiffComparesLocalDumpsWithoutCredentials(t *testing.T) {
 	}
 }
 
+func TestDiffRejectsUnadmittedDumpFieldsWithoutLeakingValues(t *testing.T) {
+	t.Parallel()
+
+	const canary = "diff-unadmitted-client-secret-7f92c4a8e1d6"
+	catalog := resources.ResourceCatalog{cliDiffSpec()}
+	oldDir := writeCLIDiffDump(t, dumpFixtureForCLI{
+		spec:    cliDiffSpec(),
+		payload: `[{"id":"1","name":"old"}]`,
+	})
+	newDir := writeCLIDiffDump(t, dumpFixtureForCLI{
+		spec: cliDiffSpec(),
+		payload: `[{"id":"1","name":"new","clientSecret":"` +
+			canary + `"}]`,
+	})
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "diff", oldDir, newDir})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(diff unadmitted field) error = %v, want ErrUsage", err)
+	}
+	for label, value := range map[string]string{
+		"error":  err.Error(),
+		"stdout": out.String(),
+		"stderr": errOut.String(),
+	} {
+		if strings.Contains(value, canary) || strings.Contains(value, "clientSecret") {
+			t.Errorf("App.Run(diff unadmitted field) %s = %q, want no untrusted field/value", label, value)
+		}
+	}
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Errorf("App.Run(diff unadmitted field) output = %q / %q, want empty", out.String(), errOut.String())
+	}
+}
+
+func TestDiffFinishedContextWinsBeforeFilesystemAccess(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Catalog: resources.ResourceCatalog{cliDiffSpec()},
+	})
+	err := app.Run(ctx, []string{
+		"--format", "json", "diff",
+		"/private/diff-cli-context-canary-old",
+		"/private/diff-cli-context-canary-new",
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindCanceled ||
+		machineErr.Operation != machine.OperationDiff || !errors.Is(err, context.Canceled) {
+		t.Fatalf("App.Run(diff pre-canceled) error = %#v, want canceled/diff", err)
+	}
+	if strings.Contains(err.Error(), "canary") || out.Len() != 0 || errOut.Len() != 0 {
+		t.Errorf("App.Run(diff pre-canceled) error/output = %q / %q / %q, want static and empty", err, out.String(), errOut.String())
+	}
+}
+
 func TestDiffFailOnDriftReturnsSentinelAndStillWritesOutputFile(t *testing.T) {
 	t.Parallel()
 
@@ -3867,8 +3926,16 @@ func cliDiffSpec() resources.ResourceSpec {
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "id", Classification: resources.ClassOperational},
-			{Name: "name", Classification: resources.ClassTenantConfig},
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
 		},
 	}
 }
