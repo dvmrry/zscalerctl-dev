@@ -55,14 +55,16 @@ type ResourceReadResult struct {
 // It does not verify records against a catalog spec. Adapters crossing a trust
 // boundary must call resources.VerifyProjectedRecords before rendering them.
 func NewResourceReadResult(records resources.ProjectedRecords) ResourceReadResult {
-	return ResourceReadResult{
-		records: resources.NewProjectedRecords(records.Records()),
-	}
+	// ProjectedRecords is immutable through its public API: extracting its slice
+	// or any field map returns a defensive copy. Retaining the value therefore
+	// cannot give the caller a mutation path into result state.
+	return ResourceReadResult{records: records}
 }
 
-// Records returns a defensive copy of the projected-record collection.
+// Records returns the immutable projected-record collection. Its accessors copy
+// mutable slices and maps before exposing them to callers.
 func (r ResourceReadResult) Records() resources.ProjectedRecords {
-	return resources.NewProjectedRecords(r.records.Records())
+	return r.records
 }
 
 // MarshalJSON rejects direct ResourceReadResult serialization. Future

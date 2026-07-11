@@ -29,10 +29,13 @@ const (
 )
 
 var (
-	ErrInvalidDump       = errors.New("invalid dump")
-	ErrPartialDumpInput  = errors.New("partial dump input")
-	ErrRedactionMismatch = errors.New("redaction mode mismatch")
-	ErrInvalidCatalog    = errors.New("invalid catalog")
+	ErrInvalidDump        = errors.New("invalid dump")
+	ErrPartialDumpInput   = errors.New("partial dump input")
+	ErrRedactionMismatch  = errors.New("redaction mode mismatch")
+	ErrInvalidCatalog     = errors.New("invalid catalog")
+	errTrailingJSON       = errors.New("unexpected trailing JSON value")
+	errUnexpectedEndJSON  = errors.New("unexpected end of JSON input")
+	errUnexpectedArrayEnd = errors.New("unexpected token after resource array")
 )
 
 type Options struct {
@@ -473,6 +476,33 @@ func (r contextReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+type resourceReadFailure struct {
+	cause error
+}
+
+func (e *resourceReadFailure) Error() string { return e.cause.Error() }
+func (e *resourceReadFailure) Unwrap() error { return e.cause }
+
+// stickyErrorReader retains the first non-EOF reader error. json.Decoder.More
+// exposes only a bool and can otherwise swallow a transient peek failure before
+// the following Token call retries successfully.
+type stickyErrorReader struct {
+	reader  io.Reader
+	failure *resourceReadFailure
+}
+
+func (r *stickyErrorReader) Read(p []byte) (int, error) {
+	if r.failure != nil {
+		return 0, r.failure
+	}
+	n, err := r.reader.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.failure = &resourceReadFailure{cause: err}
+		return n, r.failure
+	}
+	return n, err
+}
+
 func selectedSpecs(ctx context.Context, catalog resources.ResourceCatalog, opts Options) ([]resources.ResourceSpec, error) {
 	specs := make([]resources.ResourceSpec, 0, len(catalog))
 	for _, spec := range catalog {
@@ -596,19 +626,27 @@ func loadDump(
 			if strings.TrimSpace(mr.Path) == "" {
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, spec.Product, spec.Name)
 			}
-			records, err := readResource(ctx, root, mr, spec)
-			if err != nil {
-				return loadedDump{}, err
-			}
-			if len(records) != mr.Records {
-				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
-			}
 			if selected[key] {
+				records, err := readResource(ctx, root, mr, spec)
+				if err != nil {
+					return loadedDump{}, err
+				}
+				if len(records) != mr.Records {
+					return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
+				}
 				admitted, err := admitRecords(ctx, spec, mode, records)
 				if err != nil {
 					return loadedDump{}, err
 				}
 				loaded.resources[key] = loadedResource{manifest: mr, records: admitted}
+				continue
+			}
+			records, err := readUnselectedResourceCount(ctx, root, mr, spec)
+			if err != nil {
+				return loadedDump{}, err
+			}
+			if records != mr.Records {
+				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
 			}
 		case "error":
 			loaded.ref.Partial = true
@@ -624,9 +662,9 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
-	path := filepath.Clean(filepath.FromSlash(mr.Path))
-	if !filepath.IsLocal(path) {
-		return nil, fmt.Errorf("%w: resource %s/%s has unsafe path", ErrInvalidDump, spec.Product, spec.Name)
+	path, err := localResourcePath(mr, spec)
+	if err != nil {
+		return nil, err
 	}
 	body, err := readRootFile(ctx, root, path, fmt.Sprintf("resource %s/%s", spec.Product, spec.Name), maxResourceBytes)
 	if err != nil {
@@ -664,42 +702,270 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 	return records, nil
 }
 
+func localResourcePath(mr dump.ManifestResource, spec resources.ResourceSpec) (string, error) {
+	path := filepath.Clean(filepath.FromSlash(mr.Path))
+	if !filepath.IsLocal(path) {
+		return "", fmt.Errorf("%w: resource %s/%s has unsafe path", ErrInvalidDump, spec.Product, spec.Name)
+	}
+	return path, nil
+}
+
+// resourceJSONShape is the structural result needed to enforce the manifest's
+// record count without retaining an unselected resource's decoded values.
+type resourceJSONShape struct {
+	records         int
+	objectOrArray   bool
+	nonObjectRecord bool
+}
+
+// readUnselectedResourceCount validates one unselected resource body while
+// retaining at most one decoded array record. It preserves the selected path's
+// file, JSON, top-level shape, and manifest-count checks without admitting or
+// retaining values that cannot enter the diff report.
+func readUnselectedResourceCount(
+	ctx context.Context,
+	root *os.Root,
+	mr dump.ManifestResource,
+	spec resources.ResourceSpec,
+) (int, error) {
+	ctx = normalizedContext(ctx)
+	if err := checkContext(ctx); err != nil {
+		return 0, err
+	}
+	path, err := localResourcePath(mr, spec)
+	if err != nil {
+		return 0, err
+	}
+	label := fmt.Sprintf("resource %s/%s", spec.Product, spec.Name)
+	file, err := openRootRegularFile(ctx, root, path, label, maxResourceBytes)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	limited := &io.LimitedReader{
+		R: contextReader{ctx: ctx, reader: file},
+		N: maxResourceBytes + 1,
+	}
+	shape, parseErr := scanResourceJSON(ctx, limited)
+	if parseErr != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return 0, ctxErr
+		}
+		if !isJSONContentError(parseErr) {
+			return 0, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, parseErr)
+		}
+		// readRootFile establishes size and read-error precedence before parsing.
+		// Drain the remaining bounded input after an early syntax error so the
+		// streaming path preserves that ordering, including if the file grew after
+		// its initial stat.
+		if _, err := io.Copy(io.Discard, limited); err != nil {
+			if ctxErr := checkContext(ctx); ctxErr != nil {
+				return 0, ctxErr
+			}
+			return 0, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+		}
+	}
+	if err := checkContext(ctx); err != nil {
+		return 0, err
+	}
+	if limited.N == 0 {
+		return 0, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+	}
+	if parseErr != nil {
+		// The legacy Cobra adapter intentionally preserves local invalid-dump
+		// diagnostics. Replay only malformed inputs through the bounded historical
+		// decoder so valid resources retain the streaming memory win while invalid
+		// inputs keep their established error text.
+		replayErr := replayLegacyJSONError(ctx, file, label, maxResourceBytes)
+		switch {
+		case errors.Is(replayErr, context.Canceled), errors.Is(replayErr, context.DeadlineExceeded):
+			return 0, replayErr
+		case errors.Is(replayErr, ErrInvalidDump):
+			return 0, replayErr
+		case replayErr != nil:
+			parseErr = replayErr
+		case errors.Is(parseErr, io.EOF), errors.Is(parseErr, io.ErrUnexpectedEOF):
+			parseErr = errUnexpectedEndJSON
+		}
+		return 0, fmt.Errorf("%w: parse resource %s/%s: %v", ErrInvalidDump, spec.Product, spec.Name, parseErr)
+	}
+	if !shape.objectOrArray {
+		return 0, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
+	}
+	if shape.nonObjectRecord {
+		return 0, fmt.Errorf("%w: resource %s/%s contains a non-object record", ErrInvalidDump, spec.Product, spec.Name)
+	}
+	return shape.records, nil
+}
+
+func isJSONContentError(err error) bool {
+	var readFailure *resourceReadFailure
+	if errors.As(err, &readFailure) {
+		return false
+	}
+	if errors.Is(err, errTrailingJSON) || errors.Is(err, errUnexpectedArrayEnd) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return true
+	}
+	var typeErr *json.UnmarshalTypeError
+	return errors.As(err, &typeErr)
+}
+
+// replayLegacyJSONError reproduces the pre-streaming decoder diagnostic for an
+// already-invalid body. It is never called for valid unselected resources.
+func replayLegacyJSONError(
+	ctx context.Context,
+	file *os.File,
+	label string,
+	maxBytes int64,
+) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+	}
+	body, err := io.ReadAll(io.LimitReader(contextReader{ctx: ctx, reader: file}, maxBytes+1))
+	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if int64(len(body)) > maxBytes {
+		return fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+	}
+	var raw any
+	parseErr := json.Unmarshal(body, &raw)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return parseErr
+}
+
+// scanResourceJSON parses one complete JSON value and reports only its resource
+// shape. Array records are decoded one at a time so context cancellation and GC
+// can make progress between records.
+func scanResourceJSON(ctx context.Context, reader io.Reader) (shape resourceJSONShape, err error) {
+	sticky := &stickyErrorReader{reader: reader}
+	decoder := json.NewDecoder(sticky)
+	defer func() {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			err = ctxErr
+			return
+		}
+		if sticky.failure != nil {
+			err = sticky.failure
+		}
+	}()
+	first, err := nextJSONToken(ctx, decoder)
+	if err != nil {
+		return shape, err
+	}
+	delim, composite := first.(json.Delim)
+	switch {
+	case composite && delim == '{':
+		shape.objectOrArray = true
+		shape.records = 1
+		if err := consumeJSONComposite(ctx, decoder); err != nil {
+			return shape, err
+		}
+	case composite && delim == '[':
+		shape.objectOrArray = true
+		var item any
+		for decoder.More() {
+			item = nil
+			err := decodeJSONValue(ctx, decoder, &item)
+			if err != nil {
+				return shape, err
+			}
+			if _, ok := item.(map[string]any); ok {
+				shape.records++
+			} else {
+				shape.nonObjectRecord = true
+			}
+		}
+		closing, err := nextJSONToken(ctx, decoder)
+		if err != nil {
+			return shape, err
+		}
+		if closing != json.Delim(']') {
+			return shape, errUnexpectedArrayEnd
+		}
+	}
+
+	if _, err := nextJSONToken(ctx, decoder); err == nil {
+		return shape, errTrailingJSON
+	} else if !errors.Is(err, io.EOF) {
+		return shape, err
+	}
+	return shape, nil
+}
+
+func consumeJSONComposite(ctx context.Context, decoder *json.Decoder) error {
+	depth := 1
+	for depth > 0 {
+		token, err := nextJSONToken(ctx, decoder)
+		if err != nil {
+			return err
+		}
+		delim, ok := token.(json.Delim)
+		if !ok {
+			continue
+		}
+		switch delim {
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+		}
+	}
+	return nil
+}
+
+func nextJSONToken(ctx context.Context, decoder *json.Decoder) (json.Token, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	token, err := decoder.Token()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return token, err
+}
+
+func decodeJSONValue(ctx context.Context, decoder *json.Decoder, value any) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	err := decoder.Decode(value)
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return ctxErr
+	}
+	return err
+}
+
 func readRootFile(ctx context.Context, root *os.Root, name, label string, maxBytes int64) ([]byte, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
-	file, err := root.Open(name)
+	file, err := openRootRegularFile(ctx, root, name, label, maxBytes)
 	if err != nil {
-		if ctxErr := checkContext(ctx); ctxErr != nil {
-			return nil, ctxErr
-		}
-		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+		return nil, err
 	}
 	defer file.Close()
-	if ctxErr := checkContext(ctx); ctxErr != nil {
-		return nil, ctxErr
-	}
-
-	if err := checkContext(ctx); err != nil {
-		return nil, err
-	}
-	info, err := file.Stat()
-	if ctxErr := checkContext(ctx); ctxErr != nil {
-		return nil, ctxErr
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, label, err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: %s is not a regular file", ErrInvalidDump, label)
-	}
-	if info.Size() > maxBytes {
-		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
-	}
-	if err := checkContext(ctx); err != nil {
-		return nil, err
-	}
 	body, err := io.ReadAll(io.LimitReader(contextReader{ctx: ctx, reader: file}, maxBytes+1))
 	if err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
@@ -714,6 +980,52 @@ func readRootFile(ctx context.Context, root *os.Root, name, label string, maxByt
 		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
 	}
 	return body, nil
+}
+
+// openRootRegularFile opens and validates a bounded regular file below root.
+// The caller owns and must close a successful result.
+func openRootRegularFile(
+	ctx context.Context,
+	root *os.Root,
+	name, label string,
+	maxBytes int64,
+) (*os.File, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
+	}
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		file.Close()
+		return nil, ctxErr
+	}
+	info, err := file.Stat()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		file.Close()
+		return nil, ctxErr
+	}
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, label, err)
+	}
+	if !info.Mode().IsRegular() {
+		file.Close()
+		return nil, fmt.Errorf("%w: %s is not a regular file", ErrInvalidDump, label)
+	}
+	if info.Size() > maxBytes {
+		file.Close()
+		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+	}
+	if err := checkContext(ctx); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 func compareResource(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool) (ResourceDiff, error) {

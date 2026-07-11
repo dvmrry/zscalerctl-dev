@@ -1,9 +1,11 @@
 package diff
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -440,6 +442,276 @@ func TestCompareStillParsesUnselectedResourceBodies(t *testing.T) {
 	}
 }
 
+func TestScanResourceJSONMatchesFullDecodeStructure(t *testing.T) {
+	invalidUTF8 := append([]byte(`[{"label":"`), 0xff)
+	invalidUTF8 = append(invalidUTF8, []byte(`"}]`)...)
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "object", payload: []byte(`{"label":"one","nested":{"items":[1,true,null]}}`)},
+		{name: "empty array", payload: []byte(`[]`)},
+		{name: "object array", payload: []byte(`[{"label":"one"},{"label":"two"}]`)},
+		{name: "top-level null", payload: []byte(`null`)},
+		{name: "top-level string", payload: []byte(`"value"`)},
+		{name: "top-level number", payload: []byte(`42`)},
+		{name: "top-level boolean", payload: []byte(`true`)},
+		{name: "array null", payload: []byte(`[null]`)},
+		{name: "array scalar", payload: []byte(`[42]`)},
+		{name: "array nested array", payload: []byte(`[[{"label":"nested"}]]`)},
+		{name: "malformed", payload: []byte(`[{"label":]`)},
+		{name: "malformed after non-object", payload: []byte(`[42,{"label":]`)},
+		{name: "trailing value", payload: []byte(`[{"label":"one"}] {}`)},
+		{name: "duplicate keys", payload: []byte(`[{"label":"one","label":"two"}]`)},
+		{name: "invalid utf8", payload: invalidUTF8},
+		{name: "invalid surrogate", payload: []byte(`[{"label":"\ud800"}]`)},
+		{name: "float overflow", payload: []byte(`[{"value":1e400}]`)},
+		{name: "empty input", payload: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertResourceJSONMatchesFullDecode(t, tt.payload)
+		})
+	}
+}
+
+func TestScanResourceJSONCancellationWins(t *testing.T) {
+	t.Run("during streamed array", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		reader := &cancelingChunkReader{
+			reader:      bytes.NewReader(benchmarkDiffPayload(100)),
+			cancel:      cancel,
+			cancelAfter: 4,
+		}
+		_, err := scanResourceJSON(ctx, reader)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("scanResourceJSON(canceled streamed array) error = %v, want context.Canceled", err)
+		}
+	})
+
+	t.Run("after decoder error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		reader := &cancelAtEOFReader{
+			reader: bytes.NewReader([]byte(`[{"label":`)),
+			cancel: cancel,
+		}
+		_, err := scanResourceJSON(ctx, reader)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("scanResourceJSON(canceled decoder error) error = %v, want context.Canceled", err)
+		}
+	})
+}
+
+func TestScanResourceJSONDoesNotClassifyReaderErrorAsContent(t *testing.T) {
+	payload := []byte(`[{"label":"safe"}]`)
+	for _, tt := range []struct {
+		name      string
+		remaining int
+	}{
+		{name: "during record decode", remaining: 8},
+		{name: "before closing bracket", remaining: len(payload) - 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			want := errors.New("one-shot read failure")
+			reader := &oneShotErrorReader{
+				reader:    bytes.NewReader(payload),
+				err:       want,
+				remaining: tt.remaining,
+			}
+			_, err := scanResourceJSON(context.Background(), reader)
+			if !errors.Is(err, want) {
+				t.Fatalf("scanResourceJSON(one-shot reader error) error = %v, want %v", err, want)
+			}
+			if isJSONContentError(err) {
+				t.Fatalf("isJSONContentError(one-shot reader error) = true, want false")
+			}
+		})
+	}
+}
+
+func TestScanResourceJSONReadErrorWinsOverSyntax(t *testing.T) {
+	want := errors.New("read failure alongside malformed data")
+	reader := &dataAndErrorReader{
+		data: []byte(`[{"label":]`),
+		err:  want,
+	}
+	_, err := scanResourceJSON(context.Background(), reader)
+	if !errors.Is(err, want) {
+		t.Fatalf("scanResourceJSON(data and reader error) error = %v, want %v", err, want)
+	}
+	if isJSONContentError(err) {
+		t.Fatalf("isJSONContentError(data and reader error) = true, want false")
+	}
+}
+
+func TestCompareRejectsSelectedAndUnselectedRecordCountMismatch(t *testing.T) {
+	selectedSpec := testKeyedSpec()
+	unselectedSpec := testProgressSpec("unselected-resource")
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	fixture := dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"same"}]`},
+	}}
+	tests := []struct {
+		name     string
+		resource string
+	}{
+		{name: "selected", resource: selectedSpec.Name},
+		{name: "unselected", resource: unselectedSpec.Name},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldDir := writeTestDump(t, catalog, fixture)
+			newDir := writeTestDump(t, catalog, fixture)
+			rewriteManifest(t, oldDir, func(manifest *dump.Manifest) {
+				for i := range manifest.Resources {
+					if manifest.Resources[i].Name == tt.resource {
+						manifest.Resources[i].Records++
+					}
+				}
+			})
+
+			_, err := Compare(oldDir, newDir, Options{
+				Catalog: catalog,
+				Resources: map[ResourceKey]bool{
+					{Product: selectedSpec.Product, Name: selectedSpec.Name}: true,
+				},
+			})
+			if !errors.Is(err, ErrInvalidDump) || !strings.Contains(err.Error(), "record count") {
+				t.Fatalf("Compare(%s record-count mismatch) error = %v, want ErrInvalidDump with record-count context", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestCompareCountsUnselectedEmptyAndSingletonBodies(t *testing.T) {
+	selectedSpec := testKeyedSpec()
+	unselectedSpec := testProgressSpec("unselected-resource")
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	for _, tt := range []struct {
+		name    string
+		payload string
+	}{
+		{name: "empty array", payload: `[]`},
+		{name: "singleton object", payload: `{"unknown":"not-admitted"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := dumpFixture{entries: []dumpEntryFixture{
+				{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+				{spec: unselectedSpec, payload: tt.payload},
+			}}
+			oldDir := writeTestDump(t, catalog, fixture)
+			newDir := writeTestDump(t, catalog, fixture)
+			_, err := Compare(oldDir, newDir, Options{
+				Catalog: catalog,
+				Resources: map[ResourceKey]bool{
+					{Product: selectedSpec.Product, Name: selectedSpec.Name}: true,
+				},
+			})
+			if err != nil {
+				t.Fatalf("Compare(unselected %s) error = %v, want nil", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestCompareRejectsUnsafeUnselectedResourceFiles(t *testing.T) {
+	selectedSpec := testKeyedSpec()
+	unselectedSpec := testProgressSpec("unselected-resource")
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	fixture := dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"same"}]`},
+	}}
+	selectedOnly := Options{
+		Catalog: catalog,
+		Resources: map[ResourceKey]bool{
+			{Product: selectedSpec.Product, Name: selectedSpec.Name}: true,
+		},
+	}
+
+	t.Run("traversal path", func(t *testing.T) {
+		oldDir := writeTestDump(t, catalog, fixture)
+		newDir := writeTestDump(t, catalog, fixture)
+		rewriteManifest(t, oldDir, func(manifest *dump.Manifest) {
+			for i := range manifest.Resources {
+				if manifest.Resources[i].Name == unselectedSpec.Name {
+					manifest.Resources[i].Path = filepath.ToSlash(filepath.Join("..", "outside.json"))
+				}
+			}
+		})
+		_, err := Compare(oldDir, newDir, selectedOnly)
+		if !errors.Is(err, ErrInvalidDump) || !strings.Contains(err.Error(), "unsafe path") {
+			t.Fatalf("Compare(unselected traversal path) error = %v, want ErrInvalidDump with unsafe-path context", err)
+		}
+	})
+
+	t.Run("absolute path", func(t *testing.T) {
+		oldDir := writeTestDump(t, catalog, fixture)
+		newDir := writeTestDump(t, catalog, fixture)
+		rewriteManifest(t, oldDir, func(manifest *dump.Manifest) {
+			for i := range manifest.Resources {
+				if manifest.Resources[i].Name == unselectedSpec.Name {
+					manifest.Resources[i].Path = filepath.ToSlash(filepath.Join(string(filepath.Separator), "outside.json"))
+				}
+			}
+		})
+		_, err := Compare(oldDir, newDir, selectedOnly)
+		if !errors.Is(err, ErrInvalidDump) || !strings.Contains(err.Error(), "unsafe path") {
+			t.Fatalf("Compare(unselected absolute path) error = %v, want ErrInvalidDump with unsafe-path context", err)
+		}
+	})
+
+	t.Run("symlink escape", func(t *testing.T) {
+		oldDir := writeTestDump(t, catalog, fixture)
+		newDir := writeTestDump(t, catalog, fixture)
+		outside := filepath.Join(t.TempDir(), "outside.json")
+		if err := os.WriteFile(outside, []byte(`[{"label":"outside"}]`), 0o600); err != nil {
+			t.Fatalf("os.WriteFile(%q) error = %v, want nil", outside, err)
+		}
+		path := filepath.Join(oldDir, "resources", "zia", unselectedSpec.Name+".json")
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("os.Remove(%q) error = %v, want nil", path, err)
+		}
+		if err := os.Symlink(outside, path); err != nil {
+			t.Skipf("os.Symlink(%q, %q) unavailable: %v", outside, path, err)
+		}
+		_, err := Compare(oldDir, newDir, selectedOnly)
+		if !errors.Is(err, ErrInvalidDump) {
+			t.Fatalf("Compare(unselected symlink escape) error = %v, want ErrInvalidDump", err)
+		}
+	})
+
+	t.Run("directory", func(t *testing.T) {
+		oldDir := writeTestDump(t, catalog, fixture)
+		newDir := writeTestDump(t, catalog, fixture)
+		path := filepath.Join(oldDir, "resources", "zia", unselectedSpec.Name+".json")
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("os.Remove(%q) error = %v, want nil", path, err)
+		}
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatalf("os.Mkdir(%q) error = %v, want nil", path, err)
+		}
+		_, err := Compare(oldDir, newDir, selectedOnly)
+		if !errors.Is(err, ErrInvalidDump) || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("Compare(unselected directory) error = %v, want ErrInvalidDump with regular-file context", err)
+		}
+	})
+
+	t.Run("oversized", func(t *testing.T) {
+		oldDir := writeTestDump(t, catalog, fixture)
+		newDir := writeTestDump(t, catalog, fixture)
+		path := filepath.Join(oldDir, "resources", "zia", unselectedSpec.Name+".json")
+		truncateTestFile(t, path, maxResourceBytes+1)
+		_, err := Compare(oldDir, newDir, selectedOnly)
+		if !errors.Is(err, ErrInvalidDump) || !strings.Contains(err.Error(), "too large") {
+			t.Fatalf("Compare(oversized unselected resource) error = %v, want ErrInvalidDump with size context", err)
+		}
+	})
+}
+
 func TestCompareRejectsSecretAndUnrenderableFields(t *testing.T) {
 	tests := []struct {
 		name string
@@ -673,6 +945,131 @@ func TestCompareContextRejectsUnsafeCatalogWithoutLeakingValues(t *testing.T) {
 	if strings.Contains(err.Error(), canary) {
 		t.Fatalf("CompareContext() error = %q contains catalog canary", err)
 	}
+}
+
+func FuzzScanResourceJSONMatchesFullDecode(f *testing.F) {
+	for _, payload := range [][]byte{
+		[]byte(`{}`),
+		[]byte(`[]`),
+		[]byte(`[{"label":"one"}]`),
+		[]byte(`[null]`),
+		[]byte(`[42,{"label":]`),
+		[]byte(`[{"value":1e400}]`),
+		[]byte(`[{"label":"one"}] {}`),
+	} {
+		f.Add(payload)
+	}
+	f.Fuzz(func(t *testing.T, payload []byte) {
+		assertResourceJSONMatchesFullDecode(t, payload)
+	})
+}
+
+func assertResourceJSONMatchesFullDecode(t *testing.T, payload []byte) {
+	t.Helper()
+	want, wantErr := fullDecodeResourceJSONShape(payload)
+	got, gotErr := scanResourceJSON(context.Background(), bytes.NewReader(payload))
+	if (gotErr != nil) != (wantErr != nil) {
+		t.Fatalf(
+			"scanResourceJSON(%q) error = %v, full decode error = %v",
+			payload,
+			gotErr,
+			wantErr,
+		)
+	}
+	if wantErr == nil && !reflect.DeepEqual(got, want) {
+		t.Fatalf("scanResourceJSON(%q) = %#v, want full-decode shape %#v", payload, got, want)
+	}
+}
+
+func fullDecodeResourceJSONShape(payload []byte) (resourceJSONShape, error) {
+	var raw any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return resourceJSONShape{}, err
+	}
+	var shape resourceJSONShape
+	switch value := raw.(type) {
+	case []any:
+		shape.objectOrArray = true
+		for _, item := range value {
+			if _, ok := item.(map[string]any); ok {
+				shape.records++
+			} else {
+				shape.nonObjectRecord = true
+			}
+		}
+	case map[string]any:
+		shape.objectOrArray = true
+		shape.records = 1
+	}
+	return shape, nil
+}
+
+type cancelingChunkReader struct {
+	reader      io.Reader
+	cancel      context.CancelFunc
+	cancelAfter int
+	reads       int
+}
+
+func (r *cancelingChunkReader) Read(p []byte) (int, error) {
+	if len(p) > 32 {
+		p = p[:32]
+	}
+	n, err := r.reader.Read(p)
+	r.reads++
+	if r.reads == r.cancelAfter {
+		r.cancel()
+	}
+	return n, err
+}
+
+type cancelAtEOFReader struct {
+	reader io.Reader
+	cancel context.CancelFunc
+}
+
+type oneShotErrorReader struct {
+	reader    io.Reader
+	err       error
+	remaining int
+	failed    bool
+}
+
+type dataAndErrorReader struct {
+	data []byte
+	err  error
+	done bool
+}
+
+func (r *dataAndErrorReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	return copy(p, r.data), r.err
+}
+
+func (r *oneShotErrorReader) Read(p []byte) (int, error) {
+	if !r.failed && r.remaining == 0 {
+		r.failed = true
+		return 0, r.err
+	}
+	if !r.failed && len(p) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.reader.Read(p)
+	if !r.failed {
+		r.remaining -= n
+	}
+	return n, err
+}
+
+func (r *cancelAtEOFReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		r.cancel()
+	}
+	return n, err
 }
 
 type dumpFixture struct {

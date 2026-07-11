@@ -3741,6 +3741,60 @@ func TestDiffScopesAdmissionToSelectedResources(t *testing.T) {
 	}
 }
 
+func TestDiffPreservesUnselectedMalformedJSONDiagnostics(t *testing.T) {
+	selectedSpec := cliDiffSpec()
+	unselectedSpec := cliDiffUnselectedSpec()
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name:    "unexpected end",
+			payload: `[{"label":`,
+			want:    "invalid dump: parse resource zia/rule-labels: unexpected end of JSON input",
+		},
+		{
+			name:    "trailing value",
+			payload: `[{"label":"safe"}] {}`,
+			want:    "invalid dump: parse resource zia/rule-labels: invalid character '{' after top-level value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+				{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+				{spec: unselectedSpec, payload: `[{"label":"safe"}]`},
+			})
+			newDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+				{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+				{spec: unselectedSpec, payload: `[{"label":"safe"}]`},
+			})
+			path := filepath.Join(oldDir, "resources", string(unselectedSpec.Product), unselectedSpec.Name+".json")
+			if err := os.WriteFile(path, []byte(tt.payload), 0o600); err != nil {
+				t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
+			}
+
+			var out, errOut bytes.Buffer
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+			err := app.Run(context.Background(), []string{
+				"--format", "json", "diff", oldDir, newDir,
+				"--resources", "zia/locations",
+			})
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Fatalf("App.Run(scoped malformed diff) error = %v, want ErrUsage", err)
+			}
+			if err.Error() != tt.want {
+				t.Fatalf("App.Run(scoped malformed diff) error = %q, want %q", err, tt.want)
+			}
+			if out.Len() != 0 || errOut.Len() != 0 {
+				t.Fatalf("App.Run(scoped malformed diff) output = %q / %q, want empty", out.String(), errOut.String())
+			}
+		})
+	}
+}
+
 func TestDiffFinishedContextWinsBeforeFilesystemAccess(t *testing.T) {
 	t.Parallel()
 

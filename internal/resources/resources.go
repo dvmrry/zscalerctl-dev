@@ -312,10 +312,11 @@ func NewVerifiedProjectedRecordsFromProjectedFields(
 	if err := spec.Validate(); err != nil {
 		return ProjectedRecords{}, err
 	}
+	validator := newRenderedSubsetValidator(spec, mode)
 	out := make([]ProjectedRecord, len(records))
 	for i, record := range records {
 		copied := copyMap(record)
-		if err := assertRenderedSubsetCore(spec, mode, copied); err != nil {
+		if err := validator.assert(copied); err != nil {
 			return ProjectedRecords{}, err
 		}
 		out[i] = ProjectedRecord{fields: copied}
@@ -879,23 +880,40 @@ func AssertRenderedSubset(spec ResourceSpec, mode redact.Mode, rendered map[stri
 	if err := spec.Validate(); err != nil {
 		return err
 	}
-	return assertRenderedSubsetCore(spec, mode, rendered)
+	return newRenderedSubsetValidator(spec, mode).assert(rendered)
 }
 
-// assertRenderedSubsetCore checks subset membership without re-validating the
-// spec. Callers that loop over many records must validate once before calling.
-func assertRenderedSubsetCore(spec ResourceSpec, mode redact.Mode, rendered map[string]any) error {
-	allowed := spec.AllowedFields(mode)
-	for key := range rendered {
-		field, ok := allowed[key]
-		if !ok {
-			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, spec.Product, spec.Name, key)
-		}
-		if err := assertValueSubset(spec, mode, field, rendered[key], key); err != nil {
-			return err
-		}
+type renderedSubsetField struct {
+	spec     FieldSpec
+	children map[string]renderedSubsetField
+}
+
+type renderedSubsetValidator struct {
+	spec   ResourceSpec
+	fields map[string]renderedSubsetField
+}
+
+func newRenderedSubsetValidator(spec ResourceSpec, mode redact.Mode) renderedSubsetValidator {
+	return renderedSubsetValidator{
+		spec:   spec,
+		fields: newRenderedSubsetFields(spec.Fields, mode),
 	}
-	return nil
+}
+
+func newRenderedSubsetFields(fields []FieldSpec, mode redact.Mode) map[string]renderedSubsetField {
+	mode = redact.EffectiveMode(mode)
+	allowed := make(map[string]renderedSubsetField)
+	for _, field := range fields {
+		if !field.AllowedIn(mode) {
+			continue
+		}
+		compiled := renderedSubsetField{spec: field}
+		if len(field.Fields) > 0 {
+			compiled.children = newRenderedSubsetFields(field.Fields, mode)
+		}
+		allowed[field.JSONField()] = compiled
+	}
+	return allowed
 }
 
 func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
@@ -903,40 +921,48 @@ func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records P
 	if err := spec.Validate(); err != nil {
 		return err
 	}
-	for _, record := range records.Records() {
-		if err := assertRenderedSubsetCore(spec, mode, record.Fields()); err != nil {
+	validator := newRenderedSubsetValidator(spec, mode)
+	// ProjectedRecords and ProjectedRecord expose mutable slices and maps only
+	// through defensive-copy accessors. The verifier is in the owning package and
+	// reads their private immutable state directly, avoiding copies that provide no
+	// additional isolation at this internal boundary.
+	for _, record := range records.records {
+		if err := validator.assert(record.fields); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func assertValueSubset(spec ResourceSpec, mode redact.Mode, field FieldSpec, value any, path string) error {
+func (v renderedSubsetValidator) assert(rendered map[string]any) error {
+	return v.assertMap(v.fields, rendered, "")
+}
+
+func (v renderedSubsetValidator) assertValue(field renderedSubsetField, value any, path string) error {
 	if !isSupportedProjectedValue(reflect.ValueOf(value), make(map[copyVisit]bool)) {
-		return fmt.Errorf("%w: %s/%s field %s", ErrInvalidProjectedValue, spec.Product, spec.Name, path)
+		return fmt.Errorf("%w: %s/%s field %s", ErrInvalidProjectedValue, v.spec.Product, v.spec.Name, path)
 	}
 	if !hasStructuredValue(value) {
 		return nil
 	}
-	if len(field.Fields) == 0 {
-		return fmt.Errorf("%w: %s/%s field %s has unmodeled nested data", ErrUnexpectedField, spec.Product, spec.Name, path)
+	if len(field.spec.Fields) == 0 {
+		return fmt.Errorf("%w: %s/%s field %s has unmodeled nested data", ErrUnexpectedField, v.spec.Product, v.spec.Name, path)
 	}
-	allowed := allowedFieldMap(field.Fields, mode)
-	switch v := value.(type) {
+	switch typed := value.(type) {
 	case map[string]any:
-		return assertMapSubset(spec, mode, allowed, v, path)
+		return v.assertMap(field.children, typed, path)
 	case []any:
-		for i, item := range v {
+		for i, item := range typed {
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := assertValueSubset(spec, mode, field, item, itemPath); err != nil {
+			if err := v.assertValue(field, item, itemPath); err != nil {
 				return err
 			}
 		}
 		return nil
 	case []map[string]any:
-		for i, item := range v {
+		for i, item := range typed {
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := assertMapSubset(spec, mode, allowed, item, itemPath); err != nil {
+			if err := v.assertMap(field.children, item, itemPath); err != nil {
 				return err
 			}
 		}
@@ -946,20 +972,21 @@ func assertValueSubset(spec ResourceSpec, mode redact.Mode, field FieldSpec, val
 	}
 }
 
-func assertMapSubset(
-	spec ResourceSpec,
-	mode redact.Mode,
-	allowed map[string]FieldSpec,
+func (v renderedSubsetValidator) assertMap(
+	allowed map[string]renderedSubsetField,
 	rendered map[string]any,
 	path string,
 ) error {
 	for key, value := range rendered {
 		field, ok := allowed[key]
-		nestedPath := path + "." + key
-		if !ok {
-			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, spec.Product, spec.Name, nestedPath)
+		nestedPath := key
+		if path != "" {
+			nestedPath = path + "." + key
 		}
-		if err := assertValueSubset(spec, mode, field, value, nestedPath); err != nil {
+		if !ok {
+			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, v.spec.Product, v.spec.Name, nestedPath)
+		}
+		if err := v.assertValue(field, value, nestedPath); err != nil {
 			return err
 		}
 	}
