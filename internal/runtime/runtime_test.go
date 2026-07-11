@@ -266,6 +266,61 @@ func TestDumpCollectorCollectStreamEmitsProjectedLifecycle(t *testing.T) {
 	}
 }
 
+func TestDumpCollectorCollectStreamCountsShowResource(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "advanced-settings",
+		Operations: resources.ShowOperation(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+		},
+	}
+	catalog := resources.ResourceCatalog{spec}
+	reader := &runtimeFakeReader{
+		show: map[runtimeResourceKey]resources.SourceRecord{
+			{product: spec.Product, resource: spec.Name}: resources.NewSourceRecord(map[string]any{
+				"id":   "settings-1",
+				"name": "Tenant settings",
+			}),
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(show) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	completed := events[len(events)-1]
+	if completed.Records != 1 || completed.Resources != 1 || completed.Warnings != 0 {
+		t.Errorf("CollectStream(show) completed counts = records:%d resources:%d warnings:%d, want 1/1/0",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Entries), 1; got != want || result.Entries[0].Record == nil {
+		t.Errorf("CollectStream(show) result = %#v, want one show entry", result)
+	}
+}
+
 func TestDumpCollectorCollectStreamEmitsValueFreeWarning(t *testing.T) {
 	t.Parallel()
 
@@ -414,6 +469,79 @@ func TestDumpCollectorCollectStreamPreservesFatalErrorIdentityAndSanitizesEvent(
 	}
 	if strings.Contains(terminal.Err.Message, rawBackendError) || strings.Contains(terminal.Err.Error(), rawBackendError) {
 		t.Errorf("CollectStream(fatal read) terminal error = %q, want no backend value", terminal.Err.Message)
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesFatalErrorWhenTerminalDeliveryFails(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	tests := []struct {
+		name            string
+		failTerminal    func() error
+		rawDelivery     string
+		wantDeliveryMsg string
+	}{
+		{
+			name:        "sink error",
+			rawDelivery: "consumer error containing raw value",
+			failTerminal: func() error {
+				return errors.New("consumer error containing raw value")
+			},
+			wantDeliveryMsg: "event sink failed",
+		},
+		{
+			name:        "sink panic",
+			rawDelivery: "consumer panic containing raw value",
+			failTerminal: func() error {
+				panic("consumer panic containing raw value")
+			},
+			wantDeliveryMsg: "event sink panicked",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sentinel := errors.New("trusted backend sentinel")
+			session := &runtimeDumpSession{err: sentinel}
+			reader := &runtimeDumpSessionProvider{session: session}
+			collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+			var events []machine.Event
+			_, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+				events = append(events, event)
+				if event.Kind == machine.EventFailed {
+					return tt.failTerminal()
+				}
+				return nil
+			})
+			if !errors.Is(err, sentinel) {
+				t.Fatalf("CollectStream(%s) error = %v, want original sentinel identity", tt.name, err)
+			}
+			var deliveryErr *machine.MachineError
+			if !errors.As(err, &deliveryErr) {
+				t.Fatalf("CollectStream(%s) error = %T %v, want joined *machine.MachineError", tt.name, err, err)
+			}
+			if deliveryErr.Kind != machine.ErrorKindInternal || deliveryErr.Message != tt.wantDeliveryMsg {
+				t.Errorf("CollectStream(%s) delivery error = %#v, want internal/%q", tt.name, deliveryErr, tt.wantDeliveryMsg)
+			}
+			if strings.Contains(err.Error(), tt.rawDelivery) {
+				t.Errorf("CollectStream(%s) joined error = %q, want no raw sink failure value", tt.name, err)
+			}
+			assertRuntimeEventKinds(t, events, []machine.EventKind{
+				machine.EventStarted,
+				machine.EventProgress,
+				machine.EventFailed,
+			})
+			terminal := events[len(events)-1]
+			if terminal.Err == nil || terminal.Err.Kind != machine.ErrorKindLiveAccessFailed || terminal.Err.Message != "resource read failed" {
+				t.Errorf("CollectStream(%s) terminal event error = %#v, want sanitized live-access failure", tt.name, terminal.Err)
+			}
+			if session.closeCalls != 1 {
+				t.Errorf("CollectStream(%s) session close calls = %d, want 1", tt.name, session.closeCalls)
+			}
+		})
 	}
 }
 
@@ -925,12 +1053,16 @@ func (r *runtimeDumpSessionProvider) Show(_ context.Context, _ resources.Product
 
 type runtimeDumpSession struct {
 	list       []resources.SourceRecord
+	err        error
 	listCalls  int
 	closeCalls int
 }
 
 func (s *runtimeDumpSession) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
 	s.listCalls++
+	if s.err != nil {
+		return nil, s.err
+	}
 	return s.list, nil
 }
 

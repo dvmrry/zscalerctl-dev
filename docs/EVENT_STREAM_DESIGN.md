@@ -112,8 +112,12 @@ producer; do not start there.
 5. **Partial-error semantics.** `warning` events carry the same value-free
    fields as dump's `errors.ndjson` records (product, resource, operation,
    kind — never message payloads from the backend). `completed.Warnings`
-   counts them. Continue-on-error remains an option on the operation, not a
-   property of the stream.
+   counts them. `started.Total` and `progress.Total` count selected resources;
+   `completed.Resources` counts successfully collected resources, including a
+   successful zero-record resource; and `completed.Records` counts emitted
+   record events. Thus a partial two-resource dump may complete with
+   `Total: 2`, `Resources: 1`, and `Warnings: 1`. Continue-on-error remains an
+   option on the operation, not a property of the stream.
 6. **Redaction boundary.** `record` events carry `resources.ProjectedRecord`
    only — the same post-projection, post-verification type machine responses
    are built from. Lifecycle metadata contains counters and resource selectors,
@@ -165,7 +169,9 @@ full-copy generation of records) in addition to keeping the existing gate.
   fixtures — that is the point).
 - Dump: progress-event sequence test replacing the DumpProgressFunc test; keep
   the existing write-pipeline baseline and add a peak-heap baseline that crosses
-  `DumpCollector.CollectStream` with an accumulating event sink.
+  `DumpCollector.CollectStream` with an accumulating event sink. Pair the sampled
+  heap ceiling with deterministic allocation accounting at the event-copy
+  boundary so one retained deep-copy generation cannot hide between samples.
 
 ## Owner decisions
 

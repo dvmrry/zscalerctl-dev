@@ -21,8 +21,9 @@ const (
 // TestDumpCollectorCollectStreamMemoryBaseline crosses the real collection and
 // event boundary with an accumulating sink. The returned dump result and every
 // retained record event stay live together, so a future event implementation
-// that deep-copies every projected record adds another payload generation to
-// the sampled peak instead of hiding behind a lower-layer projection test.
+// that retains several projected-record generations raises the sampled peak
+// instead of hiding behind a lower-layer projection test. The exact event-copy
+// boundary also has a deterministic bytes/op regression in internal/machine.
 func TestDumpCollectorCollectStreamMemoryBaseline(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping dump event memory baseline in -short mode")
@@ -107,7 +108,9 @@ func TestDumpCollectorCollectStreamMemoryBaseline(t *testing.T) {
 	// The integer payload is intentionally the dominant allocation. Maps,
 	// projection reports, slice headers, GC timing, and the retained event
 	// pointers need headroom; repeated local runs stay near 3x. A 4x ceiling
-	// leaves timing headroom while catching a retained deep-copy generation.
+	// leaves timing headroom while catching broader peak-growth regressions;
+	// the machine package's deterministic bytes/op check catches one event-copy
+	// payload generation directly.
 	if limit := 4 * payloadBytes; peakGrowth >= limit {
 		t.Errorf("peak heap growth = %d bytes (%.2fx payload), want < %d bytes (4x payload)", peakGrowth, ratio, limit)
 	}

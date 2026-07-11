@@ -42,6 +42,11 @@ type Event struct {
 	Manifest *Manifest
 	Err      *MachineError
 
+	// Successful completion counters. Records counts emitted record events;
+	// Resources counts successfully completed resources (including a
+	// zero-record resource); Warnings counts emitted warning events. For a
+	// multi-resource operation, started/progress Total carries the selected
+	// resource count, so Resources+Warnings can describe a partial completion.
 	Records   int
 	Resources int
 	Warnings  int
@@ -128,8 +133,14 @@ func (s *EventStream) Complete(event Event) error {
 	if event.Kind != "" && event.Kind != EventCompleted {
 		return s.failProducer("completion has a non-completed event kind")
 	}
+	if event.Record != nil || event.Err != nil || event.Done != 0 || event.Total != 0 {
+		return s.failProducer("completion has a non-completion payload")
+	}
 	if event.Records < 0 || event.Resources < 0 || event.Warnings < 0 {
 		return s.failProducer("completion has a negative count")
+	}
+	if event.Manifest != nil && (event.Records != 0 || event.Resources != 0 || event.Warnings != 0) {
+		return s.failProducer("manifest completion has resource counters")
 	}
 	event.Kind = EventCompleted
 	s.applyDefaultScope(&event)
@@ -191,18 +202,31 @@ func invalidNonTerminalEvent(event Event) string {
 		if event.Done < 0 || event.Total < 0 || (event.Total > 0 && event.Done > event.Total) {
 			return "progress event has invalid counters"
 		}
+		if event.Record != nil || event.Manifest != nil || event.Err != nil || hasCompletionCounters(event) {
+			return "progress event has a non-progress payload"
+		}
 	case EventRecord:
 		if event.Record == nil {
 			return "record event has no record"
+		}
+		if event.Manifest != nil || event.Err != nil || event.Done != 0 || event.Total != 0 || hasCompletionCounters(event) {
+			return "record event has a non-record payload"
 		}
 	case EventWarning:
 		if event.Err == nil {
 			return "warning event has no machine error"
 		}
+		if event.Record != nil || event.Manifest != nil || event.Done != 0 || event.Total != 0 || hasCompletionCounters(event) {
+			return "warning event has a non-warning payload"
+		}
 	default:
 		return "event stream received an invalid non-terminal event kind"
 	}
 	return ""
+}
+
+func hasCompletionCounters(event Event) bool {
+	return event.Records != 0 || event.Resources != 0 || event.Warnings != 0
 }
 
 type eventEmitter struct {

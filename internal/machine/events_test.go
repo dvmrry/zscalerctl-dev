@@ -186,6 +186,66 @@ func TestEventStreamRejectsTerminalBypassThroughEmit(t *testing.T) {
 	}
 }
 
+func TestEventStreamRejectsMixedEventPayloads(t *testing.T) {
+	records := projectedRecordsFromFields(t, map[string]any{"id": "123", "ports": []int{80, 443}})
+	record := records.Records()[0]
+	machineErr := machine.MachineError{Kind: machine.ErrorKindInternal, Message: "value-free warning"}
+	manifest := machine.ManifestFromCatalog(resources.ResourceCatalog{})
+	tests := []struct {
+		name    string
+		emit    func(*machine.EventStream) error
+		message string
+	}{
+		{
+			name: "progress with record",
+			emit: func(stream *machine.EventStream) error {
+				return stream.Emit(machine.Event{Kind: machine.EventProgress, Done: 1, Total: 1, Record: &record})
+			},
+			message: "progress event has a non-progress payload",
+		},
+		{
+			name: "record with error",
+			emit: func(stream *machine.EventStream) error {
+				return stream.Emit(machine.Event{Kind: machine.EventRecord, Record: &record, Err: &machineErr})
+			},
+			message: "record event has a non-record payload",
+		},
+		{
+			name: "warning with manifest",
+			emit: func(stream *machine.EventStream) error {
+				return stream.Emit(machine.Event{Kind: machine.EventWarning, Err: &machineErr, Manifest: &manifest})
+			},
+			message: "warning event has a non-warning payload",
+		},
+		{
+			name: "completion with record",
+			emit: func(stream *machine.EventStream) error {
+				return stream.Complete(machine.Event{Record: &record, Records: 1, Resources: 1})
+			},
+			message: "completion has a non-completion payload",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var events []machine.Event
+			stream, err := machine.StartEventStream(func(event machine.Event) error {
+				events = append(events, event)
+				return nil
+			}, machine.OperationList, "zia", "locations", 1)
+			if err != nil {
+				t.Fatalf("StartEventStream() error = %v, want nil", err)
+			}
+
+			err = tt.emit(stream)
+			assertMachineError(t, err, machine.ErrorKindInternal, machine.OperationList, "zia", "locations")
+			assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+			if events[1].Err == nil || events[1].Err.Message != tt.message {
+				t.Errorf("invalid mixed payload terminal error = %#v, want %q", events[1].Err, tt.message)
+			}
+		})
+	}
+}
+
 func TestExecutorExecuteStreamRecordFieldsAreDefensiveCopies(t *testing.T) {
 	executor := machine.Executor{Browser: &fakeBrowserLoader{
 		records: projectedRecordsFromFields(t, map[string]any{"name": "HQ", "ports": []int{80, 443}}),

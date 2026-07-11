@@ -97,7 +97,9 @@ func (c *DumpCollector) Collect(
 // delivering ordered candidate events synchronously on the caller's goroutine.
 // It starts no goroutines. Record events cross the boundary only after
 // projection and verification; fatal events are sanitized while the returned
-// Go error preserves the original in-process error identity.
+// Go error preserves the original in-process error identity. If terminal-event
+// delivery also fails, the return joins both errors without exposing the sink's
+// raw error or panic value.
 func (c *DumpCollector) CollectStream(
 	ctx context.Context,
 	specs []resources.ResourceSpec,
@@ -346,7 +348,7 @@ func finishDumpStreamFailure(
 ) error {
 	machineErr := dumpMachineError(resultErr, operation, product, resource, fallbackKind)
 	if err := stream.Fail(machineErr); err != nil {
-		return err
+		return errors.Join(resultErr, err)
 	}
 	return resultErr
 }
