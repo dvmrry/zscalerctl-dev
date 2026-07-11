@@ -76,13 +76,25 @@ The candidate execution surface is deliberately small. The initial typed
 resource path is defined by
 [ENGINE_CAPABILITY_MODEL.md](ENGINE_CAPABILITY_MODEL.md):
 
+`runtime.Engine` is the capability-manifest owner and common coordinator. It
+keeps host construction options, but loads config and constructs any live
+reader per operation. The narrower `runtime.Machine` remains the already-built
+live resource executor used inside a read action.
+
 ```go
 Manifest() machine.Manifest // supported machine.v1 compatibility surface
 EngineManifest() machine.EngineManifest
+DiscoverCatalog(ctx, machine.CatalogRequest) (machine.CatalogResult, error)
+InspectStatus(ctx, machine.StatusRequest) (machine.StatusResult, error)
 Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
 ```
+
+Config-backed status is assembled through `runtime.StatusInspector` and its
+typed `Inspect(ctx, machine.StatusRequest)` method. Construction computes and
+retains only sanitized doctor/auth/config views; it does not retain raw config,
+resolve deferred providers, construct an SDK reader, or contact Zscaler.
 
 `ExecuteStream` is the semantic path. Both typed `Read` and compatibility
 `Execute` consume it, so the CLI and interactive adapters cannot acquire

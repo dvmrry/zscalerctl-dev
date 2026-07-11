@@ -169,6 +169,12 @@ func operationRank(op Operation) (int, bool) {
 		return 2, true
 	case OperationManifest:
 		return 3, true
+	case OperationDoctor:
+		return 4, true
+	case OperationAuthStatus:
+		return 5, true
+	case OperationConfigStatus:
+		return 6, true
 	default:
 		return 0, false
 	}

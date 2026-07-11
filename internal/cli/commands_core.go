@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
-	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/dvmrry/zscalerctl/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -81,11 +81,13 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
 	default:
 	}
-	status, err := machineruntime.NewDoctorStatus(cfg, machineruntime.StatusOptions{
-		Timeout: opts.timeout,
-	})
+	result, err := inspectRuntimeStatus(ctx, cfg, opts, machine.OperationDoctor)
 	if err != nil {
 		return err
+	}
+	status, ok := result.Doctor()
+	if !ok {
+		return fmt.Errorf("doctor status operation returned %q result", result.Operation())
 	}
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)

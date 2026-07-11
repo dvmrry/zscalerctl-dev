@@ -12,8 +12,8 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/fileperm"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
-	"github.com/dvmrry/zscalerctl/internal/resources"
 	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -233,13 +233,20 @@ func (a *App) newAuthStatusCmd(opts globalOptions) *cobra.Command {
 	}
 }
 
-func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+func (a *App) runAuth(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
 	// args contains only the post-verb positional args; Cobra routing already
 	// ensured the "status" verb was present. Reject any unexpected extra args.
 	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl auth status"}
 	}
-	status := machineruntime.NewAuthStatus(cfg)
+	result, err := inspectRuntimeStatus(ctx, cfg, opts, machine.OperationAuthStatus)
+	if err != nil {
+		return err
+	}
+	status, ok := result.Auth()
+	if !ok {
+		return fmt.Errorf("auth status operation returned %q result", result.Operation())
+	}
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)
 	}
@@ -250,13 +257,20 @@ func (a *App) runAuth(_ context.Context, cfg config.Config, opts globalOptions, 
 	return a.renderer(cfg, opts).WriteText(a.out, body)
 }
 
-func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+func (a *App) runConfig(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
 	// args contains only the post-verb positional args; Cobra routing already
 	// ensured the "show" verb was present. Reject any unexpected extra args.
 	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl config show"}
 	}
-	safe := machineruntime.NewConfigStatus(cfg)
+	result, err := inspectRuntimeStatus(ctx, cfg, opts, machine.OperationConfigStatus)
+	if err != nil {
+		return err
+	}
+	safe, ok := result.Config()
+	if !ok {
+		return fmt.Errorf("config status operation returned %q result", result.Operation())
+	}
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, safe)
 	}
@@ -265,7 +279,7 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 	}
 	rows := []output.KV{
 		{Key: "Profile", Value: safe.Profile},
-		{Key: "Config", Value: machineruntime.ConfigSourceStatus(safe)},
+		{Key: "Config", Value: machineruntime.ConfigFileStatus(safe.ConfigFileSet)},
 		{Key: "Auth Mode", Value: safe.AuthMode},
 		{Key: "Vanity Domain", Value: machineruntime.SetStatus(safe.VanityDomainSet)},
 		{Key: "Cloud", Value: machineruntime.ValueOrUnset(safe.Cloud)},
@@ -285,16 +299,17 @@ func (a *App) runConfig(_ context.Context, cfg config.Config, opts globalOptions
 	return a.renderer(cfg, opts).WriteText(a.out, body)
 }
 
-func (a *App) runSchema(_ context.Context, cfg config.Config, opts globalOptions, args []string) error {
+func (a *App) runSchema(ctx context.Context, cfg config.Config, opts globalOptions, args []string) error {
 	// args contains only the post-verb positional args; Cobra routing already
 	// ensured the "list" verb was present. Reject any unexpected extra args.
 	if len(args) != 0 {
 		return UsageError{Message: "usage: zscalerctl schema list"}
 	}
-	catalog := a.resourceCatalog()
-	if err := resources.AssertReadOnly(catalog...); err != nil {
+	result, err := machineruntime.DiscoverCatalog(ctx, a.resourceCatalog())
+	if err != nil {
 		return err
 	}
+	catalog := result.Catalog()
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, catalog)
 	}

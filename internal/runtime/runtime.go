@@ -166,15 +166,6 @@ func (m *Machine) Manifest() machine.Manifest {
 	return machine.ManifestFromCatalog(m.catalog)
 }
 
-// EngineManifest returns config-free discovery for the typed in-process engine
-// API. It is separate from the supported machine.v1 Manifest method.
-func (m *Machine) EngineManifest() machine.EngineManifest {
-	if m == nil {
-		return machine.EngineManifestFromCatalog(nil)
-	}
-	return machine.EngineManifestFromCatalog(m.catalog)
-}
-
 // Catalog returns a copy of the runtime catalog.
 func (m *Machine) Catalog() resources.ResourceCatalog {
 	if m == nil {

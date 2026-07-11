@@ -13,6 +13,9 @@ The in-process candidate contract types live in `internal/machine`. Adapters may
 translate Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed internal boundary, not a 1.0 public API.
+Typed catalog discovery and sanitized doctor/auth/config status are separate
+candidate engine families; the existing CLI commands adapt their results back
+to the unchanged supported render shapes.
 Stdio-style adapters that need a small JSON transport convention can use
 `internal/machineio` to decode one bounded request, execute it, and encode the
 response without importing CLI rendering. `machineio.ExecuteJSON` rejects

@@ -10,6 +10,13 @@ const (
 
 	// CapabilityEngineManifest identifies config-free engine discovery.
 	CapabilityEngineManifest = "engine.manifest"
+
+	// CapabilityCatalogSchema identifies config-free projected catalog
+	// discovery.
+	CapabilityCatalogSchema = "catalog.schema"
+
+	// CapabilityStatusInspect identifies config-backed, SDK-free status views.
+	CapabilityStatusInspect = "status.inspect"
 )
 
 // EngineInputKind identifies one closed family of typed engine inputs.
@@ -18,6 +25,7 @@ type EngineInputKind string
 const (
 	EngineInputNone         EngineInputKind = "none"
 	EngineInputResourceRead EngineInputKind = "resource_read"
+	EngineInputStatus       EngineInputKind = "status"
 )
 
 // EngineResultKind identifies one closed family of safe engine results.
@@ -25,6 +33,8 @@ type EngineResultKind string
 
 const (
 	EngineResultManifest         EngineResultKind = "engine_manifest"
+	EngineResultCatalog          EngineResultKind = "resource_catalog"
+	EngineResultStatus           EngineResultKind = "status"
 	EngineResultProjectedRecords EngineResultKind = "projected_records"
 )
 
@@ -95,6 +105,27 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 		Result:         EngineResultManifest,
 		TenantReadOnly: true,
 		Effects:        []EngineEffect{},
+	}, {
+		Name:           CapabilityCatalogSchema,
+		Operations:     []Operation{OperationList},
+		Input:          EngineInputNone,
+		Result:         EngineResultCatalog,
+		TenantReadOnly: true,
+		Effects:        []EngineEffect{},
+	}, {
+		Name: CapabilityStatusInspect,
+		Operations: []Operation{
+			OperationDoctor,
+			OperationAuthStatus,
+			OperationConfigStatus,
+		},
+		Input:          EngineInputStatus,
+		Result:         EngineResultStatus,
+		TenantReadOnly: true,
+		Effects: []EngineEffect{{
+			Kind: EngineEffectLocalFilesystemRead,
+			When: EngineEffectConfigurationDependent,
+		}},
 	}}
 
 	readOps := map[Operation]bool{}

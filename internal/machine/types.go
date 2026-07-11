@@ -11,10 +11,13 @@ package machine
 type Operation string
 
 const (
-	OperationList     Operation = "list"
-	OperationGet      Operation = "get"
-	OperationShow     Operation = "show"
-	OperationManifest Operation = "manifest"
+	OperationList         Operation = "list"
+	OperationGet          Operation = "get"
+	OperationShow         Operation = "show"
+	OperationManifest     Operation = "manifest"
+	OperationDoctor       Operation = "doctor"
+	OperationAuthStatus   Operation = "auth_status"
+	OperationConfigStatus Operation = "config_status"
 )
 
 // Request is the typed in-process input envelope for a future machine

@@ -29,24 +29,30 @@ capabilities. It does not define a public Go API, CLI surface, or wire protocol.
    must treat `configuration_dependent` effects as possible unless the host
    environment and effective config are reviewed and pinned.
 
-## Initial typed capability set
+## Current typed capability set
 
 | Capability | Operations | Input family | Result family | Possible effects |
 | --- | --- | --- | --- | --- |
 | `engine.manifest` | `manifest` | none | engine manifest | none |
+| `catalog.schema` | `list` | none | resource catalog | none |
+| `status.inspect` | `doctor`, `auth_status`, `config_status` | status | sanitized status | configuration-dependent local read |
 | `resources.read` | catalog-derived union of `list`, `get`, `show` | resource read | projected records | configuration-dependent local read; network access; configuration-dependent process execution |
 
-All capabilities are tenant-read-only. The initial set has no local write or
+All capabilities are tenant-read-only. The current set has no local write or
 delete effect. Those effect kinds exist in the closed model so later operations
 such as dump writing or config initialization cannot hide local mutation behind
 a generic boolean.
 
-`engine.manifest` is derived from the static resource catalog. Calling it does
-not load config, resolve a provider, construct an SDK client, access the local
-filesystem, execute a process, or contact Zscaler. The `resources.read` effects
-describe construction and execution of the normal live runtime: config or
-secret files and provider helpers may be used before the always-possible
-network read.
+`engine.manifest` and `catalog.schema` are derived from the static resource
+catalog. Calling either does not load config, resolve a provider, construct an
+SDK client, access the local filesystem, execute a process, or contact Zscaler.
+`status.inspect` may load config and explicitly selected secret files, but it
+does not resolve deferred `env:`, `file:`, `keyring:`, or `cmd:` providers,
+construct a reader, execute a process, or contact Zscaler. It retains only
+precomputed sanitized status values, not raw config or secret sources. The
+`resources.read` effects describe construction and execution of the normal
+live runtime: config or secret files and provider helpers may be used before
+the always-possible network read.
 
 ## Trust and copying boundaries
 
@@ -67,6 +73,12 @@ collections are fresh, so caller mutation cannot change runtime catalog state
 or later discovery results. Projected values with cycles, non-data handles, or
 mutable state hidden in unexported struct fields fail closed as invalid
 projected values instead of retaining aliases or reaching a renderer.
+
+`CatalogResult` owns a recursively copied snapshot, including operation,
+allowed-mode, and nested-field slices. `StatusResult` is a closed union whose
+doctor/auth/config values are sanitized before return. Status construction
+precomputes those values and discards raw config, credentials, secret sources,
+provider commands, and proxy values before the inspector can be retained.
 
 The projected-value domain is intentionally narrower than arbitrary Go values:
 method-free built-in primitive scalars, valid `json.Number` values, finite
@@ -93,13 +105,15 @@ This checkpoint deliberately leaves these supported surfaces unchanged:
 
 The legacy candidate `machine.Request`/`machine.Response` execution methods
 remain as compatibility adapters over the event path. New in-process resource
-consumers use the typed `Read` method. No `engine.v1` CLI command or JSON schema
-is introduced by this checkpoint.
+consumers use the typed `Read` method. The existing `schema list`, `doctor`,
+`auth status`, and `config show` commands adapt typed catalog/status results
+back to their unchanged supported render shapes. No `engine.v1` CLI command or
+JSON schema is introduced by this checkpoint.
 
 ## Next extensions
 
-Catalog/schema discovery, sanitized status, URL lookup, dump, and diff each get
-their own typed request/result family and engine-manifest entry in separate
-reviewable slices. Local-write and local-delete operations must expose those
-effects before an adapter can invoke them. Wire DTO and stdio work remains
-blocked on the dedicated protocol-design checkpoint.
+URL lookup, dump, and diff each get their own typed request/result family and
+engine-manifest entry in separate reviewable slices. Local-write and
+local-delete operations must expose those effects before an adapter can invoke
+them. Wire DTO and stdio work remains blocked on the dedicated protocol-design
+checkpoint.

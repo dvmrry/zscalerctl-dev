@@ -1,0 +1,125 @@
+package runtime
+
+import (
+	"context"
+	"errors"
+
+	"github.com/dvmrry/zscalerctl/internal/machine"
+)
+
+// Engine is the common local operation coordinator. It owns host-supplied
+// runtime construction options but loads config and constructs live readers
+// per operation, matching the CLI's current credential lifetime.
+type Engine struct {
+	opts Options
+}
+
+// NewEngine constructs a coordinator without loading config, resolving a
+// provider, constructing an SDK reader, or contacting Zscaler.
+func NewEngine(opts Options) *Engine {
+	opts.Env = append([]string(nil), opts.Env...)
+	opts.Catalog = catalogFromOptions(opts.Catalog)
+	return &Engine{opts: opts}
+}
+
+// Manifest returns the supported machine.v1 compatibility manifest for the
+// engine catalog without loading config.
+func (e *Engine) Manifest() machine.Manifest {
+	if e == nil {
+		return machine.ManifestFromCatalog(nil)
+	}
+	return machine.ManifestFromCatalog(e.opts.Catalog)
+}
+
+// EngineManifest returns candidate typed capability discovery without loading
+// config or constructing a live runtime.
+func (e *Engine) EngineManifest() machine.EngineManifest {
+	if e == nil {
+		manifest := machine.EngineManifestFromCatalog(nil)
+		manifest.Capabilities = manifest.Capabilities[:1]
+		return manifest
+	}
+	return machine.EngineManifestFromCatalog(e.opts.Catalog)
+}
+
+// DiscoverCatalog returns a deep typed snapshot without loading config.
+func (e *Engine) DiscoverCatalog(
+	ctx context.Context,
+	req machine.CatalogRequest,
+) (machine.CatalogResult, error) {
+	if e == nil {
+		return machine.CatalogResult{}, errors.New("engine runtime is nil")
+	}
+	return (machine.Executor{Catalog: e.opts.Catalog}).DiscoverCatalog(ctx, req)
+}
+
+// InspectStatus loads config for one action and returns a sanitized SDK-free
+// status result.
+func (e *Engine) InspectStatus(
+	ctx context.Context,
+	req machine.StatusRequest,
+) (machine.StatusResult, error) {
+	if e == nil {
+		return machine.StatusResult{}, errors.New("engine runtime is nil")
+	}
+	inspector, err := NewStatusInspector(ctx, e.options())
+	if err != nil {
+		return machine.StatusResult{}, err
+	}
+	return inspector.Inspect(ctx, req)
+}
+
+// Read constructs one live runtime and executes a typed resource read.
+func (e *Engine) Read(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+) (machine.ResourceReadResult, error) {
+	if e == nil {
+		return machine.ResourceReadResult{}, errors.New("engine runtime is nil")
+	}
+	machineRuntime, err := NewMachine(ctx, e.options())
+	if err != nil {
+		return machine.ResourceReadResult{}, err
+	}
+	return machineRuntime.Read(ctx, req)
+}
+
+// Execute constructs one live runtime and runs the candidate compatibility
+// request envelope.
+func (e *Engine) Execute(
+	ctx context.Context,
+	req machine.Request,
+) (machine.Response, error) {
+	if e == nil {
+		return machine.Response{}, errors.New("engine runtime is nil")
+	}
+	machineRuntime, err := NewMachine(ctx, e.options())
+	if err != nil {
+		return machine.Response{}, err
+	}
+	return machineRuntime.Execute(ctx, req)
+}
+
+// ExecuteStream constructs one live runtime and delivers compatibility events
+// synchronously.
+func (e *Engine) ExecuteStream(
+	ctx context.Context,
+	req machine.Request,
+	sink machine.EventSink,
+) error {
+	if e == nil {
+		return errors.New("engine runtime is nil")
+	}
+	machineRuntime, err := NewMachine(ctx, e.options())
+	if err != nil {
+		return err
+	}
+	return machineRuntime.ExecuteStream(ctx, req, sink)
+}
+
+func (e *Engine) options() Options {
+	opts := e.opts
+	opts.Env = append([]string(nil), e.opts.Env...)
+	opts.Catalog = copyCatalog(e.opts.Catalog)
+	return opts
+}

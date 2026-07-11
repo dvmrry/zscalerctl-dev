@@ -432,11 +432,9 @@ func filtersFromInput(filters []Filter) ([]resources.ProjectedFilter, error) {
 
 func (e Executor) catalog() resources.ResourceCatalog {
 	if e.Catalog == nil {
-		return resources.Catalog()
+		return cloneEngineCatalog(resources.Catalog())
 	}
-	out := make(resources.ResourceCatalog, len(e.Catalog))
-	copy(out, e.Catalog)
-	return out
+	return cloneEngineCatalog(e.Catalog)
 }
 
 func machineErrorFromLoadError(err error, op Operation, product, resource string) MachineError {

@@ -197,32 +197,60 @@ func TestMachineReadForwardsTypedResourceRequest(t *testing.T) {
 	}
 }
 
-func TestMachineEngineManifestIsConfigFreeAndFresh(t *testing.T) {
+func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 	t.Parallel()
 
-	rt := NewMachineFromReader(
-		&runtimeFakeReader{},
-		runtimeTestCatalog(t, resources.ProductZIA, "locations"),
-		redact.ModeStandard,
-	)
-	first := rt.EngineManifest()
-	if len(first.Capabilities) != 2 || first.Capabilities[1].Name != machine.CapabilityResourcesRead {
-		t.Fatalf("Machine.EngineManifest() = %#v, want discovery and resource-read capabilities", first)
+	statusConfig, err := config.LoadConfig(nil, config.LoadOptions{})
+	if err != nil {
+		t.Fatalf("config.LoadConfig(status fixture) error = %v, want nil", err)
 	}
-	first.Capabilities[1].Operations[0] = machine.Operation("mutated")
-	second := rt.EngineManifest()
-	if second.Capabilities[1].Operations[0] != machine.OperationList {
-		t.Fatalf("Machine.EngineManifest() after caller mutation = %#v, want fresh manifest", second)
+	configLoads := 0
+	engine := NewEngine(Options{
+		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			configLoads++
+			return statusConfig, nil
+		},
+	})
+	first := engine.EngineManifest()
+	if len(first.Capabilities) != 4 || first.Capabilities[3].Name != machine.CapabilityResourcesRead {
+		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, and resource-read capabilities", first)
+	}
+	if configLoads != 0 {
+		t.Fatalf("Engine.EngineManifest() config loads = %d, want 0", configLoads)
+	}
+	first.Capabilities[3].Operations[0] = machine.Operation("mutated")
+	second := engine.EngineManifest()
+	if second.Capabilities[3].Operations[0] != machine.OperationList {
+		t.Fatalf("Engine.EngineManifest() after caller mutation = %#v, want fresh manifest", second)
+	}
+	if _, err := engine.DiscoverCatalog(context.Background(), machine.CatalogRequest{}); err != nil {
+		t.Fatalf("Engine.DiscoverCatalog(advertised capability) error = %v, want nil", err)
+	}
+	if configLoads != 0 {
+		t.Fatalf("Engine.DiscoverCatalog() config loads = %d, want 0", configLoads)
+	}
+	statusResult, err := engine.InspectStatus(context.Background(), machine.StatusRequest{
+		Operation: machine.OperationAuthStatus,
+	})
+	if err != nil {
+		t.Fatalf("Engine.InspectStatus(advertised capability) error = %v, want nil", err)
+	}
+	if _, ok := statusResult.Auth(); !ok {
+		t.Fatalf("Engine.InspectStatus(auth) result = %#v, want auth view", statusResult)
+	}
+	if configLoads != 1 {
+		t.Fatalf("Engine.InspectStatus() config loads = %d, want 1", configLoads)
 	}
 
-	var nilRuntime *Machine
-	nilManifest := nilRuntime.EngineManifest()
+	var nilEngine *Engine
+	nilManifest := nilEngine.EngineManifest()
 	if len(nilManifest.Capabilities) != 1 ||
 		nilManifest.Capabilities[0].Name != machine.CapabilityEngineManifest {
-		t.Fatalf("nil Machine.EngineManifest() = %#v, want config-free discovery only", nilManifest)
+		t.Fatalf("nil Engine.EngineManifest() = %#v, want only executable manifest discovery", nilManifest)
 	}
-	if _, err := nilRuntime.Read(context.Background(), machine.ResourceReadRequest{}); err == nil {
-		t.Fatal("nil Machine.Read() error = nil, want nil-runtime error")
+	if _, err := nilEngine.Read(context.Background(), machine.ResourceReadRequest{}); err == nil {
+		t.Fatal("nil Engine.Read() error = nil, want nil-runtime error")
 	}
 }
 
