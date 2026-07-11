@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -1264,6 +1265,71 @@ func copyAny(value any) any {
 		return slices.Clone(v)
 	case []int:
 		return slices.Clone(v)
+	default:
+		cloned := cloneCompositeValue(reflect.ValueOf(value))
+		if !cloned.IsValid() {
+			return nil
+		}
+		return cloned.Interface()
+	}
+}
+
+// cloneCompositeValue preserves concrete Go types while recursively copying
+// mutable composite values not covered by copyAny's common fast paths. Values
+// that are already scalar or otherwise immutable are returned unchanged.
+func cloneCompositeValue(value reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return reflect.Value{}
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.New(value.Type()).Elem()
+		out.Set(cloneCompositeValue(value.Elem()))
+		return out
+	case reflect.Pointer:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.New(value.Type().Elem())
+		out.Elem().Set(cloneCompositeValue(value.Elem()))
+		return out
+	case reflect.Slice:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for i := range value.Len() {
+			out.Index(i).Set(cloneCompositeValue(value.Index(i)))
+		}
+		return out
+	case reflect.Map:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		out := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			out.SetMapIndex(iter.Key(), cloneCompositeValue(iter.Value()))
+		}
+		return out
+	case reflect.Array:
+		out := reflect.New(value.Type()).Elem()
+		for i := range value.Len() {
+			out.Index(i).Set(cloneCompositeValue(value.Index(i)))
+		}
+		return out
+	case reflect.Struct:
+		out := reflect.New(value.Type()).Elem()
+		out.Set(value)
+		for i := range value.NumField() {
+			if value.Type().Field(i).IsExported() {
+				out.Field(i).Set(cloneCompositeValue(value.Field(i)))
+			}
+		}
+		return out
 	default:
 		return value
 	}

@@ -162,24 +162,36 @@ func TestExecutorReadPreservesMachineErrorClassification(t *testing.T) {
 }
 
 func TestResourceReadResultIsDefensive(t *testing.T) {
+	bools := []bool{true, false}
+	floats := []float64{1.5, 2.5}
+	bytesValue := []byte{1, 2, 3}
 	projected := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
 		"id": "123", "name": "HQ", "ports": []int{80, 443},
+		"bools": bools, "floats": floats, "bytes": bytesValue,
 	}})
 	result := machine.NewResourceReadResult(projected)
+	bools[0] = false
+	floats[0] = 9.5
+	bytesValue[0] = 9
 
 	first := result.Records().Records()
 	first[0] = resources.ProjectedRecord{}
 	second := result.Records().Records()
 	if got := second[0].Fields(); !reflect.DeepEqual(got, map[string]any{
 		"id": "123", "name": "HQ", "ports": []int{80, 443},
+		"bools": []bool{true, false}, "floats": []float64{1.5, 2.5}, "bytes": []byte{1, 2, 3},
 	}) {
 		t.Fatalf("ResourceReadResult after returned-slice mutation = %#v, want original fields", got)
 	}
 	fields := second[0].Fields()
 	fields["name"] = "mutated"
 	fields["ports"].([]int)[0] = 8080
+	fields["bools"].([]bool)[0] = false
+	fields["floats"].([]float64)[0] = 9.5
+	fields["bytes"].([]byte)[0] = 9
 	if got := result.Records().Records()[0].Fields(); !reflect.DeepEqual(got, map[string]any{
 		"id": "123", "name": "HQ", "ports": []int{80, 443},
+		"bools": []bool{true, false}, "floats": []float64{1.5, 2.5}, "bytes": []byte{1, 2, 3},
 	}) {
 		t.Fatalf("ResourceReadResult after returned-map mutation = %#v, want original fields", got)
 	}

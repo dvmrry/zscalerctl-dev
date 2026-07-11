@@ -213,6 +213,57 @@ func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.
 	}
 }
 
+func TestProjectedRecordsDefensivelyCopyArbitraryCompositeValues(t *testing.T) {
+	t.Parallel()
+
+	type nestedFixture struct {
+		Values []int `json:"values"`
+	}
+	bools := []bool{true, false}
+	floats := []float64{1.5, 2.5}
+	bytesValue := []byte{1, 2, 3}
+	nestedSlices := [][]bool{{true, false}}
+	typedMap := map[string][]byte{"payload": {4, 5, 6}}
+	pointer := &nestedFixture{Values: []int{7, 8}}
+	projected := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+		"bools":         bools,
+		"floats":        floats,
+		"bytes":         bytesValue,
+		"nested_slices": nestedSlices,
+		"typed_map":     typedMap,
+		"pointer":       pointer,
+	}})
+
+	bools[0] = false
+	floats[0] = 9.5
+	bytesValue[0] = 9
+	nestedSlices[0][0] = false
+	typedMap["payload"][0] = 9
+	pointer.Values[0] = 9
+	want := map[string]any{
+		"bools":         []bool{true, false},
+		"floats":        []float64{1.5, 2.5},
+		"bytes":         []byte{1, 2, 3},
+		"nested_slices": [][]bool{{true, false}},
+		"typed_map":     map[string][]byte{"payload": {4, 5, 6}},
+		"pointer":       &nestedFixture{Values: []int{7, 8}},
+	}
+	fields := projected.Records()[0].Fields()
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("ProjectedRecord.Fields() after input mutation = %#v, want %#v", fields, want)
+	}
+
+	fields["bools"].([]bool)[0] = false
+	fields["floats"].([]float64)[0] = 9.5
+	fields["bytes"].([]byte)[0] = 9
+	fields["nested_slices"].([][]bool)[0][0] = false
+	fields["typed_map"].(map[string][]byte)["payload"][0] = 9
+	fields["pointer"].(*nestedFixture).Values[0] = 9
+	if got := projected.Records()[0].Fields(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ProjectedRecord.Fields() after returned-value mutation = %#v, want %#v", got, want)
+	}
+}
+
 func TestNewVerifiedProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.T) {
 	t.Parallel()
 

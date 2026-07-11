@@ -79,6 +79,30 @@ func TestEngineManifestFromEmptyCatalogStillAdvertisesDiscovery(t *testing.T) {
 	}
 }
 
+func TestEngineManifestAdvertisesOnlyExecutableResourceReadOperations(t *testing.T) {
+	catalog := resources.ResourceCatalog{{
+		Product: resources.ProductZIA,
+		Name:    "future-resource",
+		Operations: []resources.Operation{
+			{Name: "future-read", Capability: resources.CapabilityRead},
+			{Name: "list", Capability: resources.CapabilityRead},
+		},
+	}}
+	if err := catalog[0].Validate(); err != nil {
+		t.Fatalf("ResourceSpec.Validate(future read operation) error = %v, want nil", err)
+	}
+
+	got := machine.EngineManifestFromCatalog(catalog)
+	if len(got.Capabilities) != 2 {
+		t.Fatalf("EngineManifestFromCatalog(future read operation) capabilities = %#v, want discovery and resource read", got.Capabilities)
+	}
+	want := []machine.Operation{machine.OperationList}
+	if !reflect.DeepEqual(got.Capabilities[1].Operations, want) {
+		t.Fatalf("EngineManifestFromCatalog(future read operation) resource operations = %#v, want %#v",
+			got.Capabilities[1].Operations, want)
+	}
+}
+
 func TestEngineManifestFromCatalogReturnsFreshSlices(t *testing.T) {
 	catalog := resources.ResourceCatalog{
 		testMachineSpec(resources.ProductZIA, "locations", resources.ReadOperations()),

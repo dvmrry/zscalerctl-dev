@@ -100,7 +100,9 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 	readOps := map[Operation]bool{}
 	for _, spec := range catalog {
 		for _, op := range readOperationsFromSpec(spec) {
-			readOps[op] = true
+			if isSupportedReadOperation(op) {
+				readOps[op] = true
+			}
 		}
 	}
 	if len(readOps) > 0 {
