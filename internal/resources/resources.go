@@ -585,10 +585,39 @@ func projectValue(
 	if len(field.Fields) > 0 {
 		return projectNestedValue(mode, field, value, path, report)
 	}
+	if hasUnsupportedProjectedValue(value) {
+		return unsupportedProjectedValue{}, false, true
+	}
 	if hasStructuredValue(value) {
 		return nil, false, false
 	}
 	return sanitizeScalar(mode, field, value)
+}
+
+func hasUnsupportedProjectedValue(value any) bool {
+	switch v := value.(type) {
+	case unsupportedProjectedValue:
+		return true
+	case map[string]any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	case []map[string]any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func projectNestedValue(
@@ -1394,7 +1423,8 @@ func cloneCompositeValue(
 		for iter.Next() {
 			cloned, ok := cloneCompositeValue(iter.Value(), active)
 			if !ok {
-				return reflect.Value{}, false
+				cloned = reflect.New(value.Type().Elem()).Elem()
+				cloned.Set(reflect.ValueOf(unsupportedProjectedValue{}))
 			}
 			out.SetMapIndex(iter.Key(), cloned)
 		}

@@ -1201,6 +1201,80 @@ func TestProjectRecordAllowsExplicitNestedSpecOnly(t *testing.T) {
 	}
 }
 
+func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
+	t.Parallel()
+
+	const canary = "UNSUPPORTED_NESTED_SOURCE_CANARY_MUST_NOT_RENDER"
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "nested-source-copy-boundary",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:                "vpnCredentials",
+			Classification:      resources.ClassTenantConfig,
+			AllowedModes:        []redact.Mode{redact.ModeStandard},
+			SensitiveNameReason: "test-only non-secret credential metadata wrapper",
+			Fields: []resources.FieldSpec{
+				{
+					Name:           "authType",
+					Classification: resources.ClassOperational,
+					AllowedModes:   []redact.Mode{redact.ModeStandard},
+				},
+				{
+					Name:           "preSharedKey",
+					Classification: resources.ClassSecret,
+				},
+			},
+		}},
+	}
+
+	projected, _, err := resources.ProjectRecordAndVerify(
+		spec,
+		redact.ModeStandard,
+		resources.NewSourceRecord(map[string]any{
+			"vpnCredentials": map[string]any{
+				"authType": "psk",
+				"preSharedKey": exportedProjectedStruct{
+					Secret: canary,
+				},
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("ProjectRecordAndVerify(unsupported secret child) error = %v, want nil", err)
+	}
+	want := map[string]any{
+		"vpnCredentials": map[string]any{
+			"authType": "psk",
+		},
+	}
+	if !reflect.DeepEqual(projected.Fields(), want) {
+		t.Fatalf("ProjectRecordAndVerify(unsupported secret child) = %#v, want %#v", projected.Fields(), want)
+	}
+	body, err := json.Marshal(projected)
+	if err != nil {
+		t.Fatalf("json.Marshal(projected unsupported secret child) error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), canary) {
+		t.Fatalf("json.Marshal(projected unsupported secret child) = %s, want no canary", body)
+	}
+
+	_, _, err = resources.ProjectRecordAndVerify(
+		spec,
+		redact.ModeStandard,
+		resources.NewSourceRecord(map[string]any{
+			"vpnCredentials": map[string]any{
+				"authType": exportedProjectedStruct{
+					Secret: canary,
+				},
+			},
+		}),
+	)
+	if !errors.Is(err, resources.ErrInvalidProjectedValue) {
+		t.Fatalf("ProjectRecordAndVerify(unsupported allowed child) error = %v, want ErrInvalidProjectedValue", err)
+	}
+}
+
 func TestAssertRenderedSubsetRejectsUnexpectedField(t *testing.T) {
 	t.Parallel()
 
