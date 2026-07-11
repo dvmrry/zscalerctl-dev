@@ -250,6 +250,9 @@ func (r ProjectedRecord) Select(keys []string) ProjectedRecord {
 
 type ProjectedRecords struct {
 	records []ProjectedRecord
+	// isolated means every record recursively owns normalized projected values,
+	// so package-private read paths do not need another defensive copy.
+	isolated bool
 }
 
 // UnknownFieldError reports a requested projected field that is not declared in
@@ -287,6 +290,14 @@ func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 	return ProjectedRecords{records: out}
 }
 
+// newIsolatedProjectedRecords copies records that already own normalized
+// projected values and preserves that private-state invariant.
+func newIsolatedProjectedRecords(records []ProjectedRecord) ProjectedRecords {
+	out := make([]ProjectedRecord, len(records))
+	copy(out, records)
+	return ProjectedRecords{records: out, isolated: true}
+}
+
 // NewProjectedRecordsFromProjectedFields reconstructs ProjectedRecords from
 // trusted, already-projected, and already-redacted field maps. It does not
 // verify those maps against a catalog spec or redaction mode. Callers that
@@ -297,7 +308,7 @@ func NewProjectedRecordsFromProjectedFields(records []map[string]any) ProjectedR
 	for i, record := range records {
 		out[i] = ProjectedRecord{fields: copyMap(record)}
 	}
-	return ProjectedRecords{records: out}
+	return ProjectedRecords{records: out, isolated: true}
 }
 
 // NewVerifiedProjectedRecordsFromProjectedFields reconstructs ProjectedRecords
@@ -321,7 +332,7 @@ func NewVerifiedProjectedRecordsFromProjectedFields(
 		}
 		out[i] = ProjectedRecord{fields: copied}
 	}
-	return ProjectedRecords{records: out}, nil
+	return ProjectedRecords{records: out, isolated: true}, nil
 }
 
 // VerifyProjectedRecords checks that every projected record contains only
@@ -335,10 +346,17 @@ func VerifyProjectedRecords(spec ResourceSpec, mode redact.Mode, records Project
 func (ProjectedRecords) OutputSafe() {}
 
 func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {
-	if len(rs.records) == 0 {
-		return []byte("[]"), nil
+	out := make([]map[string]any, len(rs.records))
+	if rs.isolated {
+		for i, record := range rs.records {
+			out[i] = record.fields
+		}
+	} else {
+		for i, record := range rs.records {
+			out[i] = record.Fields()
+		}
 	}
-	return json.Marshal(rs.records)
+	return json.Marshal(out)
 }
 
 // Len returns the number of projected records without exposing the backing
@@ -351,7 +369,7 @@ func (rs ProjectedRecords) Select(keys []string) ProjectedRecords {
 	for i, record := range rs.records {
 		out[i] = record.Select(keys)
 	}
-	return ProjectedRecords{records: out}
+	return ProjectedRecords{records: out, isolated: true}
 }
 
 func (rs ProjectedRecords) Records() []ProjectedRecord {
@@ -426,11 +444,15 @@ func FilterProjectedRecords(
 	}
 	kept := make([]ProjectedRecord, 0)
 	for _, record := range records.records {
-		if projectedRecordMatches(record.fields, filters, search) {
+		fields := record.fields
+		if !records.isolated {
+			fields = record.Fields()
+		}
+		if projectedRecordMatches(fields, filters, search) {
 			kept = append(kept, record)
 		}
 	}
-	return ProjectedRecords{records: kept}
+	return ProjectedRecords{records: kept, isolated: records.isolated}
 }
 
 func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
@@ -519,7 +541,7 @@ func ProjectRecords(spec ResourceSpec, mode redact.Mode, records []SourceRecord)
 		projected = append(projected, item)
 		reports = append(reports, report)
 	}
-	return NewProjectedRecords(projected), reports, nil
+	return newIsolatedProjectedRecords(projected), reports, nil
 }
 
 func ProjectRecordsAndVerify(spec ResourceSpec, mode redact.Mode, records []SourceRecord) (ProjectedRecords, []ProjectionReport, error) {

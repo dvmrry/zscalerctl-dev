@@ -1,12 +1,24 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
 )
+
+const unisolatedProjectedCanary = "UNISOLATED_PROJECTED_CANARY_MUST_NOT_RENDER"
+
+type unisolatedProjectedString string
+
+func (unisolatedProjectedString) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + unisolatedProjectedCanary + `"`), nil
+}
+
+func (unisolatedProjectedString) String() string { return unisolatedProjectedCanary }
 
 func TestProjectRecordsAndVerifyProjectsAndChecksSubset(t *testing.T) {
 	t.Parallel()
@@ -56,6 +68,57 @@ func TestAssertProjectedRecordsSubsetRejectsBypass(t *testing.T) {
 	if !errors.Is(err, ErrUnexpectedField) {
 		t.Errorf("assertProjectedRecordsSubset(%s/%s) error = %v, want ErrUnexpectedField", spec.Product, spec.Name, err)
 	}
+}
+
+func TestProjectedRecordsMarshalJSONQuarantinesUnisolatedPrivateState(t *testing.T) {
+	t.Parallel()
+
+	projected := NewProjectedRecords([]ProjectedRecord{{
+		fields: map[string]any{"id": unisolatedProjectedString("private")},
+	}})
+	body, err := json.Marshal(projected)
+	if !errors.Is(err, ErrInvalidProjectedValue) {
+		t.Fatalf("json.Marshal(ProjectedRecords with unisolated private state) error = %v, want ErrInvalidProjectedValue", err)
+	}
+	if strings.Contains(string(body), unisolatedProjectedCanary) {
+		t.Errorf("json.Marshal(ProjectedRecords with unisolated private state) = %q, want no canary", body)
+	}
+}
+
+func TestProjectedRecordsMarshalJSONPreservesLegacyErrorChain(t *testing.T) {
+	t.Parallel()
+
+	projected := NewProjectedRecordsFromProjectedFields([]map[string]any{{
+		"id": unisolatedProjectedString("private"),
+	}})
+	_, gotErr := projected.MarshalJSON()
+	_, wantErr := legacyProjectedRecordsMarshalJSON(projected)
+	if gotErr == nil || wantErr == nil {
+		t.Fatalf("ProjectedRecords.MarshalJSON() errors = (%v, legacy %v), want both non-nil", gotErr, wantErr)
+	}
+	if gotErr.Error() != wantErr.Error() {
+		t.Errorf("ProjectedRecords.MarshalJSON() error = %q, legacy error = %q", gotErr, wantErr)
+	}
+}
+
+func TestFilterProjectedRecordsQuarantinesUnisolatedPrivateState(t *testing.T) {
+	t.Parallel()
+
+	projected := NewProjectedRecords([]ProjectedRecord{{
+		fields: map[string]any{"id": unisolatedProjectedString("private")},
+	}})
+	filtered := FilterProjectedRecords(projected, nil, unisolatedProjectedCanary)
+	if got := filtered.Len(); got != 0 {
+		t.Errorf("FilterProjectedRecords(unisolated private canary) records = %d, want 0", got)
+	}
+}
+
+func legacyProjectedRecordsMarshalJSON(projected ProjectedRecords) ([]byte, error) {
+	out := make([]map[string]any, len(projected.records))
+	for i, record := range projected.records {
+		out[i] = record.Fields()
+	}
+	return json.Marshal(out)
 }
 
 func TestProjectRecordAndVerifyProjectsAndChecksSubset(t *testing.T) {
