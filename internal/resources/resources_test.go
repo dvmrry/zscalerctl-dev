@@ -285,6 +285,25 @@ func TestNewVerifiedProjectedRecordsFromProjectedFieldsRejectsUnsafeFields(t *te
 	}
 }
 
+func TestVerifyProjectedRecordsAcceptsSafeAndRejectsUnsafeCollections(t *testing.T) {
+	t.Parallel()
+
+	spec := verifiedProjectedFieldsSpec()
+	safe := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+		"id": "123", "name": "HQ",
+	}})
+	if err := resources.VerifyProjectedRecords(spec, redact.ModeStandard, safe); err != nil {
+		t.Fatalf("VerifyProjectedRecords(safe) error = %v, want nil", err)
+	}
+
+	unsafe := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+		"id": "123", "raw_secret": "must-not-render",
+	}})
+	if err := resources.VerifyProjectedRecords(spec, redact.ModeStandard, unsafe); !errors.Is(err, resources.ErrUnexpectedField) {
+		t.Fatalf("VerifyProjectedRecords(unsafe) error = %v, want ErrUnexpectedField", err)
+	}
+}
+
 func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 	t.Parallel()
 

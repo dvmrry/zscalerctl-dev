@@ -466,13 +466,6 @@ func TestExecutorRejectsUnsupportedInputSemanticsBeforeLoader(t *testing.T) {
 		op    machine.Operation
 	}{
 		{
-			name: "options",
-			op:   machine.OperationList,
-			input: &machine.Input{
-				Product: "zia", Resource: "locations", Options: map[string]string{"raw": "true"},
-			},
-		},
-		{
 			name:  "filter_on_get",
 			op:    machine.OperationGet,
 			input: &machine.Input{Product: "zia", Resource: "locations", RecordID: "123", Filters: []machine.Filter{{Field: "name", Operator: "=", Value: "HQ"}}},

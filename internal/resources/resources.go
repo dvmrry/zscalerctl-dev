@@ -320,6 +320,14 @@ func NewVerifiedProjectedRecordsFromProjectedFields(
 	return ProjectedRecords{records: out}, nil
 }
 
+// VerifyProjectedRecords checks that every projected record contains only
+// fields declared by spec and renderable in mode. ProjectedRecords are
+// immutable through their public API, so successful verification does not
+// require reconstructing them through maps.
+func VerifyProjectedRecords(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
+	return assertProjectedRecordsSubset(spec, mode, records)
+}
+
 func (ProjectedRecords) OutputSafe() {}
 
 func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {

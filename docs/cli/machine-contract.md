@@ -275,9 +275,11 @@ passing raw SDK/config/secret objects through the UI boundary.
 Machine request narrowing is owned by the machine/core boundary. `fields`,
 `filters`, and `search` are applied only after projection and redaction.
 Filters and search apply to list operations; fields can narrow list/get/show
-records. Non-empty machine `options` are rejected as usage errors until a
-specific option is deliberately added to the contract. Response metadata is
-server-generated; clients must not rely on request metadata being echoed.
+records. There is no generic machine `options` field; strict candidate
+`machineio` decoding rejects it as unknown. New controls require a deliberate
+capability-specific typed input (and a separately versioned transport field if
+later promoted). Response metadata is server-generated; clients must not rely
+on request metadata being echoed.
 
 If a future Wails or React desktop app exists, the React frontend must never
 receive credentials, secret refs, tokens, SDK clients, or raw source records.

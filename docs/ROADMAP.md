@@ -173,7 +173,9 @@ zscalerctl operation engine above it.
    escape hatch before adding non-resource operations. Add capability-specific
    inputs, safe result/item families, execution settings, and a separately
    versioned engine capability manifest. Keep supported `machine.v1` byte
-   frozen. `semver:minor` when exposed through a supported CLI command.
+   frozen. The typed resource-read family and in-process `engine.v1` discovery
+   are the initial foundation; remaining families land with their migrations.
+   `semver:minor` when exposed through a supported CLI command.
 3. **CLI dogfooding.** Move catalog/status/URL-lookup/dump/diff semantics behind
    the engine in small PRs. Cobra remains an in-process parser/renderer and does
    not spawn the stdio adapter. Existing CLI goldens, error envelopes, and exit

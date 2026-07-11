@@ -89,17 +89,10 @@ type Capability struct {
 	Meta        *Meta       `json:"meta,omitempty"`
 }
 
-// Input describes capability inputs without tying them to Cobra flags or a
-// specific transport encoding.
-type Input struct {
-	Product  string            `json:"product,omitempty"`
-	Resource string            `json:"resource,omitempty"`
-	RecordID string            `json:"record_id,omitempty"`
-	Fields   []string          `json:"fields,omitempty"`
-	Filters  []Filter          `json:"filters,omitempty"`
-	Search   string            `json:"search,omitempty"`
-	Options  map[string]string `json:"options,omitempty"`
-}
+// Input preserves the candidate request/manifest JSON shape while the engine
+// moves to capability-specific Go inputs. New in-process callers should use
+// ResourceReadInput through ResourceReadRequest.
+type Input = ResourceReadInput
 
 // Filter describes one projected-data filter requested by a caller.
 type Filter struct {

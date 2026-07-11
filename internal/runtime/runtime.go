@@ -43,6 +43,20 @@ type Options struct {
 	newReader  readerFactory
 }
 
+// OptionsFromExecutionSettings maps secret-free engine settings into runtime
+// construction options. The host still supplies environment entries, catalog,
+// diagnostics, and any trusted test seams separately.
+func OptionsFromExecutionSettings(settings machine.ExecutionSettings) Options {
+	return Options{
+		Profile:      settings.Profile,
+		ConfigPath:   settings.ConfigPath,
+		Timeout:      settings.Timeout,
+		Redaction:    settings.Redaction,
+		RedactionSet: settings.RedactionSet,
+		NoCache:      settings.NoCache,
+	}
+}
+
 // Machine is the trusted read-only machine execution facade.
 type Machine struct {
 	service   browser.Service
@@ -117,6 +131,21 @@ func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Res
 	return m.executor().Execute(ctx, req)
 }
 
+// Read runs one typed resource-read request through the assembled read-only
+// stack.
+func (m *Machine) Read(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+) (machine.ResourceReadResult, error) {
+	if m == nil {
+		return machine.ResourceReadResult{}, errors.New("machine runtime is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().Read(ctx, req)
+}
+
 // ExecuteStream runs one machine request through the assembled read-only stack
 // and delivers ordered events synchronously to sink.
 func (m *Machine) ExecuteStream(ctx context.Context, req machine.Request, sink machine.EventSink) error {
@@ -135,6 +164,15 @@ func (m *Machine) Manifest() machine.Manifest {
 		return machine.ManifestFromCatalog(nil)
 	}
 	return machine.ManifestFromCatalog(m.catalog)
+}
+
+// EngineManifest returns config-free discovery for the typed in-process engine
+// API. It is separate from the supported machine.v1 Manifest method.
+func (m *Machine) EngineManifest() machine.EngineManifest {
+	if m == nil {
+		return machine.EngineManifestFromCatalog(nil)
+	}
+	return machine.EngineManifestFromCatalog(m.catalog)
 }
 
 // Catalog returns a copy of the runtime catalog.

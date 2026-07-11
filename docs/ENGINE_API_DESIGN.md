@@ -72,26 +72,28 @@ projected, redacted, and verified.
 
 ## Candidate Go shape
 
-The candidate execution surface is deliberately small:
+The candidate execution surface is deliberately small. The initial typed
+resource path is defined by
+[ENGINE_CAPABILITY_MODEL.md](ENGINE_CAPABILITY_MODEL.md):
 
 ```go
-Manifest() machine.Manifest
+Manifest() machine.Manifest // supported machine.v1 compatibility surface
+EngineManifest() machine.EngineManifest
+Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
 ```
 
-`ExecuteStream` is the semantic path. `Execute` reconstructs the existing
-one-shot response from its events, so the CLI and interactive adapters cannot
-acquire separate resource-read behavior. The implementation is synchronous and
-starts no goroutines; callers that need concurrency own the goroutine and its
-lifetime.
+`ExecuteStream` is the semantic path. Both typed `Read` and compatibility
+`Execute` consume it, so the CLI and interactive adapters cannot acquire
+separate resource-read behavior. The implementation is synchronous and starts
+no goroutines; callers that need concurrency own the goroutine and its lifetime.
 
-The current request/response envelopes remain candidate. Before adding
-non-resource capability families, replace `Input.Options` with
-capability-specific typed inputs and introduce a closed set of safe result/item
-types. Generic resource data may remain catalog-described, but control fields,
-execution settings, lifecycle events, errors, and non-resource results must be
-typed.
+The current request/response envelopes remain candidate compatibility types.
+`Input.Options` has been removed; new operation families must add
+capability-specific typed inputs and safe result/item types. Generic resource
+data remains catalog-described, but control fields, execution settings,
+lifecycle events, errors, and non-resource results are typed.
 
 ## Event invariants
 
@@ -113,10 +115,11 @@ payload is catalog-derived public project data, not tenant data.
 
 ## Execution settings and credentials
 
-Future typed execution settings may select profile, config path, timeout,
-redaction mode, and cache behavior. They never contain credential or secret
-values. The spawning host supplies the environment, and the trusted Go runtime
-performs config loading and provider resolution.
+Typed execution settings may select profile, config path, timeout, redaction
+mode, and cache behavior. They never contain environment entries, credentials,
+secret references, tokens, or resolved secret values. The spawning host
+supplies the environment separately, and the trusted Go runtime performs config
+loading and provider resolution.
 
 The initial long-lived adapters create a runtime per action, matching the CLI's
 current token lifetime. Any in-memory SDK session cache requires a separate
@@ -153,7 +156,9 @@ suite as the Go codec before the protocol is promoted.
 1. Event types, lifecycle enforcement, and one-shot reconstruction.
 2. Runtime forwarding and dump migration; remove `DumpProgressFunc` when its
    only caller migrates.
-3. Typed capability inputs/results and an engine capability manifest.
+3. Typed capability inputs/results and an engine capability manifest. The
+   resource-read foundation is implemented; each remaining capability migrates
+   in its own slice.
 4. Migrate catalog/status/URL-lookup/dump/diff behavior behind the engine while
    keeping Cobra as an in-process adapter.
 5. Specify and implement versioned wire DTOs and strict codecs.

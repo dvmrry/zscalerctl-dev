@@ -138,6 +138,94 @@ func TestNewMachineFromConfigAssemblesReaderConfig(t *testing.T) {
 	}
 }
 
+func TestOptionsFromExecutionSettingsMapsOnlyRuntimePolicy(t *testing.T) {
+	t.Parallel()
+
+	settings := machine.ExecutionSettings{
+		Profile:      "work",
+		ConfigPath:   "/tmp/zscalerctl.yaml",
+		Timeout:      17 * time.Second,
+		Redaction:    redact.ModeShare,
+		RedactionSet: true,
+		NoCache:      true,
+	}
+	got := OptionsFromExecutionSettings(settings)
+	if got.Profile != settings.Profile ||
+		got.ConfigPath != settings.ConfigPath ||
+		got.Timeout != settings.Timeout ||
+		got.Redaction != settings.Redaction ||
+		got.RedactionSet != settings.RedactionSet ||
+		got.NoCache != settings.NoCache {
+		t.Fatalf("OptionsFromExecutionSettings(%#v) = %#v, want mapped runtime policy", settings, got)
+	}
+	if got.Env != nil || got.Catalog != nil || got.DiagLogger != nil ||
+		got.loadConfig != nil || got.newReader != nil {
+		t.Fatalf("OptionsFromExecutionSettings(%#v) host-owned fields = %#v, want zero", settings, got)
+	}
+}
+
+func TestMachineReadForwardsTypedResourceRequest(t *testing.T) {
+	t.Parallel()
+
+	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE", "raw": "dropped",
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	result, err := rt.Read(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-runtime-read",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations", Fields: []string{"name"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Machine.Read(list locations) error = %v, want nil", err)
+	}
+	records := result.Records().Records()
+	if len(records) != 1 || !reflect.DeepEqual(records[0].Fields(), map[string]any{"name": "HQ"}) {
+		t.Fatalf("Machine.Read(list locations) records = %#v, want projected name only", records)
+	}
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Machine.Read(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestMachineEngineManifestIsConfigFreeAndFresh(t *testing.T) {
+	t.Parallel()
+
+	rt := NewMachineFromReader(
+		&runtimeFakeReader{},
+		runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		redact.ModeStandard,
+	)
+	first := rt.EngineManifest()
+	if len(first.Capabilities) != 2 || first.Capabilities[1].Name != machine.CapabilityResourcesRead {
+		t.Fatalf("Machine.EngineManifest() = %#v, want discovery and resource-read capabilities", first)
+	}
+	first.Capabilities[1].Operations[0] = machine.Operation("mutated")
+	second := rt.EngineManifest()
+	if second.Capabilities[1].Operations[0] != machine.OperationList {
+		t.Fatalf("Machine.EngineManifest() after caller mutation = %#v, want fresh manifest", second)
+	}
+
+	var nilRuntime *Machine
+	nilManifest := nilRuntime.EngineManifest()
+	if len(nilManifest.Capabilities) != 1 ||
+		nilManifest.Capabilities[0].Name != machine.CapabilityEngineManifest {
+		t.Fatalf("nil Machine.EngineManifest() = %#v, want config-free discovery only", nilManifest)
+	}
+	if _, err := nilRuntime.Read(context.Background(), machine.ResourceReadRequest{}); err == nil {
+		t.Fatal("nil Machine.Read() error = nil, want nil-runtime error")
+	}
+}
+
 func TestNewDumpCollectorAssemblesReaderConfigAndCollects(t *testing.T) {
 	t.Parallel()
 

@@ -329,15 +329,6 @@ func validateRequestSemantics(req Request, product, resource string) *MachineErr
 	if req.Input == nil {
 		return nil
 	}
-	if len(req.Input.Options) > 0 {
-		return &MachineError{
-			Kind:      ErrorKindUsage,
-			Message:   "input.options is not supported",
-			Operation: req.Operation,
-			Product:   product,
-			Resource:  resource,
-		}
-	}
 	if len(req.Input.Fields) > 0 && !isSupportedReadOperation(req.Operation) {
 		return &MachineError{
 			Kind:      ErrorKindUsage,
