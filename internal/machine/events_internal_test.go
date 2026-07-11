@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"errors"
 	"runtime"
 	"testing"
 
@@ -76,5 +77,28 @@ func TestCopyEventForSinkCopiesTypedResultWrapper(t *testing.T) {
 	copied.resourceResult.records = resources.ProjectedRecords{}
 	if got := result.Records().Len(); got != 1 {
 		t.Errorf("copyEventForSink(typed result) source records after copy mutation = %d, want 1", got)
+	}
+}
+
+func TestEventStreamRejectsTypedResultWithInconsistentCounters(t *testing.T) {
+	t.Parallel()
+
+	projected := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{"id": "record-1"}})
+	result := NewResourceReadResult(projected)
+	stream, err := StartEventStream(func(Event) error { return nil }, OperationList, "zia", "locations", 0)
+	if err != nil {
+		t.Fatalf("StartEventStream(typed result) error = %v, want nil", err)
+	}
+	err = stream.Complete(Event{
+		Records:        0,
+		Resources:      1,
+		resourceResult: &result,
+	})
+	var machineErr *MachineError
+	if !errors.As(err, &machineErr) || machineErr == nil {
+		t.Fatalf("EventStream.Complete(inconsistent typed result) error = %v, want MachineError", err)
+	}
+	if got := machineErr.Message; got != "typed result completion has inconsistent counters" {
+		t.Errorf("EventStream.Complete(inconsistent typed result) message = %q, want %q", got, "typed result completion has inconsistent counters")
 	}
 }

@@ -149,6 +149,10 @@ func (s *EventStream) Complete(event Event) error {
 	if event.Manifest != nil && event.resourceResult != nil {
 		return s.failProducer("manifest completion has typed resource result")
 	}
+	if event.resourceResult != nil &&
+		(event.resourceResult.records.Len() != event.Records || event.Resources != 1 || event.Warnings != 0) {
+		return s.failProducer("typed result completion has inconsistent counters")
+	}
 	event.Kind = EventCompleted
 	s.applyDefaultScope(&event)
 	if failure := s.emitter.emit(event); failure != nil {
