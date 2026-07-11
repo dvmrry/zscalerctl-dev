@@ -417,6 +417,53 @@ func TestMachineExecuteReturnsMachineNotFoundError(t *testing.T) {
 	}
 }
 
+func TestMachineExecuteStreamForwardsProjectedEvents(t *testing.T) {
+	catalog := runtimeDeepCopyCatalog()
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"outer": map[string]any{"inner": "value"},
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	req := machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+
+	var events []machine.Event
+	err := rt.ExecuteStream(context.Background(), req, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Machine.ExecuteStream(list request) error = %v, want nil", err)
+	}
+	wantKinds := []machine.EventKind{
+		machine.EventStarted,
+		machine.EventRecord,
+		machine.EventCompleted,
+	}
+	gotKinds := make([]machine.EventKind, len(events))
+	for i, event := range events {
+		gotKinds[i] = event.Kind
+	}
+	if !reflect.DeepEqual(gotKinds, wantKinds) {
+		t.Fatalf("Machine.ExecuteStream(list request) event kinds = %#v, want %#v", gotKinds, wantKinds)
+	}
+	if events[1].Record == nil {
+		t.Fatal("Machine.ExecuteStream(list request) record event = nil, want projected record")
+	}
+	wantRecord := map[string]any{"outer": map[string]any{"inner": "value"}}
+	if got := events[1].Record.Fields(); !reflect.DeepEqual(got, wantRecord) {
+		t.Errorf("Machine.ExecuteStream(list request) record = %#v, want %#v", got, wantRecord)
+	}
+}
+
 func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	t.Parallel()
 

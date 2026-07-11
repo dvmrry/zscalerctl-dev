@@ -114,13 +114,19 @@ func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Res
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	loader := &machineBrowserLoader{service: m.service}
-	executor := machine.Executor{
-		Browser:   loader,
-		Catalog:   m.catalog,
-		Redaction: m.redaction,
+	return m.executor().Execute(ctx, req)
+}
+
+// ExecuteStream runs one machine request through the assembled read-only stack
+// and delivers ordered events synchronously to sink.
+func (m *Machine) ExecuteStream(ctx context.Context, req machine.Request, sink machine.EventSink) error {
+	if m == nil {
+		return errors.New("machine runtime is nil")
 	}
-	return executor.Execute(ctx, req)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().ExecuteStream(ctx, req, sink)
 }
 
 // Manifest returns the capability manifest for the runtime catalog.
@@ -145,6 +151,15 @@ func (m *Machine) Redaction() redact.Mode {
 		return redact.ModeStandard
 	}
 	return redact.EffectiveMode(m.redaction)
+}
+
+func (m *Machine) executor() machine.Executor {
+	loader := &machineBrowserLoader{service: m.service}
+	return machine.Executor{
+		Browser:   loader,
+		Catalog:   m.catalog,
+		Redaction: m.redaction,
+	}
 }
 
 func applyOptions(cfg *config.Config, opts Options) error {

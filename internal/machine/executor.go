@@ -68,16 +68,48 @@ type Executor struct {
 	Redaction redact.Mode
 }
 
-// Execute validates and runs one supported read-only machine request.
+// Execute validates and runs one supported read-only machine request. The
+// response is reconstructed from ExecuteStream events so one-shot and streamed
+// execution cannot acquire separate operation semantics.
 func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 	resp := responseForRequest(req)
+	err := e.ExecuteStream(ctx, req, func(event Event) error {
+		return accumulateResponseEvent(&resp, event)
+	})
+	if resp.Error != nil {
+		return resp, resp.Error
+	}
+	if err != nil {
+		machineErr := machineErrorFromSinkError(err)
+		product, resource := inputResource(req)
+		machineErr = machineErrorWithContext(machineErr, req.Operation, product, resource)
+		resp.Error = &machineErr
+		return resp, resp.Error
+	}
+	return resp, nil
+}
+
+// ExecuteStream validates and runs one supported read-only machine request,
+// delivering ordered events synchronously on the caller's goroutine. It starts
+// no goroutines. The sink must be non-nil; a sink error or panic aborts the
+// operation and is converted to a machine-safe failure.
+func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink) error {
 	product, resource := inputResource(req)
+	emitter := eventEmitter{sink: sink}
+	if failure := emitter.emit(Event{
+		Kind:     EventStarted,
+		Product:  product,
+		Resource: resource,
+	}); failure != nil {
+		return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+	}
+
 	if machineErr := validateRequestSemantics(req, product, resource); machineErr != nil {
-		return errorResponse(resp, *machineErr)
+		return emitter.finishError(EventFailed, *machineErr)
 	}
 	if req.Operation == OperationManifest {
 		if req.Capability != "" && req.Capability != CapabilityResourcesRead {
-			return errorResponse(resp, MachineError{
+			return emitter.finishError(EventFailed, MachineError{
 				Kind:      ErrorKindUnsupportedCapability,
 				Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 				Operation: req.Operation,
@@ -86,12 +118,18 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 			})
 		}
 		manifest := ManifestFromCatalog(e.catalog())
-		resp.Manifest = &manifest
-		resp.Meta.Count = len(manifest.Capabilities)
-		return resp, nil
+		if failure := emitter.emit(Event{
+			Kind:     EventCompleted,
+			Product:  product,
+			Resource: resource,
+			Manifest: &manifest,
+		}); failure != nil {
+			return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+		}
+		return nil
 	}
 	if req.Capability != CapabilityResourcesRead {
-		return errorResponse(resp, MachineError{
+		return emitter.finishError(EventFailed, MachineError{
 			Kind:      ErrorKindUnsupportedCapability,
 			Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 			Operation: req.Operation,
@@ -100,7 +138,7 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 		})
 	}
 	if !isSupportedReadOperation(req.Operation) {
-		return errorResponse(resp, MachineError{
+		return emitter.finishError(EventFailed, MachineError{
 			Kind:      ErrorKindUnsupportedOperation,
 			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
 			Operation: req.Operation,
@@ -111,7 +149,7 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 
 	product, resource, recordID, missing := requiredInput(req)
 	if len(missing) > 0 {
-		return errorResponse(resp, MachineError{
+		return emitter.finishError(EventFailed, MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   "missing required input: " + strings.Join(missing, ", "),
 			Missing:   missing,
@@ -120,11 +158,9 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 			Resource:  resource,
 		})
 	}
-	resp.Meta.Product = product
-	resp.Meta.Resource = resource
 
 	if e.Browser == nil {
-		return errorResponse(resp, MachineError{
+		return emitter.finishError(EventFailed, MachineError{
 			Kind:      ErrorKindInternal,
 			Message:   "browser loader is not configured",
 			Operation: req.Operation,
@@ -135,15 +171,35 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 
 	projected, err := e.loadProjected(ctx, req.Operation, product, resource, recordID)
 	if err != nil {
-		return errorResponse(resp, machineErrorFromLoadError(err, req.Operation, product, resource))
+		return emitter.finishMachineError(machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
 	projected, err = e.narrowProjected(req, product, resource, projected)
 	if err != nil {
-		return errorResponse(resp, machineErrorFromLoadError(err, req.Operation, product, resource))
+		return emitter.finishMachineError(machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
-	resp.Records = projectedRecordsToMaps(projected)
-	resp.Meta.Count = len(resp.Records)
-	return resp, nil
+
+	records := projected.Records()
+	for i := range records {
+		record := records[i]
+		if failure := emitter.emit(Event{
+			Kind:     EventRecord,
+			Product:  product,
+			Resource: resource,
+			Record:   &record,
+		}); failure != nil {
+			return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+		}
+	}
+	if failure := emitter.emit(Event{
+		Kind:      EventCompleted,
+		Product:   product,
+		Resource:  resource,
+		Records:   len(records),
+		Resources: 1,
+	}); failure != nil {
+		return emitter.failAfterDelivery(*failure, req.Operation, product, resource)
+	}
+	return nil
 }
 
 func isSupportedReadOperation(op Operation) bool {
@@ -226,18 +282,52 @@ func responseForRequest(req Request) Response {
 	}
 }
 
-func errorResponse(resp Response, machineErr MachineError) (Response, error) {
-	resp.Error = &machineErr
-	return resp, &machineErr
-}
-
-func projectedRecordsToMaps(records resources.ProjectedRecords) []map[string]any {
-	projected := records.Records()
-	out := make([]map[string]any, len(projected))
-	for i, record := range projected {
-		out[i] = record.Fields()
+func accumulateResponseEvent(resp *Response, event Event) error {
+	switch event.Kind {
+	case EventRecord:
+		if event.Record == nil {
+			return &MachineError{
+				Kind:      ErrorKindInternal,
+				Message:   "record event has no record",
+				Operation: resp.Operation,
+				Product:   event.Product,
+				Resource:  event.Resource,
+			}
+		}
+		resp.Records = append(resp.Records, event.Record.Fields())
+	case EventCompleted:
+		if event.Manifest != nil {
+			manifest := *event.Manifest
+			resp.Manifest = &manifest
+			resp.Meta.Count = len(manifest.Capabilities)
+			return nil
+		}
+		if resp.Records == nil {
+			resp.Records = make([]map[string]any, 0)
+		}
+		resp.Meta.Count = len(resp.Records)
+	case EventWarning:
+		return &MachineError{
+			Kind:      ErrorKindInternal,
+			Message:   "one-shot response cannot represent warning event",
+			Operation: resp.Operation,
+			Product:   event.Product,
+			Resource:  event.Resource,
+		}
+	case EventFailed, EventCanceled:
+		if event.Err == nil {
+			return &MachineError{
+				Kind:      ErrorKindInternal,
+				Message:   "terminal event has no machine error",
+				Operation: resp.Operation,
+				Product:   event.Product,
+				Resource:  event.Resource,
+			}
+		}
+		machineErr := copyMachineError(*event.Err)
+		resp.Error = &machineErr
 	}
-	return out
+	return nil
 }
 
 func validateRequestSemantics(req Request, product, resource string) *MachineError {
