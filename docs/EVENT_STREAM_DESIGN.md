@@ -55,7 +55,9 @@ type Event struct {
 type EventSink func(Event) error
 ```
 
-The producer calls the sink synchronously on its own goroutine.
+The producer calls the sink synchronously on the caller's goroutine. The core
+does not create a goroutine; an adapter that needs asynchronous delivery owns
+that goroutine and its lifetime.
 
 Why callback over channel/iterator:
 
@@ -114,18 +116,20 @@ producer; do not start there.
    property of the stream.
 6. **Redaction boundary.** `record` events carry `resources.ProjectedRecord`
    only — the same post-projection, post-verification type machine responses
-   are built from. Lifecycle metadata is value-free by type construction (ints
-   and catalog names only). Manifest completion may additionally carry the
-   config-free catalog-derived manifest. There is no code path from a source
-   record to an event.
+   are built from. Lifecycle metadata contains counters and resource selectors,
+   not tenant record values; selectors on `started` and request failures are
+   caller-controlled until catalog resolution succeeds. Manifest completion may
+   additionally carry the config-free catalog-derived manifest. No source-record
+   type or unprojected field map crosses the event boundary: trusted runtime
+   projection happens before emission.
 7. **Schema status.** Candidate, in-process only. Event types and lifecycle
    enforcement live in `internal/machine`, where only projected loaders are
    visible. `internal/runtime` supplies the trusted projected loader and
    forwards the stream. There is no committed wire form for events in v1.
    Omitting JSON tags is NOT a guard — encoding/json marshals exported untagged
-   fields by name — so `Event.MarshalJSON` fails closed. A transport must
-   convert events to separate, explicitly versioned DTOs with schemas and
-   fixtures rather than serializing the in-process type.
+   fields by name — so direct `Event` JSON marshal and unmarshal operations fail
+   closed. A transport must convert events to separate, explicitly versioned
+   DTOs with schemas and fixtures rather than serializing the in-process type.
 8. **One-shot reconstruction.** `Executor.Execute` becomes: run the
    event-producing path with an accumulating sink; build `machine.Response`
    from accumulated records; map terminal `failed`/`canceled` to the

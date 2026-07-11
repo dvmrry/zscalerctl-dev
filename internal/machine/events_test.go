@@ -112,6 +112,63 @@ func TestExecutorExecuteStreamManifestCarriesCompletionPayload(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteManifestPreservesEmptyCapabilities(t *testing.T) {
+	emptyCatalog := resources.ResourceCatalog{}
+	executor := machine.Executor{Catalog: emptyCatalog}
+
+	resp, err := executor.Execute(context.Background(), machine.Request{Operation: machine.OperationManifest})
+	if err != nil {
+		t.Fatalf("Executor.Execute(empty manifest request) error = %v, want nil", err)
+	}
+	if resp.Manifest == nil {
+		t.Fatal("Executor.Execute(empty manifest request).Manifest = nil, want manifest")
+	}
+	if resp.Manifest.Capabilities == nil {
+		t.Fatal("Executor.Execute(empty manifest request).Manifest.Capabilities = nil, want initialized empty slice")
+	}
+	want := machine.ManifestFromCatalog(emptyCatalog)
+	if !reflect.DeepEqual(*resp.Manifest, want) {
+		t.Errorf("Executor.Execute(empty manifest request).Manifest = %#v, want %#v", *resp.Manifest, want)
+	}
+	body, err := json.Marshal(resp.Manifest)
+	if err != nil {
+		t.Fatalf("json.Marshal(empty reconstructed manifest) error = %v, want nil", err)
+	}
+	if !strings.Contains(string(body), `"capabilities":[]`) {
+		t.Errorf("json.Marshal(empty reconstructed manifest) = %s, want capabilities empty array", body)
+	}
+}
+
+func TestExecutorExecuteStreamRecordFieldsAreDefensiveCopies(t *testing.T) {
+	executor := machine.Executor{Browser: &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"name": "HQ", "ports": []int{80, 443}}),
+	}}
+	req := machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+	var retained *resources.ProjectedRecord
+	err := executor.ExecuteStream(context.Background(), req, func(event machine.Event) error {
+		if event.Kind == machine.EventRecord {
+			retained = event.Record
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Executor.ExecuteStream(typed-slice record) error = %v, want nil", err)
+	}
+	if retained == nil {
+		t.Fatal("Executor.ExecuteStream(typed-slice record) retained record = nil, want record")
+	}
+	fields := retained.Fields()
+	fields["ports"].([]int)[0] = 8080
+	ports, ok := retained.Value("ports")
+	if !ok || !reflect.DeepEqual(ports, []int{80, 443}) {
+		t.Errorf("retained ProjectedRecord.Value(ports) after caller mutation = %#v (present %t), want [80 443]", ports, ok)
+	}
+}
+
 func TestExecutorExecuteStreamMapsFailuresToTerminalEvents(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -184,6 +241,33 @@ func TestExecutorExecuteStreamSinkErrorEmitsSanitizedFailure(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteStreamTypedNilMachineErrorEmitsFailure(t *testing.T) {
+	executor := machine.Executor{Browser: &fakeBrowserLoader{}}
+	req := machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+	var typedNil *machine.MachineError
+	var events []machine.Event
+	err := executor.ExecuteStream(context.Background(), req, func(event machine.Event) error {
+		events = append(events, event)
+		if event.Kind == machine.EventStarted {
+			return typedNil
+		}
+		return nil
+	})
+
+	machineErr := assertMachineError(t, err, machine.ErrorKindInternal, machine.OperationList, "zia", "locations")
+	assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+	if machineErr.Message != "event sink failed" {
+		t.Errorf("Executor.ExecuteStream(typed-nil sink error) message = %q, want sanitized event sink failure", machineErr.Message)
+	}
+	if events[1].Err == nil || events[1].Err.Kind != machine.ErrorKindInternal {
+		t.Errorf("Executor.ExecuteStream(typed-nil sink error) terminal error = %#v, want internal", events[1].Err)
+	}
+}
+
 func TestExecutorExecuteStreamSinkPanicEmitsSanitizedFailure(t *testing.T) {
 	const panicValue = "panic containing tenant secret"
 	executor := machine.Executor{Browser: &fakeBrowserLoader{
@@ -251,6 +335,39 @@ func TestExecutorExecuteStreamTerminalPanicDoesNotRetryTerminal(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteStreamTerminalErrorDoesNotRetryTerminal(t *testing.T) {
+	const rawSinkError = "terminal sink secret"
+	executor := machine.Executor{Browser: &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123", "name": "HQ"}),
+	}}
+	req := machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+	var events []machine.Event
+	err := executor.ExecuteStream(context.Background(), req, func(event machine.Event) error {
+		events = append(events, event)
+		if event.Kind == machine.EventCompleted {
+			return errors.New(rawSinkError)
+		}
+		return nil
+	})
+
+	machineErr := assertMachineError(t, err, machine.ErrorKindInternal, machine.OperationList, "zia", "locations")
+	assertEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	if strings.Contains(machineErr.Message, rawSinkError) {
+		t.Fatalf("Executor.ExecuteStream(terminal error) message = %q, want no raw sink error", machineErr.Message)
+	}
+	if got := terminalEventCount(events); got != 1 {
+		t.Errorf("Executor.ExecuteStream(terminal error) terminal events = %d, want 1", got)
+	}
+}
+
 func TestExecutorExecuteStreamCopiesTerminalErrorBeforeDelivery(t *testing.T) {
 	executor := machine.Executor{Browser: &fakeBrowserLoader{err: context.Canceled}}
 	req := machine.Request{
@@ -289,6 +406,10 @@ func TestEventRejectsDirectJSONSerialization(t *testing.T) {
 	}
 	if strings.Contains(string(body), "must-not-serialize") {
 		t.Fatalf("json.Marshal(machine.Event) body = %q, want no record bytes", body)
+	}
+	var decoded machine.Event
+	if err := json.Unmarshal([]byte(`{"Kind":"record"}`), &decoded); err == nil {
+		t.Fatalf("json.Unmarshal(machine.Event) error = nil; event = %#v, want no wire format", decoded)
 	}
 }
 

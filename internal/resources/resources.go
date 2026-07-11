@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -1252,9 +1253,9 @@ func copyAny(value any) any {
 		}
 		return out
 	case []string:
-		out := make([]string, len(v))
-		copy(out, v)
-		return out
+		return slices.Clone(v)
+	case []int:
+		return slices.Clone(v)
 	default:
 		return value
 	}

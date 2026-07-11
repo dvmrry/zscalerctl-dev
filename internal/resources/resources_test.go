@@ -179,11 +179,13 @@ func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.
 		"id":     "123",
 		"name":   "HQ",
 		"groups": []any{"admins"},
+		"ports":  []int{80, 443},
 	}}
 
 	projected := resources.NewProjectedRecordsFromProjectedFields(input)
 	input[0]["name"] = "mutated"
 	input[0]["groups"].([]any)[0] = "mutated"
+	input[0]["ports"].([]int)[0] = 8080
 
 	records := projected.Records()
 	if len(records) != 1 {
@@ -194,14 +196,20 @@ func TestNewProjectedRecordsFromProjectedFieldsReconstructsAndCopies(t *testing.
 		"id":     "123",
 		"name":   "HQ",
 		"groups": []any{"admins"},
+		"ports":  []int{80, 443},
 	}
 	if !reflect.DeepEqual(fields, want) {
 		t.Fatalf("NewProjectedRecordsFromProjectedFields fields = %#v, want %#v", fields, want)
 	}
 
 	fields["name"] = "changed again"
+	fields["ports"].([]int)[0] = 8443
 	if got, _ := records[0].Value("name"); got != "HQ" {
 		t.Fatalf("ProjectedRecord.Value(name) after mutating Fields copy = %v, want HQ", got)
+	}
+	ports, ok := records[0].Value("ports")
+	if !ok || !reflect.DeepEqual(ports, []int{80, 443}) {
+		t.Fatalf("ProjectedRecord.Value(ports) after mutating Fields copy = %#v (present %t), want [80 443]", ports, ok)
 	}
 }
 

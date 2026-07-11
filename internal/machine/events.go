@@ -2,6 +2,7 @@ package machine
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
@@ -27,6 +28,8 @@ var errEventHasNoWireFormat = errors.New("machine event has no wire format")
 // Manifest is set only on a successful manifest completion. Err is set only on
 // warning, failed, or canceled events and is always machine-safe. Event is not
 // a wire type; future transports must define and version their own DTOs.
+// Product and Resource are caller-controlled selectors until the operation has
+// successfully resolved them through the catalog-backed projected loader.
 type Event struct {
 	Kind     EventKind
 	Product  string
@@ -48,6 +51,12 @@ type Event struct {
 // Event into an explicitly versioned wire DTO instead.
 func (Event) MarshalJSON() ([]byte, error) {
 	return nil, errEventHasNoWireFormat
+}
+
+// UnmarshalJSON rejects direct Event deserialization. Transports must decode an
+// explicitly versioned wire DTO and validate it before constructing events.
+func (*Event) UnmarshalJSON([]byte) error {
+	return errEventHasNoWireFormat
 }
 
 // EventSink receives events synchronously on the ExecuteStream caller's
@@ -172,7 +181,13 @@ func callEventSink(sink EventSink, event Event) (err error, panicked bool) {
 
 func machineErrorFromSinkError(err error) MachineError {
 	var pointer *MachineError
-	if errors.As(err, &pointer) && pointer != nil {
+	if errors.As(err, &pointer) {
+		if pointer == nil {
+			return MachineError{
+				Kind:    ErrorKindInternal,
+				Message: "event sink failed",
+			}
+		}
 		return copyMachineError(*pointer)
 	}
 	var value MachineError
@@ -218,8 +233,8 @@ func copyEventForSink(event Event) Event {
 	}
 	if event.Manifest != nil {
 		manifest := *event.Manifest
-		manifest.Capabilities = append([]Capability(nil), event.Manifest.Capabilities...)
-		manifest.Schemas = append([]SchemaRef(nil), event.Manifest.Schemas...)
+		manifest.Capabilities = slices.Clone(event.Manifest.Capabilities)
+		manifest.Schemas = slices.Clone(event.Manifest.Schemas)
 		if event.Manifest.Meta != nil {
 			meta := *event.Manifest.Meta
 			manifest.Meta = &meta
@@ -234,6 +249,6 @@ func copyEventForSink(event Event) Event {
 }
 
 func copyMachineError(machineErr MachineError) MachineError {
-	machineErr.Missing = append([]string(nil), machineErr.Missing...)
+	machineErr.Missing = slices.Clone(machineErr.Missing)
 	return machineErr
 }

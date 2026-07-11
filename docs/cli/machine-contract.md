@@ -170,10 +170,10 @@ committed wire schema:
 The compatibility strategy is additive. Existing `Execute` remains the
 one-shot adapter for current resource reads and is reconstructed from the
 candidate stream. `machine.Event` deliberately rejects direct JSON
-serialization; a future transport must define separate, versioned DTOs and
-schemas. No current CLI JSON, NDJSON, table, pretty, stderr error envelope, exit
-code, or dump behavior changes until a separate promotion explicitly changes
-the supported surface.
+serialization and deserialization; a future transport must define separate,
+versioned DTOs and schemas. No current CLI JSON, NDJSON, table, pretty, stderr
+error envelope, exit code, or dump behavior changes until a separate promotion
+explicitly changes the supported surface.
 
 Dump should remain a separate artifact model unless a later design deliberately
 promotes a dump event schema into the machine contract. Runtime dump collection
