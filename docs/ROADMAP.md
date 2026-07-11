@@ -134,8 +134,8 @@ throughout.
    truncation policy and no width-dependent field meaning; key-value cards for
    get/show; styled doctor/auth). Same projected/redacted records,
    presentation only. `semver:minor`.
-5. **`feat(cli)`: dump progress styling** over the existing
-   `DumpProgressFunc` (stderr, TTY-only). `semver:minor`.
+5. **`feat(cli)`: dump progress styling** over the shared operation event
+   stream (stderr, TTY-only). `semver:minor`.
 6. **(Optional) Bubble Tea experiment** — only under experiment rules, scoped
    as a human browse/explore adapter consuming safe seams; see promotion
    criteria table. Post-1.0 only.
