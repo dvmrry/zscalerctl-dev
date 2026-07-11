@@ -272,14 +272,22 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 	if err != nil {
 		return Report{}, err
 	}
-	if err := checkContext(ctx); err != nil {
-		return Report{}, err
-	}
-	oldDump, err := loadDump(ctx, oldDir, catalogSpecs)
+	specs, err := selectedSpecs(ctx, catalog, opts)
 	if err != nil {
 		return Report{}, err
 	}
-	newDump, err := loadDump(ctx, newDir, catalogSpecs)
+	selected := make(map[ResourceKey]bool, len(specs))
+	for _, spec := range specs {
+		selected[ResourceKey{Product: spec.Product, Name: spec.Name}] = true
+	}
+	if err := checkContext(ctx); err != nil {
+		return Report{}, err
+	}
+	oldDump, err := loadDump(ctx, oldDir, catalogSpecs, selected)
+	if err != nil {
+		return Report{}, err
+	}
+	newDump, err := loadDump(ctx, newDir, catalogSpecs, selected)
 	if err != nil {
 		return Report{}, err
 	}
@@ -297,11 +305,6 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 			return Report{}, fmt.Errorf("%w: new dump %s is partial", ErrPartialDumpInput, newDir)
 		}
 	}
-	specs, err := selectedSpecs(ctx, catalog, opts)
-	if err != nil {
-		return Report{}, err
-	}
-
 	report := Report{
 		Schema: SchemaID,
 		Old:    oldDump.ref,
@@ -502,7 +505,12 @@ func selectedSpecs(ctx context.Context, catalog resources.ResourceCatalog, opts 
 	return specs, nil
 }
 
-func loadDump(ctx context.Context, dir string, catalog map[ResourceKey]resources.ResourceSpec) (loadedDump, error) {
+func loadDump(
+	ctx context.Context,
+	dir string,
+	catalog map[ResourceKey]resources.ResourceSpec,
+	selected map[ResourceKey]bool,
+) (loadedDump, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
 		return loadedDump{}, err
@@ -588,14 +596,20 @@ func loadDump(ctx context.Context, dir string, catalog map[ResourceKey]resources
 			if strings.TrimSpace(mr.Path) == "" {
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, spec.Product, spec.Name)
 			}
-			records, err := readResource(ctx, root, mr, spec, mode)
+			records, err := readResource(ctx, root, mr, spec)
 			if err != nil {
 				return loadedDump{}, err
 			}
 			if len(records) != mr.Records {
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
 			}
-			loaded.resources[key] = loadedResource{manifest: mr, records: records}
+			if selected[key] {
+				admitted, err := admitRecords(ctx, spec, mode, records)
+				if err != nil {
+					return loadedDump{}, err
+				}
+				loaded.resources[key] = loadedResource{manifest: mr, records: admitted}
+			}
 		case "error":
 			loaded.ref.Partial = true
 		default:
@@ -605,7 +619,7 @@ func loadDump(ctx context.Context, dir string, catalog map[ResourceKey]resources
 	return loaded, nil
 }
 
-func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, spec resources.ResourceSpec, mode redact.Mode) ([]map[string]any, error) {
+func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, spec resources.ResourceSpec) ([]map[string]any, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -647,7 +661,7 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 	default:
 		return nil, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
 	}
-	return admitRecords(ctx, spec, mode, records)
+	return records, nil
 }
 
 func readRootFile(ctx context.Context, root *os.Root, name, label string, maxBytes int64) ([]byte, error) {

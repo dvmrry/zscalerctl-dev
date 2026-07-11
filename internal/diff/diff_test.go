@@ -377,6 +377,69 @@ func TestCompareRejectsUnknownTopLevelAndNestedFieldsWithoutLeakage(t *testing.T
 	}
 }
 
+func TestCompareScopesRecordAdmissionToSelectedResources(t *testing.T) {
+	t.Parallel()
+
+	const canary = "unselected-client-secret-canary"
+	selectedSpec := testKeyedSpec()
+	unselectedSpec := testProgressSpec("unselected-resource")
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	oldDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"old"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	}})
+	newDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"new"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	}})
+
+	report, err := Compare(oldDir, newDir, Options{
+		Catalog: catalog,
+		Resources: map[ResourceKey]bool{
+			{Product: selectedSpec.Product, Name: selectedSpec.Name}: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compare(selected resource) error = %v, want nil", err)
+	}
+	resource := onlyResourceDiff(t, report)
+	if resource.Resource != selectedSpec.Name || len(resource.Changed) != 1 {
+		t.Fatalf("Compare(selected resource) = %#v, want one selected-resource change", resource)
+	}
+	body, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("json.Marshal(selected report) error = %v", err)
+	}
+	if strings.Contains(string(body), canary) || strings.Contains(string(body), unselectedSpec.Name) {
+		t.Fatalf("selected report = %s, want no unselected resource data", body)
+	}
+}
+
+func TestCompareStillParsesUnselectedResourceBodies(t *testing.T) {
+	t.Parallel()
+
+	selectedSpec := testKeyedSpec()
+	unselectedSpec := testProgressSpec("unselected-resource")
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	oldDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+		{spec: unselectedSpec, payload: `[42]`},
+	}})
+	newDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+	}})
+
+	_, err := Compare(oldDir, newDir, Options{
+		Catalog: catalog,
+		Resources: map[ResourceKey]bool{
+			{Product: selectedSpec.Product, Name: selectedSpec.Name}: true,
+		},
+	})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare(structurally invalid unselected resource) error = %v, want ErrInvalidDump", err)
+	}
+}
+
 func TestCompareRejectsSecretAndUnrenderableFields(t *testing.T) {
 	tests := []struct {
 		name string

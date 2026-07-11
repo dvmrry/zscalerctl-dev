@@ -102,11 +102,14 @@ tenant-read-only catalog condition as dump. It loads no config, provider, SDK
 reader, or tenant connection. Requests carry two local dump directories plus
 canonical product and exact product/resource selectors. The engine validates
 and copies the selection before filesystem access; comparison then admits every
-local record against the exact catalog spec and manifest redaction mode.
-Unknown, secret, unrenderable, or non-idempotently redacted values fail closed
-instead of entering a report. Progress is synchronous and deterministic, and
-the closed result owns a recursively copied report. CLI detail rendering and
-drift exit policy remain outside the capability.
+selected local record against the exact catalog spec and manifest redaction
+mode. Unselected resource bodies are still structurally parsed and count
+checked, preserving dump-integrity and scoped-diff behavior without allowing
+their values into the report. Unknown, secret, unrenderable, or
+non-idempotently redacted selected values fail closed instead of entering a
+report. Progress is synchronous and deterministic, and the closed result owns
+a recursively copied report. CLI detail rendering and drift exit policy remain
+outside the capability.
 
 ## Trust and copying boundaries
 

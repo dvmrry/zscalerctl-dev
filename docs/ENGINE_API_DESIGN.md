@@ -132,9 +132,11 @@ partial-dump exit policy, and terminal presentation as adapter behavior.
 
 Typed diff is config-free and validates two local paths plus exact
 catalog-backed selectors before filesystem access. Existing dump JSON is
-treated as untrusted input: every record must be a valid rendered subset for
-its catalog spec and recorded redaction mode, and re-projection/redaction must
-be idempotent before a value can enter the report. Comparison remains
+treated as untrusted input: every selected record must be a valid rendered
+subset for its catalog spec and recorded redaction mode, and
+re-projection/redaction must be idempotent before a value can enter the report.
+Unselected resource bodies remain structurally parsed but cannot enter the
+report. Comparison remains
 context-aware and emits deterministic per-resource progress. `DiffResult` owns
 a recursively copied admitted report; Cobra keeps shorthand parsing, human
 detail rendering, `--output`, and `--fail-on-drift` exit 7 as adapter policy.

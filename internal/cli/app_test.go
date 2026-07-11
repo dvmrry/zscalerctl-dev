@@ -19,6 +19,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
+	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -3699,6 +3700,47 @@ func TestDiffRejectsUnadmittedDumpFieldsWithoutLeakingValues(t *testing.T) {
 	}
 }
 
+func TestDiffScopesAdmissionToSelectedResources(t *testing.T) {
+	t.Parallel()
+
+	const canary = "diff-unselected-client-secret-canary"
+	selectedSpec := cliDiffSpec()
+	unselectedSpec := cliDiffUnselectedSpec()
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	oldDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"old"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	})
+	newDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"new"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	})
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+
+	err := app.Run(context.Background(), []string{
+		"--format", "json", "diff", oldDir, newDir,
+		"--resources", "zia/locations",
+	})
+	if err != nil {
+		t.Fatalf("App.Run(scoped diff) error = %v, want nil", err)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(scoped diff) stderr = %q, want empty", errOut.String())
+	}
+	if strings.Contains(out.String(), canary) || strings.Contains(out.String(), unselectedSpec.Name) {
+		t.Fatalf("App.Run(scoped diff) output = %s, want no unselected resource data", out.String())
+	}
+	var report dumpdiff.Report
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("json.Unmarshal(scoped diff) error = %v; output=%q", err, out.String())
+	}
+	if len(report.Resources) != 1 || report.Resources[0].Resource != selectedSpec.Name ||
+		len(report.Resources[0].Changed) != 1 {
+		t.Fatalf("App.Run(scoped diff) report = %#v, want one locations change", report)
+	}
+}
+
 func TestDiffFinishedContextWinsBeforeFilesystemAccess(t *testing.T) {
 	t.Parallel()
 
@@ -3883,15 +3925,12 @@ func writeCLIConfig(t *testing.T, body string) string {
 
 func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 	t.Helper()
+	return writeCLIDiffDumpSet(t, []dumpFixtureForCLI{fixture})
+}
+
+func writeCLIDiffDumpSet(t *testing.T, fixtures []dumpFixtureForCLI) string {
+	t.Helper()
 	dir := t.TempDir()
-	relPath := filepath.ToSlash(filepath.Join("resources", string(fixture.spec.Product), fixture.spec.Name+".json"))
-	path := filepath.Join(dir, relPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatalf("os.MkdirAll(%s) error = %v, want nil", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(fixture.payload), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%s) error = %v, want nil", path, err)
-	}
 	manifest := dump.Manifest{
 		Schema:      dump.ManifestSchemaID,
 		CollectedAt: "2026-01-01T00:00:00Z",
@@ -3899,16 +3938,25 @@ func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 		Redaction:   string(redact.ModeStandard),
 		Warning:     "test fixture",
 		Status:      "complete",
-		Resources: []dump.ManifestResource{
-			{
-				Product: string(fixture.spec.Product),
-				Name:    fixture.spec.Name,
-				Shape:   string(fixture.spec.EffectiveShape()),
-				Status:  "ok",
-				Path:    relPath,
-				Records: 1,
-			},
-		},
+		Resources:   []dump.ManifestResource{},
+	}
+	for _, fixture := range fixtures {
+		relPath := filepath.ToSlash(filepath.Join("resources", string(fixture.spec.Product), fixture.spec.Name+".json"))
+		path := filepath.Join(dir, relPath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("os.MkdirAll(%s) error = %v, want nil", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(fixture.payload), 0o600); err != nil {
+			t.Fatalf("os.WriteFile(%s) error = %v, want nil", path, err)
+		}
+		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
+			Product: string(fixture.spec.Product),
+			Name:    fixture.spec.Name,
+			Shape:   string(fixture.spec.EffectiveShape()),
+			Status:  "ok",
+			Path:    relPath,
+			Records: cliDiffRecordCount(t, fixture.payload),
+		})
 	}
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -3918,6 +3966,24 @@ func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 		t.Fatalf("os.WriteFile(manifest) error = %v, want nil", err)
 	}
 	return dir
+}
+
+func cliDiffRecordCount(t *testing.T, payload string) int {
+	t.Helper()
+
+	var raw any
+	if err := json.Unmarshal([]byte(payload), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(diff fixture) error = %v", err)
+	}
+	switch value := raw.(type) {
+	case []any:
+		return len(value)
+	case map[string]any:
+		return 1
+	default:
+		t.Fatalf("diff fixture payload = %T, want object or array", raw)
+		return 0
+	}
 }
 
 func cliDiffSpec() resources.ResourceSpec {
@@ -3937,6 +4003,19 @@ func cliDiffSpec() resources.ResourceSpec {
 				AllowedModes:   []redact.Mode{redact.ModeStandard},
 			},
 		},
+	}
+}
+
+func cliDiffUnselectedSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "rule-labels",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "label",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
 	}
 }
 
