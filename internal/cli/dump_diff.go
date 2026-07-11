@@ -8,7 +8,6 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
-	dumpartifact "github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -171,20 +170,16 @@ func cliErrorFromDump(err error, catalog resources.ResourceCatalog) error {
 	if err == nil {
 		return nil
 	}
+	if adapterErr, ok := machineruntime.LegacyDumpAdapterError(err); ok {
+		return adapterErr
+	}
 	machineErr, ok := asMachineError(err)
 	if ok && machineErr.Kind == machine.ErrorKindUsage {
 		return UsageError{Message: dumpUsage(catalog)}
 	}
 	if ok && machineErr.Kind == machine.ErrorKindInternal &&
 		machineErr.Operation == machine.OperationDump && machineErr.Message == "dump output failed" {
-		switch {
-		case errors.Is(err, dumpartifact.ErrUnsafePath):
-			return fmt.Errorf("dump output failed: %w", dumpartifact.ErrUnsafePath)
-		case errors.Is(err, dumpartifact.ErrUnsafeOverwrite):
-			return fmt.Errorf("dump output failed: %w", dumpartifact.ErrUnsafeOverwrite)
-		default:
-			return errors.New("dump output failed")
-		}
+		return errors.New("dump output failed")
 	}
 	return err
 }

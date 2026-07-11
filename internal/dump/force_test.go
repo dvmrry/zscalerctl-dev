@@ -51,6 +51,39 @@ func TestPrepareOutputDirForceRemovesValidDump(t *testing.T) {
 	}
 }
 
+func TestPrepareOutputDirDoesNotDeleteReplacementDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := validForceDumpDir(t)
+	validatedDir := dir + "-validated"
+	replacementFile := filepath.Join(dir, "must-survive.txt")
+	var hookErr error
+
+	err := prepareOutputDir(context.Background(), dir, true, func() {
+		if renameErr := os.Rename(dir, validatedDir); renameErr != nil {
+			hookErr = renameErr
+			return
+		}
+		if mkdirErr := os.Mkdir(dir, dirPerm); mkdirErr != nil {
+			hookErr = mkdirErr
+			return
+		}
+		hookErr = os.WriteFile(replacementFile, []byte("keep"), filePerm)
+	})
+	if hookErr != nil {
+		t.Fatalf("replacement boundary setup error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("prepareOutputDir(replaced target) error = %v, want ErrUnsafePath", err)
+	}
+	if got := readFile(t, replacementFile); got != "keep" {
+		t.Errorf("replacement file after force race = %q, want %q", got, "keep")
+	}
+	if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+		t.Errorf("replacement directory after force race = (%v, %v), want existing directory", info, statErr)
+	}
+}
+
 func TestPrepareOutputDirNoForceDoesNotInspect(t *testing.T) {
 	t.Parallel()
 

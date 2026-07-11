@@ -182,6 +182,56 @@ func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
 	}
 }
 
+func TestDumpOutputErrorsKeepActionableTextAndJSONMessages(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{
+			name: "unsafe force target",
+			err: fmt.Errorf(
+				"%w: --force target /tmp/not-a-dump is not a zscalerctl dump directory",
+				dump.ErrUnsafePath,
+			),
+			message: "unsafe dump path: --force target /tmp/not-a-dump is not a zscalerctl dump directory",
+		},
+		{
+			name:    "existing manifest",
+			err:     fmt.Errorf("%w: /tmp/dump/manifest.json", dump.ErrUnsafeOverwrite),
+			message: "refusing to overwrite existing dump file: /tmp/dump/manifest.json",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var textErr bytes.Buffer
+			writeError(&textErr, output.FormatTable, tc.err)
+			if got, want := textErr.String(), "zscalerctl: "+tc.message+"\n"; got != want {
+				t.Errorf("writeError(text) = %q, want %q", got, want)
+			}
+
+			var jsonErr bytes.Buffer
+			writeError(&jsonErr, output.FormatJSON, tc.err)
+			var envelope errorEnvelope
+			if err := json.Unmarshal(jsonErr.Bytes(), &envelope); err != nil {
+				t.Fatalf("json.Unmarshal(writeError JSON %q) error = %v", jsonErr.String(), err)
+			}
+			if envelope.Error.Message != tc.message {
+				t.Errorf("writeError(JSON).error.message = %q, want %q", envelope.Error.Message, tc.message)
+			}
+			if envelope.Error.Operation != "" || envelope.Error.Product != "" || envelope.Error.Resource != "" {
+				t.Errorf("writeError(JSON) context = %q/%q/%q, want empty legacy context",
+					envelope.Error.Operation, envelope.Error.Product, envelope.Error.Resource)
+			}
+		})
+	}
+}
+
 func TestRunInvalidResourceIDReturnsUsageWithoutNetwork(t *testing.T) {
 	t.Parallel()
 

@@ -9,6 +9,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/machine"
+	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
@@ -420,7 +421,45 @@ func dumpOutputBoundaryError(err error) error {
 	case errors.Is(err, dump.ErrUnsafeOverwrite):
 		sentinel = dump.ErrUnsafeOverwrite
 	}
-	return newBoundaryError(machineErr, sentinel)
+	return &dumpOutputError{
+		safe:            newBoundaryError(machineErr, sentinel),
+		adapterMessage:  sanitizeEngineString(redact.New(redact.ModeStandard), err.Error()),
+		adapterSentinel: sentinel,
+	}
+}
+
+// dumpOutputError keeps the typed engine error surface static while retaining
+// one already-redacted compatibility message for the legacy Cobra adapter.
+// Error, Unwrap, errors.Is, and errors.As expose only the safe typed boundary.
+type dumpOutputError struct {
+	safe            error
+	adapterMessage  string
+	adapterSentinel error
+}
+
+func (e *dumpOutputError) Error() string { return e.safe.Error() }
+func (e *dumpOutputError) Unwrap() error { return e.safe }
+
+type legacyDumpAdapterError struct {
+	message  string
+	sentinel error
+}
+
+func (e *legacyDumpAdapterError) Error() string { return e.message }
+func (e *legacyDumpAdapterError) Unwrap() error { return e.sentinel }
+
+// LegacyDumpAdapterError returns the redacted pre-engine error text and safe
+// sentinel retained solely for Cobra compatibility. New engine consumers must
+// use the static MachineError exposed by the original error instead.
+func LegacyDumpAdapterError(err error) (error, bool) {
+	var outputErr *dumpOutputError
+	if !errors.As(err, &outputErr) {
+		return nil, false
+	}
+	return &legacyDumpAdapterError{
+		message:  outputErr.adapterMessage,
+		sentinel: outputErr.adapterSentinel,
+	}, true
 }
 
 func sanitizedDumpMissingCredentials(err error) (string, error) {

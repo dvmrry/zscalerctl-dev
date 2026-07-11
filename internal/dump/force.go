@@ -13,6 +13,14 @@ import (
 // PrepareOutputDir validates an existing output directory and, when force is
 // true, removes it only when it is an owned zscalerctl dump directory.
 func PrepareOutputDir(ctx context.Context, dir string, force bool) error {
+	return prepareOutputDir(ctx, dir, force, nil)
+}
+
+// prepareOutputDir accepts a test-only boundary callback that runs after the
+// validated directory identity has been checked and immediately before its
+// contents are cleared. Keeping the callback per-call avoids mutable package
+// hooks in production and makes replacement-race tests deterministic.
+func prepareOutputDir(ctx context.Context, dir string, force bool, beforeClear func()) error {
 	ctx = contextOrBackground(ctx)
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -75,21 +83,67 @@ func PrepareOutputDir(ctx context.Context, dir string, force bool) error {
 	if empty {
 		return nil
 	}
-	if err := validateExistingDumpDirContext(ctx, target); err != nil {
+	root, err := os.OpenRoot(target)
+	if contextErr := checkContext(ctx); contextErr != nil {
+		if root != nil {
+			_ = root.Close()
+		}
+		return contextErr
+	}
+	if err != nil {
+		return fmt.Errorf("%w: open dump directory for --force: %v", ErrUnsafePath, err)
+	}
+	defer root.Close()
+
+	openedInfo, err := root.Stat(".")
+	if contextErr := checkContext(ctx); contextErr != nil {
+		return contextErr
+	}
+	if err != nil {
+		return fmt.Errorf("%w: inspect opened dump directory for --force: %v", ErrUnsafePath, err)
+	}
+	if !openedInfo.IsDir() {
+		return fmt.Errorf("%w: --force target %s is not a directory", ErrUnsafePath, dir)
+	}
+	if err := validateExistingDumpRootContext(ctx, root, target); err != nil {
 		return err
 	}
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	// The target was resolved after rejecting a final symlink. If a same-host
-	// actor swaps the directory after validation, RemoveAll on a symlink removes
-	// the link itself, not its target; the command still refuses cwd/home/root
-	// after symlink resolution before reaching this point.
-	if err := os.RemoveAll(target); err != nil {
-		if contextErr := checkContext(ctx); contextErr != nil {
-			return contextErr
-		}
-		return fmt.Errorf("%w: remove dump directory for --force: %v", ErrUnsafePath, err)
+	currentInfo, err := os.Lstat(target)
+	if contextErr := checkContext(ctx); contextErr != nil {
+		return contextErr
+	}
+	if err != nil || !os.SameFile(openedInfo, currentInfo) {
+		return fmt.Errorf("%w: --force target changed during validation", ErrUnsafePath)
+	}
+	if beforeClear != nil {
+		beforeClear()
+	}
+	// Clear through the still-open directory root, not through target's path.
+	// On supported desktop/server platforms the root remains bound to the
+	// validated directory if that path is concurrently renamed or replaced, so
+	// an unvalidated replacement can never be recursively deleted.
+	if err := clearDumpRootContext(ctx, root); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	currentInfo, err = os.Lstat(target)
+	if contextErr := checkContext(ctx); contextErr != nil {
+		return contextErr
+	}
+	if err != nil || !os.SameFile(openedInfo, currentInfo) {
+		return fmt.Errorf("%w: --force target changed before removal", ErrUnsafePath)
+	}
+	// The recursively destructive work is complete and was identity-bound. A
+	// final path-based Remove can remove only the now-empty directory. If a race
+	// substitutes a non-empty directory after the identity check, os.Remove
+	// fails instead of deleting its contents.
+	if err := os.Remove(target); err != nil {
+		return fmt.Errorf("%w: remove empty dump directory for --force: %v", ErrUnsafePath, err)
 	}
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -152,19 +206,7 @@ func isDirEmptyContext(ctx context.Context, dir string) (bool, error) {
 	return len(entries) == 0, nil
 }
 
-func validateExistingDumpDirContext(ctx context.Context, dir string) error {
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	root, err := os.OpenRoot(dir)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil {
-		return fmt.Errorf("%w: open dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	defer root.Close()
-
+func validateExistingDumpRootContext(ctx context.Context, root *os.Root, dir string) error {
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
@@ -211,6 +253,39 @@ func validateExistingDumpDirContext(ctx context.Context, dir string) error {
 	}
 	if !strings.HasPrefix(manifest.Schema, "zscalerctl.dump.manifest.") {
 		return fmt.Errorf("%w: --force target %s is not a zscalerctl dump directory", ErrUnsafePath, dir)
+	}
+	return nil
+}
+
+func clearDumpRootContext(ctx context.Context, root *os.Root) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	dir, err := root.Open(".")
+	if err != nil {
+		return fmt.Errorf("%w: open dump directory contents for --force: %v", ErrUnsafePath, err)
+	}
+	names, readErr := dir.Readdirnames(-1)
+	closeErr := dir.Close()
+	if readErr != nil {
+		return fmt.Errorf("%w: read dump directory contents for --force: %v", ErrUnsafePath, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("%w: close dump directory contents for --force: %v", ErrUnsafePath, closeErr)
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	// Once clearing begins it is intentionally uninterruptible between root
+	// entries. Returning on cancellation mid-phase could strand a partially
+	// deleted artifact; cancellation is checked immediately before and after.
+	for _, name := range names {
+		if err := root.RemoveAll(name); err != nil {
+			return fmt.Errorf("%w: clear dump directory for --force: %v", ErrUnsafePath, err)
+		}
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
 	}
 	return nil
 }

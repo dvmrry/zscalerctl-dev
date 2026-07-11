@@ -363,6 +363,20 @@ func TestTypedDumpOutputFailureIsStaticAndHasNoCompletedEvent(t *testing.T) {
 	if strings.Contains(err.Error(), "output-path-canary") {
 		t.Fatalf("DumpCollector.Dump(existing output) error = %q, want no path", err)
 	}
+	adapterErr, ok := LegacyDumpAdapterError(err)
+	if !ok || !errors.Is(adapterErr, dumpartifact.ErrUnsafeOverwrite) {
+		t.Fatalf("LegacyDumpAdapterError(existing output) = (%v, %t), want ErrUnsafeOverwrite", adapterErr, ok)
+	}
+	wantAdapterMessage := sanitizeEngineString(
+		redact.New(redact.ModeStandard),
+		fmt.Sprintf("%s: %s", dumpartifact.ErrUnsafeOverwrite, manifestPath),
+	)
+	if adapterErr.Error() != wantAdapterMessage {
+		t.Fatalf("LegacyDumpAdapterError(existing output) = %q, want %q", adapterErr, wantAdapterMessage)
+	}
+	if errors.As(adapterErr, &machineErr) {
+		t.Fatalf("LegacyDumpAdapterError(existing output) = %#v, want no MachineError context", machineErr)
+	}
 	assertRuntimeEventKinds(t, events, []machine.EventKind{
 		machine.EventStarted, machine.EventProgress, machine.EventRecord, machine.EventFailed,
 	})

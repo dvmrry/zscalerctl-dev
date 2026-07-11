@@ -3006,6 +3006,11 @@ func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 	if errors.As(err, &machineErr) {
 		t.Fatalf("App.Run(dump overwrite) error = %#v, want legacy local-output envelope without machine operation context", machineErr)
 	}
+	wantMessage := fmt.Sprintf("%s: %s", dump.ErrUnsafeOverwrite, filepath.Join(outDir, "manifest.json"))
+	wantMessage, _ = redact.New(redact.ModeStandard).ScanRenderedString(wantMessage)
+	if err.Error() != wantMessage {
+		t.Errorf("App.Run(dump overwrite) error = %q, want base-compatible rendered %q", err, wantMessage)
+	}
 	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
 	if _, err := os.Stat(resourcePath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", resourcePath, err)
@@ -3086,6 +3091,15 @@ func TestDumpForceRejectsNonDumpDirectory(t *testing.T) {
 	err := app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
 	if !errors.Is(err, dump.ErrUnsafePath) {
 		t.Fatalf("App.Run(dump --force non-dump) error = %v, want ErrUnsafePath", err)
+	}
+	wantMessage := fmt.Sprintf(
+		"%s: --force target %s is not a zscalerctl dump directory",
+		dump.ErrUnsafePath,
+		outDir,
+	)
+	wantMessage, _ = redact.New(redact.ModeStandard).ScanRenderedString(wantMessage)
+	if err.Error() != wantMessage {
+		t.Errorf("App.Run(dump --force non-dump) error = %q, want base-compatible rendered %q", err, wantMessage)
 	}
 	if readFile(t, notesPath) != "not a dump" {
 		t.Errorf("notes file changed after rejected --force")
