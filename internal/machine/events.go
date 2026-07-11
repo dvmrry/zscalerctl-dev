@@ -50,6 +50,10 @@ type Event struct {
 	Records   int
 	Resources int
 	Warnings  int
+
+	// resourceResult preserves the typed immutable result for in-package adapters
+	// while public event consumers continue to receive record events and counters.
+	resourceResult *ResourceReadResult
 }
 
 // MarshalJSON rejects direct Event serialization. Transports must convert an
@@ -142,6 +146,9 @@ func (s *EventStream) Complete(event Event) error {
 	if event.Manifest != nil && (event.Records != 0 || event.Resources != 0 || event.Warnings != 0) {
 		return s.failProducer("manifest completion has resource counters")
 	}
+	if event.Manifest != nil && event.resourceResult != nil {
+		return s.failProducer("manifest completion has typed resource result")
+	}
 	event.Kind = EventCompleted
 	s.applyDefaultScope(&event)
 	if failure := s.emitter.emit(event); failure != nil {
@@ -202,21 +209,35 @@ func invalidNonTerminalEvent(event Event) string {
 		if event.Done < 0 || event.Total < 0 || (event.Total > 0 && event.Done > event.Total) {
 			return "progress event has invalid counters"
 		}
-		if event.Record != nil || event.Manifest != nil || event.Err != nil || hasCompletionCounters(event) {
+		if event.Record != nil ||
+			event.Manifest != nil ||
+			event.Err != nil ||
+			event.resourceResult != nil ||
+			hasCompletionCounters(event) {
 			return "progress event has a non-progress payload"
 		}
 	case EventRecord:
 		if event.Record == nil {
 			return "record event has no record"
 		}
-		if event.Manifest != nil || event.Err != nil || event.Done != 0 || event.Total != 0 || hasCompletionCounters(event) {
+		if event.Manifest != nil ||
+			event.Err != nil ||
+			event.resourceResult != nil ||
+			event.Done != 0 ||
+			event.Total != 0 ||
+			hasCompletionCounters(event) {
 			return "record event has a non-record payload"
 		}
 	case EventWarning:
 		if event.Err == nil {
 			return "warning event has no machine error"
 		}
-		if event.Record != nil || event.Manifest != nil || event.Done != 0 || event.Total != 0 || hasCompletionCounters(event) {
+		if event.Record != nil ||
+			event.Manifest != nil ||
+			event.resourceResult != nil ||
+			event.Done != 0 ||
+			event.Total != 0 ||
+			hasCompletionCounters(event) {
 			return "warning event has a non-warning payload"
 		}
 	default:
@@ -388,6 +409,10 @@ func machineErrorWithContext(
 
 func copyEventForSink(event Event) Event {
 	out := event
+	if event.resourceResult != nil {
+		result := *event.resourceResult
+		out.resourceResult = &result
+	}
 	if event.Record != nil {
 		record := *event.Record
 		out.Record = &record

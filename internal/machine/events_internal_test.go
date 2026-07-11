@@ -60,3 +60,21 @@ func TestCopyEventForSinkDoesNotCloneRecordPayload(t *testing.T) {
 		t.Errorf("copyEventForSink(record) allocated bytes = %d/op, want <= 64 (record wrapper only)", got)
 	}
 }
+
+func TestCopyEventForSinkCopiesTypedResultWrapper(t *testing.T) {
+	t.Parallel()
+
+	projected := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{"id": "record-1"}})
+	result := NewResourceReadResult(projected)
+	copied := copyEventForSink(Event{Kind: EventCompleted, resourceResult: &result})
+	if copied.resourceResult == nil {
+		t.Fatal("copyEventForSink(typed result) resource result = nil, want copy")
+	}
+	if copied.resourceResult == &result {
+		t.Fatal("copyEventForSink(typed result) retained wrapper pointer, want distinct copy")
+	}
+	copied.resourceResult.records = resources.ProjectedRecords{}
+	if got := result.Records().Len(); got != 1 {
+		t.Errorf("copyEventForSink(typed result) source records after copy mutation = %d, want 1", got)
+	}
+}

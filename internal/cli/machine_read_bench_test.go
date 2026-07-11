@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"testing"
@@ -12,8 +14,88 @@ import (
 
 const benchmarkMachineReadRecords = 1_000
 
+type benchmarkMachineReadLoader struct {
+	records resources.ProjectedRecords
+}
+
+func (l benchmarkMachineReadLoader) ListProjected(
+	context.Context,
+	string,
+	string,
+) (resources.ProjectedRecords, error) {
+	return l.records, nil
+}
+
+func (l benchmarkMachineReadLoader) ShowProjected(
+	context.Context,
+	string,
+	string,
+) (resources.ProjectedRecords, error) {
+	return l.records, nil
+}
+
+func BenchmarkMachineReadJSONPath(b *testing.B) {
+	spec := benchmarkMachineReadSpec()
+	projected := benchmarkMachineReadProjectedRecords(b, spec)
+	executor := machine.Executor{
+		Browser:   benchmarkMachineReadLoader{records: projected},
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeStandard,
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product:  string(spec.Product),
+			Resource: spec.Name,
+		},
+	}
+
+	b.ReportAllocs()
+	b.ReportMetric(benchmarkMachineReadRecords, "records/op")
+	b.ResetTimer()
+	var body []byte
+	for b.Loop() {
+		result, err := executor.Read(context.Background(), request)
+		if err != nil {
+			b.Fatalf("Executor.Read(%d records) error = %v, want nil", benchmarkMachineReadRecords, err)
+		}
+		verified, err := verifiedProjectedRecordsFromMachineResult(spec, redact.ModeStandard, result)
+		if err != nil {
+			b.Fatalf("verifiedProjectedRecordsFromMachineResult(%d records) error = %v, want nil", benchmarkMachineReadRecords, err)
+		}
+		body, err = json.MarshalIndent(verified, "", "  ")
+		if err != nil {
+			b.Fatalf("json.MarshalIndent(machine result with %d records) error = %v, want nil", benchmarkMachineReadRecords, err)
+		}
+	}
+	runtime.KeepAlive(body)
+}
+
 func BenchmarkMachineReadResultVerification(b *testing.B) {
 	spec := benchmarkMachineReadSpec()
+	projected := benchmarkMachineReadProjectedRecords(b, spec)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	var retained resources.ProjectedRecords
+	var err error
+	for b.Loop() {
+		result := machine.NewResourceReadResult(projected)
+		retained, err = verifiedProjectedRecordsFromMachineResult(
+			spec,
+			redact.ModeStandard,
+			result,
+		)
+		if err != nil {
+			b.Fatalf("verifiedProjectedRecordsFromMachineResult(%d records) error = %v, want nil", benchmarkMachineReadRecords, err)
+		}
+	}
+	b.ReportMetric(benchmarkMachineReadRecords, "records/op")
+	runtime.KeepAlive(retained)
+}
+
+func benchmarkMachineReadProjectedRecords(tb testing.TB, spec resources.ResourceSpec) resources.ProjectedRecords {
+	tb.Helper()
 	rows := make([]map[string]any, benchmarkMachineReadRecords)
 	for i := range rows {
 		rows[i] = map[string]any{
@@ -33,25 +115,9 @@ func BenchmarkMachineReadResultVerification(b *testing.B) {
 		rows,
 	)
 	if err != nil {
-		b.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%d records) error = %v, want nil", len(rows), err)
+		tb.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%d records) error = %v, want nil", len(rows), err)
 	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	var retained resources.ProjectedRecords
-	for b.Loop() {
-		result := machine.NewResourceReadResult(projected)
-		retained, err = verifiedProjectedRecordsFromMachineResult(
-			spec,
-			redact.ModeStandard,
-			result,
-		)
-		if err != nil {
-			b.Fatalf("verifiedProjectedRecordsFromMachineResult(%d records) error = %v, want nil", len(rows), err)
-		}
-	}
-	b.ReportMetric(float64(len(rows)), "records/op")
-	runtime.KeepAlive(retained)
+	return projected
 }
 
 func benchmarkMachineReadSpec() resources.ResourceSpec {

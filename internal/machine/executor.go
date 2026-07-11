@@ -194,11 +194,13 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 			return err
 		}
 	}
+	result := NewResourceReadResult(projected)
 	return stream.Complete(Event{
-		Product:   product,
-		Resource:  resource,
-		Records:   len(records),
-		Resources: 1,
+		Product:        product,
+		Resource:       resource,
+		Records:        len(records),
+		Resources:      1,
+		resourceResult: &result,
 	})
 }
 

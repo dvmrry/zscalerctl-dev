@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 // Read executes one typed catalog-driven resource read through the shared
@@ -30,7 +28,8 @@ func (e Executor) Read(ctx context.Context, req ResourceReadRequest) (ResourceRe
 		Operation:  req.Operation,
 		Input:      &input,
 	}
-	records := make([]resources.ProjectedRecord, 0)
+	emittedRecords := 0
+	var result *ResourceReadResult
 	err := e.ExecuteStream(ctx, legacyRequest, func(event Event) error {
 		switch event.Kind {
 		case EventRecord:
@@ -43,7 +42,7 @@ func (e Executor) Read(ctx context.Context, req ResourceReadRequest) (ResourceRe
 					Resource:  resource,
 				}
 			}
-			records = append(records, *event.Record)
+			emittedRecords++
 		case EventWarning:
 			return &MachineError{
 				Kind:      ErrorKindInternal,
@@ -62,11 +61,32 @@ func (e Executor) Read(ctx context.Context, req ResourceReadRequest) (ResourceRe
 					Resource:  resource,
 				}
 			}
+			if event.resourceResult == nil ||
+				event.resourceResult.Records().Len() != emittedRecords ||
+				event.Records != emittedRecords {
+				return &MachineError{
+					Kind:      ErrorKindInternal,
+					Message:   "resource read completed with inconsistent typed result",
+					Operation: req.Operation,
+					Product:   product,
+					Resource:  resource,
+				}
+			}
+			result = event.resourceResult
 		}
 		return nil
 	})
 	if err != nil {
 		return ResourceReadResult{}, err
 	}
-	return NewResourceReadResult(resources.NewProjectedRecords(records)), nil
+	if result == nil {
+		return ResourceReadResult{}, &MachineError{
+			Kind:      ErrorKindInternal,
+			Message:   "resource read completed without typed result",
+			Operation: req.Operation,
+			Product:   product,
+			Resource:  resource,
+		}
+	}
+	return *result, nil
 }
