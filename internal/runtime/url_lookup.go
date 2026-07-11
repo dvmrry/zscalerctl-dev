@@ -196,7 +196,7 @@ func validAbsoluteLookupURL(parsed *url.URL) bool {
 }
 
 func validDecodedLookupPath(path string) bool {
-	return utf8.ValidString(path) && !hasUnsafeLookupRune(path)
+	return utf8.ValidString(path) && !hasUnsafeLookupRune(path) && !hasNonASCIIWhitespace(path)
 }
 
 func validBareLookupURL(parsed *url.URL) bool {
