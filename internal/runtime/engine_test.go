@@ -12,6 +12,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
 func TestNewEngineDefensivelyCopiesHostOptions(t *testing.T) {
@@ -177,5 +178,39 @@ func TestEngineInspectStatusSanitizesConfigLoaderErrors(t *testing.T) {
 				t.Fatalf("Engine.InspectStatus() error = %v, want sentinel %v", err, tt.wantSentinel)
 			}
 		})
+	}
+}
+
+func TestEngineInspectStatusClassifiesInvalidProxyConfiguration(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.LoadConfig([]string{
+		config.EnvProxyURL + "=http://proxy-engine-canary.example.invalid:8080",
+		config.EnvProxyFromEnv + "=true",
+	}, config.LoadOptions{})
+	if err != nil {
+		t.Fatalf("config.LoadConfig(conflicting proxy) error = %v, want nil", err)
+	}
+	engine, err := NewEngine(Options{
+		Catalog: resources.ResourceCatalog{},
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return cfg, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	_, err = engine.InspectStatus(context.Background(), machine.StatusRequest{
+		Operation: machine.OperationDoctor,
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidProxyConfig {
+		t.Fatalf("Engine.InspectStatus(doctor conflicting proxy) error = %v, want invalid-proxy MachineError", err)
+	}
+	if machineErr.Operation != machine.OperationDoctor || !errors.Is(err, zscaler.ErrInvalidProxyConfig) {
+		t.Fatalf("Engine.InspectStatus(doctor conflicting proxy) error = %#v, want doctor operation and ErrInvalidProxyConfig", machineErr)
+	}
+	if strings.Contains(err.Error(), "canary") {
+		t.Fatalf("Engine.InspectStatus(doctor conflicting proxy) error = %q, want no proxy value", err)
 	}
 }

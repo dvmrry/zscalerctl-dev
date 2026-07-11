@@ -96,6 +96,9 @@ func newStatusInspectorFromConfig(
 		return nil, StatusConfigError(operation, err)
 	}
 	doctor, doctorErr := NewDoctorStatus(cfg, StatusOptions{Timeout: opts.Timeout})
+	if doctorErr != nil {
+		doctorErr = StatusConfigError(machine.OperationDoctor, doctorErr)
+	}
 	return &StatusInspector{
 		doctor:    doctor,
 		doctorErr: doctorErr,
@@ -263,6 +266,13 @@ func StatusConfigError(operation machine.Operation, err error) error {
 			Message:   "invalid configuration",
 			Operation: operation,
 		}, config.ErrInvalidConfig)
+	}
+	if errors.Is(err, zscaler.ErrInvalidProxyConfig) {
+		return newStatusBoundaryError(&machine.MachineError{
+			Kind:      machine.ErrorKindInvalidProxyConfig,
+			Message:   "invalid proxy configuration",
+			Operation: operation,
+		}, zscaler.ErrInvalidProxyConfig)
 	}
 	return &machine.MachineError{
 		Kind:      machine.ErrorKindInternal,

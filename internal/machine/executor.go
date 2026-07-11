@@ -45,6 +45,9 @@ const (
 	// ErrorKindInvalidConfig reports invalid effective runtime configuration.
 	ErrorKindInvalidConfig = "invalid_config"
 
+	// ErrorKindInvalidProxyConfig reports conflicting or malformed proxy settings.
+	ErrorKindInvalidProxyConfig = "invalid_proxy_config"
+
 	// ErrorKindInternal reports executor wiring errors.
 	ErrorKindInternal = "internal"
 )

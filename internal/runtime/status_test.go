@@ -235,6 +235,16 @@ func TestStatusInspectorPreservesOperationSpecificProxyValidation(t *testing.T) 
 	if !errors.Is(err, zscaler.ErrInvalidProxyConfig) {
 		t.Fatalf("StatusInspector.Inspect(doctor conflicting proxy) error = %v, want ErrInvalidProxyConfig", err)
 	}
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidProxyConfig {
+		t.Fatalf("StatusInspector.Inspect(doctor conflicting proxy) error = %v, want invalid-proxy MachineError", err)
+	}
+	if machineErr.Operation != machine.OperationDoctor {
+		t.Fatalf("StatusInspector.Inspect(doctor conflicting proxy) operation = %q, want doctor", machineErr.Operation)
+	}
+	if strings.Contains(err.Error(), "proxy.example.invalid") {
+		t.Fatalf("StatusInspector.Inspect(doctor conflicting proxy) error = %q, want no proxy value", err)
+	}
 }
 
 func TestStatusInspectorSanitizesStringsBeforeReturning(t *testing.T) {
