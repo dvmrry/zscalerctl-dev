@@ -137,6 +137,7 @@ func TestURLLookupNormalizesInputAndSanitizesResponse(t *testing.T) {
 func TestURLLookupRejectsInvalidRequestsWithoutCallingReader(t *testing.T) {
 	t.Parallel()
 
+	invalidUTF8 := string([]byte{'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff})
 	tests := []machine.URLLookupRequest{
 		{},
 		{URLs: []string{""}},
@@ -148,6 +149,13 @@ func TestURLLookupRejectsInvalidRequestsWithoutCallingReader(t *testing.T) {
 		{URLs: []string{"//example.com/path"}},
 		{URLs: []string{"http:"}},
 		{URLs: []string{"http:/path"}},
+		{URLs: []string{"user@example.com/path"}},
+		{URLs: []string{"user%40example.com/path"}},
+		{URLs: []string{"example .com/path"}},
+		{URLs: []string{"example%00.com/path"}},
+		{URLs: []string{"example%2fcom/path"}},
+		{URLs: []string{"%2e/path"}},
+		{URLs: []string{invalidUTF8}},
 		{URLs: []string{"https://example.com/%"}},
 		{URLs: []string{"mailto:user@example.com?token=secret"}},
 		{URLs: []string{"https://example.com/\nFORGED"}},
@@ -195,6 +203,7 @@ func TestURLLookupRejectsMalformedSDKResponseWithoutLeaking(t *testing.T) {
 	t.Parallel()
 
 	const canary = "malformed-response-query-canary"
+	invalidUTF8 := string([]byte{'h', 't', 't', 'p', 's', ':', '/', '/', 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff})
 	tests := []struct {
 		name string
 		url  string
@@ -204,6 +213,10 @@ func TestURLLookupRejectsMalformedSDKResponseWithoutLeaking(t *testing.T) {
 		{name: "trailing C0", url: "https://example.com/path?token=" + canary + "\t"},
 		{name: "leading C1", url: "\u0085https://example.com/path?token=" + canary},
 		{name: "trailing C1", url: "https://example.com/path?token=" + canary + "\u0085"},
+		{name: "bare userinfo", url: canary + "@example.com/path"},
+		{name: "escaped bare userinfo", url: canary + "%40example.com/path"},
+		{name: "escaped bare control", url: "example%00.com/" + canary},
+		{name: "invalid UTF-8", url: invalidUTF8 + "/" + canary},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -246,6 +259,9 @@ func TestEngineURLLookupValidatesBeforeConfigAndPreservesContext(t *testing.T) {
 		"https://example.com\t",
 		"\u0085https://example.com",
 		"https://example.com\u0085",
+		"user@example.com/path",
+		"user%40example.com/path",
+		string([]byte{'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 0xff}),
 	} {
 		_, err = engine.LookupURL(context.Background(), machine.URLLookupRequest{
 			URLs: []string{rawURL},

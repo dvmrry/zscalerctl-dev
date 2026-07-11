@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/dvmrry/zscalerctl/internal/browser"
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -151,7 +152,7 @@ func normalizeLookupURL(raw string) (string, bool) {
 	// Validate the original boundary value before trimming. TrimSpace removes
 	// several C0/C1 controls, which would otherwise let malformed request or
 	// SDK-response values become valid only after the unsafe runes disappeared.
-	if hasUnsafeLookupRune(raw) {
+	if !utf8.ValidString(raw) || hasUnsafeLookupRune(raw) {
 		return "", false
 	}
 	value := strings.TrimSpace(raw)
@@ -168,7 +169,7 @@ func normalizeLookupURL(raw string) (string, bool) {
 	switch {
 	case parsed.Scheme != "" && parsed.Host == "":
 		return "", false
-	case parsed.Scheme == "" && (parsed.Host != "" || strings.HasPrefix(parsed.Path, "/")):
+	case parsed.Scheme == "" && (parsed.Host != "" || !validBareLookupURL(parsed)):
 		return "", false
 	}
 	parsed.User = nil
@@ -177,6 +178,25 @@ func normalizeLookupURL(raw string) (string, bool) {
 	parsed.Fragment = ""
 	normalized := parsed.String()
 	return normalized, strings.TrimSpace(normalized) != ""
+}
+
+func validBareLookupURL(parsed *url.URL) bool {
+	escapedPath := parsed.EscapedPath()
+	if escapedPath == "" || strings.HasPrefix(escapedPath, "/") {
+		return false
+	}
+	escapedHost, _, _ := strings.Cut(escapedPath, "/")
+	host, err := url.PathUnescape(escapedHost)
+	if err != nil || !utf8.ValidString(host) || host == "" || host == "." || host == ".." {
+		return false
+	}
+	for _, ch := range host {
+		if unicode.IsSpace(ch) || unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) ||
+			strings.ContainsRune("@/\\:#?%[]", ch) {
+			return false
+		}
+	}
+	return true
 }
 
 func hasUnsafeLookupRune(value string) bool {

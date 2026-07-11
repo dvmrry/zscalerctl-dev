@@ -65,8 +65,10 @@ without echoing caller-controlled operation text.
 `zia.url_lookup` validates and normalizes the complete request before config
 loading. It accepts hierarchical absolute URLs and ZIA's bare `host[/path]`
 form; root-relative, scheme-relative, opaque, and hostless scheme-only
-references are rejected. The original boundary string is checked for C0, C1,
-and Unicode format controls before surrounding ordinary spaces are trimmed.
+references are rejected. Bare hosts reject userinfo-like or escaped delimiter
+forms rather than guessing how a downstream parser will interpret them. The
+original boundary string is checked for valid UTF-8, C0, C1, and Unicode format
+controls before surrounding ordinary spaces are trimmed.
 Userinfo, query, and fragment data are removed before the URL reaches Zscaler.
 SDK-returned URLs cross the same normalization boundary again, so an echoed or
 independently supplied response cannot reintroduce those fields. Malformed
