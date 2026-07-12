@@ -662,6 +662,56 @@ func TestEngineReadStreamPreservesReadConstructionError(t *testing.T) {
 	}
 }
 
+func TestEngineTypedReadsClassifyMissingCredentialConstructionError(t *testing.T) {
+	t.Parallel()
+
+	raw := &zscaler.MissingCredentialsError{Missing: []string{
+		config.EnvClientID,
+		"forbidden-canary",
+		config.EnvClientID,
+		config.EnvZPACustomerID,
+	}}
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return config.Config{}, raw
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	_, readErr := engine.Read(context.Background(), request)
+	sinkCalls := 0
+	streamErr := engine.ReadStream(context.Background(), request, func(machine.Event) error {
+		sinkCalls++
+		return nil
+	})
+	for name, got := range map[string]error{"read": readErr, "stream": streamErr} {
+		var machineErr *machine.MachineError
+		if !errors.As(got, &machineErr) || machineErr.Kind != machine.ErrorKindMissingCredentials {
+			t.Errorf("Engine.%s error = %T %v, want missing-credentials MachineError", name, got, got)
+			continue
+		}
+		if want := []string{config.EnvClientID, config.EnvZPACustomerID}; !reflect.DeepEqual(machineErr.Missing, want) {
+			t.Errorf("Engine.%s missing = %#v, want %#v", name, machineErr.Missing, want)
+		}
+		if strings.Contains(got.Error(), "forbidden-canary") {
+			t.Errorf("Engine.%s error leaked rejected missing-credential name: %v", name, got)
+		}
+		if !errors.Is(got, zscaler.ErrMissingCredentials) {
+			t.Errorf("Engine.%s error = %v, want ErrMissingCredentials identity", name, got)
+		}
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("Engine.ReadStream(construction error) sink calls = %d, want 0", sinkCalls)
+	}
+}
+
 func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 	t.Parallel()
 

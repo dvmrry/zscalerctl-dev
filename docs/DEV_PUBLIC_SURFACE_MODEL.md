@@ -101,6 +101,13 @@ include:
 - `internal/resources` projected-record containers and catalog metadata
 - `internal/runtime` trusted read-only machine runtime assembly and synchronous
   event forwarding for adapters
+- `internal/enginewire` strict candidate stdio DTOs/codecs and its closed engine
+  adapter
+- `internal/enginehost` long-lived single-session coordinator and
+  `cmd/zscalerctl-engine` candidate process adapter; the binary is not included
+  in release archives
+- `clients/typescript` candidate zero-runtime-dependency protocol consumer and
+  Node child-process adapter; it is private and not release-packaged
 - package-boundary checks that keep overlays away from raw runtime packages
 
 These are candidate seams for in-repo overlays and future promotion. They are

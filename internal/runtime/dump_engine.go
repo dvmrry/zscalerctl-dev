@@ -325,7 +325,7 @@ func dumpRuntimeBoundaryError(err error) error {
 		sentinel = zscaler.ErrInvalidProxyConfig
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		machineErr.Message, sentinel = sanitizedDumpMissingCredentials(err)
+		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(sentinel, &missingErr) {
 			machineErr.Missing = append([]string(nil), missingErr.Missing...)
@@ -384,7 +384,7 @@ func dumpSafeCollectionSentinel(err error, kind string) error {
 	case errors.Is(err, zscaler.ErrInvalidProxyConfig):
 		return zscaler.ErrInvalidProxyConfig
 	case errors.Is(err, zscaler.ErrMissingCredentials):
-		_, safe := sanitizedDumpMissingCredentials(err)
+		_, safe := sanitizedRuntimeMissingCredentials(err)
 		return safe
 	case errors.Is(err, zscaler.ErrUnsupportedResource):
 		return zscaler.ErrUnsupportedResource
@@ -465,7 +465,7 @@ func LegacyDumpAdapterError(err error) (error, bool) {
 	}, true
 }
 
-func sanitizedDumpMissingCredentials(err error) (string, error) {
+func sanitizedRuntimeMissingCredentials(err error) (string, error) {
 	var missingErr *zscaler.MissingCredentialsError
 	if !errors.As(err, &missingErr) {
 		return zscaler.ErrMissingCredentials.Error(), zscaler.ErrMissingCredentials
@@ -473,7 +473,7 @@ func sanitizedDumpMissingCredentials(err error) (string, error) {
 	missing := make([]string, 0, len(missingErr.Missing))
 	seen := map[string]bool{}
 	for _, name := range missingErr.Missing {
-		if !isKnownDumpCredentialName(name) || seen[name] {
+		if !isKnownRuntimeCredentialName(name) || seen[name] {
 			continue
 		}
 		seen[name] = true
@@ -486,7 +486,7 @@ func sanitizedDumpMissingCredentials(err error) (string, error) {
 	return safeErr.Error(), safeErr
 }
 
-func isKnownDumpCredentialName(name string) bool {
+func isKnownRuntimeCredentialName(name string) bool {
 	if isKnownCredentialName(name) {
 		return true
 	}

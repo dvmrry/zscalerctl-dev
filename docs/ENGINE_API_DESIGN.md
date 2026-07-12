@@ -239,9 +239,14 @@ transcript conformance suite as the Go codec before the protocol is promoted.
    checkpoint is implemented under `internal/enginewire`: it covers every
    bootstrap and v1 root frame, uses a bounded strict parser, keeps engine
    adapters outside the transport package, and includes language-neutral
-   conformance fixtures. It does not yet expose an executable host.
-6. Add the long-lived stdio experiment and make the Go and TypeScript clients
-   run the shared transcript corpus.
+   conformance fixtures.
+6. The long-lived Go stdio host is implemented under `internal/enginehost` and
+   `cmd/zscalerctl-engine`, including all operation pairs, whole-response
+   preflight, cancellation/backpressure handling, joined process lifecycle,
+   real-process tests, and benchmarks. The zero-runtime-dependency TypeScript
+   client is implemented under `clients/typescript`; it queues and validates
+   every operation pair, handles fragmented items and cancellation, runs the
+   shared corpus, and exercises the real Go process without credentials.
 7. Add the independent Rust client and run the same conformance corpus.
 8. Build MCP, Wails, Ink/OpenTUI, Ratatui, or GUI experiments against those
    seams.

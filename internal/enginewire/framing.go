@@ -30,19 +30,33 @@ func NewFrameReader(reader io.Reader, maximumBytes int) *FrameReader {
 
 // ReadFrame returns one delimiter-free frame or a framing error.
 func (r *FrameReader) ReadFrame() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("%w: nil frame reader", ErrInvalidFrame)
+	}
+	return r.ReadFrameLimit(r.maximumBytes)
+}
+
+// ReadFrameLimit returns one delimiter-free frame under a per-read byte
+// limit. Callers may switch from the bootstrap limit to the negotiated limit
+// without replacing the buffered reader or losing bytes already read ahead.
+// It is not safe to call concurrently with another read.
+func (r *FrameReader) ReadFrameLimit(maximumBytes int) ([]byte, error) {
 	if r == nil || r.reader == nil {
 		return nil, fmt.Errorf("%w: nil frame reader", ErrInvalidFrame)
 	}
-	frame := make([]byte, 0, min(r.maximumBytes, frameReaderBufferBytes))
+	if maximumBytes <= 0 || maximumBytes > AggregateItemBytes {
+		return nil, fmt.Errorf("%w: frame limit must be a bounded positive integer", ErrInvalidFrame)
+	}
+	frame := make([]byte, 0, min(maximumBytes, frameReaderBufferBytes))
 	for {
 		fragment, err := r.reader.ReadSlice('\n')
-		if len(frame)+len(fragment) > r.maximumBytes+2 {
+		if len(frame)+len(fragment) > maximumBytes+2 {
 			return nil, ErrFrameTooLarge
 		}
 		frame = append(frame, fragment...)
 		switch {
 		case err == nil:
-			return finishFrame(frame, r.maximumBytes)
+			return finishFrame(frame, maximumBytes)
 		case errors.Is(err, bufio.ErrBufferFull):
 			continue
 		case errors.Is(err, io.EOF) && len(frame) == 0:

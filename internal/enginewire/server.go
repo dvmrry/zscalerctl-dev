@@ -2,6 +2,7 @@ package enginewire
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -134,6 +135,67 @@ func validateItemValueKind(kind ItemKind, value any) error {
 		return fmt.Errorf("%w: item kind does not match item DTO", ErrInvalidFrame)
 	}
 	return nil
+}
+
+// MarshalItemPayload validates and encodes the exact object carried by an
+// inline item member or a fragmented item's reconstructed payload. The depth
+// budget reserves one level for the enclosing server frame.
+func MarshalItemPayload(kind ItemKind, value ItemValue) ([]byte, error) {
+	if isNilInterface(value) {
+		return nil, fmt.Errorf("%w: nil item payload", ErrInvalidFrame)
+	}
+	if err := validateItemValueKind(kind, value); err != nil {
+		return nil, err
+	}
+	if err := value.validateItem(); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("%w: item payload encode: %v", ErrInvalidFrame, err)
+	}
+	if len(data) > AggregateItemBytes {
+		return nil, ErrFrameTooLarge
+	}
+	if err := validateJSONObject(data, V1JSONDepth-1); err != nil {
+		return nil, fmt.Errorf("%w: item payload failed strict validation: %v", ErrInvalidFrame, err)
+	}
+	return data, nil
+}
+
+// DecodeItemPayload strictly decodes one reconstructed inline or fragmented
+// semantic item object according to its exact kind.
+func DecodeItemPayload(kind ItemKind, data []byte) (ItemValue, error) {
+	if err := validateInbound(data, AggregateItemBytes, V1JSONDepth-1); err != nil {
+		return nil, err
+	}
+	switch kind {
+	case ItemCatalogResource:
+		return decodeItemPayloadAs[CatalogResource](data)
+	case ItemURLClassification:
+		return decodeItemPayloadAs[URLClassification](data)
+	case ItemProjectedRecord:
+		return decodeItemPayloadAs[ProjectedRecord](data)
+	case ItemDiffResource:
+		return decodeItemPayloadAs[DiffResource](data)
+	case ItemDiffAdded, ItemDiffRemoved:
+		return decodeItemPayloadAs[DiffRecordRef](data)
+	case ItemDiffFieldChange:
+		return decodeItemPayloadAs[DiffFieldChange](data)
+	default:
+		return nil, fmt.Errorf("%w: unknown item payload kind", ErrInvalidFrame)
+	}
+}
+
+func decodeItemPayloadAs[T ItemValue](data []byte) (ItemValue, error) {
+	var value T
+	if err := decodeExact(data, &value); err != nil {
+		return nil, err
+	}
+	if err := value.validateItem(); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 // ItemBegin opens one fragmented semantic payload.

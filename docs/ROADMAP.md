@@ -197,10 +197,14 @@ zscalerctl operation engine above it.
 6. **Long-lived stdio experiment.** One coordinator owns process state and
    output; one operation worker calls the synchronous engine; every goroutine
    has cancellation and a wait path. No TCP, HTTP, SSE, or local web server.
+   The candidate Go host and `cmd/zscalerctl-engine` process adapter are
+   implemented; they are not release-packaged.
 7. **Reference clients and conformance.** Go codec plus TypeScript and Rust
-   clients run the same transcript fixtures. Promotion requires the CLI and at
-   least two independent consumers, cross-platform lifecycle tests, immutable
-   protocol schemas, and fresh-context compatibility/security review.
+   clients run the same transcript fixtures. The Go codec/host and TypeScript
+   reference client checkpoints are implemented; Rust remains the second
+   independent promotion client. Promotion requires the CLI and at least two
+   independent consumers, cross-platform lifecycle tests, immutable protocol
+   schemas, and fresh-context compatibility/security review.
 
 ## Phase 5 — MCP experiment
 

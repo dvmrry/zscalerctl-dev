@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln vuln-root vuln-tools staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln vuln-root vuln-tools staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain verify-typescript-client vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
@@ -46,6 +46,9 @@ verify-gitleaks-allowlist:
 verify-go-toolchain:
 	bash scripts/verify-go-toolchain.sh
 	bash scripts/test-verify-go-toolchain.sh
+
+verify-typescript-client:
+	bash scripts/verify-typescript-client.sh
 
 staticcheck:
 	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
@@ -163,6 +166,6 @@ fuzz-smoke:
 	go test -mod=vendor ./internal/redact -run '^$$' -fuzz FuzzScanRenderedStringRedactsBareHighEntropyCanary -fuzztime=$(FUZZTIME)
 	go test -mod=vendor ./internal/resources -run '^$$' -fuzz FuzzProjectRecordSubsetAndCanaryRedaction -fuzztime=$(FUZZTIME)
 
-check: fmt-check test race vet vuln staticcheck verify-licenses docs-check docs-cli-check semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
+check: fmt-check test race vet vuln staticcheck verify-licenses docs-check docs-cli-check semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain verify-typescript-client verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill
 
 release-check: verify-vendor check

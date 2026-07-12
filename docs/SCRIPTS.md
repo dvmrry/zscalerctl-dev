@@ -48,6 +48,7 @@ registered path exists.
 | `scripts/verify-experiment-boundaries.sh` | verify | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | `scripts/test-verify-experiment-boundaries.sh` |
 | `scripts/verify-gitleaks-history-policy.sh` | verify | `scripts/test-gitleaks-allowlist.sh`; `make verify-gitleaks-allowlist` | Requires full history and exact commit-bound Gitleaks ignore fingerprints |
 | `scripts/verify-go-toolchain.sh` | verify | `make verify-go-toolchain`; `.github/workflows/ci.yml` | Keeps every module and workflow on the root patch-level Go security minimum |
+| `scripts/verify-typescript-client.sh` | verify | `make verify-typescript-client`; `.github/workflows/ci.yml` | Enforces the dependency-free Node floor, builds the candidate Go host, and runs corpus, stateful-client, and real-process tests |
 | `scripts/verify-licenses.sh` | verify | `make verify-licenses`; `.github/workflows/ci.yml` | `go-licenses` allow-list check for the shipped binary |
 | `scripts/verify-machine-manifest-schema.go` | verify | `scripts/verify-machine-contract.sh` | `scripts/test-verify-machine-contract.sh` |
 | `scripts/verify-machine-contract.sh` | verify | `make verify-machine-contract`; `.github/workflows/ci.yml` | `scripts/test-verify-machine-contract.sh` |

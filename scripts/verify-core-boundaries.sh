@@ -83,6 +83,8 @@ cli_rendering_re='github\.com/spf13/cobra|github\.com/charmbracelet/lipgloss|int
 raw_runtime_re='github\.com/dvmrry/zscalerctl/internal/(config|credentials|secret|secretref|zscaler|runtime)'
 cli_zscaler_re='^github\.com/dvmrry/zscalerctl/internal/zscaler$'
 enginewire_adapter_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(diff|enginewire|machine|redact|resources)$'
+enginehost_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(enginewire(/adapter)?|machine)$'
+enginecmd_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(enginehost|machine|redact|runtime|version)$'
 
 check_package \
   "cmd/zscalerctl" \
@@ -132,6 +134,20 @@ check_package_import_allowlist \
   "ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE" \
   "$enginewire_adapter_allowed_re" \
   "internal/enginewire/adapter may directly import only the standard library and the exact enginewire, machine, resources, redact, and diff seams."
+
+check_package_import_allowlist \
+  "internal/enginehost" \
+  "./internal/enginehost" \
+  "ZSCALERCTL_ENGINEHOST_IMPORTS_FILE" \
+  "$enginehost_allowed_re" \
+  "internal/enginehost may orchestrate only the wire contract, its explicit adapter, and machine DTOs; config, runtime, SDK, CLI, UI, and cgo dependencies are forbidden."
+
+check_package_import_allowlist \
+  "cmd/zscalerctl-engine" \
+  "./cmd/zscalerctl-engine" \
+  "ZSCALERCTL_ENGINECMD_IMPORTS_FILE" \
+  "$enginecmd_allowed_re" \
+  "cmd/zscalerctl-engine is a narrow process adapter: it may assemble runtime policy and the host but must not import CLI/UI, config/secret packages, SDK adapters, third-party packages, or cgo."
 
 check_package \
   "internal/cli" \

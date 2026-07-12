@@ -77,6 +77,39 @@ func TestEngineDiffExecutesAdvertisedCapabilityWithoutConfig(t *testing.T) {
 	}
 }
 
+func TestEngineDiffProgressIncludesSelectedResourceEmptyOnBothSides(t *testing.T) {
+	t.Parallel()
+
+	spec := runtimeDiffSpec()
+	oldDir := writeRuntimeEmptyDiffDump(t, spec)
+	newDir := writeRuntimeEmptyDiffDump(t, spec)
+	engine, err := NewEngine(Options{Catalog: resources.ResourceCatalog{spec}})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	var events []machine.Event
+	result, err := engine.Diff(context.Background(), machine.DiffRequest{
+		OldDir: oldDir, NewDir: newDir,
+		Resources: []machine.DiffResourceSelector{{Product: "zia", Resource: "locations"}},
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Engine.Diff(empty resources) error = %v", err)
+	}
+	report := result.Report()
+	if report.Summary.ResourcesCompared != 0 || len(report.Resources) != 0 {
+		t.Fatalf("Engine.Diff(empty resources) report = %#v, want no compared-resource entry", report)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted, machine.EventProgress, machine.EventCompleted,
+	})
+	if events[0].Total != 1 || events[1].Done != 1 || events[1].Total != 1 || events[2].Resources != 1 {
+		t.Fatalf("Engine.Diff(empty resources) events = %#v, want one selected-resource progress", events)
+	}
+}
+
 func TestEngineDiffValidatesRequestBeforeFilesystemAccess(t *testing.T) {
 	t.Parallel()
 
@@ -285,6 +318,20 @@ func writeRuntimeDiffDump(t *testing.T, spec resources.ResourceSpec, name string
 		}},
 	}); err != nil {
 		t.Fatalf("dump.Write(%s) error = %v", name, err)
+	}
+	return dir
+}
+
+func writeRuntimeEmptyDiffDump(t *testing.T, spec resources.ResourceSpec) string {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	if err := dumpartifact.Write(dir, redact.ModeStandard, dumpartifact.Result{
+		Entries: []dumpartifact.ResourceDump{{
+			Spec: spec, Records: resources.NewProjectedRecordsFromProjectedFields([]map[string]any{}),
+		}},
+	}); err != nil {
+		t.Fatalf("dump.Write(empty) error = %v", err)
 	}
 	return dir
 }

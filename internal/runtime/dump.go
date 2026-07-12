@@ -425,7 +425,7 @@ func dumpMachineError(
 		machineErr.Message = "invalid proxy configuration"
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		message, safe := sanitizedDumpMissingCredentials(err)
+		message, safe := sanitizedRuntimeMissingCredentials(err)
 		machineErr.Message = message
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(safe, &missingErr) {

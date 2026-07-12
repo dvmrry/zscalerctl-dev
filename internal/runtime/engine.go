@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
 // Engine is the common local operation coordinator. It owns host-supplied
@@ -111,7 +114,7 @@ func (e *Engine) Read(
 	}
 	machineRuntime, err := NewMachine(ctx, e.options())
 	if err != nil {
-		return machine.ResourceReadResult{}, err
+		return machine.ResourceReadResult{}, resourceReadRuntimeBoundaryError(err, req)
 	}
 	return machineRuntime.Read(ctx, req)
 }
@@ -131,7 +134,7 @@ func (e *Engine) ReadStream(
 	}
 	machineRuntime, err := NewMachine(ctx, e.options())
 	if err != nil {
-		return err
+		return resourceReadRuntimeBoundaryError(err, req)
 	}
 	return machineRuntime.ReadStream(ctx, req, sink)
 }
@@ -174,4 +177,58 @@ func (e *Engine) options() Options {
 	opts.Env = append([]string(nil), e.opts.Env...)
 	opts.Catalog = copyCatalog(e.opts.Catalog)
 	return opts
+}
+
+func resourceReadRuntimeBoundaryError(err error, req machine.ResourceReadRequest) error {
+	if err == nil {
+		return nil
+	}
+	var existing *machine.MachineError
+	if errors.As(err, &existing) {
+		return err
+	}
+	machineErr := &machine.MachineError{
+		Operation: req.Operation,
+		Product:   strings.TrimSpace(req.Input.Product),
+		Resource:  strings.TrimSpace(req.Input.Resource),
+	}
+	var sentinel error
+	switch {
+	case errors.Is(err, context.Canceled):
+		machineErr.Kind = machine.ErrorKindCanceled
+		machineErr.Message = "request canceled"
+		sentinel = context.Canceled
+	case errors.Is(err, context.DeadlineExceeded):
+		machineErr.Kind = machine.ErrorKindDeadlineExceeded
+		machineErr.Message = "request deadline exceeded"
+		sentinel = context.DeadlineExceeded
+	case errors.Is(err, config.ErrInvalidConfig):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message = "invalid configuration"
+		sentinel = config.ErrInvalidConfig
+	case errors.Is(err, zscaler.ErrInvalidProxyConfig):
+		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
+		machineErr.Message = "invalid proxy configuration"
+		sentinel = zscaler.ErrInvalidProxyConfig
+	case errors.Is(err, zscaler.ErrMissingCredentials):
+		machineErr.Kind = machine.ErrorKindMissingCredentials
+		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
+		var missingErr *zscaler.MissingCredentialsError
+		if errors.As(sentinel, &missingErr) {
+			machineErr.Missing = append([]string(nil), missingErr.Missing...)
+		}
+	case errors.Is(err, zscaler.ErrUnsupportedResource):
+		machineErr.Kind = machine.ErrorKindUnsupportedResource
+		machineErr.Message = "unsupported resource"
+		sentinel = zscaler.ErrUnsupportedResource
+	case errors.Is(err, zscaler.ErrLiveAccessFailed):
+		machineErr.Kind = machine.ErrorKindLiveAccessFailed
+		machineErr.Message = "resource read failed"
+		sentinel = zscaler.ErrLiveAccessFailed
+	default:
+		// Preserve unknown construction errors for in-process callers. The stdio
+		// adapter still maps them to its static internal failure.
+		return err
+	}
+	return newBoundaryError(machineErr, sentinel)
 }

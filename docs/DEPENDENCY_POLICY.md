@@ -24,6 +24,7 @@ bash scripts/verify-actions-pinned.sh
 bash scripts/test-verify-actions-pinned.sh
 make vuln
 make verify-go-toolchain
+make verify-typescript-client
 make verify-licenses
 go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
 gitleaks dir .
@@ -115,6 +116,22 @@ as described in [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md).
 Promoting an experiment dependency into the root module requires the same
 dependency review as any supported dependency plus a surface-class decision for
 the feature that needs it.
+
+## TypeScript Reference Client
+
+The candidate client under `clients/typescript` uses Node 24.12 or newer's
+stable built-in erasable-TypeScript support and intentionally has no runtime,
+optional, or peer dependencies. It requires no package installation and runs no
+install scripts. `make verify-typescript-client` enforces that boundary and
+runs its shared-corpus and process-integration tests. CI provisions an exact
+Node release through a full-SHA-pinned `actions/setup-node` step with package
+caching disabled.
+
+Adding a package dependency, transpiler, runtime loader, lockfile, or package
+manager cache requires a deliberate dependency and threat review; it must not
+arrive as incidental frontend scaffolding. Type-only development tooling may be
+considered separately, but it remains outside the shipped runtime and must be
+pinned and integrity-locked before CI executes it.
 
 ## Machine Output Terminal Cleanliness
 

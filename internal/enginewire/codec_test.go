@@ -314,6 +314,30 @@ func TestFrameReaderAcceptsFrameAboveScannerDefaultLimit(t *testing.T) {
 	}
 }
 
+func TestFrameReaderSwitchesPerReadLimitWithoutLosingBufferedBytes(t *testing.T) {
+	t.Parallel()
+
+	large := `{"value":"` + strings.Repeat("x", 128<<10) + `"}`
+	reader := NewFrameReader(strings.NewReader("{}\n"+large+"\n"), V1FrameBytes)
+	first, err := reader.ReadFrameLimit(BootstrapFrameBytes)
+	if err != nil || string(first) != `{}` {
+		t.Fatalf("ReadFrameLimit(bootstrap) = %q, %v", first, err)
+	}
+	second, err := reader.ReadFrameLimit(V1FrameBytes)
+	if err != nil {
+		t.Fatalf("ReadFrameLimit(v1) error = %v", err)
+	}
+	if string(second) != large {
+		t.Fatalf("ReadFrameLimit(v1) length = %d, want %d", len(second), len(large))
+	}
+	if _, err := reader.ReadFrameLimit(0); !errors.Is(err, ErrInvalidFrame) {
+		t.Fatalf("ReadFrameLimit(0) error = %v, want %v", err, ErrInvalidFrame)
+	}
+	if _, err := reader.ReadFrameLimit(AggregateItemBytes + 1); !errors.Is(err, ErrInvalidFrame) {
+		t.Fatalf("ReadFrameLimit(oversized limit) error = %v, want %v", err, ErrInvalidFrame)
+	}
+}
+
 func TestWriteClientFrameUsesFullWriteLoop(t *testing.T) {
 	t.Parallel()
 

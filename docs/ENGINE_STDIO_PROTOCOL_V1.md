@@ -1,8 +1,10 @@
-# Local Stdio Engine Protocol v1 — Candidate Design
+# Local Stdio Engine Protocol v1 — Candidate Implementation
 
-Status: CANDIDATE DESIGN. This checkpoint defines the cross-language local
-transport over the accepted Go engine. It does not change or promote the
-supported CLI, `machine.v1`, or existing machine JSON envelopes.
+Status: CANDIDATE IMPLEMENTATION. The Go codec/host and zero-runtime-dependency
+TypeScript reference client implement this cross-language local transport over
+the accepted Go engine. The command and client are not packaged in releases and
+the protocol is not yet a supported surface. This checkpoint does not change or
+promote the supported CLI, `machine.v1`, or existing machine JSON envelopes.
 
 The normative JSON shapes are:
 
@@ -31,6 +33,19 @@ Ink / Ratatui / GUI
         v
 stdio host -> runtime.Engine -> projection/redaction -> official Zscaler SDK
 ```
+
+The candidate host is `cmd/zscalerctl-engine`. Build it explicitly for local
+consumer development:
+
+```sh
+go build -o ./zscalerctl-engine ./cmd/zscalerctl-engine
+```
+
+It accepts only process-start policy flags: `--profile`, `--config`,
+`--timeout`, `--redaction`, and `--no-cache`. Credentials remain inherited
+environment/config inputs to the trusted Go runtime and never cross the wire.
+Consumers must keep stdin open until the active request reaches a terminal;
+stdin EOF is a session-shutdown request, not an end-of-batch marker.
 
 The protocol is a child-process stdio API. There is no listener, HTTP server,
 WebSocket, daemon, or credential API. The host inherits its environment and
@@ -143,6 +158,12 @@ Negotiated v1 limits are fixed:
 | path bytes | 32,768 |
 | general control string bytes | 8,192 |
 
+`aggregate semantic item` is a per-item limit, not a total response limit. V1
+has no total-response byte field, and its atomic whole-response barrier means
+host memory can scale with the admitted item count and the number of fragmented
+payloads. Consumers must not interpret the 64 MiB value as a process RSS bound;
+the candidate benchmark records this limitation explicitly.
+
 All structural integers (`id`, `seq`, item IDs, chunk indexes, lengths, and
 counters) are integral and in `0..9007199254740991`; request IDs begin at 1.
 Collection-specific minimum/maximum values are in the v1 schema.
@@ -249,6 +270,14 @@ terminal, and commits exactly one wire outcome. Runtime-construction errors
 before an internal stream become wire `failed` outcomes. Outcome commit is the
 cancellation linearization point. A request remains active for busy rejection
 purposes through `terminal_written`.
+
+The decoder stops granting new reads once a terminal is queued. One read permit
+may already be blocked in the decoder; if that complete valid request arrives
+before terminal submission it is classified `busy`, while a request arriving
+during the terminal write is held until the writer acknowledges the complete
+terminal. This removes the transport race where a client can observe the full
+terminal bytes and send its next request before the coordinator selects the
+writer acknowledgment. Malformed input remains fatal in either interval.
 
 While the session is writable, the coordinator attempts one complete terminal
 write. Delivery cannot be guaranteed across a broken pipe, fatal session input,
@@ -385,6 +414,13 @@ Closed phases are `list`, `show`, `project`, and `validate`; kinds are
 `list_failed`, `show_failed`, `projection_failed`, and `subset_failed`. Final
 dump failures exactly match warning frames in order and content.
 
+On a successful dump, every selected resource is accounted for exactly once:
+`resources_written + warning_count` equals the final progress total. Diff
+progress likewise counts selected resources, but a resource empty on both
+sides is omitted from the report. Consequently, successful
+`resources_compared` may be less than, but never greater than, the final diff
+progress total.
+
 ## Terminal results
 
 There are no ambiguous generic completion counters. Every successful request
@@ -456,6 +492,11 @@ blocked writer. Graceful join has a five-second ceiling; after that the process
 forces a nonzero exit because Go cannot safely kill an arbitrary blocked
 goroutine.
 
+The in-process `enginehost.Host` does not take ownership of an arbitrary caller
+writer on a graceful return; its output-close hook exists to unblock a failed
+transport. The executable process owns its duplicated stdio descriptors, and
+process exit supplies the consumer-visible stdout EOF.
+
 | Cause | Behavior | Exit |
 | --- | --- | ---: |
 | clean EOF, idle | join and close | 0 |
@@ -487,32 +528,51 @@ engine adapter is isolated in a child package. It covers all four bootstrap
 and 31 v1 root frame branches, rejects case-variant keys, bounds numeric work,
 pins the checked-in schema identity and byte hash, and preserves exact JSON
 numbers in diff ingestion while retaining value-based numeric equality and
-hashing. This checkpoint does not expose a host process.
+hashing. `internal/enginehost` implements the single-session coordinator,
+preflight/commit barrier, operation matrix, cancellation ceiling, and joined
+decoder/worker/writer lifecycle. `cmd/zscalerctl-engine` is the narrow candidate
+process adapter with platform-specific signal and interruptible-stdio handling.
+`clients/typescript` supplies the strict independent parser/codec, stateful
+request queue, full operation matrix, fragment/diff reconciliation,
+cancellation handling, and no-shell Node process adapter.
 
 ## Conformance and promotion
 
-Shared transcripts cover bootstrap/version negotiation, every exact operation
-input/result/item family, empty values, all errors, cancellation races, busy
-rejection, sequence/terminal rules, fragments, numeric extremes, arbitrary byte
-split points (including UTF-8 and CRLF), malformed/deep/duplicate/oversized
-input, EOF, signals, broken pipes, and attempts to leak forbidden values.
+The current language-neutral corpus contains 20 codec cases and five framing
+cases. It covers bootstrap roots, representative v1 request/server roots,
+strict parser and structural-number failures, exact-number preservation,
+base64 boundaries, and NDJSON split/limit behavior. Both the Go codec and the
+zero-runtime-dependency TypeScript client consume those same checked-in
+fixtures.
 
-Required negative fixtures include no-version `reject`, wrong schema hash,
-every invalid capability/operation/item/result pairing, each invalid diff
-identity/reference combination, and base64 boundaries at 524,287, 524,288, and
-524,289 decoded bytes. Deterministic race fixtures cancel immediately before
-and after success commit and inject an oversized later item to prove that no
-semantic item precedes `canceled` or `failed`.
+The Go host and TypeScript client currently exercise operation and lifecycle
+behavior in separate implementation-specific suites. Together those suites
+cover all 11 operation pairs, request queuing, sequence and terminal rules,
+busy rejection, fragments, diff and dump reconciliation, cancellation around
+success commit, EOF, signals, broken pipes, callback isolation, and a real
+credential-free Go process. Those lifecycle and process cases are not yet
+shared transcripts. macOS and Linux run real process lifecycle tests; Windows
+currently has build proof. Native Windows lifecycle runs remain a promotion
+gate.
 
-Go and the zero-runtime-dependency TypeScript client run the same transcript
-corpus. Process lifecycle runs on Linux, macOS, and Windows without live
-credentials. Benchmarks record startup-to-hello, handshake, started, first item,
-completion, cancellation, fragmentation throughput, and peak RSS.
+Before promotion, the checked-in shared corpus must expand to cover every exact
+operation input/result/item family and the lifecycle negatives now exercised
+only by implementation-specific tests. That includes no-version `reject`,
+wrong schema hash, invalid capability/operation/item/result pairings, invalid
+diff identity/reference combinations, cancellation races, terminal ordering,
+EOF/signals/broken pipes, forbidden-value attempts, and oversized later-item
+failure before semantic output.
+
+Reproducible benchmarks record startup-to-hello, handshake, started, first item,
+completion, cancellation, fragmentation throughput, and peak RSS. The initial
+machine-specific baseline and exact commands are in
+[ENGINE_STDIO_BENCHMARKS.md](ENGINE_STDIO_BENCHMARKS.md).
 
 The initial language-neutral corpus under
-`internal/enginewire/testdata/conformance` drives the Go codec and framer.
-Lifecycle races, fragment sequences, signal handling, and process joins join
-that corpus with the executable host checkpoint.
+`internal/enginewire/testdata/conformance` drives the Go and TypeScript codec
+and framer tests. Lifecycle races, fragment sequences, signal handling, and
+process joins remain independently checked by the executable host and client
+suites until they are promoted into shared fixtures.
 
 Promotion remains blocked on a second independent client (planned Rust),
 cross-platform lifecycle proof, immutable schema validation, CLI and consumer

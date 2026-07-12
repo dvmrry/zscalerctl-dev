@@ -87,6 +87,50 @@ C
 github.com/dvmrry/zscalerctl/internal/enginewire
 EOF
 
+cat >"$tmp_dir/enginehost-good.imports" <<'EOF'
+context
+github.com/dvmrry/zscalerctl/internal/enginewire
+github.com/dvmrry/zscalerctl/internal/enginewire/adapter
+github.com/dvmrry/zscalerctl/internal/machine
+io
+EOF
+
+cat >"$tmp_dir/enginehost-runtime-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/enginewire
+github.com/dvmrry/zscalerctl/internal/runtime
+EOF
+
+cat >"$tmp_dir/enginehost-cgo-bad.imports" <<'EOF'
+C
+github.com/dvmrry/zscalerctl/internal/enginewire
+EOF
+
+cat >"$tmp_dir/enginecmd-good.imports" <<'EOF'
+context
+flag
+github.com/dvmrry/zscalerctl/internal/enginehost
+github.com/dvmrry/zscalerctl/internal/machine
+github.com/dvmrry/zscalerctl/internal/redact
+github.com/dvmrry/zscalerctl/internal/runtime
+github.com/dvmrry/zscalerctl/internal/version
+os
+EOF
+
+cat >"$tmp_dir/enginecmd-cli-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/cli
+github.com/dvmrry/zscalerctl/internal/enginehost
+EOF
+
+cat >"$tmp_dir/enginecmd-sdk-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/enginehost
+github.com/zscaler/zscaler-sdk-go/v3/zscaler
+EOF
+
+cat >"$tmp_dir/enginecmd-cgo-bad.imports" <<'EOF'
+C
+github.com/dvmrry/zscalerctl/internal/enginehost
+EOF
+
 cat >"$tmp_dir/cmd-bad.deps" <<'EOF'
 github.com/dvmrry/zscalerctl/cmd/zscalerctl
 github.com/charmbracelet/bubbletea
@@ -152,6 +196,8 @@ ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
 ZSCALERCTL_MACHINEIO_DEPS_FILE="$tmp_dir/machineio-good.deps" \
 ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
 ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
+ZSCALERCTL_ENGINEHOST_IMPORTS_FILE="$tmp_dir/enginehost-good.imports" \
+ZSCALERCTL_ENGINECMD_IMPORTS_FILE="$tmp_dir/enginecmd-good.imports" \
   "$repo_root/scripts/verify-core-boundaries.sh" >/dev/null
 
 for fixture in package cgo; do
@@ -184,6 +230,44 @@ for fixture in sdk bridge third-party cgo; do
   if ! grep -q "internal/enginewire/adapter imports dependencies outside its allowlist" "$tmp_dir/enginewire-adapter-${fixture}.err"; then
     echo "verify-core-boundaries failed without the expected enginewire adapter allowlist message" >&2
     cat "$tmp_dir/enginewire-adapter-${fixture}.err" >&2
+    exit 1
+  fi
+done
+
+for fixture in runtime cgo; do
+  if ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
+    ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
+    ZSCALERCTL_ENGINEHOST_IMPORTS_FILE="$tmp_dir/enginehost-${fixture}-bad.imports" \
+    ZSCALERCTL_ENGINECMD_IMPORTS_FILE="$tmp_dir/enginecmd-good.imports" \
+    "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/enginehost-${fixture}.out" 2>"$tmp_dir/enginehost-${fixture}.err"; then
+    echo "verify-core-boundaries accepted enginehost $fixture dependency outside its allowlist" >&2
+    cat "$tmp_dir/enginehost-${fixture}.out" >&2
+    cat "$tmp_dir/enginehost-${fixture}.err" >&2
+    exit 1
+  fi
+
+  if ! grep -q "internal/enginehost imports dependencies outside its allowlist" "$tmp_dir/enginehost-${fixture}.err"; then
+    echo "verify-core-boundaries failed without the expected enginehost allowlist message" >&2
+    cat "$tmp_dir/enginehost-${fixture}.err" >&2
+    exit 1
+  fi
+done
+
+for fixture in cli sdk cgo; do
+  if ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
+    ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
+    ZSCALERCTL_ENGINEHOST_IMPORTS_FILE="$tmp_dir/enginehost-good.imports" \
+    ZSCALERCTL_ENGINECMD_IMPORTS_FILE="$tmp_dir/enginecmd-${fixture}-bad.imports" \
+    "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/enginecmd-${fixture}.out" 2>"$tmp_dir/enginecmd-${fixture}.err"; then
+    echo "verify-core-boundaries accepted engine command $fixture dependency outside its allowlist" >&2
+    cat "$tmp_dir/enginecmd-${fixture}.out" >&2
+    cat "$tmp_dir/enginecmd-${fixture}.err" >&2
+    exit 1
+  fi
+
+  if ! grep -q "cmd/zscalerctl-engine imports dependencies outside its allowlist" "$tmp_dir/enginecmd-${fixture}.err"; then
+    echo "verify-core-boundaries failed without the expected engine command allowlist message" >&2
+    cat "$tmp_dir/enginecmd-${fixture}.err" >&2
     exit 1
   fi
 done
