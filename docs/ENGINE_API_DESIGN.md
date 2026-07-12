@@ -91,6 +91,7 @@ LookupURL(ctx, machine.URLLookupRequest) (machine.URLLookupResult, error)
 Dump(ctx, machine.DumpRequest, machine.EventSink) (machine.DumpResult, error)
 Diff(ctx, machine.DiffRequest, machine.EventSink) (machine.DiffResult, error)
 Read(ctx, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
+ReadStream(ctx, machine.ResourceReadRequest, machine.EventSink) error
 Execute(ctx, request) (machine.Response, error)
 ExecuteStream(ctx, request, sink) error
 ```
@@ -141,10 +142,17 @@ context-aware and emits deterministic per-resource progress. `DiffResult` owns
 a recursively copied admitted report; Cobra keeps shorthand parsing, human
 detail rendering, `--output`, and `--fail-on-drift` exit 7 as adapter policy.
 
-`ExecuteStream` is the semantic path. Both typed `Read` and compatibility
-`Execute` consume it, so the CLI and interactive adapters cannot acquire
-separate resource-read behavior. The implementation is synchronous and starts
-no goroutines; callers that need concurrency own the goroutine and its lifetime.
+`ExecuteStream` remains the shared semantic path. Typed `ReadStream` exposes
+that path without a generic capability selector or option map; typed `Read`
+reconstructs its closed result from the typed stream, while compatibility
+`Execute` reconstructs the legacy response. The CLI and interactive adapters
+therefore cannot acquire separate resource-read behavior. The implementation
+is synchronous and starts no goroutines; callers that need concurrency own the
+goroutine and its lifetime.
+
+`Engine.Read` and `Engine.ReadStream` reject operations outside the closed
+list/get/show family through the config-free machine executor before loading
+config, resolving a provider, or constructing a live reader.
 
 The current request/response envelopes remain candidate compatibility types.
 `Input.Options` has been removed; new operation families must add

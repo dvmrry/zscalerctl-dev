@@ -178,7 +178,7 @@ func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest
 	if catalogReadOnly {
 		for _, spec := range catalog {
 			for _, op := range readOperationsFromSpec(spec) {
-				if isSupportedReadOperation(op) {
+				if IsResourceReadOperation(op) {
 					readOps[op] = true
 				}
 			}

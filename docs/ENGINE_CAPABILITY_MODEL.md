@@ -15,9 +15,10 @@ capabilities. It does not define a public Go API, CLI surface, or wire protocol.
    `ResourceReadResult`. The result can contain only
    `resources.ProjectedRecords`; it cannot carry source records, SDK models,
    arbitrary maps, config, credentials, or renderer state.
-4. `Executor.Read` runs through the existing synchronous operation-event path.
-   It does not duplicate list/get/show loading, narrowing, error, cancellation,
-   or redaction behavior.
+4. `Executor.ReadStream` exposes the existing synchronous operation-event path
+   through a typed resource request, and `Executor.Read` reconstructs its closed
+   result from that stream. Neither duplicates list/get/show loading, narrowing,
+   error, cancellation, or redaction behavior.
 5. Typed engine requests, results, settings, events, and manifests reject direct
    JSON. A future stdio adapter must define, version, bound, and validate
    separate transport DTOs.
@@ -183,8 +184,9 @@ This checkpoint deliberately leaves these supported surfaces unchanged:
   now rejects the removed candidate `input.options` field as unknown
 
 The legacy candidate `machine.Request`/`machine.Response` execution methods
-remain as compatibility adapters over the event path. New in-process resource
-consumers use the typed `Read` method. The existing `schema list`, `doctor`,
+remain as compatibility adapters over the event path. New one-shot in-process
+resource consumers use typed `Read`; event-driven consumers use typed
+`ReadStream`. The existing `schema list`, `doctor`,
 `auth status`, and `config show` commands adapt typed catalog/status results
 back to their unchanged supported render shapes. `zia url-lookup` adapts the
 typed URL result into its existing output DTO. `dump` adapts the typed summary

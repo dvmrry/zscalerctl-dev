@@ -65,6 +65,243 @@ func TestExecutorReadRoutesTypedOperations(t *testing.T) {
 	}
 }
 
+func TestExecutorReadStreamRoutesTypedRequestAndEvents(t *testing.T) {
+	t.Parallel()
+
+	projected := projectedRecordsFromFields(t,
+		map[string]any{"id": "1", "name": "HQ"},
+		map[string]any{"id": "2", "name": "Branch"},
+	)
+	loader := &fakeBrowserLoader{records: projected}
+	var events []machine.Event
+	err := (machine.Executor{Browser: loader}).ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{
+			RequestID: "typed-stream",
+			Operation: machine.OperationList,
+			Input: machine.ResourceReadInput{
+				Product: "zia", Resource: "locations",
+			},
+		},
+		func(event machine.Event) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("Executor.ReadStream(list locations) error = %v, want nil", err)
+	}
+	assertEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventRecord,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	if !reflect.DeepEqual(loader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Executor.ReadStream(list locations) loader calls = %#v, want one list", loader.calls)
+	}
+	gotRecords := []map[string]any{
+		events[1].Record.Fields(),
+		events[2].Record.Fields(),
+	}
+	wantRecords := []map[string]any{
+		{"id": "1", "name": "HQ"},
+		{"id": "2", "name": "Branch"},
+	}
+	if !reflect.DeepEqual(gotRecords, wantRecords) {
+		t.Fatalf("Executor.ReadStream(list locations) records = %#v, want %#v", gotRecords, wantRecords)
+	}
+	if events[3].Records != 2 || events[3].Resources != 1 || events[3].Warnings != 0 {
+		t.Fatalf("Executor.ReadStream(list locations) completion = %#v, want 2 records/1 resource/0 warnings", events[3])
+	}
+}
+
+func TestExecutorReadStreamCopiesInputBeforeStartedEvent(t *testing.T) {
+	t.Parallel()
+
+	fields := []string{"name"}
+	filters := []machine.Filter{{Field: "country", Operator: "=", Value: "US"}}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product:  "zia",
+			Resource: "locations",
+			Fields:   fields,
+			Filters:  filters,
+		},
+	}
+	loader := &fakeBrowserLoader{records: projectedRecordsFromFields(t,
+		map[string]any{"id": "1", "name": "HQ", "country": "US"},
+		map[string]any{"id": "2", "name": "Branch", "country": "DE"},
+	)}
+	catalog := resources.ResourceCatalog{
+		testExecutorSpec(resources.ProductZIA, "locations", resources.ListOperations(), "id", "name", "country"),
+	}
+	var records []map[string]any
+	err := (machine.Executor{
+		Browser: loader, Catalog: catalog, Redaction: redact.ModeStandard,
+	}).ReadStream(context.Background(), request, func(event machine.Event) error {
+		if event.Kind == machine.EventStarted {
+			fields[0] = "id"
+			filters[0].Value = "DE"
+		}
+		if event.Kind == machine.EventRecord {
+			records = append(records, event.Record.Fields())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Executor.ReadStream(mutated caller input) error = %v, want nil", err)
+	}
+	want := []map[string]any{{"name": "HQ"}}
+	if !reflect.DeepEqual(records, want) {
+		t.Fatalf("Executor.ReadStream(mutated caller input) records = %#v, want %#v", records, want)
+	}
+}
+
+func TestExecutorReadStreamRejectsNonReadOperationWithTerminalFailure(t *testing.T) {
+	t.Parallel()
+
+	loader := &fakeBrowserLoader{}
+	var events []machine.Event
+	err := (machine.Executor{Browser: loader}).ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{
+			Operation: machine.OperationManifest,
+			Input: machine.ResourceReadInput{
+				Product: "zia", Resource: "locations",
+			},
+		},
+		func(event machine.Event) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	assertMachineError(
+		t,
+		err,
+		machine.ErrorKindUnsupportedOperation,
+		machine.OperationManifest,
+		"zia",
+		"locations",
+	)
+	assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.ReadStream(manifest) loader calls = %#v, want none", loader.calls)
+	}
+}
+
+func TestExecutorReadStreamPreservesCancellationAndDeadlineTerminals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		loadErr      error
+		wantKind     string
+		wantTerminal machine.EventKind
+	}{
+		{
+			name:         "canceled",
+			loadErr:      context.Canceled,
+			wantKind:     machine.ErrorKindCanceled,
+			wantTerminal: machine.EventCanceled,
+		},
+		{
+			name:         "deadline exceeded",
+			loadErr:      context.DeadlineExceeded,
+			wantKind:     machine.ErrorKindDeadlineExceeded,
+			wantTerminal: machine.EventFailed,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var events []machine.Event
+			err := (machine.Executor{Browser: &fakeBrowserLoader{err: tt.loadErr}}).ReadStream(
+				context.Background(),
+				machine.ResourceReadRequest{
+					Operation: machine.OperationList,
+					Input: machine.ResourceReadInput{
+						Product: "zia", Resource: "locations",
+					},
+				},
+				func(event machine.Event) error {
+					events = append(events, event)
+					return nil
+				},
+			)
+			assertMachineError(
+				t,
+				err,
+				tt.wantKind,
+				machine.OperationList,
+				"zia",
+				"locations",
+			)
+			assertEventKinds(t, events, []machine.EventKind{machine.EventStarted, tt.wantTerminal})
+		})
+	}
+}
+
+func TestExecutorReadStreamContainsSinkFailureAndPanic(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		panics bool
+	}{
+		{
+			name: "error",
+		},
+		{
+			name:   "panic",
+			panics: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			projected := projectedRecordsFromFields(t, map[string]any{"id": "1", "name": "HQ"})
+			var events []machine.Event
+			err := (machine.Executor{Browser: &fakeBrowserLoader{records: projected}}).ReadStream(
+				context.Background(),
+				machine.ResourceReadRequest{
+					Operation: machine.OperationList,
+					Input: machine.ResourceReadInput{
+						Product: "zia", Resource: "locations",
+					},
+				},
+				func(event machine.Event) error {
+					events = append(events, event)
+					if event.Kind == machine.EventRecord {
+						if tt.panics {
+							panic("panic detail")
+						}
+						return errors.New("sink detail")
+					}
+					return nil
+				},
+			)
+			machineErr := assertMachineError(
+				t,
+				err,
+				machine.ErrorKindInternal,
+				machine.OperationList,
+				"zia",
+				"locations",
+			)
+			if strings.Contains(machineErr.Message, "detail") {
+				t.Fatalf("Executor.ReadStream(%s sink) message = %q, want value-free", tt.name, machineErr.Message)
+			}
+			assertEventKinds(t, events, []machine.EventKind{
+				machine.EventStarted, machine.EventRecord, machine.EventFailed,
+			})
+		})
+	}
+}
+
 func TestExecutorReadAppliesPostProjectionNarrowing(t *testing.T) {
 	loader := &fakeBrowserLoader{records: projectedRecordsFromFields(t,
 		map[string]any{"id": "1", "name": "HQ", "country": "US"},

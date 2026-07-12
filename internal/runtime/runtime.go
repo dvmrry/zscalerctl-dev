@@ -147,6 +147,22 @@ func (m *Machine) Read(
 	return m.executor().Read(ctx, req)
 }
 
+// ReadStream runs one typed resource-read request and delivers ordered events
+// synchronously to sink.
+func (m *Machine) ReadStream(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+	sink machine.EventSink,
+) error {
+	if m == nil {
+		return errors.New("machine runtime is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().ReadStream(ctx, req, sink)
+}
+
 // ExecuteStream runs one machine request through the assembled read-only stack
 // and delivers ordered events synchronously to sink.
 func (m *Machine) ExecuteStream(ctx context.Context, req machine.Request, sink machine.EventSink) error {

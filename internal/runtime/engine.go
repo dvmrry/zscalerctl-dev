@@ -106,11 +106,34 @@ func (e *Engine) Read(
 	if e == nil {
 		return machine.ResourceReadResult{}, errors.New("engine runtime is nil")
 	}
+	if !machine.IsResourceReadOperation(req.Operation) {
+		return (machine.Executor{}).Read(ctx, req)
+	}
 	machineRuntime, err := NewMachine(ctx, e.options())
 	if err != nil {
 		return machine.ResourceReadResult{}, err
 	}
 	return machineRuntime.Read(ctx, req)
+}
+
+// ReadStream constructs one live runtime and delivers a typed resource-read
+// event stream synchronously.
+func (e *Engine) ReadStream(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+	sink machine.EventSink,
+) error {
+	if e == nil {
+		return errors.New("engine runtime is nil")
+	}
+	if !machine.IsResourceReadOperation(req.Operation) {
+		return (machine.Executor{}).ReadStream(ctx, req, sink)
+	}
+	machineRuntime, err := NewMachine(ctx, e.options())
+	if err != nil {
+		return err
+	}
+	return machineRuntime.ReadStream(ctx, req, sink)
 }
 
 // Execute constructs one live runtime and runs the candidate compatibility

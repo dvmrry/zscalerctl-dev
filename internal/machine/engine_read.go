@@ -12,25 +12,11 @@ func (e Executor) Read(ctx context.Context, req ResourceReadRequest) (ResourceRe
 	input := cloneResourceReadInput(req.Input)
 	product := strings.TrimSpace(input.Product)
 	resource := strings.TrimSpace(input.Resource)
-	if !isSupportedReadOperation(req.Operation) {
-		return ResourceReadResult{}, &MachineError{
-			Kind:      ErrorKindUnsupportedOperation,
-			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
-			Operation: req.Operation,
-			Product:   product,
-			Resource:  resource,
-		}
-	}
-
-	legacyRequest := Request{
-		RequestID:  req.RequestID,
-		Capability: CapabilityResourcesRead,
-		Operation:  req.Operation,
-		Input:      &input,
-	}
+	streamRequest := req
+	streamRequest.Input = input
 	emittedRecords := 0
 	var result *ResourceReadResult
-	err := e.ExecuteStream(ctx, legacyRequest, func(event Event) error {
+	err := e.readStream(ctx, streamRequest, func(event Event) error {
 		switch event.Kind {
 		case EventRecord:
 			if event.Record == nil {
@@ -89,4 +75,47 @@ func (e Executor) Read(ctx context.Context, req ResourceReadRequest) (ResourceRe
 		}
 	}
 	return *result, nil
+}
+
+// ReadStream executes one typed catalog-driven resource read through the
+// shared operation-event path. It exposes no generic capability selector or
+// option map to callers and cannot execute manifest or another capability.
+func (e Executor) ReadStream(ctx context.Context, req ResourceReadRequest, sink EventSink) error {
+	req.Input = cloneResourceReadInput(req.Input)
+	return e.readStream(ctx, req, sink)
+}
+
+func (e Executor) readStream(ctx context.Context, req ResourceReadRequest, sink EventSink) error {
+	product := strings.TrimSpace(req.Input.Product)
+	resource := strings.TrimSpace(req.Input.Resource)
+	if !IsResourceReadOperation(req.Operation) {
+		stream, err := StartEventStream(sink, req.Operation, product, resource, 0)
+		if err != nil {
+			return err
+		}
+		return failEventStream(
+			stream,
+			*unsupportedResourceReadOperationError(req.Operation, product, resource),
+		)
+	}
+	return e.ExecuteStream(ctx, Request{
+		RequestID:  req.RequestID,
+		Capability: CapabilityResourcesRead,
+		Operation:  req.Operation,
+		Input:      &req.Input,
+	}, sink)
+}
+
+func unsupportedResourceReadOperationError(
+	operation Operation,
+	product string,
+	resource string,
+) *MachineError {
+	return &MachineError{
+		Kind:      ErrorKindUnsupportedOperation,
+		Message:   fmt.Sprintf("unsupported operation %q for %s", operation, CapabilityResourcesRead),
+		Operation: operation,
+		Product:   product,
+		Resource:  resource,
+	}
 }

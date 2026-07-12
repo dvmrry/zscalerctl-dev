@@ -141,7 +141,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 			Resource:  resource,
 		})
 	}
-	if !isSupportedReadOperation(req.Operation) {
+	if !IsResourceReadOperation(req.Operation) {
 		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedOperation,
 			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
@@ -211,7 +211,9 @@ func failEventStream(stream *EventStream, machineErr MachineError) error {
 	return &machineErr
 }
 
-func isSupportedReadOperation(op Operation) bool {
+// IsResourceReadOperation reports whether op belongs to the closed typed
+// catalog-read operation family.
+func IsResourceReadOperation(op Operation) bool {
 	return op == OperationList || op == OperationGet || op == OperationShow
 }
 
@@ -343,7 +345,7 @@ func validateRequestSemantics(req Request, product, resource string) *MachineErr
 	if req.Input == nil {
 		return nil
 	}
-	if len(req.Input.Fields) > 0 && !isSupportedReadOperation(req.Operation) {
+	if len(req.Input.Fields) > 0 && !IsResourceReadOperation(req.Operation) {
 		return &MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   "input.fields applies to resource read operations only",

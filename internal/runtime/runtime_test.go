@@ -489,6 +489,179 @@ func TestMachineReadForwardsTypedResourceRequest(t *testing.T) {
 	}
 }
 
+func TestMachineReadStreamForwardsTypedResourceRequest(t *testing.T) {
+	t.Parallel()
+
+	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE", "raw": "dropped",
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	var events []machine.Event
+	err := rt.ReadStream(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-runtime-stream",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations", Fields: []string{"name"},
+		},
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Machine.ReadStream(list locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted, machine.EventRecord, machine.EventCompleted,
+	})
+	if got := events[1].Record.Fields(); !reflect.DeepEqual(got, map[string]any{"name": "HQ"}) {
+		t.Fatalf("Machine.ReadStream(list locations) record = %#v, want projected name only", got)
+	}
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Machine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestEngineReadStreamConstructsRuntimeAndForwardsEvents(t *testing.T) {
+	t.Parallel()
+
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE",
+				}),
+			},
+		},
+	}
+	engine, err := NewEngine(Options{
+		Env: []string{
+			config.EnvClientID + "=client-id",
+			config.EnvClientSecret + "=client-secret",
+			config.EnvVanityDomain + "=example",
+		},
+		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		newReader: func(zscaler.ReaderConfig) (browser.RecordReader, error) {
+			return reader, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(read stream) error = %v, want nil", err)
+	}
+	var events []machine.Event
+	err = engine.ReadStream(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-engine-stream",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Engine.ReadStream(list locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted, machine.EventRecord, machine.EventCompleted,
+	})
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Engine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestEngineTypedReadsRejectNonReadBeforeRuntimeConstruction(t *testing.T) {
+	t.Parallel()
+
+	configLoads := 0
+	readerConstructions := 0
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			configLoads++
+			return config.Config{}, errors.New("config must not load")
+		},
+		newReader: func(zscaler.ReaderConfig) (browser.RecordReader, error) {
+			readerConstructions++
+			return &runtimeFakeReader{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(non-read preflight) error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationManifest,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	if _, err := engine.Read(context.Background(), request); !runtimeMachineErrorKind(
+		err,
+		machine.ErrorKindUnsupportedOperation,
+	) {
+		t.Fatalf("Engine.Read(manifest) error = %T %v, want unsupported_operation", err, err)
+	}
+	var events []machine.Event
+	err = engine.ReadStream(context.Background(), request, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if !runtimeMachineErrorKind(err, machine.ErrorKindUnsupportedOperation) {
+		t.Fatalf("Engine.ReadStream(manifest) error = %T %v, want unsupported_operation", err, err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+	if configLoads != 0 || readerConstructions != 0 {
+		t.Fatalf(
+			"Engine typed manifest runtime effects = config:%d reader:%d, want 0/0",
+			configLoads,
+			readerConstructions,
+		)
+	}
+}
+
+func TestEngineReadStreamPreservesReadConstructionError(t *testing.T) {
+	t.Parallel()
+
+	loadErr := errors.New("load sentinel")
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return config.Config{}, loadErr
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(construction error parity) error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	_, readErr := engine.Read(context.Background(), request)
+	sinkCalls := 0
+	streamErr := engine.ReadStream(context.Background(), request, func(machine.Event) error {
+		sinkCalls++
+		return nil
+	})
+	if readErr != loadErr || streamErr != loadErr {
+		t.Fatalf(
+			"Engine typed read construction errors = read:%T %v stream:%T %v, want original sentinel",
+			readErr,
+			readErr,
+			streamErr,
+			streamErr,
+		)
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("Engine.ReadStream(construction error) sink calls = %d, want 0", sinkCalls)
+	}
+}
+
 func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 	t.Parallel()
 
@@ -549,6 +722,34 @@ func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 	}
 	if _, err := nilEngine.Read(context.Background(), machine.ResourceReadRequest{}); err == nil {
 		t.Fatal("nil Engine.Read() error = nil, want nil-runtime error")
+	}
+	sinkCalls := 0
+	if err := nilEngine.ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{},
+		func(machine.Event) error {
+			sinkCalls++
+			return nil
+		},
+	); err == nil {
+		t.Fatal("nil Engine.ReadStream() error = nil, want nil-runtime error")
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("nil Engine.ReadStream() sink calls = %d, want 0", sinkCalls)
+	}
+	var nilMachine *Machine
+	if err := nilMachine.ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{},
+		func(machine.Event) error {
+			sinkCalls++
+			return nil
+		},
+	); err == nil {
+		t.Fatal("nil Machine.ReadStream() error = nil, want nil-runtime error")
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("nil Machine.ReadStream() sink calls = %d, want 0", sinkCalls)
 	}
 }
 
@@ -1412,6 +1613,11 @@ func assertRuntimeEventKinds(t *testing.T, events []machine.Event, want []machin
 			t.Fatalf("event[%d].Kind = %q, want %q (events = %#v)", i, events[i].Kind, kind, events)
 		}
 	}
+}
+
+func runtimeMachineErrorKind(err error, want string) bool {
+	var machineErr *machine.MachineError
+	return errors.As(err, &machineErr) && machineErr != nil && machineErr.Kind == want
 }
 
 func runtimeDumpListSpec(product resources.Product, resource string) resources.ResourceSpec {
