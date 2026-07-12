@@ -15,6 +15,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/secret"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -135,6 +136,297 @@ func TestNewMachineFromConfigAssemblesReaderConfig(t *testing.T) {
 	}
 	if got := rt.Redaction(); got != redact.ModeParanoid {
 		t.Fatalf("Machine.Redaction() = %q, want %q", got, redact.ModeParanoid)
+	}
+}
+
+func TestReaderConfigFromConfigResolvesOnlyOneAPISecret(t *testing.T) {
+	t.Parallel()
+
+	clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
+	legacyPassword := &runtimeRecordingSecretSource{err: errors.New("inactive legacy password resolved")}
+	legacyAPIKey := &runtimeRecordingSecretSource{err: errors.New("inactive legacy API key resolved")}
+	cfg := config.Config{
+		AuthMode: config.AuthModeOneAPI,
+		Credentials: config.Credentials{
+			ClientSecret: clientSecret,
+		},
+		ZIALegacy: config.ZIALegacyCredentials{
+			Username: secret.New("inactive-legacy-user"),
+			Password: legacyPassword,
+			APIKey:   legacyAPIKey,
+			Cloud:    "inactive-legacy-cloud",
+		},
+	}
+
+	got, err := readerConfigFromConfig(context.Background(), cfg, Options{})
+	if err != nil {
+		t.Fatalf("readerConfigFromConfig(oneapi) error = %v, want nil", err)
+	}
+	if clientSecret.calls != 1 || legacyPassword.calls != 0 || legacyAPIKey.calls != 0 {
+		t.Fatalf(
+			"readerConfigFromConfig(oneapi) secret resolution calls = client:%d password:%d api_key:%d, want 1, 0, 0",
+			clientSecret.calls,
+			legacyPassword.calls,
+			legacyAPIKey.calls,
+		)
+	}
+	if got.ClientSecret.Reveal() != "client-secret" {
+		t.Errorf("readerConfigFromConfig(oneapi).ClientSecret = %q, want client-secret", got.ClientSecret.Reveal())
+	}
+	if got.ZIALegacy.Username.IsSet() || got.ZIALegacy.Password.IsSet() ||
+		got.ZIALegacy.APIKey.IsSet() || got.ZIALegacy.Cloud != "" {
+		t.Errorf("readerConfigFromConfig(oneapi).ZIALegacy = %#v, want empty", got.ZIALegacy)
+	}
+}
+
+func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
+	t.Parallel()
+
+	clientSecret := &runtimeRecordingSecretSource{err: errors.New("inactive client secret resolved")}
+	legacyPassword := &runtimeRecordingSecretSource{value: "legacy-password"}
+	legacyAPIKey := &runtimeRecordingSecretSource{value: "legacy-api-key"}
+	cfg := config.Config{
+		AuthMode:     config.AuthModeZIALegacy,
+		VanityDomain: "inactive-vanity",
+		Cloud:        "inactive-cloud",
+		Credentials: config.Credentials{
+			ClientID:     secret.New("inactive-client-id"),
+			ClientSecret: clientSecret,
+		},
+		ZPA: config.ZPAConfig{
+			CustomerID:    "inactive-customer-id",
+			MicrotenantID: "inactive-microtenant-id",
+		},
+		ZIALegacy: config.ZIALegacyCredentials{
+			Password: legacyPassword,
+			APIKey:   legacyAPIKey,
+		},
+	}
+
+	got, err := readerConfigFromConfig(context.Background(), cfg, Options{})
+	if err != nil {
+		t.Fatalf("readerConfigFromConfig(zia-legacy) error = %v, want nil", err)
+	}
+	if clientSecret.calls != 0 || legacyPassword.calls != 1 || legacyAPIKey.calls != 1 {
+		t.Fatalf(
+			"readerConfigFromConfig(zia-legacy) secret resolution calls = client:%d password:%d api_key:%d, want 0, 1, 1",
+			clientSecret.calls,
+			legacyPassword.calls,
+			legacyAPIKey.calls,
+		)
+	}
+	if got.ClientID.IsSet() || got.ClientSecret.IsSet() || got.VanityDomain != "" ||
+		got.Cloud != "" || got.ZPACustomerID != "" || got.ZPAMicrotenantID != "" {
+		t.Errorf("readerConfigFromConfig(zia-legacy) OneAPI fields = %#v, want empty", got)
+	}
+	if got.ZIALegacy.Password.Reveal() != "legacy-password" {
+		t.Errorf(
+			"readerConfigFromConfig(zia-legacy).ZIALegacy.Password = %q, want legacy-password",
+			got.ZIALegacy.Password.Reveal(),
+		)
+	}
+	if got.ZIALegacy.APIKey.Reveal() != "legacy-api-key" {
+		t.Errorf(
+			"readerConfigFromConfig(zia-legacy).ZIALegacy.APIKey = %q, want legacy-api-key",
+			got.ZIALegacy.APIKey.Reveal(),
+		)
+	}
+}
+
+func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T) {
+	t.Parallel()
+
+	t.Run("oneapi with typed-nil legacy sources", func(t *testing.T) {
+		t.Parallel()
+
+		var typedNil *runtimeRecordingSecretSource
+		clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
+		got, err := readerConfigFromConfig(context.Background(), config.Config{
+			Credentials: config.Credentials{ClientSecret: clientSecret},
+			ZIALegacy: config.ZIALegacyCredentials{
+				Password: typedNil,
+				APIKey:   typedNil,
+			},
+		}, Options{})
+		if err != nil {
+			t.Fatalf("readerConfigFromConfig(inferred oneapi) error = %v, want nil", err)
+		}
+		if got.AuthMode != zscaler.AuthModeOneAPI || clientSecret.calls != 1 {
+			t.Fatalf(
+				"readerConfigFromConfig(inferred oneapi) mode/calls = %q/%d, want %q/1",
+				got.AuthMode,
+				clientSecret.calls,
+				zscaler.AuthModeOneAPI,
+			)
+		}
+	})
+
+	t.Run("zia legacy with typed-nil oneapi source", func(t *testing.T) {
+		t.Parallel()
+
+		var typedNil *runtimeRecordingSecretSource
+		password := &runtimeRecordingSecretSource{value: "legacy-password"}
+		apiKey := &runtimeRecordingSecretSource{value: "legacy-api-key"}
+		got, err := readerConfigFromConfig(context.Background(), config.Config{
+			Credentials: config.Credentials{ClientSecret: typedNil},
+			ZIALegacy: config.ZIALegacyCredentials{
+				Username: secret.New("legacy-user"),
+				Password: password,
+				APIKey:   apiKey,
+				Cloud:    "legacy-cloud",
+			},
+		}, Options{})
+		if err != nil {
+			t.Fatalf("readerConfigFromConfig(inferred zia-legacy) error = %v, want nil", err)
+		}
+		if got.AuthMode != zscaler.AuthModeZIALegacy || password.calls != 1 || apiKey.calls != 1 {
+			t.Fatalf(
+				"readerConfigFromConfig(inferred zia-legacy) mode/calls = %q/%d/%d, want %q/1/1",
+				got.AuthMode,
+				password.calls,
+				apiKey.calls,
+				zscaler.AuthModeZIALegacy,
+			)
+		}
+	})
+}
+
+func TestNewReaderFromConfigRejectsNilActiveSecretSources(t *testing.T) {
+	t.Parallel()
+
+	var typedNil *runtimeRecordingSecretSource
+	tests := []struct {
+		name string
+		cfg  config.Config
+	}{
+		{
+			name: "explicit oneapi nil",
+			cfg: config.Config{
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
+				Credentials:  config.Credentials{ClientID: secret.New("client-id")},
+			},
+		},
+		{
+			name: "explicit oneapi typed nil",
+			cfg: config.Config{
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
+				Credentials: config.Credentials{
+					ClientID: secret.New("client-id"), ClientSecret: typedNil,
+				},
+			},
+		},
+		{
+			name: "inferred oneapi nil",
+			cfg: config.Config{
+				VanityDomain: "example",
+				Credentials:  config.Credentials{ClientID: secret.New("client-id")},
+			},
+		},
+		{
+			name: "explicit zia legacy nil",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+		{
+			name: "explicit zia legacy typed nil",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					Password: typedNil,
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+		{
+			name: "inferred zia legacy nil",
+			cfg: config.Config{
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewReaderFromConfig(context.Background(), tt.cfg, Options{})
+			if !errors.Is(err, zscaler.ErrMissingCredentials) {
+				t.Fatalf("NewReaderFromConfig(%s) error = %v, want ErrMissingCredentials", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr error
+	}{
+		{
+			name: "oneapi canceled",
+			cfg: config.Config{
+				AuthMode: config.AuthModeOneAPI,
+				Credentials: config.Credentials{
+					ClientSecret: &runtimeRecordingSecretSource{err: context.Canceled},
+				},
+			},
+			wantErr: context.Canceled,
+		},
+		{
+			name: "zia legacy deadline",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Password: &runtimeRecordingSecretSource{err: context.DeadlineExceeded},
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+				},
+			},
+			wantErr: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := readerConfigFromConfig(context.Background(), tt.cfg, Options{})
+			if !errors.Is(err, zscaler.ErrMissingCredentials) || !errors.Is(err, tt.wantErr) {
+				t.Fatalf(
+					"readerConfigFromConfig(%s) error = %v, want ErrMissingCredentials and %v",
+					tt.name,
+					err,
+					tt.wantErr,
+				)
+			}
+		})
+	}
+}
+
+func TestNewReaderFromConfigRejectsInvalidDirectAuthMode(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewReaderFromConfig(context.Background(), config.Config{
+		AuthMode: config.AuthMode("invalid"),
+	}, Options{})
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrMissingCredentials", err)
 	}
 }
 
@@ -1025,6 +1317,24 @@ type runtimeFakeReader struct {
 	getErr  error
 	showErr error
 	calls   []string
+}
+
+type runtimeRecordingSecretSource struct {
+	value string
+	err   error
+	calls int
+}
+
+func (*runtimeRecordingSecretSource) Scheme() string { return "test" }
+
+func (s *runtimeRecordingSecretSource) IsConfigured() bool { return s.value != "" || s.err != nil }
+
+func (s *runtimeRecordingSecretSource) Resolve(context.Context) (secret.Secret, error) {
+	s.calls++
+	if s.err != nil {
+		return secret.Secret{}, s.err
+	}
+	return secret.New(s.value), nil
 }
 
 func (r *runtimeFakeReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {

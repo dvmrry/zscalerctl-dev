@@ -18,6 +18,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/secret"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -213,40 +214,54 @@ func readerConfigFromConfig(
 	cfg config.Config,
 	opts Options,
 ) (zscaler.ReaderConfig, error) {
-	clientSecret, err := cfg.Credentials.ClientSecret.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
+	cfg = normalizeConfigSecretSources(cfg)
+	authMode := cfg.EffectiveAuthMode()
+	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
+	switch authMode {
+	case config.AuthModeOneAPI:
+		var err error
+		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
+		}
+	case config.AuthModeZIALegacy:
+		var err error
+		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy password)", zscaler.ErrMissingCredentials, err)
+		}
+		ziaAPIKey, err = cfg.ZIALegacy.APIKey.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
+		}
 	}
-	ziaPassword, err := cfg.ZIALegacy.Password.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy password)", zscaler.ErrMissingCredentials, err)
-	}
-	ziaAPIKey, err := cfg.ZIALegacy.APIKey.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
-	}
-	return zscaler.ReaderConfig{
-		ClientID:         cfg.Credentials.ClientID,
-		ClientSecret:     clientSecret,
-		VanityDomain:     cfg.VanityDomain,
-		Cloud:            cfg.Cloud,
-		ZPACustomerID:    cfg.ZPA.CustomerID,
-		ZPAMicrotenantID: cfg.ZPA.MicrotenantID,
-		AuthMode:         zscaler.AuthMode(cfg.EffectiveAuthMode()),
-		ZIALegacy: zscaler.ZIALegacyConfig{
-			Username: cfg.ZIALegacy.Username,
-			Password: ziaPassword,
-			APIKey:   ziaAPIKey,
-			Cloud:    cfg.ZIALegacy.Cloud,
-		},
-		Timeout: opts.Timeout,
-		NoCache: cfg.Defaults.NoCache,
+	readerConfig := zscaler.ReaderConfig{
+		AuthMode: zscaler.AuthMode(authMode),
+		Timeout:  opts.Timeout,
+		NoCache:  cfg.Defaults.NoCache,
 		Proxy: zscaler.ProxyConfig{
 			URL:             cfg.Proxy.URL,
 			FromEnvironment: cfg.Proxy.FromEnvironment,
 		},
 		DiagLogger: opts.DiagLogger,
-	}, nil
+	}
+	switch authMode {
+	case config.AuthModeOneAPI:
+		readerConfig.ClientID = cfg.Credentials.ClientID
+		readerConfig.ClientSecret = clientSecret
+		readerConfig.VanityDomain = cfg.VanityDomain
+		readerConfig.Cloud = cfg.Cloud
+		readerConfig.ZPACustomerID = cfg.ZPA.CustomerID
+		readerConfig.ZPAMicrotenantID = cfg.ZPA.MicrotenantID
+	case config.AuthModeZIALegacy:
+		readerConfig.ZIALegacy = zscaler.ZIALegacyConfig{
+			Username: cfg.ZIALegacy.Username,
+			Password: ziaPassword,
+			APIKey:   ziaAPIKey,
+			Cloud:    cfg.ZIALegacy.Cloud,
+		}
+	}
+	return readerConfig, nil
 }
 
 func newReaderFromConfig(

@@ -90,7 +90,7 @@ func newStatusInspectorFromConfig(
 	if err := ctx.Err(); err != nil {
 		return nil, statusContextError(err, operation)
 	}
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	if err := applyOptions(&cfg, opts); err != nil {
 		return nil, StatusConfigError(operation, err)
 	}
@@ -141,7 +141,7 @@ func (s *StatusInspector) Inspect(
 // NewDoctorStatus validates status-relevant runtime configuration and returns
 // a sanitized value-only status for rendering by callers.
 func NewDoctorStatus(cfg config.Config, opts StatusOptions) (DoctorStatus, error) {
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	if err := zscaler.ValidateProxyConfig(zscaler.ProxyConfig{
 		URL:             cfg.Proxy.URL,
 		FromEnvironment: cfg.Proxy.FromEnvironment,
@@ -166,7 +166,7 @@ func NewDoctorStatus(cfg config.Config, opts StatusOptions) (DoctorStatus, error
 
 // NewAuthStatus returns sanitized value-only authentication status.
 func NewAuthStatus(cfg config.Config) AuthStatus {
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	r := redact.New(cfg.Defaults.Redaction)
 	return AuthStatus{
 		Credentials:        sanitizeStatusString(r, CredentialStatus(cfg)),
@@ -179,7 +179,7 @@ func NewAuthStatus(cfg config.Config) AuthStatus {
 // status renderers. No raw config path, proxy URL, identifier, or secret is
 // copied into the result.
 func NewConfigStatus(cfg config.Config) ConfigStatus {
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	safe := cfg.Safe()
 	r := redact.New(cfg.Defaults.Redaction)
 	return ConfigStatus{
@@ -290,7 +290,7 @@ func unsupportedStatusOperationError() error {
 	}
 }
 
-func normalizeStatusConfig(cfg config.Config) config.Config {
+func normalizeConfigSecretSources(cfg config.Config) config.Config {
 	if nilSecretSource(cfg.Credentials.ClientSecret) {
 		cfg.Credentials.ClientSecret = secretref.Unset()
 	}
@@ -319,7 +319,7 @@ func nilSecretSource(source secretref.SecretSource) bool {
 // CredentialStatus reports whether the active auth mode has enough configured
 // fields for live read-only access.
 func CredentialStatus(cfg config.Config) string {
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	switch cfg.EffectiveAuthMode() {
 	case config.AuthModeZIALegacy:
 		if cfg.ZIALegacy.Configured() {
@@ -343,7 +343,7 @@ func CredentialStatus(cfg config.Config) string {
 // LiveAPIStatus reports the live read-only availability implied by the active
 // credential status.
 func LiveAPIStatus(cfg config.Config) string {
-	cfg = normalizeStatusConfig(cfg)
+	cfg = normalizeConfigSecretSources(cfg)
 	if CredentialStatus(cfg) == "configured" {
 		if cfg.EffectiveAuthMode() != config.AuthModeZIALegacy && strings.TrimSpace(cfg.ZPA.CustomerID) == "" {
 			return "available for ZIA read-only commands; ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
