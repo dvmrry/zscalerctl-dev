@@ -46,7 +46,8 @@ The project has distinct contracts that must not be conflated:
 
 The supported `machine.v1` manifest remains immutable. Expanding the engine
 does not mutate it. A future engine capability manifest and wire protocol get
-their own versions and immutable schema URLs before promotion.
+their own versions and immutable schema identities plus byte hashes before
+promotion.
 
 ## Engine scope
 
@@ -199,22 +200,30 @@ the generic engine contract.
 ## Future stdio protocol
 
 The stdio transport is a separate adapter and never serializes internal event
-structs directly. Its candidate v1 design must specify:
+structs directly. Its reviewed candidate design and normative schema plan live
+in [ENGINE_STDIO_PROTOCOL_V1.md](ENGINE_STDIO_PROTOCOL_V1.md). Candidate v1
+specifies:
 
 - a mandatory version/capability handshake
-- bounded NDJSON frames with strict unknown-field, duplicate-key, trailing-data,
-  UTF-8, and size validation
+- immutable bootstrap negotiation plus bounded NDJSON frames with strict
+  unknown-field, duplicate-key, trailing-data, UTF-8, depth, numeric, and size
+  validation
 - request IDs and monotonic event sequence numbers
 - request and cancellation input frames
 - started, item, progress, warning, completed, failed, and canceled output
   frames
-- one active operation initially, with caller-side queuing
+- one active operation initially, process-monotonic IDs, caller-side queuing,
+  and a separate session/request lifecycle
+- whole-response preflight and a success-commit barrier before semantic items
 - stdout for protocol frames and value-free stderr diagnostics
 - deterministic EOF, broken-pipe, signal, and shutdown behavior
 - no network listener and no credentials crossing the protocol
 
-TypeScript and Rust reference clients must run the same transcript conformance
-suite as the Go codec before the protocol is promoted.
+Large semantic items use bounded, checksummed fragmentation. Every semantic
+item stream commits only after whole-response validation; resource reads remain
+atomic, so page-by-page partial delivery is not a v1-compatible internal
+optimization. TypeScript and Rust reference clients must run the same
+transcript conformance suite as the Go codec before the protocol is promoted.
 
 ## Delivery sequence
 

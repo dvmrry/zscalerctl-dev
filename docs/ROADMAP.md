@@ -180,11 +180,14 @@ zscalerctl operation engine above it.
    the engine in small PRs. Cobra remains an in-process parser/renderer and does
    not spawn the stdio adapter. Existing CLI goldens, error envelopes, and exit
    codes remain unchanged unless deliberately versioned.
-4. **Wire design before process code.** Specify strict bounded NDJSON frames,
-   handshake and version negotiation, request IDs and event sequences,
-   cancellation, one-active-operation backpressure, protocol errors, stdout /
-   stderr separation, and EOF/broken-pipe/signal behavior. Internal `Event`
-   values are converted to explicit transport DTOs, never serialized directly.
+4. **Wire design before process code.** The candidate v1 checkpoint is
+   [ENGINE_STDIO_PROTOCOL_V1.md](ENGINE_STDIO_PROTOCOL_V1.md), with immutable
+   bootstrap and v1 schema identities plus byte hashes under `docs/schema/`.
+   It specifies strict bounded NDJSON, negotiation, process-monotonic IDs,
+   event sequences, preflighted fragmented items, atomic reads, cancellation,
+   one-operation backpressure, protocol errors, stdout/stderr separation, and
+   joined EOF/broken-pipe/signal behavior.
+   Internal `Event` values are explicitly converted, never serialized directly.
 5. **Long-lived stdio experiment.** One coordinator owns process state and
    output; one operation worker calls the synchronous engine; every goroutine
    has cancellation and a wait path. No TCP, HTTP, SSE, or local web server.
