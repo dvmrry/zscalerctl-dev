@@ -40,6 +40,53 @@ github.com/dvmrry/zscalerctl/internal/machineio
 github.com/dvmrry/zscalerctl/internal/machine
 EOF
 
+cat >"$tmp_dir/enginewire-good.imports" <<'EOF'
+bytes
+encoding/json
+io
+unicode/utf8
+EOF
+
+cat >"$tmp_dir/enginewire-package-bad.imports" <<'EOF'
+bytes
+github.com/dvmrry/zscalerctl/internal/machine
+EOF
+
+cat >"$tmp_dir/enginewire-cgo-bad.imports" <<'EOF'
+C
+bytes
+EOF
+
+cat >"$tmp_dir/enginewire-adapter-good.imports" <<'EOF'
+context
+fmt
+github.com/dvmrry/zscalerctl/internal/enginewire
+github.com/dvmrry/zscalerctl/internal/machine
+github.com/dvmrry/zscalerctl/internal/resources
+github.com/dvmrry/zscalerctl/internal/diff
+github.com/dvmrry/zscalerctl/internal/redact
+EOF
+
+cat >"$tmp_dir/enginewire-adapter-sdk-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/enginewire
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia
+EOF
+
+cat >"$tmp_dir/enginewire-adapter-bridge-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/enginewire
+github.com/dvmrry/zscalerctl/internal/unreviewedbridge
+EOF
+
+cat >"$tmp_dir/enginewire-adapter-third-party-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/enginewire
+example.com/unreviewed/codec
+EOF
+
+cat >"$tmp_dir/enginewire-adapter-cgo-bad.imports" <<'EOF'
+C
+github.com/dvmrry/zscalerctl/internal/enginewire
+EOF
+
 cat >"$tmp_dir/cmd-bad.deps" <<'EOF'
 github.com/dvmrry/zscalerctl/cmd/zscalerctl
 github.com/charmbracelet/bubbletea
@@ -103,7 +150,43 @@ ZSCALERCTL_RESOURCES_DEPS_FILE="$tmp_dir/resources-good.deps" \
 ZSCALERCTL_BROWSER_DEPS_FILE="$tmp_dir/browser-good.deps" \
 ZSCALERCTL_MACHINE_DEPS_FILE="$tmp_dir/machine-good.deps" \
 ZSCALERCTL_MACHINEIO_DEPS_FILE="$tmp_dir/machineio-good.deps" \
+ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
+ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
   "$repo_root/scripts/verify-core-boundaries.sh" >/dev/null
+
+for fixture in package cgo; do
+  if ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-${fixture}-bad.imports" \
+    ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
+    "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/enginewire-${fixture}.out" 2>"$tmp_dir/enginewire-${fixture}.err"; then
+    echo "verify-core-boundaries accepted enginewire $fixture dependency outside its allowlist" >&2
+    cat "$tmp_dir/enginewire-${fixture}.out" >&2
+    cat "$tmp_dir/enginewire-${fixture}.err" >&2
+    exit 1
+  fi
+
+  if ! grep -q "internal/enginewire imports dependencies outside its allowlist" "$tmp_dir/enginewire-${fixture}.err"; then
+    echo "verify-core-boundaries failed without the expected enginewire allowlist message" >&2
+    cat "$tmp_dir/enginewire-${fixture}.err" >&2
+    exit 1
+  fi
+done
+
+for fixture in sdk bridge third-party cgo; do
+  if ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
+    ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-${fixture}-bad.imports" \
+    "$repo_root/scripts/verify-core-boundaries.sh" >"$tmp_dir/enginewire-adapter-${fixture}.out" 2>"$tmp_dir/enginewire-adapter-${fixture}.err"; then
+    echo "verify-core-boundaries accepted enginewire adapter $fixture dependency outside its allowlist" >&2
+    cat "$tmp_dir/enginewire-adapter-${fixture}.out" >&2
+    cat "$tmp_dir/enginewire-adapter-${fixture}.err" >&2
+    exit 1
+  fi
+
+  if ! grep -q "internal/enginewire/adapter imports dependencies outside its allowlist" "$tmp_dir/enginewire-adapter-${fixture}.err"; then
+    echo "verify-core-boundaries failed without the expected enginewire adapter allowlist message" >&2
+    cat "$tmp_dir/enginewire-adapter-${fixture}.err" >&2
+    exit 1
+  fi
+done
 
 if ZSCALERCTL_CMD_DEPS_FILE="$tmp_dir/cmd-bad.deps" \
   ZSCALERCTL_CLI_DEPS_FILE="$tmp_dir/cli-good.deps" \

@@ -235,12 +235,17 @@ transcript conformance suite as the Go codec before the protocol is promoted.
    in its own slice.
 4. Migrate catalog/status/URL-lookup/dump/diff behavior behind the engine while
    keeping Cobra as an in-process adapter.
-5. Specify and implement versioned wire DTOs and strict codecs.
-6. Add the long-lived stdio experiment and shared Go/TypeScript/Rust transcript
-   tests.
-7. Build MCP, Wails, Ink/OpenTUI, Ratatui, or GUI experiments against those
+5. Specify and implement versioned wire DTOs and strict codecs. The Go codec
+   checkpoint is implemented under `internal/enginewire`: it covers every
+   bootstrap and v1 root frame, uses a bounded strict parser, keeps engine
+   adapters outside the transport package, and includes language-neutral
+   conformance fixtures. It does not yet expose an executable host.
+6. Add the long-lived stdio experiment and make the Go and TypeScript clients
+   run the shared transcript corpus.
+7. Add the independent Rust client and run the same conformance corpus.
+8. Build MCP, Wails, Ink/OpenTUI, Ratatui, or GUI experiments against those
    seams.
-8. Promote only after the CLI and at least two independent consumers pass
+9. Promote only after the CLI and at least two independent consumers pass
    conformance and the compatibility/security reviews.
 
 Every high-risk slice follows the repository's fresh-context adversarial-review

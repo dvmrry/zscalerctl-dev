@@ -181,6 +181,159 @@ func TestCompareContentHashResourceCanonicalizesObjectKeyOrder(t *testing.T) {
 	}
 }
 
+func TestComparePreservesExactLargeNumberLexemes(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":9007199254740993}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	resource := onlyResourceDiff(t, report)
+	if len(resource.Added) != 1 {
+		t.Fatalf("added = %#v, want one record", resource.Added)
+	}
+	number, ok := resource.Added[0].Record["name"].(json.Number)
+	if !ok || number.String() != "9007199254740993" {
+		t.Fatalf("added number = %#v, want exact json.Number", resource.Added[0].Record["name"])
+	}
+}
+
+func TestCompareTreatsEquivalentNumberLexemesAsEqual(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":1}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":1.0}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	if resource := onlyResourceDiff(t, report); resource.HasDrift() {
+		t.Fatalf("equivalent numeric lexemes reported drift: %#v", resource)
+	}
+}
+
+func TestCompareTreatsEquivalentNumericIdentityLexemesAsSameRecord(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":1.0,"name":"same"}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":1e0,"name":"same"}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	resource := onlyResourceDiff(t, report)
+	if len(resource.Added) != 0 || len(resource.Removed) != 0 || len(resource.Changed) != 0 {
+		t.Fatalf("equivalent numeric identities reported drift: %#v", resource)
+	}
+}
+
+func TestCompareTreatsHugeNegativeExponentIdentitiesAsSameRecord(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":1e-1000000000,"name":"same"}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":10e-1000000001,"name":"same"}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	if resource := onlyResourceDiff(t, report); resource.HasDrift() {
+		t.Fatalf("equivalent huge-exponent identities reported drift: %#v", resource)
+	}
+}
+
+func TestCanonicalIdentityNumberBoundsExponentExpansion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		lexeme  string
+		want    string
+		maxSize int
+	}{
+		{name: "huge negative exponent", lexeme: "1e-1000000000", want: "1e-1000000000", maxSize: 32},
+		{name: "equivalent huge exponent", lexeme: "10e-1000000001", want: "1e-1000000000", maxSize: 32},
+		{name: "int64 boundary exponent", lexeme: "1e-09223372036854775808", want: "1e-9223372036854775808", maxSize: 32},
+		{name: "zero never expands", lexeme: "0.0e+1000000000", want: "0", maxSize: 1},
+		{name: "ordinary identity stays plain", lexeme: "1.2300e2", want: "123", maxSize: 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := canonicalIdentityNumber(tt.lexeme)
+			if err != nil {
+				t.Fatalf("canonicalIdentityNumber(%q) error = %v", tt.lexeme, err)
+			}
+			if got != tt.want {
+				t.Fatalf("canonicalIdentityNumber(%q) = %q, want %q", tt.lexeme, got, tt.want)
+			}
+			if len(got) > tt.maxSize {
+				t.Fatalf("canonicalIdentityNumber(%q) length = %d, want <= %d", tt.lexeme, len(got), tt.maxSize)
+			}
+		})
+	}
+}
+
+func TestCompareReportsDistinctLargeNumbersExactly(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":9007199254740992}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[{"id":"1","name":9007199254740993}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	resource := onlyResourceDiff(t, report)
+	if len(resource.Changed) != 1 || len(resource.Changed[0].Changes) != 1 {
+		t.Fatalf("changes = %#v, want one exact numeric change", resource.Changed)
+	}
+	change := resource.Changed[0].Changes[0]
+	oldNumber, oldOK := change.Old.(json.Number)
+	newNumber, newOK := change.New.(json.Number)
+	if !oldOK || !newOK || oldNumber.String() != "9007199254740992" || newNumber.String() != "9007199254740993" {
+		t.Fatalf("numeric change = old:%#v new:%#v, want exact json.Number values", change.Old, change.New)
+	}
+}
+
+func TestCompareContentHashTreatsEquivalentNumberLexemesAsEqual(t *testing.T) {
+	catalog := resources.ResourceCatalog{testIdentitylessSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testIdentitylessSpec(), payload: `[{"name":1}]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testIdentitylessSpec(), payload: `[{"name":1e0}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	if resource := onlyResourceDiff(t, report); resource.HasDrift() {
+		t.Fatalf("content hash reported drift for equivalent numeric lexemes: %#v", resource)
+	}
+}
+
 func TestCompareRejectsRedactionMismatch(t *testing.T) {
 	catalog := resources.ResourceCatalog{testKeyedSpec()}
 	oldDir := writeTestDump(t, catalog, dumpFixture{redaction: redact.ModeStandard})

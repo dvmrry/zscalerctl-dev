@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -24,8 +26,9 @@ import (
 const SchemaID = "zscalerctl.diff.v1"
 
 const (
-	maxManifestBytes int64 = 1 << 20
-	maxResourceBytes int64 = 512 << 20
+	maxManifestBytes         int64 = 1 << 20
+	maxResourceBytes         int64 = 512 << 20
+	maxExpandedIdentityBytes       = 8 << 10
 )
 
 var (
@@ -671,7 +674,7 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 		return nil, err
 	}
 	var raw any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeResourceValue(body, &raw); err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
 			return nil, ctxErr
 		}
@@ -700,6 +703,57 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 		return nil, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
 	}
 	return records, nil
+}
+
+func decodeResourceValue(body []byte, destination any) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err == nil {
+		return errTrailingJSON
+	} else if !errors.Is(err, io.EOF) {
+		return err
+	}
+	return validateDecodedNumbers(reflect.ValueOf(destination).Elem())
+}
+
+func validateDecodedNumbers(value reflect.Value) error {
+	if !value.IsValid() {
+		return nil
+	}
+	if value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+		return validateDecodedNumbers(value.Elem())
+	}
+	if value.CanInterface() {
+		if number, ok := value.Interface().(json.Number); ok {
+			if _, err := number.Float64(); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	switch value.Kind() {
+	case reflect.Map:
+		iterator := value.MapRange()
+		for iterator.Next() {
+			if err := validateDecodedNumbers(iterator.Value()); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range value.Len() {
+			if err := validateDecodedNumbers(value.Index(i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func localResourcePath(mr dump.ManifestResource, spec resources.ResourceSpec) (string, error) {
@@ -1163,10 +1217,74 @@ func identityString(value any) string {
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	case json.Number:
-		return v.String()
+		canonical, err := canonicalIdentityNumber(v.String())
+		if err != nil {
+			return v.String()
+		}
+		return canonical
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+func canonicalIdentityNumber(lexeme string) (string, error) {
+	canonical, err := canonicalNumber(lexeme)
+	if err != nil {
+		return "", err
+	}
+	value := canonical.String()
+	if value == "0" {
+		return value, nil
+	}
+	negative := strings.HasPrefix(value, "-")
+	if negative {
+		value = value[1:]
+	}
+	parts := strings.SplitN(value, "e", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("canonical number has no exponent")
+	}
+	exponentValue, ok := new(big.Int).SetString(parts[1], 10)
+	if !ok {
+		return "", fmt.Errorf("canonical number has an invalid exponent")
+	}
+	if !exponentValue.IsInt64() {
+		return canonical.String(), nil
+	}
+	exponent64 := exponentValue.Int64()
+	if exponent64 < -maxExpandedIdentityBytes || exponent64 > maxExpandedIdentityBytes {
+		return canonical.String(), nil
+	}
+	digits := strings.ReplaceAll(parts[0], ".", "")
+	if len(digits) > maxExpandedIdentityBytes {
+		return canonical.String(), nil
+	}
+	exponent := int(exponent64)
+	scale := exponent - (len(digits) - 1)
+	var plain string
+	switch {
+	case scale >= 0:
+		if len(digits)+scale > maxExpandedIdentityBytes {
+			return canonical.String(), nil
+		}
+		plain = digits + strings.Repeat("0", scale)
+	case len(digits)+scale > 0:
+		point := len(digits) + scale
+		plain = digits[:point] + "." + digits[point:]
+	default:
+		leadingZeros := -(len(digits) + scale)
+		if 2+leadingZeros+len(digits) > maxExpandedIdentityBytes {
+			return canonical.String(), nil
+		}
+		plain = "0." + strings.Repeat("0", leadingZeros) + digits
+	}
+	if negative && plain != "0" {
+		if len(plain)+1 > maxExpandedIdentityBytes {
+			return canonical.String(), nil
+		}
+		plain = "-" + plain
+	}
+	return plain, nil
 }
 
 func compareContentHash(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, out ResourceDiff) (ResourceDiff, error) {
@@ -1232,7 +1350,11 @@ func hashedRecords(ctx context.Context, spec resources.ResourceSpec, records []m
 }
 
 func recordHash(record map[string]any) (string, error) {
-	body, err := json.Marshal(canonicalValue(record))
+	canonical, err := canonicalHashValue(record)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize record for content hash: %w", err)
+	}
+	body, err := json.Marshal(canonical)
 	if err != nil {
 		return "", fmt.Errorf("canonicalize record for content hash: %w", err)
 	}
@@ -1287,9 +1409,124 @@ func canonicalValue(value any) any {
 		return out
 	case float64:
 		return normalizeFloat(v)
+	case json.Number:
+		return json.Number(v.String())
 	default:
 		return v
 	}
+}
+
+func canonicalHashValue(value any) (any, error) {
+	if lexeme, ok := numberLexeme(value); ok {
+		return canonicalNumber(lexeme)
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			canonical, err := canonicalHashValue(item)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = canonical
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			canonical, err := canonicalHashValue(item)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = canonical
+		}
+		return out, nil
+	default:
+		return typed, nil
+	}
+}
+
+func numberLexeme(value any) (string, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		return typed.String(), true
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			return "", false
+		}
+		return strconv.FormatFloat(typed, 'g', -1, 64), true
+	case float32:
+		if math.IsNaN(float64(typed)) || math.IsInf(float64(typed), 0) {
+			return "", false
+		}
+		return strconv.FormatFloat(float64(typed), 'g', -1, 32), true
+	case int:
+		return strconv.FormatInt(int64(typed), 10), true
+	case int8:
+		return strconv.FormatInt(int64(typed), 10), true
+	case int16:
+		return strconv.FormatInt(int64(typed), 10), true
+	case int32:
+		return strconv.FormatInt(int64(typed), 10), true
+	case int64:
+		return strconv.FormatInt(typed, 10), true
+	case uint:
+		return strconv.FormatUint(uint64(typed), 10), true
+	case uint8:
+		return strconv.FormatUint(uint64(typed), 10), true
+	case uint16:
+		return strconv.FormatUint(uint64(typed), 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(typed), 10), true
+	case uint64:
+		return strconv.FormatUint(typed, 10), true
+	default:
+		return "", false
+	}
+}
+
+func canonicalNumber(lexeme string) (json.Number, error) {
+	number := json.Number(lexeme)
+	if _, err := number.Float64(); err != nil {
+		return "", err
+	}
+	negative := strings.HasPrefix(lexeme, "-")
+	if negative {
+		lexeme = lexeme[1:]
+	}
+	exponent := new(big.Int)
+	if index := strings.IndexAny(lexeme, "eE"); index >= 0 {
+		if _, ok := exponent.SetString(lexeme[index+1:], 10); !ok {
+			return "", fmt.Errorf("invalid number exponent")
+		}
+		lexeme = lexeme[:index]
+	}
+	fractionDigits := 0
+	if index := strings.IndexByte(lexeme, '.'); index >= 0 {
+		fractionDigits = len(lexeme) - index - 1
+		lexeme = lexeme[:index] + lexeme[index+1:]
+	}
+	digits := strings.TrimLeft(lexeme, "0")
+	if digits == "" {
+		return json.Number("0"), nil
+	}
+	trailingZeros := len(digits) - len(strings.TrimRight(digits, "0"))
+	if trailingZeros > 0 {
+		digits = digits[:len(digits)-trailingZeros]
+	}
+	// The exponent can be numerically enormous even when its source lexeme is
+	// short (for example 1e-1000000000). Keep exponent arithmetic proportional
+	// to the input bytes and never expand it into exponent-sized storage.
+	delta := int64(-fractionDigits + trailingZeros + len(digits) - 1)
+	effectiveExponent := new(big.Int).Add(exponent, big.NewInt(delta))
+	mantissa := digits[:1]
+	if len(digits) > 1 {
+		mantissa += "." + digits[1:]
+	}
+	if negative {
+		mantissa = "-" + mantissa
+	}
+	return json.Number(mantissa + "e" + effectiveExponent.String()), nil
 }
 
 func normalizeFloat(value float64) any {
@@ -1334,11 +1571,51 @@ func diffFieldsContext(ctx context.Context, oldRecord, newRecord map[string]any)
 		if !newOK {
 			newValue = nil
 		}
-		if !reflect.DeepEqual(oldValue, newValue) {
+		if !jsonValuesEqual(oldValue, newValue) {
 			changes = append(changes, FieldChange{Field: field, Old: oldValue, New: newValue})
 		}
 	}
 	return changes, nil
+}
+
+func jsonValuesEqual(left, right any) bool {
+	leftNumber, leftIsNumber := numberLexeme(left)
+	rightNumber, rightIsNumber := numberLexeme(right)
+	if leftIsNumber || rightIsNumber {
+		if !leftIsNumber || !rightIsNumber {
+			return false
+		}
+		leftCanonical, leftErr := canonicalNumber(leftNumber)
+		rightCanonical, rightErr := canonicalNumber(rightNumber)
+		return leftErr == nil && rightErr == nil && leftCanonical == rightCanonical
+	}
+	switch leftTyped := left.(type) {
+	case map[string]any:
+		rightTyped, ok := right.(map[string]any)
+		if !ok || len(leftTyped) != len(rightTyped) {
+			return false
+		}
+		for key, leftValue := range leftTyped {
+			rightValue, present := rightTyped[key]
+			if !present || !jsonValuesEqual(leftValue, rightValue) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		rightTyped, ok := right.([]any)
+		if !ok || len(leftTyped) != len(rightTyped) {
+			return false
+		}
+		for i := range leftTyped {
+			if !jsonValuesEqual(leftTyped[i], rightTyped[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(left, right)
+	}
 }
 
 func sortedKeys(a, b map[string]map[string]any) []string {

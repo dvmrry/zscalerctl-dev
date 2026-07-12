@@ -481,6 +481,14 @@ fields and trailing values. Dynamic values use a lossless parser/encoder.
 Outbound control frames encode into a bounded buffer before one full-write
 submission; large item payloads use the preflight/fragment stream.
 
+The Go reference DTO/codec checkpoint is implemented in
+`internal/enginewire`. The transport package is standard-library-only and its
+engine adapter is isolated in a child package. It covers all four bootstrap
+and 31 v1 root frame branches, rejects case-variant keys, bounds numeric work,
+pins the checked-in schema identity and byte hash, and preserves exact JSON
+numbers in diff ingestion while retaining value-based numeric equality and
+hashing. This checkpoint does not expose a host process.
+
 ## Conformance and promotion
 
 Shared transcripts cover bootstrap/version negotiation, every exact operation
@@ -500,6 +508,11 @@ Go and the zero-runtime-dependency TypeScript client run the same transcript
 corpus. Process lifecycle runs on Linux, macOS, and Windows without live
 credentials. Benchmarks record startup-to-hello, handshake, started, first item,
 completion, cancellation, fragmentation throughput, and peak RSS.
+
+The initial language-neutral corpus under
+`internal/enginewire/testdata/conformance` drives the Go codec and framer.
+Lifecycle races, fragment sequences, signal handling, and process joins join
+that corpus with the executable host checkpoint.
 
 Promotion remains blocked on a second independent client (planned Rust),
 cross-platform lifecycle proof, immutable schema validation, CLI and consumer

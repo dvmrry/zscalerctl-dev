@@ -188,10 +188,16 @@ zscalerctl operation engine above it.
    one-operation backpressure, protocol errors, stdout/stderr separation, and
    joined EOF/broken-pipe/signal behavior.
    Internal `Event` values are explicitly converted, never serialized directly.
-5. **Long-lived stdio experiment.** One coordinator owns process state and
+5. **Strict Go codec foundation.** `internal/enginewire` covers all four
+   bootstrap and 31 v1 root frame branches with a standard-library-only,
+   bounded strict JSON/NDJSON implementation. A separate adapter maps trusted
+   engine values and deliberately strips local paths, raw error text, source
+   metadata, and unsupported credential names. Shared language-neutral codec
+   and framing fixtures are checked in. This checkpoint exposes no command.
+6. **Long-lived stdio experiment.** One coordinator owns process state and
    output; one operation worker calls the synchronous engine; every goroutine
    has cancellation and a wait path. No TCP, HTTP, SSE, or local web server.
-6. **Reference clients and conformance.** Go codec plus TypeScript and Rust
+7. **Reference clients and conformance.** Go codec plus TypeScript and Rust
    clients run the same transcript fixtures. Promotion requires the CLI and at
    least two independent consumers, cross-platform lifecycle tests, immutable
    protocol schemas, and fresh-context compatibility/security review.
