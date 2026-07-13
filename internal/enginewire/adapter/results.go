@@ -283,9 +283,13 @@ func ToDumpSummary(source machine.DumpResult) (enginewire.DumpSummary, error) {
 			return enginewire.DumpSummary{}, fmt.Errorf("convert dump failure: %w", err)
 		}
 	}
+	warningCount, err := safeCount("dump warnings", len(failures))
+	if err != nil {
+		return enginewire.DumpSummary{}, err
+	}
 	summary := enginewire.DumpSummary{
 		Kind: "dump_summary", RecordsWritten: records, ResourcesWritten: resourcesWritten,
-		WarningCount: enginewire.SafeInteger(len(failures)), Partial: source.Partial(),
+		WarningCount: warningCount, Partial: source.Partial(),
 		Redaction: enginewire.Redaction(source.Redaction()), Failures: failures, StreamItemsEmitted: 0,
 	}
 	probe := enginewire.Completed[enginewire.DumpSummary]{Type: "completed", ID: 1, Sequence: 1, Result: summary}
@@ -466,8 +470,12 @@ func sourceReportHasDrift(report dumpdiff.Report) bool {
 }
 
 func safeCount(name string, value int) (enginewire.SafeInteger, error) {
-	if value < 0 || uint64(value) > enginewire.MaxSafeInteger {
+	if value < 0 {
 		return 0, fmt.Errorf("convert %s: count outside safe integer range", name)
 	}
-	return enginewire.SafeInteger(value), nil
+	converted := uint64(value) // #nosec G115 -- nonnegative int is losslessly representable by uint64.
+	if converted > enginewire.MaxSafeInteger {
+		return 0, fmt.Errorf("convert %s: count outside safe integer range", name)
+	}
+	return enginewire.SafeInteger(converted), nil
 }

@@ -58,8 +58,8 @@ func validateStablePublicationParent(parent string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("owner identity for dump ancestor %s is unavailable", ancestorPath)
 		}
-		currentOwner := uint32(os.Geteuid())
-		if ancestorOwner != currentOwner && ancestorOwner != 0 {
+		currentOwner := int64(os.Geteuid())
+		if int64(ancestorOwner) != currentOwner && ancestorOwner != 0 {
 			// A directory owner can change its mode and rename children even when
 			// its current group/world mode bits are read-only. Only the operator
 			// and the privileged system owner are inside this namespace boundary.
@@ -89,7 +89,7 @@ func stableNamespaceEntry(path string) (os.FileInfo, error) {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("dump parent ancestry %s is not a directory", path)
 	}
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- caller-selected dump ancestor is opened only to bind identity and inspect metadata/ACLs.
 	if err != nil {
 		return nil, fmt.Errorf("open dump parent ancestry %s: %w", path, err)
 	}
@@ -111,7 +111,7 @@ func stableNamespaceEntry(path string) (os.FileInfo, error) {
 
 func ownedByCurrentUser(info os.FileInfo) bool {
 	uid, ok := namespaceOwnerUID(info)
-	return ok && uid == uint32(os.Geteuid())
+	return ok && int64(uid) == int64(os.Geteuid())
 }
 
 func namespaceOwnerUID(info os.FileInfo) (uint32, bool) {

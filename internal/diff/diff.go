@@ -1094,31 +1094,32 @@ func openRootRegularFile(
 		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDump, label, err)
 	}
 	if ctxErr := checkContext(ctx); ctxErr != nil {
-		file.Close()
-		return nil, ctxErr
+		return nil, closeRootFileOnError(file, label, ctxErr)
 	}
 	info, err := file.Stat()
 	if ctxErr := checkContext(ctx); ctxErr != nil {
-		file.Close()
-		return nil, ctxErr
+		return nil, closeRootFileOnError(file, label, ctxErr)
 	}
 	if err != nil {
-		file.Close()
-		return nil, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, label, err)
+		return nil, closeRootFileOnError(file, label, fmt.Errorf("%w: inspect %s: %v", ErrInvalidDump, label, err))
 	}
 	if !info.Mode().IsRegular() {
-		file.Close()
-		return nil, fmt.Errorf("%w: %s is not a regular file", ErrInvalidDump, label)
+		return nil, closeRootFileOnError(file, label, fmt.Errorf("%w: %s is not a regular file", ErrInvalidDump, label))
 	}
 	if info.Size() > maxBytes {
-		file.Close()
-		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+		return nil, closeRootFileOnError(file, label, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label))
 	}
 	if err := checkContext(ctx); err != nil {
-		file.Close()
-		return nil, err
+		return nil, closeRootFileOnError(file, label, err)
 	}
 	return file, nil
+}
+
+func closeRootFileOnError(file *os.File, label string, cause error) error {
+	if closeErr := file.Close(); closeErr != nil {
+		return fmt.Errorf("%w; close %s after failure: %v", cause, label, closeErr)
+	}
+	return cause
 }
 
 func compareResource(ctx context.Context, spec resources.ResourceSpec, oldRecords, newRecords []map[string]any, ignoreOperational bool) (ResourceDiff, error) {

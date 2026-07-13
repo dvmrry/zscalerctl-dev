@@ -248,9 +248,21 @@ func executeOperation(
 			return operationData{}, fmt.Errorf("%w: dump warnings do not match completed summary", errInvalidEngineEvents)
 		}
 		completion := bridge.Completion()
-		if summary.RecordsWritten != enginewire.SafeInteger(completion.Records) ||
-			summary.ResourcesWritten != enginewire.SafeInteger(completion.Resources) ||
-			summary.WarningCount != enginewire.SafeInteger(completion.Warnings) {
+		records, err := safeWireCount(completion.Records)
+		if err != nil {
+			return operationData{}, err
+		}
+		resourcesWritten, err := safeWireCount(completion.Resources)
+		if err != nil {
+			return operationData{}, err
+		}
+		warnings, err := safeWireCount(completion.Warnings)
+		if err != nil {
+			return operationData{}, err
+		}
+		if summary.RecordsWritten != records ||
+			summary.ResourcesWritten != resourcesWritten ||
+			summary.WarningCount != warnings {
 			return operationData{}, fmt.Errorf("%w: dump result does not match completed counters", errInvalidEngineEvents)
 		}
 		return operationData{result: summary}, nil
@@ -269,7 +281,11 @@ func executeOperation(
 			return operationData{}, err
 		}
 		completion := bridge.Completion()
-		if converted.Summary.Summary.ResourcesCompared > enginewire.SafeInteger(completion.Resources) {
+		resourcesCompared, err := safeWireCount(completion.Resources)
+		if err != nil {
+			return operationData{}, err
+		}
+		if converted.Summary.Summary.ResourcesCompared > resourcesCompared {
 			return operationData{}, fmt.Errorf("%w: diff report exceeds selected resource count", errInvalidEngineEvents)
 		}
 		items := make([]semanticItem, len(converted.Items))
@@ -340,10 +356,14 @@ func executeRead(
 }
 
 func safeWireCount(value int) (enginewire.SafeInteger, error) {
-	if value < 0 || uint64(value) > enginewire.MaxSafeInteger {
+	if value < 0 {
 		return 0, errResponseTooLarge
 	}
-	return enginewire.SafeInteger(value), nil
+	converted := uint64(value) // #nosec G115 -- nonnegative int is losslessly representable by uint64.
+	if converted > enginewire.MaxSafeInteger {
+		return 0, errResponseTooLarge
+	}
+	return enginewire.SafeInteger(converted), nil
 }
 
 func isNilEngine(engine Engine) bool {

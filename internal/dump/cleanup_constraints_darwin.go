@@ -43,8 +43,8 @@ func readDarwinExtendedSecurity(file *os.File) ([]byte, error) {
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_FGETATTRLIST,
 		file.Fd(),
-		uintptr(unsafe.Pointer(&attributes)),
-		uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(unsafe.Pointer(&attributes)), // #nosec G103 -- Darwin syscall ABI requires pointers to the initialized attrlist.
+		uintptr(unsafe.Pointer(&buffer[0])),  // #nosec G103 -- fixed-size live buffer is retained for the synchronous syscall.
 		uintptr(len(buffer)),
 		uintptr(unix.FSOPT_REPORT_FULLSIZE),
 		0,
@@ -52,19 +52,25 @@ func readDarwinExtendedSecurity(file *os.File) ([]byte, error) {
 	if errno != 0 {
 		return nil, errno
 	}
-	total := int(binary.LittleEndian.Uint32(buffer[:4]))
-	if total < 12 || total > len(buffer) {
+	reportedTotal := int64(binary.LittleEndian.Uint32(buffer[:4]))
+	if reportedTotal < 12 || reportedTotal > int64(len(buffer)) {
 		return nil, errors.New("malformed Darwin extended-security attributes")
 	}
-	length := int(binary.LittleEndian.Uint32(buffer[8:12]))
-	if length == 0 {
+	reportedLength := int64(binary.LittleEndian.Uint32(buffer[8:12]))
+	if reportedLength == 0 {
 		return nil, nil
 	}
-	offset := int(int32(binary.LittleEndian.Uint32(buffer[4:8])))
-	start := 4 + offset
-	if start < 12 || start > total || length > total-start {
+	rawOffset := binary.LittleEndian.Uint32(buffer[4:8])
+	offset := int64(rawOffset)
+	if rawOffset&(1<<31) != 0 {
+		offset -= 1 << 32
+	}
+	start64 := int64(4) + offset
+	if start64 < 12 || start64 > reportedTotal || reportedLength > reportedTotal-start64 {
 		return nil, errors.New("malformed Darwin extended-security reference")
 	}
+	start := int(start64)         // #nosec G115 -- bounds above constrain start64 to the 64 KiB in-memory buffer.
+	length := int(reportedLength) // #nosec G115 -- bounds above constrain the length to the 64 KiB in-memory buffer.
 	security := make([]byte, length)
 	copy(security, buffer[start:start+length])
 	return security, nil

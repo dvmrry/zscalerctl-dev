@@ -22,9 +22,9 @@ func validateOwnerOnlyACLPath(path string) error {
 	return validateMacOSExtendedSecurity(func(attributes *unix.Attrlist, buffer []byte) syscall.Errno {
 		_, _, errno := syscall.Syscall6(
 			syscall.SYS_GETATTRLIST,
-			uintptr(unsafe.Pointer(pathPointer)),
-			uintptr(unsafe.Pointer(attributes)),
-			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(unsafe.Pointer(pathPointer)), // #nosec G103 -- NUL-terminated path pointer is required by the Darwin syscall ABI.
+			uintptr(unsafe.Pointer(attributes)),  // #nosec G103 -- callback supplies the initialized attrlist for this synchronous syscall.
+			uintptr(unsafe.Pointer(&buffer[0])),  // #nosec G103 -- fixed-size live buffer is retained for the synchronous syscall.
 			uintptr(len(buffer)),
 			uintptr(unix.FSOPT_NOFOLLOW|unix.FSOPT_REPORT_FULLSIZE),
 			0,
@@ -41,8 +41,8 @@ func validateOwnerOnlyACLFile(file *os.File) error {
 		_, _, errno := syscall.Syscall6(
 			syscall.SYS_FGETATTRLIST,
 			file.Fd(),
-			uintptr(unsafe.Pointer(attributes)),
-			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(unsafe.Pointer(attributes)), // #nosec G103 -- callback supplies the initialized attrlist for this synchronous syscall.
+			uintptr(unsafe.Pointer(&buffer[0])), // #nosec G103 -- fixed-size live buffer is retained for the synchronous syscall.
 			uintptr(len(buffer)),
 			uintptr(unix.FSOPT_REPORT_FULLSIZE),
 			0,

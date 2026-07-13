@@ -117,9 +117,13 @@ func preflightFragments(
 	maximum enginewire.SafeInteger,
 	item plannedItem,
 ) error {
+	payloadBytes, err := safeWireCount(len(item.payload))
+	if err != nil {
+		return err
+	}
 	begin := enginewire.ItemBegin{
 		Type: "item_begin", ID: maximum, Sequence: maximum, ItemID: maximum,
-		Kind: item.kind, Encoding: "json", Bytes: enginewire.SafeInteger(len(item.payload)),
+		Kind: item.kind, Encoding: "json", Bytes: payloadBytes,
 	}
 	if _, err := enginewire.MarshalServerFrame(begin); err != nil {
 		return fmt.Errorf("preflight item begin: %w", err)
@@ -130,18 +134,26 @@ func preflightFragments(
 		}
 		start := index * enginewire.FragmentChunkBytes
 		end := min(start+enginewire.FragmentChunkBytes, len(item.payload))
+		wireIndex, err := safeWireCount(index)
+		if err != nil {
+			return err
+		}
 		chunk := enginewire.ItemChunk{
 			Type: "item_chunk", ID: maximum, Sequence: maximum, ItemID: maximum,
-			Index: enginewire.SafeInteger(index),
+			Index: wireIndex,
 			Data:  base64.StdEncoding.EncodeToString(item.payload[start:end]),
 		}
 		if _, err := enginewire.MarshalServerFrame(chunk); err != nil {
 			return fmt.Errorf("preflight item chunk: %w", err)
 		}
 	}
+	chunkCount, err := safeWireCount(item.chunks)
+	if err != nil {
+		return err
+	}
 	end := enginewire.ItemEnd{
 		Type: "item_end", ID: maximum, Sequence: maximum, ItemID: maximum,
-		Chunks: enginewire.SafeInteger(item.chunks), SHA256: item.digest,
+		Chunks: chunkCount, SHA256: item.digest,
 	}
 	if _, err := enginewire.MarshalServerFrame(end); err != nil {
 		return fmt.Errorf("preflight item end: %w", err)

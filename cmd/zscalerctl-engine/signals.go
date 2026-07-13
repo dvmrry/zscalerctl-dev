@@ -40,7 +40,7 @@ func (c *signalController) run() {
 		return
 	case received := <-c.signals:
 		code := signalExitCode(received)
-		c.code.Store(int32(code))
+		c.code.Store(code)
 		c.cancel()
 	}
 	select {

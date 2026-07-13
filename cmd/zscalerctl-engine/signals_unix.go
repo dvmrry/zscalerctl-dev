@@ -12,7 +12,7 @@ func hostSignals() []os.Signal {
 	return []os.Signal{os.Interrupt, syscall.SIGTERM}
 }
 
-func signalExitCode(value os.Signal) int {
+func signalExitCode(value os.Signal) int32 {
 	if value == syscall.SIGTERM {
 		return 143
 	}

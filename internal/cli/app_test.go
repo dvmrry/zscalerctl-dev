@@ -3097,10 +3097,24 @@ func TestDumpForceReplacesExistingDumpDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(initial dump) error = %v, want nil", err)
 	}
+	manifestPath := filepath.Join(outDir, "manifest.json")
+	manifestBefore := readFile(t, manifestPath)
 	out.Reset()
 	errOut.Reset()
 
 	err = app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
+	if runtime.GOOS == "windows" {
+		if !errors.Is(err, dump.ErrAtomicReplaceUnsupported) {
+			t.Fatalf("App.Run(dump --force on Windows) error = %v, want ErrAtomicReplaceUnsupported", err)
+		}
+		if manifestAfter := readFile(t, manifestPath); manifestAfter != manifestBefore {
+			t.Errorf("manifest after unsupported Windows force changed\n got: %s\nwant: %s", manifestAfter, manifestBefore)
+		}
+		if out.Len() != 0 {
+			t.Errorf("App.Run(dump --force on Windows) stdout = %q, want empty", out.String())
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("App.Run(dump --force) error = %v, want nil", err)
 	}
@@ -3140,10 +3154,14 @@ func TestDumpForceRejectsNonDumpDirectory(t *testing.T) {
 	if !errors.Is(err, dump.ErrUnsafePath) {
 		t.Fatalf("App.Run(dump --force non-dump) error = %v, want ErrUnsafePath", err)
 	}
+	renderedOutDir := outDir
+	if resolved, resolveErr := filepath.EvalSymlinks(outDir); resolveErr == nil {
+		renderedOutDir = resolved
+	}
 	wantMessage := fmt.Sprintf(
 		"%s: --force target %s is not a zscalerctl dump directory",
 		dump.ErrUnsafePath,
-		outDir,
+		renderedOutDir,
 	)
 	wantMessage, _ = redact.New(redact.ModeStandard).ScanRenderedString(wantMessage)
 	if err.Error() != wantMessage {

@@ -7,11 +7,35 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/enginewire"
 )
+
+func TestSafeWireCountRejectsOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	valid := []int{0, 1}
+	invalid := []int{-1}
+	if strconv.IntSize >= 64 {
+		maximum := uint64(enginewire.MaxSafeInteger)
+		valid = append(valid, int(maximum))
+		invalid = append(invalid, int(maximum+1))
+	}
+	for _, value := range valid {
+		got, err := safeWireCount(value)
+		if err != nil || got.Uint64() != uint64(value) {
+			t.Errorf("safeWireCount(%d) = %d, %v; want %d, nil", value, got, err, value)
+		}
+	}
+	for _, value := range invalid {
+		if got, err := safeWireCount(value); !errors.Is(err, errResponseTooLarge) || got != 0 {
+			t.Errorf("safeWireCount(%d) = %d, %v; want 0, errResponseTooLarge", value, got, err)
+		}
+	}
+}
 
 func TestPreflightFragmentsAndReconstructsLargeItem(t *testing.T) {
 	t.Parallel()

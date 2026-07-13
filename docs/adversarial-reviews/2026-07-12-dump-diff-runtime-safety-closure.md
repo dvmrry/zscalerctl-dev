@@ -177,6 +177,39 @@ changes`; the builder mapped and fixed their union before narrow re-review.
   with only documentation/test-strengthening nits; neither identified a new
   blocking issue.
 
+## Post-Push CI Follow-up
+
+Native CI confirmed the Windows dump, restricted-parent DACL, file-permission,
+and secret-reference tests all pass. The Windows job failed later on two stale
+CLI assertions: one still expected existing-directory force replacement to
+succeed, and one compared the canonical long error path to the runner's short
+temporary path. The CLI regressions now preserve the Windows fail-closed
+contract, assert the old manifest remains unchanged, and derive expected error
+text through the same `EvalSymlinks` canonicalization as production.
+
+GitHub code scanning also imported 19 gosec annotations from the larger PR. The
+builder triaged every annotation instead of weakening the scanner:
+
+- Fragment, completion, dump-warning, and diff counts now use checked
+  nonnegative `SafeInteger` conversions with the JavaScript maximum enforced.
+- Signal exit codes are produced as `int32` directly, and POSIX UID comparisons
+  widen rather than narrow values.
+- Diff failure paths preserve their primary error and check every file-close
+  result.
+- The two caller-selected `os.Open` sites have narrow audited suppressions: the
+  handles read no content and exist only to bind already-checked identity and
+  inspect ACL/removal metadata.
+- Darwin syscall-pointer suppressions document the synchronous ABI lifetime,
+  and ACL offset/length values remain `int64` until bounded by the 64 KiB
+  response buffer.
+
+Exact gosec v2.26.1 now reports zero findings. Affected unit and race suites,
+vet, staticcheck, Windows CLI/engine cross-compilation, and the full repository
+gate pass. Carver and Poincare re-reviewed this post-CI delta; Poincare approved
+and Carver approved with one non-blocking pre-existing nit: unsupported 32-bit
+builds still encounter an unrelated untyped `MaxSafeInteger` formatting
+constant, while every released target is 64-bit.
+
 ## Final Review
 
 The initial and post-CI review loops independently verified the frozen cleanup,

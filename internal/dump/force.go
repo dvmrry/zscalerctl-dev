@@ -318,7 +318,7 @@ func validateAbsoluteCleanupEntry(path string, want os.FileInfo, wantDirectory b
 	if wantDirectory != info.IsDir() || (!wantDirectory && !info.Mode().IsRegular()) {
 		return fmt.Errorf("%w: cleanup path changed type", ErrUnsafePath)
 	}
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- exact validated cleanup identity is checked before this metadata/removal-constraint handle is used.
 	if err != nil {
 		return fmt.Errorf("%w: open cleanup path: %v", ErrUnsafePath, err)
 	}

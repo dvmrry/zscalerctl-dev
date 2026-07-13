@@ -39,22 +39,29 @@ func (c *successCursor) Next(
 	}
 
 	item := c.plan.items[c.itemIndex]
-	itemID := enginewire.SafeInteger(c.itemIndex + 1)
 	if !item.fragmented {
 		c.itemIndex++
 		return enginewire.Item[enginewire.ItemValue]{
 			Type: "item", ID: id, Sequence: sequence, Kind: item.kind, Item: item.value,
 		}, false, nil
 	}
+	itemID, err := safeWireCount(c.itemIndex + 1)
+	if err != nil {
+		return nil, false, err
+	}
 
 	switch c.phase {
 	case 0:
+		payloadBytes, err := safeWireCount(len(item.payload))
+		if err != nil {
+			return nil, false, err
+		}
 		c.phase = 1
 		c.chunkIndex = 0
 		c.hasher = sha256.New()
 		return enginewire.ItemBegin{
 			Type: "item_begin", ID: id, Sequence: sequence, ItemID: itemID,
-			Kind: item.kind, Encoding: "json", Bytes: enginewire.SafeInteger(len(item.payload)),
+			Kind: item.kind, Encoding: "json", Bytes: payloadBytes,
 		}, false, nil
 	case 1:
 		if c.chunkIndex < item.chunks {
@@ -64,9 +71,13 @@ func (c *successCursor) Next(
 			if _, err := c.hasher.Write(chunkBytes); err != nil {
 				return nil, false, fmt.Errorf("hash item chunk: %w", err)
 			}
+			chunkIndex, err := safeWireCount(c.chunkIndex)
+			if err != nil {
+				return nil, false, err
+			}
 			frame := enginewire.ItemChunk{
 				Type: "item_chunk", ID: id, Sequence: sequence, ItemID: itemID,
-				Index: enginewire.SafeInteger(c.chunkIndex),
+				Index: chunkIndex,
 				Data:  base64.StdEncoding.EncodeToString(chunkBytes),
 			}
 			c.chunkIndex++
@@ -77,9 +88,13 @@ func (c *successCursor) Next(
 		}
 		c.phase = 0
 		c.itemIndex++
+		chunkCount, err := safeWireCount(item.chunks)
+		if err != nil {
+			return nil, false, err
+		}
 		return enginewire.ItemEnd{
 			Type: "item_end", ID: id, Sequence: sequence, ItemID: itemID,
-			Chunks: enginewire.SafeInteger(item.chunks), SHA256: item.digest,
+			Chunks: chunkCount, SHA256: item.digest,
 		}, false, nil
 	default:
 		return nil, false, fmt.Errorf("invalid success stream phase")
