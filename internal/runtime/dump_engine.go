@@ -109,11 +109,13 @@ func (c *DumpCollector) dumpPrepared(
 	if err != nil {
 		return machine.DumpResult{}, dumpCollectionBoundaryError(err)
 	}
-	if err := dump.PrepareOutputDir(ctx, prepared.outputDir, prepared.force); err != nil {
-		safeErr := dumpOutputBoundaryError(err)
-		return machine.DumpResult{}, failTypedDumpStream(stream, safeErr)
-	}
-	if err := dump.WriteContext(ctx, prepared.outputDir, c.redaction, collected); err != nil {
+	if err := dump.PublishContext(
+		ctx,
+		prepared.outputDir,
+		c.redaction,
+		collected,
+		prepared.force,
+	); err != nil {
 		safeErr := dumpOutputBoundaryError(err)
 		return machine.DumpResult{}, failTypedDumpStream(stream, safeErr)
 	}
@@ -416,6 +418,10 @@ func dumpOutputBoundaryError(err error) error {
 		machineErr.Kind = machine.ErrorKindCanceled
 		machineErr.Message = "request canceled"
 		sentinel = context.Canceled
+	case errors.Is(err, dump.ErrAtomicReplaceUnsupported):
+		machineErr.Kind = machine.ErrorKindUnsupportedOperation
+		machineErr.Message = "atomic dump directory replacement is unsupported"
+		sentinel = dump.ErrAtomicReplaceUnsupported
 	case errors.Is(err, dump.ErrUnsafePath):
 		sentinel = dump.ErrUnsafePath
 	case errors.Is(err, dump.ErrUnsafeOverwrite):
@@ -457,6 +463,10 @@ func LegacyDumpAdapterError(err error) (error, bool) {
 		return nil, false
 	}
 	if errors.Is(outputErr.safe, context.Canceled) || errors.Is(outputErr.safe, context.DeadlineExceeded) {
+		return nil, false
+	}
+	var machineErr *machine.MachineError
+	if errors.As(outputErr.safe, &machineErr) && machineErr.Kind == machine.ErrorKindUnsupportedOperation {
 		return nil, false
 	}
 	return &legacyDumpAdapterError{

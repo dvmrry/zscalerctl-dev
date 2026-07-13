@@ -50,9 +50,12 @@ even when that effect is conditional. New consumers should evaluate `effects`
 directly. Normal resource reads carry `network_access`, configuration-dependent
 `local_filesystem_read` and `process_execution`, plus a flag-conditioned local
 write for global `--output`. The process effect covers configured `cmd:`
-providers and platform keyring helpers. `dump` always writes a local directory
-and contacts Zscaler, while `--force` conditionally reads and deletes a prior
-validated dump tree.
+providers and platform keyring helpers. `dump` always writes a private staging
+directory, validates it, and atomically publishes a new requested directory
+while contacting Zscaler. `--force` conditionally reads, exchanges, and deletes
+a prior complete, fully validated dump tree; foreign files make the replacement
+fail closed. Replacement requires an atomic directory-exchange primitive and is
+rejected on platforms/filesystems without one, including Windows.
 
 Prefer stdout for agent reads. Use `--output PATH`, `dump --out DIR`, or
 `config init` only when the local filesystem effect is explicitly authorized.

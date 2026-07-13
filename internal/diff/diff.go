@@ -26,19 +26,19 @@ import (
 const SchemaID = "zscalerctl.diff.v1"
 
 const (
-	maxManifestBytes         int64 = 1 << 20
 	maxResourceBytes         int64 = 512 << 20
 	maxExpandedIdentityBytes       = 8 << 10
 )
 
 var (
-	ErrInvalidDump        = errors.New("invalid dump")
-	ErrPartialDumpInput   = errors.New("partial dump input")
-	ErrRedactionMismatch  = errors.New("redaction mode mismatch")
-	ErrInvalidCatalog     = errors.New("invalid catalog")
-	errTrailingJSON       = errors.New("unexpected trailing JSON value")
-	errUnexpectedEndJSON  = errors.New("unexpected end of JSON input")
-	errUnexpectedArrayEnd = errors.New("unexpected token after resource array")
+	ErrInvalidDump             = errors.New("invalid dump")
+	ErrPartialDumpInput        = errors.New("partial dump input")
+	ErrRedactionMismatch       = errors.New("redaction mode mismatch")
+	ErrCollectionScopeMismatch = errors.New("dump collection scope mismatch")
+	ErrInvalidCatalog          = errors.New("invalid catalog")
+	errTrailingJSON            = errors.New("unexpected trailing JSON value")
+	errUnexpectedEndJSON       = errors.New("unexpected end of JSON input")
+	errUnexpectedArrayEnd      = errors.New("unexpected token after resource array")
 )
 
 type Options struct {
@@ -252,12 +252,21 @@ type loadedDump struct {
 	ref       DumpRef
 	manifest  dump.Manifest
 	resources map[ResourceKey]loadedResource
+	states    map[ResourceKey]collectionState
 }
 
 type loadedResource struct {
 	manifest dump.ManifestResource
 	records  []map[string]any
 }
+
+type collectionState uint8
+
+const (
+	collectionNotSelected collectionState = iota
+	collectionSucceeded
+	collectionFailed
+)
 
 func Compare(oldDir, newDir string, opts Options) (Report, error) {
 	return CompareContext(context.Background(), oldDir, newDir, opts, nil)
@@ -321,6 +330,19 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 			return Report{}, err
 		}
 		key := ResourceKey{Product: spec.Product, Name: spec.Name}
+		oldState := oldDump.states[key]
+		newState := newDump.states[key]
+		if (oldState == collectionNotSelected) != (newState == collectionNotSelected) {
+			return Report{}, fmt.Errorf(
+				"%w: resource %s/%s was selected in only one dump",
+				ErrCollectionScopeMismatch,
+				spec.Product,
+				spec.Name,
+			)
+		}
+		if oldState == collectionNotSelected {
+			continue
+		}
 		oldRes := oldDump.resources[key]
 		newRes := newDump.resources[key]
 		if progress != nil {
@@ -339,6 +361,15 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 				return Report{}, err
 			}
 		}
+		if oldState == collectionFailed || newState == collectionFailed {
+			resourceDiff, err := compareResource(ctx, spec, nil, nil, opts.IgnoreOperational)
+			if err != nil {
+				return Report{}, err
+			}
+			resourceDiff.Note = failedCollectionNote(oldState, newState)
+			report.Resources = append(report.Resources, resourceDiff)
+			continue
+		}
 		resourceDiff, err := compareResource(ctx, spec, oldRes.records, newRes.records, opts.IgnoreOperational)
 		if err != nil {
 			return Report{}, err
@@ -356,6 +387,17 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 		report.Resources = append(report.Resources, resourceDiff)
 	}
 	return report, nil
+}
+
+func failedCollectionNote(oldState, newState collectionState) string {
+	switch {
+	case oldState == collectionFailed && newState == collectionFailed:
+		return "not compared: collection failed in both dumps"
+	case oldState == collectionFailed:
+		return "not compared: collection failed in old dump"
+	default:
+		return "not compared: collection failed in new dump"
+	}
 }
 
 type catalogValidationError struct {
@@ -573,31 +615,17 @@ func loadDump(
 		return loadedDump{}, ctxErr
 	}
 
-	body, err := readRootFile(ctx, root, "manifest.json", fmt.Sprintf("manifest for %s", dir), maxManifestBytes)
+	artifact, err := dump.ValidateArtifactMetadataRootContext(ctx, root)
 	if err != nil {
-		return loadedDump{}, err
-	}
-	var manifest dump.Manifest
-	if err := json.Unmarshal(body, &manifest); err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
 			return loadedDump{}, ctxErr
 		}
-		return loadedDump{}, fmt.Errorf("%w: parse manifest for %s: %v", ErrInvalidDump, dir, err)
+		return loadedDump{}, fmt.Errorf("%w: %v", ErrInvalidDump, err)
 	}
-	if err := checkContext(ctx); err != nil {
-		return loadedDump{}, err
-	}
-	if manifest.Schema != dump.ManifestSchemaID {
-		return loadedDump{}, fmt.Errorf("%w: unsupported manifest schema (want %s; see docs/schema/manifest.schema.json)", ErrInvalidDump, dump.ManifestSchemaID)
-	}
+	manifest := artifact.Manifest
 	mode, err := redact.ParseMode(manifest.Redaction)
 	if err != nil {
 		return loadedDump{}, fmt.Errorf("%w: invalid redaction mode", ErrInvalidDump)
-	}
-	switch manifest.Status {
-	case "complete", "partial":
-	default:
-		return loadedDump{}, fmt.Errorf("%w: invalid manifest status (want complete or partial)", ErrInvalidDump)
 	}
 	loaded := loadedDump{
 		ref: DumpRef{
@@ -609,6 +637,7 @@ func loadDump(
 		},
 		manifest:  manifest,
 		resources: make(map[ResourceKey]loadedResource),
+		states:    make(map[ResourceKey]collectionState),
 	}
 	seen := make(map[ResourceKey]struct{}, len(manifest.Resources))
 	for _, mr := range manifest.Resources {
@@ -620,12 +649,21 @@ func loadDump(
 		if !ok {
 			return loadedDump{}, fmt.Errorf("%w: manifest references an unknown resource", ErrInvalidDump)
 		}
+		if mr.Status == "ok" && mr.Shape != dump.ManifestResourceShape(spec) {
+			return loadedDump{}, fmt.Errorf(
+				"%w: resource %s/%s manifest shape does not match the catalog",
+				ErrInvalidDump,
+				spec.Product,
+				spec.Name,
+			)
+		}
 		if _, duplicate := seen[key]; duplicate {
 			return loadedDump{}, fmt.Errorf("%w: resource %s/%s appears more than once in manifest", ErrInvalidDump, spec.Product, spec.Name)
 		}
 		seen[key] = struct{}{}
 		switch mr.Status {
 		case "ok":
+			loaded.states[key] = collectionSucceeded
 			if strings.TrimSpace(mr.Path) == "" {
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, spec.Product, spec.Name)
 			}
@@ -652,6 +690,7 @@ func loadDump(
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
 			}
 		case "error":
+			loaded.states[key] = collectionFailed
 			loaded.ref.Partial = true
 		default:
 			return loadedDump{}, fmt.Errorf("%w: resource %s/%s has invalid status (want ok or error)", ErrInvalidDump, spec.Product, spec.Name)

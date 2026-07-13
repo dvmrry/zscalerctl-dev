@@ -318,6 +318,11 @@ func diffBoundaryError(err error) error {
 		machineErr.Message = "redaction mode mismatch"
 		sentinel = diff.ErrRedactionMismatch
 		adapterMessage = sanitizeEngineString(redact.New(redact.ModeStandard), err.Error())
+	case errors.Is(err, diff.ErrCollectionScopeMismatch):
+		machineErr.Kind = machine.ErrorKindUsage
+		machineErr.Message = "dump collection scope mismatch"
+		sentinel = diff.ErrCollectionScopeMismatch
+		adapterMessage = sanitizeEngineString(redact.New(redact.ModeStandard), err.Error())
 	}
 	safe := newBoundaryError(machineErr, sentinel)
 	if adapterMessage == "" {

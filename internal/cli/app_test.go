@@ -3097,19 +3097,12 @@ func TestDumpForceReplacesExistingDumpDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(initial dump) error = %v, want nil", err)
 	}
-	stalePath := filepath.Join(outDir, "stale.txt")
-	if err := os.WriteFile(stalePath, []byte("stale"), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(stale) error = %v, want nil", err)
-	}
 	out.Reset()
 	errOut.Reset()
 
 	err = app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
 	if err != nil {
 		t.Fatalf("App.Run(dump --force) error = %v, want nil", err)
-	}
-	if _, err := os.Stat(stalePath); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("os.Stat(stale) error = %v, want os.ErrNotExist", err)
 	}
 	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
 	if _, err := os.Stat(resourcePath); err != nil {
@@ -3994,6 +3987,11 @@ func writeCLIDiffDumpSet(t *testing.T, fixtures []dumpFixtureForCLI) string {
 		Status:      "complete",
 		Resources:   []dump.ManifestResource{},
 	}
+	report := dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: string(redact.ModeStandard),
+		Resources: []dump.ResourceReport{},
+	}
 	for _, fixture := range fixtures {
 		relPath := filepath.ToSlash(filepath.Join("resources", string(fixture.spec.Product), fixture.spec.Name+".json"))
 		path := filepath.Join(dir, relPath)
@@ -4006,8 +4004,14 @@ func writeCLIDiffDumpSet(t *testing.T, fixtures []dumpFixtureForCLI) string {
 		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
 			Product: string(fixture.spec.Product),
 			Name:    fixture.spec.Name,
-			Shape:   string(fixture.spec.EffectiveShape()),
+			Shape:   dump.ManifestResourceShape(fixture.spec),
 			Status:  "ok",
+			Path:    relPath,
+			Records: cliDiffRecordCount(t, fixture.payload),
+		})
+		report.Resources = append(report.Resources, dump.ResourceReport{
+			Product: string(fixture.spec.Product),
+			Name:    fixture.spec.Name,
 			Path:    relPath,
 			Records: cliDiffRecordCount(t, fixture.payload),
 		})
@@ -4018,6 +4022,13 @@ func writeCLIDiffDumpSet(t *testing.T, fixtures []dumpFixtureForCLI) string {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(manifest) error = %v, want nil", err)
+	}
+	reportBody, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(redaction report) error = %v, want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(redaction report) error = %v, want nil", err)
 	}
 	return dir
 }

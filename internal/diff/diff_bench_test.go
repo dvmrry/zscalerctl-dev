@@ -141,7 +141,7 @@ func writeBenchmarkDiffDump(b *testing.B, entries []benchmarkDiffEntry) string {
 		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
 			Product: string(entry.spec.Product),
 			Name:    entry.spec.Name,
-			Shape:   string(entry.spec.EffectiveShape()),
+			Shape:   dump.ManifestResourceShape(entry.spec),
 			Status:  "ok",
 			Path:    relPath,
 			Records: entry.records,

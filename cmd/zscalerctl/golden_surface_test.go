@@ -32,6 +32,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/zscaler"
 	"github.com/spf13/cobra"
 )
 
@@ -42,9 +43,10 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 var goldenBinary string
 
 const (
-	goldenSurfaceFixtureEnv       = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
-	goldenSurfaceReadFixture      = "resource-read"
-	goldenSurfaceInvalidIDFixture = "invalid-resource-id"
+	goldenSurfaceFixtureEnv        = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture       = "resource-read"
+	goldenSurfaceInvalidIDFixture  = "invalid-resource-id"
+	goldenSurfaceMissingZPAFixture = "missing-zpa-customer-id"
 )
 
 // TestMain builds the binary once for all golden tests.
@@ -297,6 +299,13 @@ type goldenSurfaceReader struct {
 }
 
 func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceMissingZPAFixture &&
+		product == resources.ProductZPA &&
+		resource == "server-groups" {
+		return nil, &zscaler.MissingCredentialsError{
+			Missing: []string{"ZSCALERCTL_ZPA_CUSTOMER_ID"},
+		}
+	}
 	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" {
 		return []resources.SourceRecord{
 			resources.NewSourceRecord(map[string]any{
@@ -577,6 +586,13 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"--format", "json", "zia", "locations", "list"},
 			wantCode: 3,
 			note:     "json-error-envelope",
+		},
+		{
+			name:     "zpa-server-groups-list-missing-customer-json",
+			args:     []string{"--format", "json", "zpa", "server-groups", "list"},
+			fixture:  goldenSurfaceMissingZPAFixture,
+			wantCode: 3,
+			note:     "product-missing-credentials-contract",
 		},
 		// ── schema list ───────────────────────────────────────────────────────────
 		{

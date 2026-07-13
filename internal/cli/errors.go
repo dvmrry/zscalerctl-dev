@@ -75,10 +75,37 @@ func cliErrorFromMachineRead(err error) error {
 		return err
 	}
 	switch machineErr.Kind {
-	case machine.ErrorKindUsage, machine.ErrorKindUnsupportedOperation:
+	case machine.ErrorKindUsage:
 		return UsageError{Message: machineErr.Error()}
 	default:
 		return err
+	}
+}
+
+// ExitCodeForMachineErrorKind is the single supported mapping from stable
+// machine error kinds to process exit codes. The values mirror the public CLI
+// contract documented by introspection and docs/VERSIONING.md.
+func ExitCodeForMachineErrorKind(kind string) (int, bool) {
+	switch kind {
+	case machine.ErrorKindInternal, machine.ErrorKindCanceled:
+		return 1, true
+	case machine.ErrorKindUsage,
+		machine.ErrorKindInvalidResourceID,
+		machine.ErrorKindInvalidConfig,
+		machine.ErrorKindInvalidProxyConfig:
+		return 2, true
+	case machine.ErrorKindMissingCredentials:
+		return 3, true
+	case machine.ErrorKindUnsupportedCapability,
+		machine.ErrorKindUnsupportedOperation,
+		machine.ErrorKindUnknownResource,
+		machine.ErrorKindUnsupportedResource,
+		machine.ErrorKindNotFound:
+		return 4, true
+	case machine.ErrorKindLiveAccessFailed, machine.ErrorKindDeadlineExceeded:
+		return 5, true
+	default:
+		return 0, false
 	}
 }
 

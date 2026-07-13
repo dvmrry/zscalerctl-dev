@@ -44,6 +44,15 @@ func TestExitCodeForError(t *testing.T) {
 		{"machine_live_access_failed", &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}, exitLiveAccessFailure},
 		{"machine_deadline_exceeded", &machine.MachineError{Kind: machine.ErrorKindDeadlineExceeded}, exitLiveAccessFailure},
 		{"machine_canceled", &machine.MachineError{Kind: machine.ErrorKindCanceled}, exitInternalError},
+		{"machine_usage", &machine.MachineError{Kind: machine.ErrorKindUsage}, exitUsageError},
+		{"machine_unsupported_capability", &machine.MachineError{Kind: machine.ErrorKindUnsupportedCapability}, exitNotFound},
+		{"machine_unsupported_operation", &machine.MachineError{Kind: machine.ErrorKindUnsupportedOperation}, exitNotFound},
+		{"machine_invalid_config", &machine.MachineError{Kind: machine.ErrorKindInvalidConfig}, exitUsageError},
+		{"machine_invalid_proxy", &machine.MachineError{Kind: machine.ErrorKindInvalidProxyConfig}, exitUsageError},
+		{"machine_missing_credentials", &machine.MachineError{Kind: machine.ErrorKindMissingCredentials}, exitCredentialError},
+		{"machine_unknown_resource", &machine.MachineError{Kind: machine.ErrorKindUnknownResource}, exitNotFound},
+		{"machine_unsupported_resource", &machine.MachineError{Kind: machine.ErrorKindUnsupportedResource}, exitNotFound},
+		{"machine_internal", &machine.MachineError{Kind: machine.ErrorKindInternal}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
@@ -543,7 +552,7 @@ func writeDumpDirForMain(t *testing.T, product, resource, payload string) string
 		Warning:     "test fixture",
 		Status:      "complete",
 		Resources: []dump.ManifestResource{
-			{Product: product, Name: resource, Shape: "list", Status: "ok", Path: relPath, Records: 1},
+			{Product: product, Name: resource, Status: "ok", Path: relPath, Records: 1},
 		},
 	}
 	body, err := json.MarshalIndent(m, "", "  ")
@@ -552,6 +561,22 @@ func writeDumpDirForMain(t *testing.T, product, resource, payload string) string
 	}
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(manifest) error = %v", err)
+	}
+	reportBody, err := json.MarshalIndent(dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: "standard",
+		Resources: []dump.ResourceReport{{
+			Product: product,
+			Name:    resource,
+			Path:    relPath,
+			Records: 1,
+		}},
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(redaction report) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(redaction report) error = %v", err)
 	}
 	return dir
 }

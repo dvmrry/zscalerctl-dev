@@ -53,11 +53,13 @@ Process exit codes are also part of the contract: `0` success, `1` internal,
 canceled, or unclassified error, `2` usage (including invalid CLI flags, an
 invalid resource id, an invalid `ZSCALERCTL_*` configuration value, and invalid
 proxy configuration), `3` missing or invalid credentials, `4` resource not found
-or unsupported (including a product/resource the tenant is not entitled to, or a
-get-by-ID whose ID does not exist), `5` live API access failure, and `6` partial
-dump. Machine `not_found` maps to `4`, `deadline_exceeded` maps to `5`, and
-`canceled` maps to `1`. Changing the meaning of an exit code is a breaking
-change. Exit code `7` means drift detected when `diff --fail-on-drift` is used.
+or unsupported (including an unsupported machine capability/operation, a
+product/resource the tenant is not entitled to, or a get-by-ID whose ID does not
+exist), `5` live API access failure, and `6` partial dump. Machine `not_found`,
+`unsupported_capability`, and `unsupported_operation` map to `4`,
+`deadline_exceeded` maps to `5`, and `canceled` maps to `1`. Changing the meaning
+of an exit code is a breaking change. Exit code `7` means drift detected when
+`diff --fail-on-drift` is used.
 
 ## After 1.0.0
 

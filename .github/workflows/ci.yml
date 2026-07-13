@@ -146,7 +146,7 @@ jobs:
         with:
           go-version: '1.26.5'
           cache: true
-      - run: go test -mod=vendor ./internal/fileperm ./internal/secretref
+      - run: go test -count=1 -mod=vendor ./internal/dump ./internal/fileperm ./internal/secretref
       # Cobra migration (§9): the windows-config gate must exercise the CLI core,
       # not just fileperm/secretref/keyring. `go build ./...` proves the Windows
       # build (cobra + mousetrap); the internal/cli + internal/redact tests cover

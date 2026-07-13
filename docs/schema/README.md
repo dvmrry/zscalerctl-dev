@@ -37,8 +37,10 @@ Per-resource files (`resources/<product>/<name>.json`) are **not** schematized
 here: their shape is the projected, redaction-filtered field set for that
 resource, which varies by resource and redaction mode and is governed by the
 resource catalog rather than a fixed envelope. Each file is a JSON array of
-objects (or, for singleton resources, a single object). Use `zscalerctl schema
-list` for the catalog-level field model.
+objects for `list` collection or a single object for `show` collection. The
+manifest's optional `shape: singleton` records the catalog's semantic resource
+shape; it is not a duplicate encoding of the file's top-level JSON container.
+Use `zscalerctl schema list` for the catalog-level field model.
 
 ## Drift guard
 

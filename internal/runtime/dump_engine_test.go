@@ -396,6 +396,7 @@ func TestLegacyDumpAdapterErrorPreservesContextMachineErrors(t *testing.T) {
 	}{
 		{name: "canceled", err: context.Canceled, kind: machine.ErrorKindCanceled},
 		{name: "deadline", err: context.DeadlineExceeded, kind: machine.ErrorKindDeadlineExceeded},
+		{name: "atomic replacement unsupported", err: dumpartifact.ErrAtomicReplaceUnsupported, kind: machine.ErrorKindUnsupportedOperation},
 	}
 	for _, tc := range cases {
 		tc := tc

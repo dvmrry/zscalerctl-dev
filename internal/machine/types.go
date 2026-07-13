@@ -79,6 +79,18 @@ func (e MachineError) Error() string {
 // without exposing backend details or adding fields to the JSON contract.
 func (e MachineError) Unwrap() error { return e.cause }
 
+// ErrorWithCause returns an independent machine error that preserves one safe
+// sentinel for errors.Is classification without adding it to the JSON contract.
+func ErrorWithCause(machineErr *MachineError, cause error) error {
+	if machineErr == nil {
+		return cause
+	}
+	out := *machineErr
+	out.Missing = append([]string(nil), machineErr.Missing...)
+	out.cause = cause
+	return &out
+}
+
 // OutputSafe marks MachineError as eligible for the existing safe JSON
 // renderer. The message must already be sanitized by the core error boundary.
 func (MachineError) OutputSafe() {}

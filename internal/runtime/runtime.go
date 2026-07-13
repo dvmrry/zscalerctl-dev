@@ -329,7 +329,17 @@ func (l *machineBrowserLoader) ListProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.ListProjected(ctx, product, resource)
+	records, err := l.service.ListProjected(ctx, product, resource)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationList,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+			},
+		})
+	}
+	return records, nil
 }
 
 func (l *machineBrowserLoader) ShowProjected(
@@ -337,7 +347,17 @@ func (l *machineBrowserLoader) ShowProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.ShowProjected(ctx, product, resource)
+	records, err := l.service.ShowProjected(ctx, product, resource)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationShow,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+			},
+		})
+	}
+	return records, nil
 }
 
 func (l *machineBrowserLoader) GetProjectedByID(
@@ -346,7 +366,18 @@ func (l *machineBrowserLoader) GetProjectedByID(
 	resource string,
 	id string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.GetProjectedByID(ctx, product, resource, id)
+	records, err := l.service.GetProjectedByID(ctx, product, resource, id)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationGet,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+				RecordID: id,
+			},
+		})
+	}
+	return records, nil
 }
 
 func catalogFromOptions(catalog resources.ResourceCatalog) resources.ResourceCatalog {

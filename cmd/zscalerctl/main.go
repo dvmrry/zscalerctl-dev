@@ -193,17 +193,8 @@ func errorKind(err error) string {
 func exitCodeForError(err error) int {
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
-		switch machineErr.Kind {
-		case machine.ErrorKindInvalidResourceID:
-			return exitUsageError
-		case machine.ErrorKindNotFound:
-			return exitNotFound
-		case machine.ErrorKindLiveAccessFailed:
-			return exitLiveAccessFailure
-		case machine.ErrorKindDeadlineExceeded:
-			return exitLiveAccessFailure
-		case machine.ErrorKindCanceled:
-			return exitInternalError
+		if code, ok := cli.ExitCodeForMachineErrorKind(machineErr.Kind); ok {
+			return code
 		}
 	}
 	switch {

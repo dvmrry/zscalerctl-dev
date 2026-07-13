@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,21 +46,26 @@ func (c *cancelWhenTempContext) Err() error {
 
 func (c *cancelWhenTempContext) Value(any) any { return nil }
 
-type cancelWhenPathExistsContext struct {
-	path     string
+type cancelWhenStagedPathExistsContext struct {
+	parent   string
+	name     string
 	done     chan struct{}
 	canceled bool
 }
 
-func (c *cancelWhenPathExistsContext) Deadline() (time.Time, bool) { return time.Time{}, false }
-func (c *cancelWhenPathExistsContext) Done() <-chan struct{}       { return c.done }
-func (c *cancelWhenPathExistsContext) Value(any) any               { return nil }
+func (c *cancelWhenStagedPathExistsContext) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
 
-func (c *cancelWhenPathExistsContext) Err() error {
+func (c *cancelWhenStagedPathExistsContext) Done() <-chan struct{} { return c.done }
+func (c *cancelWhenStagedPathExistsContext) Value(any) any         { return nil }
+
+func (c *cancelWhenStagedPathExistsContext) Err() error {
 	if c.canceled {
 		return context.Canceled
 	}
-	if _, err := os.Stat(c.path); err == nil {
+	matches, err := filepath.Glob(filepath.Join(c.parent, ".zscalerctl-staging-*", c.name))
+	if err == nil && len(matches) > 0 {
 		c.canceled = true
 		close(c.done)
 		return context.Canceled
@@ -138,21 +144,149 @@ func TestWriteContextCancellationBeforeFinalizationCleansTempAndFinal(t *testing
 	}
 }
 
-func TestWriteContextFinalizesManifestLast(t *testing.T) {
+func TestWriteContextCancellationLeavesDestinationUntouched(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join(t.TempDir(), "dump")
-	reportPath := filepath.Join(dir, "redaction_report.json")
-	ctx := &cancelWhenPathExistsContext{path: reportPath, done: make(chan struct{})}
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "dump")
+	ctx := &cancelWhenStagedPathExistsContext{
+		parent: parent,
+		name:   "redaction_report.json",
+		done:   make(chan struct{}),
+	}
 	err := WriteContext(ctx, dir, redact.ModeStandard, Result{})
 	if err != context.Canceled {
 		t.Fatalf("WriteContext(cancel after report) error = %v, want context.Canceled", err)
 	}
-	if _, statErr := os.Stat(reportPath); statErr != nil {
-		t.Fatalf("os.Stat(redaction report) error = %v, want finalized report", statErr)
+	if _, statErr := os.Stat(dir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("os.Stat(destination) error = %v, want os.ErrNotExist", statErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "manifest.json")); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("os.Stat(manifest) error = %v, want no ownership marker for incomplete dump", statErr)
+	leftovers, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-staging-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(staging) error = %v, want nil", globErr)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("staging directories after canceled WriteContext = %v, want none", leftovers)
+	}
+}
+
+func TestPublishContextFailureDoesNotDeleteSubstitutedStagingPath(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	destination := filepath.Join(parent, "dump")
+	if err := Write(destination, redact.ModeStandard, Result{}); err != nil {
+		t.Fatalf("Write(%q, existing destination) error = %v, want nil", destination, err)
+	}
+	const sentinel = "foreign staging replacement must survive\n"
+	var hookErr error
+	var originalStaging string
+	err := publishContextWithHooks(
+		context.Background(),
+		destination,
+		redact.ModeShare,
+		Result{},
+		false,
+		publishContextHooks{
+			beforeStagingCleanupRelocate: func(stagingPath string) {
+				originalStaging = stagingPath + "-original"
+				if renameErr := os.Rename(stagingPath, originalStaging); renameErr != nil {
+					hookErr = renameErr
+					return
+				}
+				hookErr = os.WriteFile(stagingPath, []byte(sentinel), filePerm)
+			},
+		},
+	)
+	if hookErr != nil {
+		t.Fatalf("staging substitution hook error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafeOverwrite) {
+		t.Fatalf("publishContextWithHooks(existing destination) error = %v, want ErrUnsafeOverwrite", err)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-staging-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(staging) error = %v, want nil", globErr)
+	}
+	if len(matches) == 0 {
+		t.Fatal("staging substitution paths = none, want preserved sentinel and original staging")
+	}
+	foundSentinel := false
+	for _, path := range matches {
+		body, readErr := os.ReadFile(path)
+		if readErr == nil && string(body) == sentinel {
+			foundSentinel = true
+		}
+	}
+	if !foundSentinel {
+		t.Errorf("staging paths %v contain no preserved sentinel", matches)
+	}
+	if info, statErr := os.Stat(originalStaging); statErr != nil || !info.IsDir() {
+		t.Errorf("original process staging after substitution = (%v, %v), want preserved directory", info, statErr)
+	}
+}
+
+func TestPublishContextFailureDoesNotDeleteSubstitutedDiscardPath(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	destination := filepath.Join(parent, "dump")
+	if err := Write(destination, redact.ModeStandard, Result{}); err != nil {
+		t.Fatalf("Write(%q, existing destination) error = %v, want nil", destination, err)
+	}
+	const sentinel = "foreign discard replacement must survive\n"
+	var hookErr error
+	var originalDiscard string
+	var stagingPath string
+	err := publishContextWithHooks(
+		context.Background(),
+		destination,
+		redact.ModeShare,
+		Result{},
+		false,
+		publishContextHooks{
+			beforeStagingCleanupRelocate: func(path string) {
+				stagingPath = path
+				matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-discard-*"))
+				if globErr != nil || len(matches) != 1 {
+					hookErr = fmt.Errorf("discard glob = %v, %v; want one path", matches, globErr)
+					return
+				}
+				discardPath := matches[0]
+				originalDiscard = discardPath + "-original"
+				if renameErr := os.Rename(discardPath, originalDiscard); renameErr != nil {
+					hookErr = renameErr
+					return
+				}
+				hookErr = os.WriteFile(discardPath, []byte(sentinel), filePerm)
+			},
+		},
+	)
+	if hookErr != nil {
+		t.Fatalf("discard substitution hook error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafeOverwrite) {
+		t.Fatalf("publishContextWithHooks(existing destination) error = %v, want ErrUnsafeOverwrite", err)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-discard-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(discard) error = %v, want nil", globErr)
+	}
+	foundSentinel := false
+	for _, path := range matches {
+		body, readErr := os.ReadFile(path)
+		if readErr == nil && string(body) == sentinel {
+			foundSentinel = true
+		}
+	}
+	if !foundSentinel {
+		t.Errorf("discard paths %v contain no preserved sentinel", matches)
+	}
+	if info, statErr := os.Stat(originalDiscard); statErr != nil || !info.IsDir() {
+		t.Errorf("original discard after substitution = (%v, %v), want preserved directory", info, statErr)
+	}
+	if info, statErr := os.Stat(stagingPath); statErr != nil || !info.IsDir() {
+		t.Errorf("process staging after discard substitution = (%v, %v), want preserved directory", info, statErr)
 	}
 }
 
@@ -220,6 +354,30 @@ func TestWriteFileExclusiveRefusesExistingPath(t *testing.T) {
 	}
 	if string(got) != "existing" {
 		t.Errorf("existing file content = %q, want unchanged", got)
+	}
+}
+
+func TestRenameNoReplaceRefusesExistingDirectory(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	source := filepath.Join(parent, "source")
+	destination := filepath.Join(parent, "destination")
+	if err := os.Mkdir(source, dirPerm); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", source, err)
+	}
+	if err := os.Mkdir(destination, dirPerm); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", destination, err)
+	}
+
+	err := renameNoReplace(source, destination)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("renameNoReplace(existing destination) error = %v, want os.ErrExist", err)
+	}
+	for _, path := range []string{source, destination} {
+		if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+			t.Errorf("os.Stat(%q) = (%v, %v), want existing directory", path, info, statErr)
+		}
 	}
 }
 

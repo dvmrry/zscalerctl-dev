@@ -169,7 +169,18 @@ Dump commands must:
 - Write with restrictive permissions.
 - Refuse unsafe overwrites by default.
 - Replace an existing dump only through explicit `dump --force`, and only when
-  the target already validates as a zscalerctl dump directory or is empty.
+  the target is an empty directory tree or validates as a complete zscalerctl
+  artifact with an exact supported schema, reconciled metadata, and no foreign
+  files.
+- Stage and validate the full artifact before atomically publishing the
+  directory; interruption must not strand partial files at the requested path.
+- Require an atomic directory-exchange primitive before replacing any existing
+  directory. Platforms/filesystems without one fail closed; they may still
+  publish to a destination that does not exist.
+- Bind post-exchange cleanup to the validated file identities, reject extended
+  ACLs and immutable/append-only entries before exchange, atomically relocate
+  the entire old root into a fresh private quarantine, revalidate every identity
+  there, and only then remove the exact validated inventory.
 - Use deterministic structure where possible.
 - Include a manifest and redaction report.
 - Avoid original secret values in reports.

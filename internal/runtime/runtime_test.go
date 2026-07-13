@@ -712,6 +712,39 @@ func TestEngineTypedReadsClassifyMissingCredentialConstructionError(t *testing.T
 	}
 }
 
+func TestMachineTypedReadClassifiesProductMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	missing := &zscaler.MissingCredentialsError{
+		Missing: []string{config.EnvZPACustomerID},
+	}
+	machineRuntime := NewMachineFromReader(
+		&runtimeFakeReader{listErr: missing},
+		runtimeTestCatalog(t, resources.ProductZPA, "server-groups"),
+		redact.ModeStandard,
+	)
+	_, err := machineRuntime.Read(context.Background(), machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product:  string(resources.ProductZPA),
+			Resource: "server-groups",
+		},
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("Machine.Read(product missing credentials) error = %T %v, want MachineError", err, err)
+	}
+	if machineErr.Kind != machine.ErrorKindMissingCredentials {
+		t.Errorf("Machine.Read(product missing credentials) kind = %q, want %q", machineErr.Kind, machine.ErrorKindMissingCredentials)
+	}
+	if want := []string{config.EnvZPACustomerID}; !reflect.DeepEqual(machineErr.Missing, want) {
+		t.Errorf("Machine.Read(product missing credentials) missing = %#v, want %#v", machineErr.Missing, want)
+	}
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Errorf("Machine.Read(product missing credentials) error = %v, want ErrMissingCredentials identity", err)
+	}
+}
+
 func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
 	t.Parallel()
 

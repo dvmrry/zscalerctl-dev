@@ -24,8 +24,9 @@ const (
 )
 
 var (
-	ErrUnsafeOverwrite = errors.New("refusing to overwrite existing dump file")
-	ErrUnsafePath      = errors.New("unsafe dump path")
+	ErrUnsafeOverwrite          = errors.New("refusing to overwrite existing dump file")
+	ErrUnsafePath               = errors.New("unsafe dump path")
+	ErrAtomicReplaceUnsupported = errors.New("atomic dump directory replacement is unsupported")
 )
 
 type safeJSON interface {
@@ -57,7 +58,7 @@ type ResourceError struct {
 // NewResourceError builds a value-free dump failure record.
 func NewResourceError(product resources.Product, name string, operation string, kind string) ResourceError {
 	return ResourceError{
-		Schema:    "zscalerctl.dump.error.v1",
+		Schema:    ResourceErrorSchemaID,
 		Product:   string(product),
 		Name:      name,
 		Operation: operation,
@@ -138,9 +139,113 @@ func Write(dir string, mode redact.Mode, result Result) error {
 	return WriteContext(context.Background(), dir, mode, result)
 }
 
-// WriteContext writes a sanitized dump to dir, honoring cancellation at the
-// filesystem boundaries of the dump operation.
+// WriteContext writes and exclusively publishes a sanitized dump directory.
 func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Result) error {
+	return PublishContext(ctx, dir, mode, result, false)
+}
+
+// PublishContext writes a sanitized dump into a private sibling staging
+// directory, validates the complete artifact, and publishes it at the directory
+// boundary. When force is true, only an empty directory or a structurally valid
+// zscalerctl dump may be replaced.
+func PublishContext(ctx context.Context, dir string, mode redact.Mode, result Result, force bool) error {
+	return publishContextWithHooks(ctx, dir, mode, result, force, publishContextHooks{})
+}
+
+type publishContextHooks struct {
+	beforeStagingCleanupRelocate func(string)
+}
+
+func publishContextWithHooks(
+	ctx context.Context,
+	dir string,
+	mode redact.Mode,
+	result Result,
+	force bool,
+	hooks publishContextHooks,
+) error {
+	ctx = contextOrBackground(ctx)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("%w: missing dump directory", ErrUnsafePath)
+	}
+	if force {
+		if err := rejectDangerousForceTargetContext(ctx, dir); err != nil {
+			return err
+		}
+	}
+	parent := filepath.Dir(dir)
+	if err := ensureStagingParentContext(ctx, parent); err != nil {
+		return err
+	}
+	stagingDir, err := os.MkdirTemp(parent, ".zscalerctl-staging-*")
+	if err != nil {
+		return fmt.Errorf("create dump staging directory: %w", err)
+	}
+	stagingInfo, err := os.Lstat(stagingDir)
+	if err != nil {
+		return fmt.Errorf("inspect dump staging directory: %w", err)
+	}
+	if err := os.Chmod(stagingDir, dirPerm); err != nil {
+		cleanupStagingPath(stagingDir, stagingInfo, nil)
+		return fmt.Errorf("chmod dump staging directory: %w", err)
+	}
+	stagingRoot, err := os.OpenRoot(stagingDir)
+	if err != nil {
+		cleanupStagingPath(stagingDir, stagingInfo, nil)
+		return fmt.Errorf("open dump staging directory: %w", err)
+	}
+	published := false
+	defer func() {
+		if stagingRoot != nil {
+			_ = stagingRoot.Close()
+			stagingRoot = nil
+		}
+		if !published {
+			cleanupStagingPath(stagingDir, stagingInfo, hooks.beforeStagingCleanupRelocate)
+		}
+	}()
+
+	mode = redact.EffectiveMode(mode)
+	if err := writeArtifactContext(ctx, stagingDir, mode, result); err != nil {
+		return err
+	}
+	if _, err := ValidateArtifactRootContext(ctx, stagingRoot); err != nil {
+		return fmt.Errorf("validate staged dump: %w", err)
+	}
+	currentStagingInfo, err := os.Lstat(stagingDir)
+	if err != nil || !os.SameFile(stagingInfo, currentStagingInfo) {
+		return fmt.Errorf("%w: dump staging directory changed before publication", ErrUnsafePath)
+	}
+	if closeRootBeforeRename() {
+		if err := stagingRoot.Close(); err != nil {
+			return fmt.Errorf("close dump staging directory before publication: %w", err)
+		}
+		stagingRoot = nil
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if force {
+		if err := publishReplacingDirectoryContext(ctx, stagingDir, dir, true); err != nil {
+			return err
+		}
+	} else {
+		err := publishDirectoryNoReplace(stagingDir, dir)
+		if errors.Is(err, ErrUnsafeOverwrite) {
+			err = publishReplacingDirectoryContext(ctx, stagingDir, dir, false)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	published = true
+	return nil
+}
+
+func writeArtifactContext(ctx context.Context, dir string, mode redact.Mode, result Result) error {
 	ctx = contextOrBackground(ctx)
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -183,13 +288,18 @@ func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Resu
 		Redaction:   string(mode),
 		Warning:     dumpWarning,
 		Status:      "complete",
+		Resources:   []ManifestResource{},
 	}
 	if len(result.Errors) > 0 {
 		manifest.Status = "partial"
 		manifest.Errors = len(result.Errors)
 		manifest.ErrorsPath = "errors.ndjson"
 	}
-	report := RedactionReport{Schema: "zscalerctl.redaction_report.v1", Redaction: string(mode)}
+	report := RedactionReport{
+		Schema:    RedactionReportSchemaID,
+		Redaction: string(mode),
+		Resources: []ResourceReport{},
+	}
 
 	for _, target := range targets {
 		if err := checkContext(ctx); err != nil {
@@ -214,7 +324,7 @@ func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Resu
 		manifest.Resources = append(manifest.Resources, ManifestResource{
 			Product: target.product,
 			Name:    target.name,
-			Shape:   manifestResourceShape(target.entry.Spec),
+			Shape:   ManifestResourceShape(target.entry.Spec),
 			Status:  "ok",
 			Path:    filepath.ToSlash(target.relPath),
 			Records: recordCount,
@@ -260,7 +370,112 @@ func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Resu
 	return nil
 }
 
-func manifestResourceShape(spec resources.ResourceSpec) string {
+func ensureStagingParentContext(ctx context.Context, parent string) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(parent, dirPerm); err != nil {
+		return fmt.Errorf("create dump parent directory: %w", err)
+	}
+	info, err := os.Stat(parent)
+	if err != nil {
+		return fmt.Errorf("inspect dump parent directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: dump parent %s is not a directory", ErrUnsafePath, parent)
+	}
+	return checkContext(ctx)
+}
+
+func cleanupStagingPath(path string, original os.FileInfo, beforeRelocate func(string)) {
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(original, current) {
+		return
+	}
+	if err := preflightProcessStagingCleanup(path, original); err != nil {
+		return
+	}
+	quarantine, err := os.MkdirTemp(filepath.Dir(path), ".zscalerctl-discard-*")
+	if err != nil {
+		return
+	}
+	if err := os.Chmod(quarantine, dirPerm); err != nil {
+		return
+	}
+	quarantinedRoot := filepath.Join(quarantine, "root")
+	if beforeRelocate != nil {
+		beforeRelocate(path)
+	}
+	if err := preflightProcessStagingCleanup(path, original); err != nil {
+		return
+	}
+	if err := renameNoReplace(path, quarantinedRoot); err != nil {
+		return
+	}
+	movedInfo, err := os.Lstat(quarantinedRoot)
+	if err != nil || !os.SameFile(original, movedInfo) {
+		_ = renameNoReplace(quarantinedRoot, path)
+		return
+	}
+	root, err := os.OpenRoot(quarantinedRoot)
+	if err != nil {
+		_ = renameNoReplace(quarantinedRoot, path)
+		return
+	}
+	clearErr := clearDumpRootContext(context.Background(), root)
+	_ = root.Close()
+	if clearErr != nil {
+		_ = renameNoReplace(quarantinedRoot, path)
+		return
+	}
+	current, err = os.Lstat(quarantinedRoot)
+	if err == nil && os.SameFile(original, current) {
+		_ = os.Remove(quarantinedRoot)
+	}
+	// Never unlink the public discard pathname: a hostile writable parent can
+	// substitute that entry after any identity check. An empty 0700 directory
+	// contains no tenant data and is safe to leave behind.
+}
+
+func preflightProcessStagingCleanup(path string, original os.FileInfo) error {
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(original, current) || !current.IsDir() {
+		return fmt.Errorf("%w: process staging root changed before cleanup", ErrUnsafePath)
+	}
+	return filepath.WalkDir(path, func(entryPath string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%w: process staging path is a symlink", ErrUnsafePath)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && info.Mode().Perm()&0o300 != 0o300 {
+			return fmt.Errorf("%w: process staging directory is not owner-writable", ErrUnsafePath)
+		}
+		if err := validateAbsoluteCleanupEntry(entryPath, info, info.IsDir()); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func publishDirectoryNoReplace(stagingDir, destination string) error {
+	if err := renameNoReplace(stagingDir, destination); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, destination)
+		}
+		return fmt.Errorf("publish dump directory: %w", err)
+	}
+	return nil
+}
+
+// ManifestResourceShape returns the v2 manifest encoding for a catalog shape.
+// Ordinary list shape is represented by omission; singleton is explicit.
+func ManifestResourceShape(spec resources.ResourceSpec) string {
 	shape := spec.EffectiveShape()
 	if shape == resources.ShapeList {
 		return ""
@@ -472,15 +687,10 @@ func writeFileExclusiveContext(ctx context.Context, path string, body []byte) er
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	// Preserve the no-overwrite guarantee at the final path: nothing should have
-	// created it between the up-front rejectExisting sweep and now.
-	if err := rejectExistingContext(ctx, path); err != nil {
-		return err
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := renameNoReplace(tmpPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, path)
+		}
 		return fmt.Errorf("finalize dump file: %w", err)
 	}
 	cleanup = false

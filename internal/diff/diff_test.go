@@ -348,7 +348,9 @@ func TestCompareRejectsRedactionMismatch(t *testing.T) {
 func TestCompareRejectsPartialDumpUnlessAllowed(t *testing.T) {
 	catalog := resources.ResourceCatalog{testKeyedSpec()}
 	oldDir := writeTestDump(t, catalog, dumpFixture{status: "partial"})
-	newDir := writeTestDump(t, catalog, dumpFixture{})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[]`}},
+	})
 
 	_, err := Compare(oldDir, newDir, Options{Catalog: catalog})
 	if !errors.Is(err, ErrPartialDumpInput) {
@@ -356,6 +358,98 @@ func TestCompareRejectsPartialDumpUnlessAllowed(t *testing.T) {
 	}
 	if _, err := Compare(oldDir, newDir, Options{Catalog: catalog, AllowPartial: true}); err != nil {
 		t.Fatalf("Compare(... AllowPartial) error = %v", err)
+	}
+}
+
+func TestCompareRejectsMismatchedCollectionScope(t *testing.T) {
+	keyed := testKeyedSpec()
+	other := testProgressSpec("other-rules")
+	catalog := resources.ResourceCatalog{keyed, other}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: other, payload: `[]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: keyed, payload: `[{"id":"1","name":"HQ"}]`}},
+	})
+
+	_, err := Compare(oldDir, newDir, Options{
+		Catalog: catalog,
+		Resources: map[ResourceKey]bool{
+			{Product: keyed.Product, Name: keyed.Name}: true,
+		},
+	})
+	if !errors.Is(err, ErrCollectionScopeMismatch) {
+		t.Fatalf("Compare(mismatched collection scope) error = %v, want ErrCollectionScopeMismatch", err)
+	}
+}
+
+func TestCompareRejectsManifestShapeCatalogMismatch(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[]`}},
+	})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: testKeyedSpec(), payload: `[]`}},
+	})
+	rewriteManifest(t, oldDir, func(manifest *dump.Manifest) {
+		manifest.Resources[0].Shape = "singleton"
+	})
+
+	_, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare(shape mismatch) error = %v, want ErrInvalidDump", err)
+	}
+	if !strings.Contains(err.Error(), "manifest shape does not match the catalog") {
+		t.Errorf("Compare(shape mismatch) error = %q, want catalog-shape context", err)
+	}
+}
+
+func TestCompareAllowPartialDoesNotTreatFailedCollectionAsEmpty(t *testing.T) {
+	keyed := testKeyedSpec()
+	catalog := resources.ResourceCatalog{keyed}
+	oldDir := writeTestDump(t, catalog, dumpFixture{status: "partial"})
+	newDir := writeTestDump(t, catalog, dumpFixture{
+		entries: []dumpEntryFixture{{spec: keyed, payload: `[{"id":"1","name":"HQ"}]`}},
+	})
+
+	report, err := Compare(oldDir, newDir, Options{Catalog: catalog, AllowPartial: true})
+	if err != nil {
+		t.Fatalf("Compare(failed versus successful collection) error = %v, want nil", err)
+	}
+	resource := onlyResourceDiff(t, report)
+	if resource.HasDrift() || len(resource.Added) != 0 || len(resource.Removed) != 0 || len(resource.Changed) != 0 {
+		t.Errorf("Compare(failed versus successful collection) resource = %#v, want no fabricated drift", resource)
+	}
+	if !strings.Contains(resource.Note, "collection failed in old dump") {
+		t.Errorf("Compare(failed versus successful collection) note = %q, want old failure context", resource.Note)
+	}
+}
+
+func TestCompareRejectsMissingRedactionReport(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{})
+	newDir := writeTestDump(t, catalog, dumpFixture{})
+	if err := os.Remove(filepath.Join(oldDir, "redaction_report.json")); err != nil {
+		t.Fatalf("os.Remove(redaction_report.json) error = %v, want nil", err)
+	}
+
+	_, err := Compare(oldDir, newDir, Options{Catalog: catalog})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare(missing redaction report) error = %v, want ErrInvalidDump", err)
+	}
+}
+
+func TestCompareRejectsInconsistentErrorMetadata(t *testing.T) {
+	catalog := resources.ResourceCatalog{testKeyedSpec()}
+	oldDir := writeTestDump(t, catalog, dumpFixture{status: "partial"})
+	newDir := writeTestDump(t, catalog, dumpFixture{})
+	rewriteManifest(t, oldDir, func(manifest *dump.Manifest) {
+		manifest.Errors = 2
+	})
+
+	_, err := Compare(oldDir, newDir, Options{Catalog: catalog, AllowPartial: true})
+	if !errors.Is(err, ErrInvalidDump) {
+		t.Fatalf("Compare(inconsistent error metadata) error = %v, want ErrInvalidDump", err)
 	}
 }
 
@@ -403,7 +497,7 @@ func TestCompareRejectsOversizedManifest(t *testing.T) {
 	catalog := resources.ResourceCatalog{testKeyedSpec()}
 	oldDir := writeTestDump(t, catalog, dumpFixture{})
 	newDir := writeTestDump(t, catalog, dumpFixture{})
-	truncateTestFile(t, filepath.Join(oldDir, "manifest.json"), maxManifestBytes+1)
+	truncateTestFile(t, filepath.Join(oldDir, "manifest.json"), (1<<20)+1)
 
 	_, err := Compare(oldDir, newDir, Options{Catalog: catalog})
 	if !errors.Is(err, ErrInvalidDump) {
@@ -1254,6 +1348,12 @@ func writeTestDump(t *testing.T, catalog resources.ResourceCatalog, fixture dump
 		Redaction:   string(mode),
 		Warning:     "test fixture",
 		Status:      status,
+		Resources:   []dump.ManifestResource{},
+	}
+	report := dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: string(mode),
+		Resources: []dump.ResourceReport{},
 	}
 	for _, entry := range fixture.entries {
 		relPath := filepath.ToSlash(filepath.Join("resources", string(entry.spec.Product), entry.spec.Name+".json"))
@@ -1267,14 +1367,21 @@ func writeTestDump(t *testing.T, catalog resources.ResourceCatalog, fixture dump
 		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
 			Product: string(entry.spec.Product),
 			Name:    entry.spec.Name,
-			Shape:   string(entry.spec.EffectiveShape()),
+			Shape:   dump.ManifestResourceShape(entry.spec),
 			Status:  "ok",
+			Path:    relPath,
+			Records: countRecords(t, entry.payload),
+		})
+		report.Resources = append(report.Resources, dump.ResourceReport{
+			Product: string(entry.spec.Product),
+			Name:    entry.spec.Name,
 			Path:    relPath,
 			Records: countRecords(t, entry.payload),
 		})
 	}
 	if status == "partial" {
 		manifest.Errors = 1
+		manifest.ErrorsPath = "errors.ndjson"
 		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
 			Product:   string(catalog[0].Product),
 			Name:      catalog[0].Name,
@@ -1282,6 +1389,23 @@ func writeTestDump(t *testing.T, catalog resources.ResourceCatalog, fixture dump
 			Operation: "list",
 			ErrorKind: "live_access_failed",
 		})
+		resourceError := dump.NewResourceError(
+			catalog[0].Product,
+			catalog[0].Name,
+			"list",
+			"live_access_failed",
+		)
+		errorBody, err := json.Marshal(resourceError)
+		if err != nil {
+			t.Fatalf("Marshal(errors.ndjson): %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(dir, "errors.ndjson"),
+			append(errorBody, '\n'),
+			0o600,
+		); err != nil {
+			t.Fatalf("WriteFile(errors.ndjson): %v", err)
+		}
 	}
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -1289,6 +1413,13 @@ func writeTestDump(t *testing.T, catalog resources.ResourceCatalog, fixture dump
 	}
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("WriteFile(manifest): %v", err)
+	}
+	reportBody, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(redaction report): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("WriteFile(redaction report): %v", err)
 	}
 	return dir
 }

@@ -4610,6 +4610,24 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("zscaler %s %s/%s cancelled: %w", operation, product, resource, err)
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf(
+			"zscaler %s %s/%s timed out: %w",
+			operation,
+			product,
+			resource,
+			context.DeadlineExceeded,
+		)
+	}
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf(
+			"zscaler %s %s/%s cancelled: %w",
+			operation,
+			product,
+			resource,
+			context.Canceled,
+		)
+	}
 	statusCode := sdkStatusCode(err)
 	// A get-by-ID that 404s means the ID does not exist — a distinct, scriptable
 	// condition (exit 4) rather than a generic live-access failure (exit 5). Scope
