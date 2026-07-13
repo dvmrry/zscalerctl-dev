@@ -21,6 +21,20 @@ func validateRemovalConstraints(file *os.File, info os.FileInfo) error {
 	if stat.Flags&blockingFlags != 0 {
 		return errors.New("immutable or append-only file flags are present")
 	}
+	security, err := readDarwinExtendedSecurity(file)
+	if err != nil {
+		return err
+	}
+	if len(security) != 0 {
+		return errors.New("extended ACL is present")
+	}
+	return nil
+}
+
+func readDarwinExtendedSecurity(file *os.File) ([]byte, error) {
+	if file == nil {
+		return nil, errors.New("nil file handle")
+	}
 	attributes := unix.Attrlist{
 		Bitmapcount: unix.ATTR_BIT_MAP_COUNT,
 		Commonattr:  unix.ATTR_CMN_EXTENDED_SECURITY,
@@ -36,13 +50,22 @@ func validateRemovalConstraints(file *os.File, info os.FileInfo) error {
 		0,
 	)
 	if errno != 0 {
-		return errno
+		return nil, errno
 	}
-	if total := binary.LittleEndian.Uint32(buffer[:4]); total < 12 {
-		return errors.New("malformed Darwin extended-security attributes")
+	total := int(binary.LittleEndian.Uint32(buffer[:4]))
+	if total < 12 || total > len(buffer) {
+		return nil, errors.New("malformed Darwin extended-security attributes")
 	}
-	if length := binary.LittleEndian.Uint32(buffer[8:12]); length != 0 {
-		return errors.New("extended ACL is present")
+	length := int(binary.LittleEndian.Uint32(buffer[8:12]))
+	if length == 0 {
+		return nil, nil
 	}
-	return nil
+	offset := int(int32(binary.LittleEndian.Uint32(buffer[4:8])))
+	start := 4 + offset
+	if start < 12 || start > total || length > total-start {
+		return nil, errors.New("malformed Darwin extended-security reference")
+	}
+	security := make([]byte, length)
+	copy(security, buffer[start:start+length])
+	return security, nil
 }

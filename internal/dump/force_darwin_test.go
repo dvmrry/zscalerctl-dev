@@ -89,6 +89,68 @@ func TestPublishContextRejectsDeleteDenyACLBeforeExchange(t *testing.T) {
 	}
 }
 
+func TestPublishContextRejectsPermitACLInParentNamespace(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(string) (string, string)
+	}{
+		{
+			name: "immediate parent",
+			configure: func(root string) (string, string) {
+				parent := filepath.Join(root, "parent")
+				return parent, parent
+			},
+		},
+		{
+			name: "ancestor",
+			configure: func(root string) (string, string) {
+				ancestor := filepath.Join(root, "ancestor")
+				return filepath.Join(ancestor, "parent"), ancestor
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			parent, aclPath := tt.configure(root)
+			if err := os.MkdirAll(parent, dirPerm); err != nil {
+				t.Fatalf("os.MkdirAll(%q) error = %v, want nil", parent, err)
+			}
+			acl := "everyone allow search,add_file,add_subdirectory,delete_child"
+			if output, err := exec.Command("chmod", "+a", acl, aclPath).CombinedOutput(); err != nil {
+				t.Fatalf("chmod(+a %q, %q) error = %v, output=%s", acl, aclPath, err, output)
+			}
+			defer exec.Command("chmod", "-N", aclPath).Run()
+			destination := filepath.Join(parent, "dump")
+
+			err := PublishContext(context.Background(), destination, redact.ModeStandard, Result{}, false)
+			if !errors.Is(err, ErrUnsafePath) {
+				t.Fatalf("PublishContext(%q, permit ACL) error = %v, want ErrUnsafePath", destination, err)
+			}
+			if _, statErr := os.Lstat(destination); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("os.Lstat(%q) error = %v, want os.ErrNotExist", destination, statErr)
+			}
+			assertNoPublicationDirectories(t, parent)
+		})
+	}
+}
+
+func TestStablePublicationParentAllowsDenyOnlyACL(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "parent")
+	if err := os.Mkdir(parent, dirPerm); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", parent, err)
+	}
+	if output, err := exec.Command("chmod", "+a", "everyone deny delete", parent).CombinedOutput(); err != nil {
+		t.Fatalf("chmod(+a deny delete, %q) error = %v, output=%s", parent, err, output)
+	}
+	defer exec.Command("chmod", "-N", parent).Run()
+
+	if _, err := validateStablePublicationParent(parent); err != nil {
+		t.Fatalf("validateStablePublicationParent(%q, deny-only ACL) error = %v, want nil", parent, err)
+	}
+}
+
 func TestFailedPublicationDoesNotRetainDataInDiscardOnCleanupPreflightFailure(t *testing.T) {
 	parent := t.TempDir()
 	destination := filepath.Join(parent, "dump")
@@ -134,7 +196,17 @@ func TestFailedPublicationDoesNotRetainDataInDiscardOnCleanupPreflightFailure(t 
 	if readErr != nil {
 		t.Fatalf("os.ReadDir(%q) error = %v, want nil", discards[0], readErr)
 	}
-	if len(entries) != 0 {
-		t.Errorf("discard directory entries = %v, want empty", entries)
+	if len(entries) == 0 {
+		return
+	}
+	if len(entries) != 1 || entries[0].Name() != "root" || !entries[0].IsDir() {
+		t.Fatalf("discard directory entries = %v, want empty or only root directory", entries)
+	}
+	rootEntries, readErr := os.ReadDir(filepath.Join(discards[0], "root"))
+	if readErr != nil {
+		t.Fatalf("os.ReadDir(%q/root) error = %v, want nil", discards[0], readErr)
+	}
+	if len(rootEntries) != 0 {
+		t.Errorf("discard root entries = %v, want empty", rootEntries)
 	}
 }

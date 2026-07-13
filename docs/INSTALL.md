@@ -18,11 +18,18 @@ principals such as `Everyone`, `Users`, `Authenticated Users`, and
 `Domain Users` are rejected.
 
 Relatedly, `dump` creates its output directory and files with owner-only
-permissions on macOS and Linux, but that enforcement does not apply on Windows:
-the underlying `os.Chmod` has no ACL effect there, so the mode bits are not
-honored. On Windows, write dumps into a directory that is already restricted to
-your account (for example under your user profile), since the dump's own
-permission tightening is a no-op.
+permissions on macOS and Linux. Its immediate output parent must already be
+owned by the current user and must not be group- or world-writable; writable
+ancestors are accepted only when sticky-directory rules protect the next
+user-owned component. This keeps atomic publication and cleanup inside a
+namespace another local principal cannot rewrite. On macOS, permit or unknown
+extended-ACL entries on the resolved ancestry are rejected; deny-only ACLs are
+accepted because they do not widen access.
+
+That enforcement does not apply on Windows: the underlying `os.Chmod` has no
+ACL effect there, so the mode bits are not honored. On Windows, write dumps into
+a directory that is already restricted to your account (for example under your
+user profile), since the dump's own permission tightening is a no-op.
 
 Windows can atomically publish a dump when the requested destination does not
 exist. Replacing an existing directory (including `dump --force`) fails closed:

@@ -177,10 +177,28 @@ Dump commands must:
 - Require an atomic directory-exchange primitive before replacing any existing
   directory. Platforms/filesystems without one fail closed; they may still
   publish to a destination that does not exist.
-- Bind post-exchange cleanup to the validated file identities, reject extended
+- On POSIX, publish only below an operator-owned immediate parent that is not
+  group- or world-writable. Validate the resolved parent ancestry as well: a
+  writable ancestor is accepted only when sticky-directory rules protect the
+  next operator-owned component. On macOS, bind every ancestry check to an open
+  handle and reject permit or unknown extended-ACL entries; deny-only ACLs do
+  not widen access and remain acceptable. This namespace invariant applies
+  before staging, exchange, rollback, quarantine, or failed-staging cleanup.
+- Bind post-exchange cleanup to the validated root identity, reject extended
   ACLs and immutable/append-only entries before exchange, atomically relocate
-  the entire old root into a fresh private quarantine, revalidate every identity
-  there, and only then remove the exact validated inventory.
+  the entire old root into a fresh private quarantine, and fully revalidate the
+  artifact there before clearing it through the open root handle.
+- Treat processes running as the same OS account as part of the operator trust
+  boundary: they already have equivalent authority over operator-owned dump
+  files. Before irreversible cleanup, the old root is moved into an owner-private
+  quarantine and the complete artifact is revalidated there. Other principals
+  cannot substitute path entries because POSIX publication requires the stable
+  parent namespace above. On Windows, operators must use a restricted parent
+  DACL; existing-directory replacement remains unsupported and never enters
+  this cleanup path.
+- Never unlink the public quarantine or its `root/` child after cleanup; leave
+  the empty owner-private directory skeleton so a substituted ancestor cannot
+  redirect a final pathname deletion.
 - Use deterministic structure where possible.
 - Include a manifest and redaction report.
 - Avoid original secret values in reports.

@@ -11,7 +11,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 )
 
-func TestPrepareOutputDirPreCanceledPreservesValidDump(t *testing.T) {
+func TestPublishContextPreCanceledPreservesExistingDump(t *testing.T) {
 	t.Parallel()
 
 	dir := validForceDumpDir(t)
@@ -23,36 +23,19 @@ func TestPrepareOutputDirPreCanceledPreservesValidDump(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := PrepareOutputDir(ctx, dir, true)
+	err := PublishContext(ctx, dir, redact.ModeShare, Result{}, true)
 	if err != context.Canceled {
-		t.Fatalf("PrepareOutputDir(%q, pre-canceled) error = %v, want identity %v", dir, err, context.Canceled)
+		t.Fatalf("PublishContext(%q, pre-canceled) error = %v, want identity %v", dir, err, context.Canceled)
 	}
 	if got := readFile(t, filepath.Join(dir, "manifest.json")); got != manifestBefore {
-		t.Errorf("manifest after pre-canceled PrepareOutputDir = %q, want unchanged %q", got, manifestBefore)
+		t.Errorf("manifest after pre-canceled PublishContext = %q, want unchanged %q", got, manifestBefore)
 	}
 	if got := readFile(t, stalePath); got != "keep" {
-		t.Errorf("stale file after pre-canceled PrepareOutputDir = %q, want %q", got, "keep")
+		t.Errorf("stale file after pre-canceled PublishContext = %q, want %q", got, "keep")
 	}
 }
 
-func TestPrepareOutputDirForceClearsValidDump(t *testing.T) {
-	t.Parallel()
-
-	dir := validForceDumpDir(t)
-
-	if err := PrepareOutputDir(context.Background(), dir, true); err != nil {
-		t.Fatalf("PrepareOutputDir(%q, force) error = %v, want nil", dir, err)
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("os.ReadDir(%q) error = %v, want nil", dir, err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("os.ReadDir(%q) = %v, want empty validated directory", dir, entries)
-	}
-}
-
-func TestPrepareOutputDirRejectsForeignArtifactFile(t *testing.T) {
+func TestPublishContextForceRejectsForeignArtifactFile(t *testing.T) {
 	t.Parallel()
 
 	dir := validForceDumpDir(t)
@@ -61,16 +44,16 @@ func TestPrepareOutputDirRejectsForeignArtifactFile(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", foreignPath, err)
 	}
 
-	err := PrepareOutputDir(context.Background(), dir, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, foreign file) error = %v, want ErrUnsafePath", dir, err)
+		t.Fatalf("PublishContext(%q, foreign file) error = %v, want ErrUnsafePath", dir, err)
 	}
 	if got := readFile(t, foreignPath); got != "keep" {
 		t.Errorf("foreign file after rejected --force = %q, want %q", got, "keep")
 	}
 }
 
-func TestPrepareOutputDirRejectsResourceRecordCountMismatch(t *testing.T) {
+func TestPublishContextForceRejectsResourceRecordCountMismatch(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "dump")
@@ -83,16 +66,16 @@ func TestPrepareOutputDirRejectsResourceRecordCountMismatch(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", resourcePath, err)
 	}
 
-	err := PrepareOutputDir(context.Background(), dir, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, count mismatch) error = %v, want ErrUnsafePath", dir, err)
+		t.Fatalf("PublishContext(%q, count mismatch) error = %v, want ErrUnsafePath", dir, err)
 	}
 	if got := readFile(t, resourcePath); got != "[{}]\n" {
 		t.Errorf("resource after rejected --force = %q, want unchanged", got)
 	}
 }
 
-func TestPrepareOutputDirRejectsManifestShapeMismatch(t *testing.T) {
+func TestPublishContextForceRejectsManifestShapeMismatch(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "dump")
@@ -106,9 +89,9 @@ func TestPrepareOutputDirRejectsManifestShapeMismatch(t *testing.T) {
 	resourcePath := filepath.Join(dir, "resources", "zia", "locations.json")
 	resourceBefore := readFile(t, resourcePath)
 
-	err := PrepareOutputDir(context.Background(), dir, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, shape mismatch) error = %v, want ErrUnsafePath", dir, err)
+		t.Fatalf("PublishContext(%q, shape mismatch) error = %v, want ErrUnsafePath", dir, err)
 	}
 	if got := readFile(t, resourcePath); got != resourceBefore {
 		t.Errorf("resource after rejected shape mismatch changed\n got: %s\nwant: %s", got, resourceBefore)
@@ -133,7 +116,7 @@ func TestValidateArtifactRejectsUnknownManifestShape(t *testing.T) {
 	}
 }
 
-func TestPrepareOutputDirRejectsPartialDump(t *testing.T) {
+func TestPublishContextForceRejectsPartialDump(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "partial")
@@ -145,14 +128,7 @@ func TestPrepareOutputDirRejectsPartialDump(t *testing.T) {
 	}
 	manifestBefore := readFile(t, filepath.Join(dir, "manifest.json"))
 
-	err := PrepareOutputDir(context.Background(), dir, true)
-	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, partial) error = %v, want ErrUnsafePath", dir, err)
-	}
-	if got := readFile(t, filepath.Join(dir, "manifest.json")); got != manifestBefore {
-		t.Errorf("partial manifest after rejected --force changed\n got: %s\nwant: %s", got, manifestBefore)
-	}
-	err = PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("PublishContext(%q, partial force) error = %v, want ErrUnsafePath", dir, err)
 	}
@@ -248,6 +224,67 @@ func TestPublishReplacementRejectsSameNameSubstitutionBeforeCleanup(t *testing.T
 	}
 	if got := readFile(t, filepath.Join(target, "manifest.json")); got != sentinel {
 		t.Errorf("same-name foreign replacement after rollback = %q, want %q", got, sentinel)
+	}
+}
+
+func TestPublishReplacementRefusesRollbackAfterStagingSubstitution(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	target := filepath.Join(parent, "target")
+	staging := filepath.Join(parent, "staging")
+	movedOld := filepath.Join(parent, "moved-old-target")
+	if err := Write(target, redact.ModeStandard, Result{}); err != nil {
+		t.Fatalf("Write(%q, target) error = %v, want nil", target, err)
+	}
+	if err := Write(staging, redact.ModeShare, Result{}); err != nil {
+		t.Fatalf("Write(%q, staging) error = %v, want nil", staging, err)
+	}
+	const sentinel = "attacker-controlled staging replacement\n"
+	var hookErr error
+	err := publishReplacingDirectoryWithHooks(
+		context.Background(),
+		staging,
+		target,
+		true,
+		publishReplacementHooks{
+			exchange: func(first, second string) (bool, error) {
+				supported, exchangeErr := exchangeDirectories(first, second)
+				if exchangeErr != nil || !supported {
+					return supported, exchangeErr
+				}
+				if hookErr = os.Rename(first, movedOld); hookErr != nil {
+					return true, hookErr
+				}
+				if hookErr = os.Mkdir(first, dirPerm); hookErr != nil {
+					return true, hookErr
+				}
+				hookErr = os.WriteFile(filepath.Join(first, "sentinel.txt"), []byte(sentinel), filePerm)
+				return true, hookErr
+			},
+		},
+	)
+	if errors.Is(err, ErrAtomicReplaceUnsupported) {
+		t.Skip("directory exchange is unsupported on this filesystem")
+	}
+	if hookErr != nil {
+		t.Fatalf("post-exchange staging substitution error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("publishReplacingDirectoryWithHooks(staging substitution) error = %v, want ErrUnsafePath", err)
+	}
+	if got := readFile(t, filepath.Join(staging, "sentinel.txt")); got != sentinel {
+		t.Errorf("attacker staging sentinel = %q, want %q", got, sentinel)
+	}
+	var published Manifest
+	readJSON(t, filepath.Join(target, "manifest.json"), &published)
+	if published.Redaction != string(redact.ModeShare) {
+		t.Errorf("published target redaction = %q, want share", published.Redaction)
+	}
+	var preservedOld Manifest
+	readJSON(t, filepath.Join(movedOld, "manifest.json"), &preservedOld)
+	if preservedOld.Redaction != string(redact.ModeStandard) {
+		t.Errorf("moved old target redaction = %q, want standard", preservedOld.Redaction)
 	}
 }
 
@@ -360,87 +397,7 @@ func TestPublishContextRejectsUnwritableReplacementBeforeCommit(t *testing.T) {
 	}
 }
 
-func TestPrepareOutputDirDoesNotDeleteReplacementDirectory(t *testing.T) {
-	t.Parallel()
-
-	dir := validForceDumpDir(t)
-	validatedDir := dir + "-validated"
-	replacementFile := filepath.Join(dir, "must-survive.txt")
-	var hookErr error
-
-	err := prepareOutputDir(context.Background(), dir, true, prepareOutputDirHooks{
-		beforeClear: func() {
-			if renameErr := os.Rename(dir, validatedDir); renameErr != nil {
-				hookErr = renameErr
-				return
-			}
-			if mkdirErr := os.Mkdir(dir, dirPerm); mkdirErr != nil {
-				hookErr = mkdirErr
-				return
-			}
-			hookErr = os.WriteFile(replacementFile, []byte("keep"), filePerm)
-		},
-	})
-	if hookErr != nil {
-		t.Fatalf("replacement boundary setup error = %v, want nil", hookErr)
-	}
-	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("prepareOutputDir(replaced target) error = %v, want ErrUnsafePath", err)
-	}
-	if got := readFile(t, replacementFile); got != "keep" {
-		t.Errorf("replacement file after force race = %q, want %q", got, "keep")
-	}
-	if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
-		t.Errorf("replacement directory after force race = (%v, %v), want existing directory", info, statErr)
-	}
-}
-
-func TestPrepareOutputDirDoesNotDeleteFileSubstitutedAfterClearing(t *testing.T) {
-	t.Parallel()
-
-	dir := validForceDumpDir(t)
-	validatedDir := dir + "-validated"
-	var hookErr error
-
-	err := prepareOutputDir(context.Background(), dir, true, prepareOutputDirHooks{
-		beforeFinalCheck: func() {
-			if renameErr := os.Rename(dir, validatedDir); renameErr != nil {
-				hookErr = renameErr
-				return
-			}
-			hookErr = os.WriteFile(dir, []byte("keep"), filePerm)
-		},
-	})
-	if hookErr != nil {
-		t.Fatalf("final replacement boundary setup error = %v, want nil", hookErr)
-	}
-	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("prepareOutputDir(final replaced target) error = %v, want ErrUnsafePath", err)
-	}
-	if got := readFile(t, dir); got != "keep" {
-		t.Errorf("replacement file after force race = %q, want %q", got, "keep")
-	}
-}
-
-func TestPrepareOutputDirNoForceDoesNotInspect(t *testing.T) {
-	t.Parallel()
-
-	dir := filepath.Join(t.TempDir(), "missing", "dump")
-	if err := PrepareOutputDir(context.Background(), dir, false); err != nil {
-		t.Fatalf("PrepareOutputDir(%q, no force) error = %v, want nil", dir, err)
-	}
-	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", dir, err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := PrepareOutputDir(ctx, "", false); err != context.Canceled {
-		t.Fatalf("PrepareOutputDir(empty, pre-canceled no force) error = %v, want identity %v", err, context.Canceled)
-	}
-}
-
-func TestPrepareOutputDirRejectsUnownedDirectory(t *testing.T) {
+func TestPublishContextForceRejectsUnownedDirectory(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "not-a-dump")
@@ -452,16 +409,16 @@ func TestPrepareOutputDirRejectsUnownedDirectory(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", notesPath, err)
 	}
 
-	err := PrepareOutputDir(context.Background(), dir, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, unowned) error = %v, want ErrUnsafePath", dir, err)
+		t.Fatalf("PublishContext(%q, unowned) error = %v, want ErrUnsafePath", dir, err)
 	}
 	if got := readFile(t, notesPath); got != "keep" {
 		t.Errorf("unowned directory sentinel = %q, want %q", got, "keep")
 	}
 }
 
-func TestPrepareOutputDirRejectsManifestSchemaPrefixSpoof(t *testing.T) {
+func TestPublishContextForceRejectsManifestSchemaPrefixSpoof(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "not-a-dump")
@@ -481,9 +438,9 @@ func TestPrepareOutputDirRejectsManifestSchemaPrefixSpoof(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", foreignPath, err)
 	}
 
-	err := PrepareOutputDir(context.Background(), dir, true)
+	err := PublishContext(context.Background(), dir, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, prefix spoof) error = %v, want ErrUnsafePath", dir, err)
+		t.Fatalf("PublishContext(%q, prefix spoof) error = %v, want ErrUnsafePath", dir, err)
 	}
 	if got := readFile(t, foreignPath); got != "keep" {
 		t.Errorf("foreign file after rejected prefix spoof = %q, want %q", got, "keep")
@@ -522,7 +479,7 @@ func TestPublishContextForceReplacesValidDumpAsDirectory(t *testing.T) {
 	}
 }
 
-func TestPrepareOutputDirRejectsFinalSymlink(t *testing.T) {
+func TestPublishContextForceRejectsFinalSymlink(t *testing.T) {
 	t.Parallel()
 
 	target := validForceDumpDir(t)
@@ -531,27 +488,12 @@ func TestPrepareOutputDirRejectsFinalSymlink(t *testing.T) {
 		t.Skipf("os.Symlink(%q, %q) error = %v; symlinks unavailable", target, link, err)
 	}
 
-	err := PrepareOutputDir(context.Background(), link, true)
+	err := PublishContext(context.Background(), link, redact.ModeShare, Result{}, true)
 	if !errors.Is(err, ErrUnsafePath) {
-		t.Fatalf("PrepareOutputDir(%q, symlink) error = %v, want ErrUnsafePath", link, err)
+		t.Fatalf("PublishContext(%q, symlink) error = %v, want ErrUnsafePath", link, err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "manifest.json")); err != nil {
 		t.Errorf("target manifest after rejected symlink = %v, want nil", err)
-	}
-}
-
-func TestPrepareOutputDirLeavesEmptyDirectoryAlone(t *testing.T) {
-	t.Parallel()
-
-	dir := filepath.Join(t.TempDir(), "empty")
-	if err := os.Mkdir(dir, dirPerm); err != nil {
-		t.Fatalf("os.Mkdir(%q) error = %v, want nil", dir, err)
-	}
-	if err := PrepareOutputDir(context.Background(), dir, true); err != nil {
-		t.Fatalf("PrepareOutputDir(%q, empty) error = %v, want nil", dir, err)
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("os.Stat(%q) = (%v, %v), want existing directory", dir, info, err)
 	}
 }
 

@@ -7,21 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
-
-// PrepareOutputDir validates an existing output directory and, when force is
-// true, clears it only when it is an owned zscalerctl dump directory.
-func PrepareOutputDir(ctx context.Context, dir string, force bool) error {
-	return prepareOutputDir(ctx, dir, force, prepareOutputDirHooks{})
-}
-
-type prepareOutputDirHooks struct {
-	beforeClear      func()
-	beforeFinalCheck func()
-}
 
 type publishReplacementHooks struct {
 	beforeExchange       func()
@@ -87,7 +75,7 @@ func publishReplacingDirectoryWithHooks(
 		return replacementTargetError(allowOwnedDump, dir, "open dump directory", err)
 	}
 	defer root.Close()
-	openedInfo, err := root.Stat(".")
+	openedInfo, err := openRootEntryInfo(root, ".")
 	if err != nil {
 		return fmt.Errorf("%w: inspect opened dump directory for --force: %v", ErrUnsafePath, err)
 	}
@@ -111,8 +99,14 @@ func publishReplacingDirectoryWithHooks(
 	if err := preflightCleanupParent(target); err != nil {
 		return err
 	}
-	if err := preflightCleanupParent(target); err != nil {
-		return err
+	stagedRoot, err := os.OpenRoot(stagingDir)
+	if err != nil {
+		return fmt.Errorf("%w: open staged dump directory: %v", ErrUnsafePath, err)
+	}
+	defer stagedRoot.Close()
+	stagedInfo, err := openRootEntryInfo(stagedRoot, ".")
+	if err != nil {
+		return fmt.Errorf("%w: inspect staged dump directory: %v", ErrUnsafePath, err)
 	}
 	currentInfo, err := os.Lstat(target)
 	if err != nil || !os.SameFile(openedInfo, currentInfo) {
@@ -133,32 +127,49 @@ func publishReplacingDirectoryWithHooks(
 		return fmt.Errorf("%w: existing destination %s", ErrAtomicReplaceUnsupported, dir)
 	}
 	swappedInfo, statErr := os.Lstat(stagingDir)
-	if statErr != nil || !os.SameFile(openedInfo, swappedInfo) {
+	publishedInfo, publishedStatErr := os.Lstat(target)
+	if statErr != nil || !os.SameFile(openedInfo, swappedInfo) ||
+		publishedStatErr != nil || !os.SameFile(stagedInfo, publishedInfo) {
+		return fmt.Errorf("%w: replacement paths changed during atomic exchange; rollback refused", ErrUnsafePath)
+	}
+	postPlan, postErr := replacementCleanupPlanContext(ctx, root, stagingDir, hasFiles)
+	if postErr != nil {
 		return rollbackExchangedDirectory(
 			hooks.exchange,
 			stagingDir,
 			target,
-			fmt.Errorf("%w: --force target changed during atomic replacement", ErrUnsafePath),
+			openedInfo,
+			stagedInfo,
+			postErr,
 		)
 	}
-	postPlan, postErr := replacementCleanupPlanContext(ctx, root, stagingDir, hasFiles)
-	if postErr != nil {
-		return rollbackExchangedDirectory(hooks.exchange, stagingDir, target, postErr)
-	}
 	if err := preflightCleanupPlan(root, postPlan); err != nil {
-		return rollbackExchangedDirectory(hooks.exchange, stagingDir, target, err)
-	}
-	if err := preflightCleanupPlan(root, postPlan); err != nil {
-		return rollbackExchangedDirectory(hooks.exchange, stagingDir, target, err)
+		return rollbackExchangedDirectory(
+			hooks.exchange,
+			stagingDir,
+			target,
+			openedInfo,
+			stagedInfo,
+			err,
+		)
 	}
 	rollbackSafe, cleanupErr := removeReplacedDumpRoot(
+		ctx,
+		root,
 		stagingDir,
 		openedInfo,
-		postPlan,
+		hasFiles,
 		hooks.beforeQuarantineMove,
 	)
 	if cleanupErr != nil && rollbackSafe {
-		return rollbackExchangedDirectory(hooks.exchange, stagingDir, target, cleanupErr)
+		return rollbackExchangedDirectory(
+			hooks.exchange,
+			stagingDir,
+			target,
+			openedInfo,
+			stagedInfo,
+			cleanupErr,
+		)
 	}
 	return cleanupErr
 }
@@ -190,11 +201,18 @@ func inspectDirectoryTreeContext(
 		path = filepath.ToSlash(path)
 		if entry.IsDir() {
 			dirs[path] = struct{}{}
-			info, err := entry.Info()
+			pathInfo, err := entry.Info()
 			if err != nil {
 				return err
 			}
-			identities[path] = info
+			openedInfo, err := openRootEntryInfo(root, path)
+			if err != nil {
+				return err
+			}
+			if !os.SameFile(pathInfo, openedInfo) {
+				return fmt.Errorf("%w: existing dump directory changed during inspection", ErrUnsafePath)
+			}
+			identities[path] = openedInfo
 		} else {
 			hasFiles = true
 		}
@@ -207,14 +225,16 @@ func inspectDirectoryTreeContext(
 }
 
 // removeReplacedDumpRoot atomically relocates the entire validated root into a
-// new private quarantine before deleting anything. A same-name substitution
-// anywhere in the tree is detected after relocation; the whole root is then
-// restored without deleting the replacement. The bool result reports whether
-// the directory exchange can still be rolled back.
+// new private quarantine before deleting anything. The root is fully
+// revalidated after relocation, so a pre-move insertion or substitution is
+// restored without deleting any content. The bool result reports whether the
+// directory exchange can still be rolled back.
 func removeReplacedDumpRoot(
+	ctx context.Context,
+	root *os.Root,
 	path string,
 	openedInfo os.FileInfo,
-	plan artifactCleanupPlan,
+	hadFiles bool,
 	beforeFirstMove func(),
 ) (bool, error) {
 	parent := filepath.Dir(path)
@@ -248,67 +268,25 @@ func removeReplacedDumpRoot(
 		restoreErr := restoreRoot()
 		return restoreErr == nil, fmt.Errorf("%w: relocated dump root changed identity; restore: %v", ErrUnsafePath, restoreErr)
 	}
-	if err := validateQuarantinedCleanupPlan(quarantinedRoot, openedInfo, plan); err != nil {
+	plan, err := replacementCleanupPlanContext(ctx, root, quarantinedRoot, hadFiles)
+	if err != nil {
 		restoreErr := restoreRoot()
 		return restoreErr == nil, fmt.Errorf("validate relocated dump root: %w; restore: %v", err, restoreErr)
 	}
-	for _, name := range plan.files {
-		entryPath := filepath.Join(quarantinedRoot, filepath.FromSlash(name))
-		if err := validateAbsoluteCleanupEntry(entryPath, plan.identities[name], false); err != nil {
-			return false, fmt.Errorf("validate quarantined dump file: %w", err)
-		}
-		if err := os.Remove(entryPath); err != nil {
-			return false, fmt.Errorf("remove quarantined dump file: %w", err)
-		}
+	if err := preflightCleanupPlan(root, plan); err != nil {
+		restoreErr := restoreRoot()
+		return restoreErr == nil, fmt.Errorf("preflight relocated dump root: %w; restore: %v", err, restoreErr)
 	}
-	for _, name := range plan.dirs {
-		entryPath := filepath.Join(quarantinedRoot, filepath.FromSlash(name))
-		if err := validateAbsoluteCleanupEntry(entryPath, plan.identities[name], true); err != nil {
-			return false, fmt.Errorf("validate quarantined dump directory: %w", err)
-		}
-		if err := os.Remove(entryPath); err != nil {
-			return false, fmt.Errorf("remove quarantined dump directory: %w", err)
-		}
+	// The quarantine is owner-private and has already been validated for ACL and
+	// removal constraints. Other OS principals cannot traverse it; processes
+	// running as the same account are part of the operator trust boundary.
+	if err := clearDumpRootContext(context.Background(), root); err != nil {
+		return false, fmt.Errorf("clear quarantined dump root: %w", err)
 	}
-	if err := validateAbsoluteCleanupEntry(quarantinedRoot, openedInfo, true); err != nil {
-		return false, fmt.Errorf("validate empty quarantined dump root: %w", err)
-	}
-	if err := os.Remove(quarantinedRoot); err != nil {
-		return false, fmt.Errorf("remove quarantined dump root: %w", err)
-	}
-	// Never unlink the public quarantine pathname: a hostile writable parent
-	// could substitute that entry after any identity check. Once confidential
-	// contents are gone, leaving an empty 0700 directory is harmless.
+	// Never unlink either public quarantine pathname: a hostile writable parent
+	// could substitute an ancestor after any identity check. Once confidential
+	// contents are gone, leaving an empty 0700 directory skeleton is harmless.
 	return false, nil
-}
-
-func validateQuarantinedCleanupPlan(
-	root string,
-	rootInfo os.FileInfo,
-	plan artifactCleanupPlan,
-) error {
-	if err := validateAbsoluteCleanupEntry(root, rootInfo, true); err != nil {
-		return err
-	}
-	for _, name := range plan.files {
-		if err := validateAbsoluteCleanupEntry(
-			filepath.Join(root, filepath.FromSlash(name)),
-			plan.identities[name],
-			false,
-		); err != nil {
-			return err
-		}
-	}
-	for _, name := range plan.dirs {
-		if err := validateAbsoluteCleanupEntry(
-			filepath.Join(root, filepath.FromSlash(name)),
-			plan.identities[name],
-			true,
-		); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func preflightCleanupParent(path string) error {
@@ -322,6 +300,9 @@ func preflightCleanupParent(path string) error {
 	}
 	if info.Mode().Perm()&0o300 != 0o300 {
 		return fmt.Errorf("%w: dump parent is not owner-writable", ErrUnsafePath)
+	}
+	if _, err := validateStablePublicationParent(parent); err != nil {
+		return fmt.Errorf("%w: dump parent namespace is not stable: %v", ErrUnsafePath, err)
 	}
 	return nil
 }
@@ -380,151 +361,27 @@ func rollbackExchangedDirectory(
 	exchange func(string, string) (bool, error),
 	stagingDir string,
 	target string,
+	expectedStaging os.FileInfo,
+	expectedTarget os.FileInfo,
 	cause error,
 ) error {
+	stagingInfo, stagingErr := os.Lstat(stagingDir)
+	targetInfo, targetErr := os.Lstat(target)
+	if stagingErr != nil || !os.SameFile(expectedStaging, stagingInfo) ||
+		targetErr != nil || !os.SameFile(expectedTarget, targetInfo) {
+		return fmt.Errorf("%w; atomic rollback refused because a replacement path changed", cause)
+	}
 	supported, rollbackErr := exchange(stagingDir, target)
 	if rollbackErr != nil || !supported {
 		return fmt.Errorf("%w; atomic rollback failed: %v", cause, rollbackErr)
 	}
+	restoredTarget, restoredTargetErr := os.Lstat(target)
+	restoredStaging, restoredStagingErr := os.Lstat(stagingDir)
+	if restoredTargetErr != nil || !os.SameFile(expectedStaging, restoredTarget) ||
+		restoredStagingErr != nil || !os.SameFile(expectedTarget, restoredStaging) {
+		return fmt.Errorf("%w; atomic rollback produced unexpected path identities", cause)
+	}
 	return cause
-}
-
-// prepareOutputDir accepts per-call test-only boundary callbacks around the
-// destructive phase. This avoids mutable package hooks in production and makes
-// replacement-race tests deterministic.
-func prepareOutputDir(ctx context.Context, dir string, force bool, hooks prepareOutputDirHooks) error {
-	ctx = contextOrBackground(ctx)
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	if !force {
-		return nil
-	}
-	if strings.TrimSpace(dir) == "" {
-		return fmt.Errorf("%w: missing dump directory", ErrUnsafePath)
-	}
-	if err := rejectDangerousForceTargetContext(ctx, dir); err != nil {
-		return err
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	info, err := os.Lstat(dir)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("%w: inspect dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: --force target %s is a symlink", ErrUnsafePath, dir)
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	target, err := filepath.EvalSymlinks(dir)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil {
-		return fmt.Errorf("%w: resolve --force target symlinks: %v", ErrUnsafePath, err)
-	}
-	if err := rejectDangerousForceTargetContext(ctx, target); err != nil {
-		return err
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	info, err = os.Lstat(target)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil {
-		return fmt.Errorf("%w: inspect resolved dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%w: --force target %s is not a directory", ErrUnsafePath, dir)
-	}
-	empty, err := isDirEmptyContext(ctx, target)
-	if err != nil {
-		return err
-	}
-	if empty {
-		return nil
-	}
-	root, err := os.OpenRoot(target)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		if root != nil {
-			_ = root.Close()
-		}
-		return contextErr
-	}
-	if err != nil {
-		return fmt.Errorf("%w: open dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	defer root.Close()
-
-	openedInfo, err := root.Stat(".")
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil {
-		return fmt.Errorf("%w: inspect opened dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	if !openedInfo.IsDir() {
-		return fmt.Errorf("%w: --force target %s is not a directory", ErrUnsafePath, dir)
-	}
-	cleanupPlan, err := validateExistingDumpRootContext(ctx, root, target)
-	if err != nil {
-		return err
-	}
-	if err := preflightCleanupPlan(root, cleanupPlan); err != nil {
-		return err
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	currentInfo, err := os.Lstat(target)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil || !os.SameFile(openedInfo, currentInfo) {
-		return fmt.Errorf("%w: --force target changed during validation", ErrUnsafePath)
-	}
-	if hooks.beforeClear != nil {
-		hooks.beforeClear()
-	}
-	if err := root.Close(); err != nil {
-		return fmt.Errorf("close validated dump root before cleanup: %w", err)
-	}
-	rollbackSafe, cleanupErr := removeReplacedDumpRoot(target, openedInfo, cleanupPlan, nil)
-	if cleanupErr != nil {
-		return cleanupErr
-	}
-	if rollbackSafe {
-		return fmt.Errorf("%w: validated dump cleanup did not commit", ErrUnsafePath)
-	}
-	if err := os.Mkdir(target, dirPerm); err != nil {
-		return fmt.Errorf("recreate empty validated dump directory: %w", err)
-	}
-	recreatedInfo, err := os.Lstat(target)
-	if err != nil {
-		return fmt.Errorf("inspect recreated dump directory: %w", err)
-	}
-	if hooks.beforeFinalCheck != nil {
-		hooks.beforeFinalCheck()
-	}
-	currentInfo, err = os.Lstat(target)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return contextErr
-	}
-	if err != nil || !os.SameFile(recreatedInfo, currentInfo) {
-		return fmt.Errorf("%w: --force target changed after clearing", ErrUnsafePath)
-	}
-	return nil
 }
 
 func rejectDangerousForceTargetContext(ctx context.Context, dir string) error {
@@ -566,20 +423,6 @@ func rejectDangerousForceTargetContext(ctx context.Context, dir string) error {
 		return fmt.Errorf("%w: --force target cannot be the home directory", ErrUnsafePath)
 	}
 	return nil
-}
-
-func isDirEmptyContext(ctx context.Context, dir string) (bool, error) {
-	if err := checkContext(ctx); err != nil {
-		return false, err
-	}
-	entries, err := os.ReadDir(dir)
-	if contextErr := checkContext(ctx); contextErr != nil {
-		return false, contextErr
-	}
-	if err != nil {
-		return false, fmt.Errorf("%w: inspect dump directory for --force: %v", ErrUnsafePath, err)
-	}
-	return len(entries) == 0, nil
 }
 
 func validateExistingDumpRootContext(

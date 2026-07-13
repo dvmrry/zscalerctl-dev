@@ -154,6 +154,7 @@ func PublishContext(ctx context.Context, dir string, mode redact.Mode, result Re
 
 type publishContextHooks struct {
 	beforeStagingCleanupRelocate func(string)
+	afterParentValidation        func()
 }
 
 func publishContextWithHooks(
@@ -171,14 +172,23 @@ func publishContextWithHooks(
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("%w: missing dump directory", ErrUnsafePath)
 	}
+	dir = filepath.Clean(dir)
 	if force {
 		if err := rejectDangerousForceTargetContext(ctx, dir); err != nil {
 			return err
 		}
 	}
 	parent := filepath.Dir(dir)
-	if err := ensureStagingParentContext(ctx, parent); err != nil {
+	parent, err := ensureStagingParentContext(ctx, parent)
+	if err != nil {
 		return err
+	}
+	// All later pathname operations use the validated resolved parent. This
+	// prevents a mutable symlink in the caller's lexical path from bypassing the
+	// stable-parent namespace check after validation.
+	dir = filepath.Join(parent, filepath.Base(dir))
+	if hooks.afterParentValidation != nil {
+		hooks.afterParentValidation()
 	}
 	stagingDir, err := os.MkdirTemp(parent, ".zscalerctl-staging-*")
 	if err != nil {
@@ -370,21 +380,28 @@ func writeArtifactContext(ctx context.Context, dir string, mode redact.Mode, res
 	return nil
 }
 
-func ensureStagingParentContext(ctx context.Context, parent string) error {
+func ensureStagingParentContext(ctx context.Context, parent string) (string, error) {
 	if err := checkContext(ctx); err != nil {
-		return err
+		return "", err
 	}
 	if err := os.MkdirAll(parent, dirPerm); err != nil {
-		return fmt.Errorf("create dump parent directory: %w", err)
+		return "", fmt.Errorf("create dump parent directory: %w", err)
 	}
 	info, err := os.Stat(parent)
 	if err != nil {
-		return fmt.Errorf("inspect dump parent directory: %w", err)
+		return "", fmt.Errorf("inspect dump parent directory: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("%w: dump parent %s is not a directory", ErrUnsafePath, parent)
+		return "", fmt.Errorf("%w: dump parent %s is not a directory", ErrUnsafePath, parent)
 	}
-	return checkContext(ctx)
+	resolved, err := validateStablePublicationParent(parent)
+	if err != nil {
+		return "", fmt.Errorf("%w: dump parent namespace is not stable: %v", ErrUnsafePath, err)
+	}
+	if err := checkContext(ctx); err != nil {
+		return "", err
+	}
+	return resolved, nil
 }
 
 func cleanupStagingPath(path string, original os.FileInfo, beforeRelocate func(string)) {
@@ -428,13 +445,9 @@ func cleanupStagingPath(path string, original os.FileInfo, beforeRelocate func(s
 		_ = renameNoReplace(quarantinedRoot, path)
 		return
 	}
-	current, err = os.Lstat(quarantinedRoot)
-	if err == nil && os.SameFile(original, current) {
-		_ = os.Remove(quarantinedRoot)
-	}
-	// Never unlink the public discard pathname: a hostile writable parent can
-	// substitute that entry after any identity check. An empty 0700 directory
-	// contains no tenant data and is safe to leave behind.
+	// Never unlink either public discard pathname: a hostile writable parent can
+	// substitute an ancestor after any identity check. The empty 0700 directory
+	// skeleton contains no tenant data and is safe to leave behind.
 }
 
 func preflightProcessStagingCleanup(path string, original os.FileInfo) error {

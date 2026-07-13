@@ -44,6 +44,26 @@ type artifactCleanupPlan struct {
 	identities map[string]os.FileInfo
 }
 
+// openRootEntryInfo captures identity from an opened handle. On Windows,
+// path-based FileInfo values resolve their file ID lazily, which makes a saved
+// value unsafe after a same-name substitution. File.Stat records the identity
+// of the object behind the handle immediately on every supported platform.
+func openRootEntryInfo(root *os.Root, name string) (os.FileInfo, error) {
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, statErr := file.Stat()
+	closeErr := file.Close()
+	if statErr != nil {
+		return nil, statErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	return info, nil
+}
+
 // ValidateArtifactContext validates the complete dump artifact rooted at dir.
 func ValidateArtifactContext(ctx context.Context, dir string) (ValidatedArtifact, error) {
 	ctx = contextOrBackground(ctx)
@@ -678,6 +698,17 @@ func validateArtifactInventory(
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: artifact path %s is a symlink", ErrInvalidArtifact, path)
 		}
+		pathInfo, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, path, err)
+		}
+		openedInfo, err := openRootEntryInfo(root, path)
+		if err != nil {
+			return fmt.Errorf("%w: open artifact path %s: %v", ErrInvalidArtifact, path, err)
+		}
+		if !os.SameFile(pathInfo, openedInfo) {
+			return fmt.Errorf("%w: artifact path %s changed during inventory", ErrInvalidArtifact, path)
+		}
 		if entry.IsDir() {
 			if _, expectedFile := expectedFiles[path]; expectedFile {
 				return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, path)
@@ -685,24 +716,16 @@ func validateArtifactInventory(
 			if _, ok := expectedDirs[path]; !ok {
 				return fmt.Errorf("%w: unexpected artifact directory %s", ErrInvalidArtifact, path)
 			}
-			info, err := entry.Info()
-			if err != nil {
-				return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, path, err)
-			}
-			inventory[path] = info
+			inventory[path] = openedInfo
 			return nil
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, path, err)
-		}
-		if !info.Mode().IsRegular() {
+		if !openedInfo.Mode().IsRegular() {
 			return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, path)
 		}
 		if _, ok := expectedFiles[path]; !ok {
 			return fmt.Errorf("%w: unexpected artifact file %s", ErrInvalidArtifact, path)
 		}
-		inventory[path] = info
+		inventory[path] = openedInfo
 		return nil
 	})
 	if err != nil {

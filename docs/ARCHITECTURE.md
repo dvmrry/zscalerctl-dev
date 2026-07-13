@@ -405,6 +405,12 @@ Dump writers should:
 - Build the complete artifact in a private sibling staging directory, reconcile
   its manifest, redaction report, errors, resource paths, and file inventory,
   then publish the directory atomically.
+- On POSIX, require the immediate output parent to be operator-owned and not
+  group- or world-writable. Any writable ancestor must be sticky and protect
+  the next operator-owned path component, keeping every pathname exchange in a
+  namespace another principal cannot rewrite. macOS ancestry checks are bound
+  to open handles and reject permit or unknown extended-ACL entries while
+  allowing deny-only ACLs.
 - Allow explicit `dump --force` only for empty directory trees or prior
   structurally valid, complete zscalerctl dump directories with no foreign
   files.
@@ -413,8 +419,9 @@ Dump writers should:
   atomically, fail closed instead of emulating replacement with a backup gap.
 - Never unlink public staging/quarantine pathnames after an identity check. Move
   identity-matched roots into private quarantine first; empty 0700 quarantine
-  directories may remain because they contain no tenant data and are safer than
-  deleting a possibly substituted parent entry.
+  directory skeletons, including an empty `root/`, may remain because they
+  contain no tenant data and are safer than deleting through a possibly
+  substituted ancestor.
 - Avoid partial successful output looking complete.
 - Include enough manifest data to support review and diff workflows.
 

@@ -81,7 +81,7 @@ new destination but intentionally fails closed for existing-directory exchange.
 
 # Adversarial Review
 
-Fresh-context reviewer: Heisenberg (`019f58cc-2fb1-7da2-b90d-a5fa5a4b91fb`, Sol xhigh) and Curie (`019f58cc-31b6-7e21-bb6f-557a8e7c35a5`, Luna max)
+Fresh-context reviewer: Heisenberg (`019f58cc-2fb1-7da2-b90d-a5fa5a4b91fb`, Sol xhigh) and Curie (`019f58cc-31b6-7e21-bb6f-557a8e7c35a5`, Luna max) for the initial implementation; Carver (`019f5974-b932-7252-a6a4-c714af046a00`, Sol xhigh) and Poincare (`019f5974-bba8-7300-822b-7640be91f6c4`, Luna max) for the post-CI correction
 
 Both reviewers inspected the actual working tree read-only and did not share
 the builder's implementation context. Each began with `request changes`. The
@@ -123,11 +123,67 @@ re-review. Neither reviewer modified files.
     attempt whole-root restoration, and documentation marks the irreducible
     simultaneous cleanup-and-restore failure as confidential.
 
+## Post-CI Correction Review
+
+The published PR then exposed platform-specific flaws that the first local
+review did not reproduce: Linux could immediately reuse an inode after a
+same-name substitution, and Windows path-derived identity/mode assumptions did
+not match native filesystem behavior. Carver and Poincare independently
+reviewed the corrective working tree read-only. Both began with `request
+changes`; the builder mapped and fixed their union before narrow re-review.
+
+### Follow-up Findings Resolved
+
+1. Saved path-derived identity was not stable across same-name replacement on
+   every platform. Artifact and root identities are now captured from opened
+   handles; repeated Linux substitution regressions no longer depend on inode
+   non-reuse.
+2. Per-entry deletion and the removed `PrepareOutputDir` path could not sustain
+   a safe lease across validation and deletion. The dead API was deleted.
+   Publication now relocates the validated old root as one directory into a
+   private quarantine, fully revalidates it through the still-open root, and
+   clears only through that handle.
+3. Initial exchange, rollback, quarantine relocation, and failed-staging
+   cleanup remained pathname operations in a potentially shared namespace.
+   POSIX publication now requires an operator-owned, non-group/world-writable
+   immediate parent; resolved ancestors must be current-user or root owned, and
+   writable ancestors must use sticky protection for the next operator-owned
+   component. Later operations use the resolved parent, and a deterministic
+   symlink-swap regression proves the lexical path cannot redirect them.
+4. macOS extended ACL permits could grant namespace mutation while mode bits
+   remained `0700`. Every resolved ancestry component is now identity-bound to
+   an open handle and its `ATTR_CMN_EXTENDED_SECURITY` data is parsed with
+   bounds checks. Permit, unknown, and malformed ACEs fail closed; deny-only
+   ACLs remain accepted. Native Darwin tests cover both immediate-parent and
+   ancestor permits plus the deny-only case.
+5. Computing `Dir` before `Clean` rewrote `export/` as `export/export`.
+   Destination cleaning now precedes force checks and parent selection;
+   regressions cover a trailing separator and final `.`/`..` components.
+6. Windows tests asserted synthetic POSIX mode bits and did not prove the
+   documented DACL inheritance model. Mode assertions are platform split, and
+   a native test restricts the parent DACL then validates the root, nested
+   directories, resources, manifest, report, and partial-error file. Existing
+   directory replacement remains unsupported and fails closed.
+
+### Follow-up Verification
+
+- Focused namespace, ACL, path-cleaning, substitution, and rollback regressions:
+  pass once and for 100 repeated iterations where applicable.
+- Full dump package and race detector: pass.
+- Darwin amd64/arm64, Linux amd64, and Windows amd64 dump-test builds: pass.
+- Full uncached `env -u GOFLAGS make check`: pass on the final implementation
+  tree, including all Go/race/static/security/contract/docs/release gates.
+- Both follow-up reviewers confirmed the blocking findings fixed. Each approved
+  with only documentation/test-strengthening nits; neither identified a new
+  blocking issue.
+
 ## Final Review
 
-Both reviewers independently verified the frozen final cleanup boundary and its
-complete failure-path regressions. Heisenberg reported no findings and approved.
-Curie reported no findings and approved. The only earlier nit—redundant harmless
-preflight calls—was non-blocking and does not weaken the contract.
+The initial and post-CI review loops independently verified the frozen cleanup,
+namespace, ACL, path-normalization, and platform-test boundaries. The remaining
+nits do not weaken the implementation contract: architecture/threat-model docs
+carry the detailed handle-binding and ownership rationale, while focused tests
+already fail on the reproduced pre-clean destination bug and cover the complete
+ACL authorization boundary.
 
-Verdict: approve
+Verdict: approve with nits

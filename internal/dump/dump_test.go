@@ -122,6 +122,50 @@ func TestWriteContextPreCanceledCreatesNothing(t *testing.T) {
 	}
 }
 
+func TestPublishContextCleansDestinationBeforeSelectingParent(t *testing.T) {
+	t.Parallel()
+
+	separator := string(os.PathSeparator)
+	tests := []struct {
+		name string
+		raw  func(string) string
+	}{
+		{
+			name: "trailing separator",
+			raw:  func(root string) string { return filepath.Join(root, "export") + separator },
+		},
+		{
+			name: "final dot",
+			raw:  func(root string) string { return filepath.Join(root, "export") + separator + "." },
+		},
+		{
+			name: "final dot dot",
+			raw: func(root string) string {
+				return filepath.Join(root, "export", "child") + separator + ".."
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := tt.raw(t.TempDir())
+			cleaned := filepath.Clean(raw)
+			if err := PublishContext(context.Background(), raw, redact.ModeStandard, Result{}, false); err != nil {
+				t.Fatalf("PublishContext(%q) error = %v, want nil", raw, err)
+			}
+			if _, err := os.Stat(filepath.Join(cleaned, "manifest.json")); err != nil {
+				t.Errorf("os.Stat(cleaned destination manifest) error = %v, want nil", err)
+			}
+			duplicated := filepath.Join(cleaned, filepath.Base(cleaned), "manifest.json")
+			if _, err := os.Stat(duplicated); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("os.Stat(duplicated destination %q) error = %v, want os.ErrNotExist", duplicated, err)
+			}
+		})
+	}
+}
+
 func TestWriteContextCancellationBeforeFinalizationCleansTempAndFinal(t *testing.T) {
 	t.Parallel()
 
@@ -755,18 +799,6 @@ func readJSON(t *testing.T, path string, out any) {
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v, want nil; body=%s", path, err, string(body))
-	}
-}
-
-func assertMode(t *testing.T, path string, want os.FileMode) {
-	t.Helper()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("os.Stat(%q) error = %v, want nil", path, err)
-	}
-	if got := info.Mode().Perm(); got != want {
-		t.Errorf("os.Stat(%q).Mode().Perm() = %#o, want %#o", path, got, want)
 	}
 }
 
