@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -19,7 +20,10 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
-var processTestBinary string
+var (
+	processTestBinary  string
+	dumpHostTestBinary string
+)
 
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
@@ -43,6 +47,19 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "zscalerctl-engine tests: build binary: %v\n%s", err, output)
 		return 1
 	}
+	dumpHostTestBinary = filepath.Join(directory, "zscalerctl-dump-test-engine")
+	if runtime.GOOS == "windows" {
+		dumpHostTestBinary += ".exe"
+	}
+	command = exec.Command(
+		"go", "build", "-tags=zscalerctl_engine_testhooks", "-o", dumpHostTestBinary,
+		"./internal/enginehost/testdata/dumpengine",
+	)
+	command.Dir = filepath.Join("..", "..")
+	if output, err := command.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "zscalerctl-engine tests: build dump test binary: %v\n%s", err, output)
+		return 1
+	}
 	return m.Run()
 }
 
@@ -57,15 +74,19 @@ type engineProcess struct {
 }
 
 func startEngineProcess(t *testing.T) *engineProcess {
+	return startEngineProcessWith(t, processTestBinary, nil)
+}
+
+func startEngineProcessWith(t *testing.T, binary string, extraEnv []string) *engineProcess {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	command := exec.CommandContext(ctx, processTestBinary)
-	command.Env = []string{
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	command := exec.CommandContext(ctx, binary)
+	command.Env = append([]string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + t.TempDir(),
 		"XDG_CONFIG_HOME=" + t.TempDir(),
 		"LANG=C",
-	}
+	}, extraEnv...)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		cancel()
@@ -250,6 +271,221 @@ func TestProcessDiffAcceptsSelectedResourceEmptyOnBothSides(t *testing.T) {
 	}
 	if code := process.wait(t); code != 0 {
 		t.Errorf("process exit code = %d, want 0", code)
+	}
+}
+
+func TestProcessDiffAcceptsSelectedResourceFailedOnOnePartialSide(t *testing.T) {
+	spec, ok := resources.Catalog().FindSpec(resources.ProductZIA, "locations")
+	if !ok {
+		t.Fatal("catalog has no zia/locations resource")
+	}
+	oldDir := filepath.Join(t.TempDir(), "old")
+	if err := dumpartifact.Write(oldDir, redact.ModeStandard, dumpartifact.Result{
+		Errors: []dumpartifact.ResourceError{
+			dumpartifact.NewResourceError(resources.ProductZIA, "locations", "list", "live_access_failed"),
+		},
+	}); err != nil {
+		t.Fatalf("dump.Write(old partial) error = %v", err)
+	}
+	newDir := filepath.Join(t.TempDir(), "new")
+	if err := dumpartifact.Write(newDir, redact.ModeStandard, dumpartifact.Result{
+		Entries: []dumpartifact.ResourceDump{{
+			Spec: spec,
+			Records: resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+				"id": "1", "name": "HQ",
+			}}),
+		}},
+	}); err != nil {
+		t.Fatalf("dump.Write(new complete) error = %v", err)
+	}
+
+	process := startEngineProcess(t)
+	process.initialize(t)
+	request := enginewire.DiffRequest{
+		Type: "request", ID: 1,
+		Capability: enginewire.CapabilityDiffCompare, Operation: enginewire.OperationDiff,
+		Input: enginewire.DiffInput{
+			OldDir: oldDir, NewDir: newDir,
+			Resources: []enginewire.ResourceSelector{{Product: enginewire.ProductZIA, Resource: "locations"}},
+			Products:  []enginewire.Product{}, AllowPartial: true,
+		},
+	}
+	if err := enginewire.WriteClientFrame(process.stdin, request); err != nil {
+		t.Fatalf("WriteClientFrame(diff partial) error = %v", err)
+	}
+	if started, ok := process.readV1(t).(enginewire.Started); !ok || started.ID != 1 || started.Sequence != 1 {
+		t.Fatalf("started = %#v", started)
+	}
+	if progress, ok := process.readV1(t).(enginewire.Progress); !ok || progress.Current != 1 || progress.Total != 1 {
+		t.Fatalf("progress = %#v, want selected resource 1/1", progress)
+	}
+	completed, ok := process.readV1(t).(enginewire.Completed[enginewire.DiffSummary])
+	if !ok || completed.Result.Summary.ResourcesCompared != 0 || completed.Result.StreamItemsEmitted != 0 ||
+		!completed.Result.Old.Partial || completed.Result.New.Partial {
+		t.Fatalf("completed = %#v, want accepted note-only partial comparison", completed)
+	}
+	if err := process.stdin.Close(); err != nil {
+		t.Fatalf("stdin.Close() error = %v", err)
+	}
+	if code := process.wait(t); code != 0 {
+		t.Errorf("process exit code = %d, want 0", code)
+	}
+}
+
+func TestProcessDumpCancelAfterNewDestinationCommitReturnsSuccess(t *testing.T) {
+	hookDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "dump")
+	process := startEngineProcessWith(t, dumpHostTestBinary, []string{
+		"ZSCALERCTL_ENGINE_TEST_HOOK_DIR=" + hookDir,
+	})
+	process.initialize(t)
+	writeDumpProcessRequest(t, process, outDir, false)
+	readDumpProcessStart(t, process)
+	waitForProcessTestPath(t, filepath.Join(hookDir, "after_publish.reached"))
+	if _, err := os.Stat(filepath.Join(outDir, "manifest.json")); err != nil {
+		t.Fatalf("committed dump manifest before cancel error = %v", err)
+	}
+	if err := enginewire.WriteClientFrame(process.stdin, enginewire.Cancel{Type: "cancel", ID: 1}); err != nil {
+		t.Fatalf("WriteClientFrame(cancel committed dump) error = %v", err)
+	}
+	releaseProcessTestHook(t, hookDir, "after_publish")
+	completed, ok := process.readV1(t).(enginewire.Completed[enginewire.DumpSummary])
+	if !ok || completed.Result.ResourcesWritten != 1 || completed.Result.RecordsWritten != 1 {
+		t.Fatalf("terminal after committed dump cancel = %#v, want completed dump", completed)
+	}
+	closeAndWaitEngineProcess(t, process)
+}
+
+func TestProcessDumpCancelCannotKillCommittedForceCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("existing-directory replacement intentionally fails closed on Windows")
+	}
+	hookDir := t.TempDir()
+	parent := t.TempDir()
+	outDir := filepath.Join(parent, "dump")
+	spec := dumpHostResourceSpec()
+	if err := dumpartifact.Write(outDir, redact.ModeStandard, dumpartifact.Result{
+		Entries: []dumpartifact.ResourceDump{{
+			Spec: spec,
+			Records: resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+				"id": "1", "name": "old",
+			}}),
+		}},
+	}); err != nil {
+		t.Fatalf("dump.Write(previous custom artifact) error = %v", err)
+	}
+
+	process := startEngineProcessWith(t, dumpHostTestBinary, []string{
+		"ZSCALERCTL_ENGINE_TEST_HOOK_DIR=" + hookDir,
+	})
+	process.initialize(t)
+	writeDumpProcessRequest(t, process, outDir, true)
+	readDumpProcessStart(t, process)
+	waitForProcessTestPath(t, filepath.Join(hookDir, "after_publish.reached"))
+	releaseProcessTestHook(t, hookDir, "after_publish")
+	waitForProcessTestPath(t, filepath.Join(hookDir, "before_cleanup.reached"))
+	if err := enginewire.WriteClientFrame(process.stdin, enginewire.Cancel{Type: "cancel", ID: 1}); err != nil {
+		t.Fatalf("WriteClientFrame(cancel force cleanup) error = %v", err)
+	}
+
+	// The production host's cancel watchdog is five seconds. The process must
+	// remain alive beyond it while confidential old-artifact contents are still
+	// parked in the private cleanup quarantine.
+	time.Sleep(5*time.Second + 250*time.Millisecond)
+	if err := process.command.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatalf("dump process exited during committed cleanup: %v", err)
+	}
+	quarantined, err := filepath.Glob(filepath.Join(parent, ".zscalerctl-cleanup-*", "root", "manifest.json"))
+	if err != nil || len(quarantined) != 1 {
+		t.Fatalf("quarantined manifests during blocked cleanup = %v, %v; want one", quarantined, err)
+	}
+
+	releaseProcessTestHook(t, hookDir, "before_cleanup")
+	completed, ok := process.readV1(t).(enginewire.Completed[enginewire.DumpSummary])
+	if !ok || completed.Result.ResourcesWritten != 1 || completed.Result.RecordsWritten != 1 {
+		t.Fatalf("terminal after committed force cancel = %#v, want completed dump", completed)
+	}
+	closeAndWaitEngineProcess(t, process)
+}
+
+func dumpHostResourceSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "engine-test-locations",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+			},
+		},
+	}
+}
+
+func writeDumpProcessRequest(t *testing.T, process *engineProcess, outDir string, force bool) {
+	t.Helper()
+	request := enginewire.DumpRequest{
+		Type: "request", ID: 1,
+		Capability: enginewire.CapabilityDumpWrite, Operation: enginewire.OperationDump,
+		Input: enginewire.DumpInput{
+			OutputDir: outDir,
+			Products:  []enginewire.Product{},
+			Resources: []enginewire.ResourceSelector{{
+				Product: enginewire.ProductZIA, Resource: "engine-test-locations",
+			}},
+			Force: force,
+		},
+	}
+	if err := enginewire.WriteClientFrame(process.stdin, request); err != nil {
+		t.Fatalf("WriteClientFrame(dump) error = %v", err)
+	}
+}
+
+func readDumpProcessStart(t *testing.T, process *engineProcess) {
+	t.Helper()
+	if started, ok := process.readV1(t).(enginewire.Started); !ok || started.ID != 1 || started.Sequence != 1 {
+		t.Fatalf("dump started = %#v", started)
+	}
+	if progress, ok := process.readV1(t).(enginewire.Progress); !ok || progress.Current != 1 || progress.Total != 1 {
+		t.Fatalf("dump progress = %#v", progress)
+	}
+}
+
+func waitForProcessTestPath(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("os.Stat(%q) error = %v", path, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %q", path)
+}
+
+func releaseProcessTestHook(t *testing.T, dir, stage string) {
+	t.Helper()
+	path := filepath.Join(dir, stage+".release")
+	if err := os.WriteFile(path, []byte(stage), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v", path, err)
+	}
+}
+
+func closeAndWaitEngineProcess(t *testing.T, process *engineProcess) {
+	t.Helper()
+	if err := process.stdin.Close(); err != nil {
+		t.Fatalf("stdin.Close() error = %v", err)
+	}
+	if code := process.wait(t); code != 0 {
+		t.Fatalf("process exit code = %d, want 0", code)
 	}
 }
 

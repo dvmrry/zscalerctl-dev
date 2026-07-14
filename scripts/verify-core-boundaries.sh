@@ -83,7 +83,7 @@ cli_rendering_re='github\.com/spf13/cobra|github\.com/charmbracelet/lipgloss|int
 raw_runtime_re='github\.com/dvmrry/zscalerctl/internal/(config|credentials|secret|secretref|zscaler|runtime)'
 cli_zscaler_re='^github\.com/dvmrry/zscalerctl/internal/zscaler$'
 enginewire_adapter_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(diff|enginewire|machine|redact|resources)$'
-enginehost_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(enginewire(/adapter)?|machine)$'
+enginehost_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(effectcommit|enginewire(/adapter)?|machine)$'
 enginecmd_allowed_re='^github\.com/dvmrry/zscalerctl/internal/(enginehost|machine|redact|runtime|version)$'
 
 check_package \
@@ -140,7 +140,7 @@ check_package_import_allowlist \
   "./internal/enginehost" \
   "ZSCALERCTL_ENGINEHOST_IMPORTS_FILE" \
   "$enginehost_allowed_re" \
-  "internal/enginehost may orchestrate only the wire contract, its explicit adapter, and machine DTOs; config, runtime, SDK, CLI, UI, and cgo dependencies are forbidden."
+  "internal/enginehost may orchestrate only the operation-scoped effect commit seam, wire contract, its explicit adapter, and machine DTOs; config, runtime, SDK, CLI, UI, and cgo dependencies are forbidden."
 
 check_package_import_allowlist \
   "cmd/zscalerctl-engine" \

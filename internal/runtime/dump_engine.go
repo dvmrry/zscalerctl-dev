@@ -109,12 +109,13 @@ func (c *DumpCollector) dumpPrepared(
 	if err != nil {
 		return machine.DumpResult{}, dumpCollectionBoundaryError(err)
 	}
-	if err := dump.PublishContext(
+	if err := dump.PublishContextWithCatalog(
 		ctx,
 		prepared.outputDir,
 		c.redaction,
 		collected,
 		prepared.force,
+		c.catalog,
 	); err != nil {
 		safeErr := dumpOutputBoundaryError(err)
 		return machine.DumpResult{}, failTypedDumpStream(stream, safeErr)

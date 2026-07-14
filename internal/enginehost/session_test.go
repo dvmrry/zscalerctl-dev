@@ -6,9 +6,12 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/enginewire"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -768,6 +771,364 @@ func TestCoordinatorClassifiesRequestsAroundTerminalWrite(t *testing.T) {
 	after.handleDecoded(decodeResult{data: data}, time.Second)
 	if after.held == nil || after.held.id != 2 || after.heldBusy {
 		t.Errorf("request during terminal write: held=%#v busy=%t", after.held, after.heldBusy)
+	}
+}
+
+func TestCoordinatorFailedEffectReleasesProtectedShutdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		mode             shutdownMode
+		cancelAsked      bool
+		wantAck          error
+		wantCancelAsked  bool
+		wantAbandoned    bool
+		wantOutcomeAlive bool
+	}{
+		{
+			name: "graceful", mode: shutdownGraceful, wantAck: context.Canceled,
+			wantCancelAsked: true, wantOutcomeAlive: true,
+		},
+		{
+			name: "fatal", mode: shutdownFatal, wantAck: errSessionClosing,
+			wantAbandoned: true,
+		},
+		{
+			name: "transport", mode: shutdownTransport, wantAck: errSessionClosing,
+			wantAbandoned: true,
+		},
+		{
+			name: "graceful after cancel", mode: shutdownGraceful, cancelAsked: true,
+			wantAck: context.Canceled, wantCancelAsked: true, wantOutcomeAlive: true,
+		},
+		{
+			name: "fatal after cancel", mode: shutdownFatal, cancelAsked: true,
+			wantAck: errSessionClosing, wantCancelAsked: true, wantAbandoned: true,
+		},
+		{
+			name: "transport after cancel", mode: shutdownTransport, cancelAsked: true,
+			wantAck: errSessionClosing, wantCancelAsked: true, wantAbandoned: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opCtx, opCancel := context.WithCancel(context.Background())
+			messageCtx, messageCancel := context.WithCancel(context.Background())
+			outcomeCtx, outcomeCancel := context.WithCancel(context.Background())
+			active := &activeRequest{
+				opCtx: opCtx, opCancel: opCancel,
+				messageCtx: messageCtx, messageCancel: messageCancel,
+				outcomeCtx: outcomeCtx, outcomeCancel: outcomeCancel,
+				effectCommitting: true,
+				cancelAsked:      tt.cancelAsked,
+			}
+			coordinator := &coordinator{
+				active:   active,
+				shutdown: &shutdownState{mode: tt.mode},
+			}
+			ack := make(chan error, 1)
+			coordinator.handleEffectBoundary(effectBoundary{
+				stage: effectBoundaryFinish, applied: false, ack: ack,
+			}, time.Second)
+			t.Cleanup(func() {
+				if coordinator.shutdown.timer != nil {
+					coordinator.shutdown.timer.Stop()
+				}
+				opCancel()
+				messageCancel()
+				outcomeCancel()
+			})
+
+			if err := <-ack; !errors.Is(err, tt.wantAck) {
+				t.Fatalf("effect finish acknowledgement = %v, want %v", err, tt.wantAck)
+			}
+			if active.effectCommitting || active.effectCommitted {
+				t.Errorf("effect state committing=%t committed=%t, want both false", active.effectCommitting, active.effectCommitted)
+			}
+			if coordinator.shutdown.timer == nil {
+				t.Fatal("shutdown timer = nil, want bounded shutdown restored")
+			}
+			if active.cancelTimer != nil {
+				active.cancelTimer.Stop()
+				t.Fatal("operation cancel timer is armed after shutdown took ownership of the deadline")
+			}
+			if active.cancelAsked != tt.wantCancelAsked {
+				t.Errorf("cancelAsked = %t, want %t", active.cancelAsked, tt.wantCancelAsked)
+			}
+			if active.abandoned != tt.wantAbandoned {
+				t.Errorf("abandoned = %t, want %t", active.abandoned, tt.wantAbandoned)
+			}
+			if opCtx.Err() == nil || messageCtx.Err() == nil {
+				t.Error("operation and message contexts remain live after failed protected effect")
+			}
+			if got := outcomeCtx.Err() == nil; got != tt.wantOutcomeAlive {
+				t.Errorf("outcome context alive = %t, want %t", got, tt.wantOutcomeAlive)
+			}
+		})
+	}
+}
+
+func TestCoordinatorReadyCancelWinsBeforeEffectBegin(t *testing.T) {
+	t.Parallel()
+
+	data, err := enginewire.MarshalClientFrame(enginewire.Cancel{Type: "cancel", ID: 1})
+	if err != nil {
+		t.Fatalf("MarshalClientFrame(cancel) error = %v", err)
+	}
+	opCtx, opCancel := context.WithCancel(context.Background())
+	messageCtx, messageCancel := context.WithCancel(context.Background())
+	outcomeCtx, outcomeCancel := context.WithCancel(context.Background())
+	active := &activeRequest{
+		request: wireRequest{id: 1},
+		opCtx:   opCtx, opCancel: opCancel,
+		messageCtx: messageCtx, messageCancel: messageCancel,
+		outcomeCtx: outcomeCtx, outcomeCancel: outcomeCancel,
+	}
+	decoded := make(chan decodeResult, 1)
+	decoded <- decodeResult{data: data}
+	coordinator := &coordinator{
+		phase:           phaseRunning,
+		active:          active,
+		decodeResults:   decoded,
+		readOutstanding: true,
+	}
+	ack := make(chan error, 1)
+	coordinator.handleEffectBoundary(effectBoundary{
+		stage: effectBoundaryBegin, ack: ack,
+	}, time.Second)
+	t.Cleanup(func() {
+		if active.cancelTimer != nil {
+			active.cancelTimer.Stop()
+		}
+		opCancel()
+		messageCancel()
+		outcomeCancel()
+	})
+
+	if err := <-ack; !errors.Is(err, context.Canceled) {
+		t.Fatalf("effect begin acknowledgement = %v, want context.Canceled", err)
+	}
+	if active.effectCommitting || active.effectCommitted {
+		t.Errorf("effect state committing=%t committed=%t, want both false", active.effectCommitting, active.effectCommitted)
+	}
+	if !active.cancelAsked || active.cancelTimer == nil {
+		t.Errorf("cancellation state asked=%t timer=%v, want queued cancel active", active.cancelAsked, active.cancelTimer)
+	}
+	if opCtx.Err() == nil || messageCtx.Err() == nil {
+		t.Error("ready cancellation did not cancel operation and event contexts")
+	}
+	if outcomeCtx.Err() != nil {
+		t.Error("ready cancellation canceled the outcome channel before canceled terminal")
+	}
+	if coordinator.readOutstanding {
+		t.Error("ready cancellation frame remains outstanding after effect admission")
+	}
+}
+
+func TestCoordinatorTransportFailureCannotAbandonCommittedEffect(t *testing.T) {
+	t.Parallel()
+
+	opCtx, opCancel := context.WithCancel(context.Background())
+	messageCtx, messageCancel := context.WithCancel(context.Background())
+	outcomeCtx, outcomeCancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	active := &activeRequest{
+		opCtx: opCtx, opCancel: opCancel,
+		messageCtx: messageCtx, messageCancel: messageCancel,
+		outcomeCtx: outcomeCtx, outcomeCancel: outcomeCancel,
+		workerStarted:   true,
+		effectCommitted: true,
+		done:            done,
+	}
+	coordinator := &coordinator{
+		active:      active,
+		closeInput:  func() {},
+		closeOutput: func() {},
+	}
+	coordinator.beginTransport(ErrTransport, time.Second)
+	t.Cleanup(func() {
+		opCancel()
+		messageCancel()
+		outcomeCancel()
+		close(done)
+	})
+
+	if coordinator.shutdown == nil || coordinator.shutdown.mode != shutdownTransport {
+		t.Fatalf("shutdown = %#v, want transport shutdown", coordinator.shutdown)
+	}
+	if coordinator.shutdown.timer != nil {
+		coordinator.shutdown.timer.Stop()
+		t.Fatal("transport shutdown timer is armed during committed effect cleanup")
+	}
+	if active.abandoned {
+		t.Fatal("committed effect worker was abandoned after transport failure")
+	}
+	if opCtx.Err() != nil || outcomeCtx.Err() != nil {
+		t.Fatal("committed effect operation or outcome context was canceled")
+	}
+	if messageCtx.Err() == nil {
+		t.Fatal("provisional event context remains live after output transport failure")
+	}
+
+	coordinator.handleWorkerMessage(operationMessage{outcome: &operationOutcome{}}, time.Second)
+	if !active.committed {
+		t.Fatal("post-commit outcome was not drained after output transport failure")
+	}
+	active.workerDone = true
+	if !coordinator.shouldFinish() {
+		t.Fatal("transport shutdown does not finish after committed worker exits")
+	}
+}
+
+type blockAtWriter struct {
+	buffer  bytes.Buffer
+	blockAt int32
+	writes  atomic.Int32
+	closed  atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockAtWriter(blockAt int32) *blockAtWriter {
+	return &blockAtWriter{
+		blockAt: blockAt,
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (w *blockAtWriter) Write(data []byte) (int, error) {
+	if w.writes.Add(1) == w.blockAt {
+		close(w.entered)
+		<-w.release
+		return 0, io.ErrClosedPipe
+	}
+	return w.buffer.Write(data)
+}
+
+func (w *blockAtWriter) Close() error {
+	if w.closed.Add(1) == 1 {
+		w.once.Do(func() { close(w.release) })
+	}
+	return nil
+}
+
+func TestCommittedEffectCleanupRestoresShutdownDeadline(t *testing.T) {
+	tests := []struct {
+		name  string
+		fatal bool
+	}{
+		{name: "graceful"},
+		{name: "fatal", fatal: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			effectEntered := make(chan struct{})
+			effectRelease := make(chan struct{})
+			cleanupDone := make(chan struct{})
+			spec := hostListSpec()
+			engine := &fakeEngine{
+				manifest: machine.EngineManifestFromCatalog(resources.ResourceCatalog{spec}),
+				dump: func(ctx context.Context, _ machine.DumpRequest, sink machine.EventSink) (machine.DumpResult, error) {
+					if err := sink(machine.Event{Kind: machine.EventStarted, Total: 0}); err != nil {
+						return machine.DumpResult{}, err
+					}
+					if err := effectcommit.Run(ctx, func() error {
+						close(effectEntered)
+						<-effectRelease
+						return nil
+					}); err != nil {
+						return machine.DumpResult{}, err
+					}
+					close(cleanupDone)
+					result := machine.NewDumpResult(0, 0, "standard", []machine.DumpResourceError{})
+					if err := sink(machine.Event{Kind: machine.EventCompleted}); err != nil {
+						return result, err
+					}
+					return result, nil
+				},
+			}
+			host, err := New(engine, "test")
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			host.joinTimeout = 30 * time.Millisecond
+			inputReader, inputWriter := io.Pipe()
+			writer := newBlockAtWriter(4)
+			result := make(chan error, 1)
+			go func() {
+				result <- host.Serve(context.Background(), Streams{
+					Input: inputReader, Output: writer,
+					CloseInput: inputReader.Close, CloseOutput: writer.Close,
+				})
+			}()
+			t.Cleanup(func() {
+				_ = inputWriter.Close()
+				_ = writer.Close()
+			})
+
+			if err := enginewire.WriteBootstrapClientFrame(inputWriter, enginewire.Initialize{
+				Type: "initialize", Protocol: enginewire.Protocol, Version: enginewire.V1Version,
+			}); err != nil {
+				t.Fatalf("WriteBootstrapClientFrame(initialize) error = %v", err)
+			}
+			if err := enginewire.WriteClientFrame(inputWriter, enginewire.DumpRequest{
+				Type: "request", ID: 1,
+				Capability: enginewire.CapabilityDumpWrite, Operation: enginewire.OperationDump,
+				Input: enginewire.DumpInput{
+					OutputDir: "out", Products: []enginewire.Product{}, Resources: []enginewire.ResourceSelector{},
+				},
+			}); err != nil {
+				t.Fatalf("WriteClientFrame(dump) error = %v", err)
+			}
+			select {
+			case <-effectEntered:
+			case <-time.After(time.Second):
+				t.Fatal("effect did not enter")
+			}
+			if tt.fatal {
+				if _, err := io.WriteString(inputWriter, "{}\n"); err != nil {
+					t.Fatalf("WriteString(malformed frame) error = %v", err)
+				}
+				select {
+				case <-writer.entered:
+				case <-time.After(time.Second):
+					t.Fatal("fatal writer did not block")
+				}
+			} else if err := inputWriter.Close(); err != nil {
+				t.Fatalf("inputWriter.Close() error = %v", err)
+			}
+			close(effectRelease)
+			select {
+			case <-cleanupDone:
+			case <-time.After(time.Second):
+				t.Fatal("committed effect cleanup did not finish")
+			}
+			if !tt.fatal {
+				select {
+				case <-writer.entered:
+				case <-time.After(time.Second):
+					t.Fatal("terminal writer did not block")
+				}
+			}
+			select {
+			case err := <-result:
+				if !errors.Is(err, ErrJoinTimeout) {
+					t.Fatalf("Host.Serve() error = %v, want ErrJoinTimeout", err)
+				}
+				if tt.fatal && !errors.Is(err, ErrProtocol) {
+					t.Fatalf("Host.Serve() error = %v, want ErrProtocol", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Host.Serve() did not restore the post-cleanup shutdown deadline")
+			}
+			if writer.closed.Load() != 1 {
+				t.Errorf("blocked writer close calls = %d, want 1", writer.closed.Load())
+			}
+		})
 	}
 }
 

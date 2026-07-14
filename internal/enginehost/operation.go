@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/enginewire"
 	"github.com/dvmrry/zscalerctl/internal/enginewire/adapter"
 	"github.com/dvmrry/zscalerctl/internal/machine"
@@ -82,7 +83,21 @@ type operationData struct {
 
 type operationMessage struct {
 	provisional provisionalFrame
+	effect      *effectBoundary
 	outcome     *operationOutcome
+}
+
+type effectBoundaryStage uint8
+
+const (
+	effectBoundaryBegin effectBoundaryStage = iota + 1
+	effectBoundaryFinish
+)
+
+type effectBoundary struct {
+	stage   effectBoundaryStage
+	applied bool
+	ack     chan error
 }
 
 type operationOutcome struct {
@@ -106,6 +121,9 @@ func runOperation(
 			}})
 		}
 	}()
+	opCtx = effectcommit.WithRunner(opCtx, func(effect func() error) error {
+		return runEffectBoundary(sessionCtx, messages, effect)
+	})
 	if request.unavailable != "" {
 		outcome := operationOutcome{conversion: adapter.ErrorConversion{
 			Failure: enginewire.NonCredentialFailure{Kind: request.unavailable},
@@ -138,6 +156,55 @@ func runOperation(
 	}
 
 	sendOperationOutcome(sessionCtx, messages, outcome)
+}
+
+func runEffectBoundary(
+	sessionCtx context.Context,
+	messages chan<- operationMessage,
+	effect func() error,
+) error {
+	if err := sendEffectBoundary(sessionCtx, messages, effectBoundaryBegin, false); err != nil {
+		return err
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			// A panic makes the effect result indeterminate. Commit cancellation
+			// conservatively before the outer operation recovery converts it.
+			_ = sendEffectBoundary(sessionCtx, messages, effectBoundaryFinish, true)
+		}
+	}()
+	effectErr := effect()
+	finishErr := sendEffectBoundary(sessionCtx, messages, effectBoundaryFinish, effectErr == nil)
+	finished = true
+	if finishErr != nil {
+		if effectErr != nil {
+			return errors.Join(effectErr, finishErr)
+		}
+		return finishErr
+	}
+	return effectErr
+}
+
+func sendEffectBoundary(
+	sessionCtx context.Context,
+	messages chan<- operationMessage,
+	stage effectBoundaryStage,
+	applied bool,
+) error {
+	ack := make(chan error, 1)
+	boundary := &effectBoundary{stage: stage, applied: applied, ack: ack}
+	select {
+	case messages <- operationMessage{effect: boundary}:
+	case <-sessionCtx.Done():
+		return sessionCtx.Err()
+	}
+	select {
+	case err := <-ack:
+		return err
+	case <-sessionCtx.Done():
+		return sessionCtx.Err()
+	}
 }
 
 func sendOperationOutcome(

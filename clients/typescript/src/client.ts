@@ -75,10 +75,13 @@ export interface EngineTransport {
 }
 
 export interface EngineClientOptions {
+  readonly startupTimeoutMs?: number;
+  readonly signal?: AbortSignal;
   readonly cancelTimeoutMs?: number;
   readonly closeTimeoutMs?: number;
 }
 
+const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 7_000;
 const DEFAULT_CLOSE_TIMEOUT_MS = 8_000;
 
@@ -310,6 +313,53 @@ function boundedClientTimeout(value: unknown, fallback: number): number {
   return value;
 }
 
+function checkedAbortSignal(value: unknown): AbortSignal | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" ||
+      typeof (value as AbortSignal).aborted !== "boolean" ||
+      typeof (value as AbortSignal).addEventListener !== "function" ||
+      typeof (value as AbortSignal).removeEventListener !== "function") {
+    throw new EngineClientError("request", "engine client signal is invalid");
+  }
+  return value as AbortSignal;
+}
+
+class StartupGate {
+  private readonly stopped: Promise<never>;
+  private readonly signal?: AbortSignal;
+  private readonly abortListener?: () => void;
+  private readonly timer: ReturnType<typeof setTimeout>;
+
+  constructor(timeoutMs: number, signal?: AbortSignal) {
+    this.signal = signal;
+    let rejectStopped!: (error: EngineClientError) => void;
+    this.stopped = new Promise((_, reject) => {
+      rejectStopped = reject;
+    });
+    this.timer = setTimeout(() => {
+      rejectStopped(new EngineClientError("transport", "engine bootstrap timed out"));
+    }, timeoutMs);
+    if (signal !== undefined) {
+      this.abortListener = (): void => {
+        rejectStopped(new EngineCanceledError());
+      };
+      signal.addEventListener("abort", this.abortListener, { once: true });
+      if (signal.aborted) this.abortListener();
+    }
+  }
+
+  async wait<T>(operation: Promise<T>): Promise<T> {
+    return await Promise.race([operation, this.stopped]);
+  }
+
+  close(): void {
+    clearTimeout(this.timer);
+    if (this.signal !== undefined && this.abortListener !== undefined) {
+      this.signal.removeEventListener("abort", this.abortListener);
+    }
+  }
+}
+
 function warningEqual(left: DumpFailure, right: DumpFailure): boolean {
   return left.product === right.product && left.resource === right.resource &&
     left.phase === right.phase && left.kind === right.kind;
@@ -384,14 +434,21 @@ export class EngineClient {
         typeof transport.abort !== "function") {
       throw new EngineClientError("transport", "invalid engine transport");
     }
+    let startupGate: StartupGate | undefined;
     try {
       if (options === null || typeof options !== "object") {
         throw new EngineClientError("request", "engine client options are invalid");
       }
+      const startupTimeoutMs = boundedClientTimeout(options.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS);
+      const signal = checkedAbortSignal(options.signal);
+      if (signal?.aborted === true) {
+        throw new EngineCanceledError();
+      }
       const cancelTimeoutMs = boundedClientTimeout(options.cancelTimeoutMs, DEFAULT_CANCEL_TIMEOUT_MS);
       const closeTimeoutMs = boundedClientTimeout(options.closeTimeoutMs, DEFAULT_CLOSE_TIMEOUT_MS);
+      startupGate = new StartupGate(startupTimeoutMs, signal);
       const reader = new NdjsonStreamReader(transport.output);
-      const helloData = await reader.readFrame(BOOTSTRAP_FRAME_BYTES);
+      const helloData = await startupGate.wait(reader.readFrame(BOOTSTRAP_FRAME_BYTES));
       if (helloData === null) {
         throw new EngineClientError("transport", "engine output ended before hello");
       }
@@ -400,12 +457,12 @@ export class EngineClient {
         throw new EngineClientError("protocol", "engine rejected bootstrap before negotiation");
       }
       if (!hello.versions.includes(V1_VERSION)) {
-        await transport.write(line(encodeBootstrapClientFrame({
+        await startupGate.wait(transport.write(line(encodeBootstrapClientFrame({
           type: "reject",
           protocol: PROTOCOL,
           reason: "unsupported_protocol",
-        })));
-        const rejectionData = await reader.readFrame(BOOTSTRAP_FRAME_BYTES);
+        }))));
+        const rejectionData = await startupGate.wait(reader.readFrame(BOOTSTRAP_FRAME_BYTES));
         if (rejectionData === null) {
           throw new EngineClientError("transport", "engine output ended before protocol rejection");
         }
@@ -421,8 +478,8 @@ export class EngineClient {
         protocol: PROTOCOL,
         version: V1_VERSION,
       };
-      await transport.write(line(encodeBootstrapClientFrame(initialize)));
-      const readyData = await reader.readFrame(V1_FRAME_BYTES);
+      await startupGate.wait(transport.write(line(encodeBootstrapClientFrame(initialize))));
+      const readyData = await startupGate.wait(reader.readFrame(V1_FRAME_BYTES));
       if (readyData === null) {
         throw new EngineClientError("transport", "engine output ended before ready");
       }
@@ -447,6 +504,8 @@ export class EngineClient {
         throw new EngineClientError("protocol", "engine bootstrap output violated the protocol");
       }
       throw new EngineClientError("transport", "engine bootstrap transport failed");
+    } finally {
+      startupGate?.close();
     }
   }
 
@@ -1067,6 +1126,12 @@ export class EngineClient {
       return;
     }
     void this.sendBytes(encoded).catch(() => undefined);
+    // Protocol v1 has no wire-visible filesystem commit marker. For dump, a
+    // late cancel may race after atomic publication while the host is clearing
+    // confidential replacement data. The official host bounds pre-commit
+    // cancellation itself; the client must not SIGKILL an indeterminate
+    // post-commit operation merely because the ordinary watchdog elapsed.
+    if (state.descriptor.capability === "dump.write") return;
     state.cancelTimer = setTimeout(() => {
       this.failSession(new EngineClientError("transport", "engine did not terminate a canceled request"));
     }, this.cancelTimeoutMs);
@@ -1116,6 +1181,10 @@ export class EngineClient {
   }
 
   private async finishClose(): Promise<void> {
+    if (this.active?.descriptor.capability === "dump.write") {
+      await this.finishCloseWork();
+      return;
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<void>((_resolve, reject) => {
       timer = setTimeout(() => {

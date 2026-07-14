@@ -423,6 +423,9 @@ func TestCompareAllowPartialDoesNotTreatFailedCollectionAsEmpty(t *testing.T) {
 	if !strings.Contains(resource.Note, "collection failed in old dump") {
 		t.Errorf("Compare(failed versus successful collection) note = %q, want old failure context", resource.Note)
 	}
+	if resource.WasCompared() {
+		t.Error("Compare(failed versus successful collection) WasCompared() = true, want false")
+	}
 }
 
 func TestCompareRejectsMissingRedactionReport(t *testing.T) {

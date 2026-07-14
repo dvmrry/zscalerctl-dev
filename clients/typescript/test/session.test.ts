@@ -131,6 +131,11 @@ class ReactiveTransport implements EngineTransport {
     this.queue.push(data.slice(second));
   }
 
+  completeSession(frame: ServerFrame): void {
+    this.send(frame);
+    this.finish({ code: 0, signal: null });
+  }
+
   private sendBootstrap(frame: Parameters<typeof encodeBootstrapServerFrame>[0]): void {
     const body = encodeBootstrapServerFrame(frame);
     const data = new Uint8Array(body.length + 1);
@@ -374,6 +379,45 @@ test("success after a late abort remains successful", async () => {
   await client.close();
 });
 
+test("dump cancellation and close watchdogs cannot kill indeterminate committed cleanup", async () => {
+  const transport = new ReactiveTransport((current, frame) => {
+    if (frame.type === "cancel") return;
+    current.send(started(frame));
+    current.send({
+      type: "progress", id: frame.id, seq: 2, phase: "resource_started",
+      current: 1, total: 1, product: "zia", resource: "locations",
+    });
+    setTimeout(() => current.completeSession({
+      type: "completed", id: frame.id, seq: 3,
+      result: {
+        kind: "dump_summary", records_written: 1, resources_written: 1,
+        warning_count: 0, partial: false, redaction: "standard", failures: [],
+        stream_items_emitted: 0,
+      },
+    }), 60);
+  }, { hangOnClose: true });
+  const client = await EngineClient.connect(transport, { cancelTimeoutMs: 25, closeTimeoutMs: 25 });
+  const controller = new AbortController();
+  let closePromise: Promise<void> | undefined;
+  const result = await client.dump(
+    {
+      output_dir: "/tmp/dump", products: [], resources: [],
+      continue_on_error: false, force: false,
+    },
+    { signal: controller.signal, onEvent: (event) => {
+      if (event.type === "progress") {
+        controller.abort();
+        closePromise = client.close();
+      }
+    } },
+  );
+  assert.equal(result.result.kind, "dump_summary");
+  assert.equal(transport.aborted, false);
+  assert.notEqual(closePromise, undefined);
+  await closePromise;
+  assert.equal(transport.aborted, false);
+});
+
 test("a fragment digest mismatch kills the session", async () => {
   const payload = encoder.encode('{"product":"zia","resource":"locations","record":{}}');
   const transport = new ReactiveTransport((current, frame) => {
@@ -432,14 +476,14 @@ test("event values are immutable before consumer callbacks run", async () => {
   await client.close();
 });
 
-test("accepts selected diff progress for a resource empty on both sides", async () => {
+test("accepts selected diff progress for a resource skipped on one partial side", async () => {
   const transport = new ReactiveTransport((current, frame) => {
     if (frame.type === "cancel") return;
     current.send(started(frame));
     current.send({ type: "progress", id: frame.id, seq: 2, phase: "resource_started", current: 1, total: 1, product: "zia", resource: "locations" });
     current.send({ type: "completed", id: frame.id, seq: 3, result: {
       kind: "diff_summary", schema: "zscalerctl.diff.v1",
-      old: { side: "old", manifest_schema: "zscalerctl.dump.v1", redaction: "standard", status: "complete", partial: false },
+      old: { side: "old", manifest_schema: "zscalerctl.dump.manifest.v2", redaction: "standard", status: "partial", partial: true },
       new: { side: "new", manifest_schema: "zscalerctl.dump.v1", redaction: "standard", status: "complete", partial: false },
       summary: { resources_compared: 0, resources_with_drift: 0, records_added: 0, records_removed: 0, records_changed: 0 },
       has_drift: false, stream_items_emitted: 0,
@@ -448,7 +492,7 @@ test("accepts selected diff progress for a resource empty on both sides", async 
   const client = await EngineClient.connect(transport);
   const result = await client.diff({
     old_dir: "/tmp/old", new_dir: "/tmp/new", products: [], resources: [],
-    ignore_operational: false, allow_partial: false,
+    ignore_operational: false, allow_partial: true,
   });
   assert.equal(result.progress.length, 1);
   assert.equal(result.result.summary.resources_compared, 0);

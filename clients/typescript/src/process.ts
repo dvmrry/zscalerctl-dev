@@ -4,8 +4,6 @@ import { isAbsolute } from "node:path";
 import { EngineClient, EngineClientError, type EngineTransport, type EngineTransportExit } from "./client.ts";
 import type { Redaction } from "./types.ts";
 
-const MAX_STDERR_BYTES = 64 * 1024;
-
 export interface EngineProcessOptions {
   // Requiring an absolute path avoids silently selecting a different binary
   // through a consumer-controlled PATH.
@@ -15,6 +13,8 @@ export interface EngineProcessOptions {
   readonly timeout?: string;
   readonly redaction?: Redaction;
   readonly noCache?: boolean;
+  readonly startupTimeoutMs?: number;
+  readonly signal?: AbortSignal;
   readonly cancelTimeoutMs?: number;
   readonly closeTimeoutMs?: number;
   readonly cwd?: string;
@@ -27,25 +27,24 @@ class NodeEngineTransport implements EngineTransport {
 
   private readonly child: ChildProcessWithoutNullStreams;
   private aborted = false;
-  private stderrBytes = 0;
 
   constructor(child: ChildProcessWithoutNullStreams) {
     this.child = child;
     this.output = this.readOutput();
     this.completion = new Promise((resolve) => {
-      child.once("error", () => resolve({ code: null, signal: null }));
+      // ChildProcess emits close after either exit or a spawn error and only
+      // after its stdio streams close. Keep an error listener so asynchronous
+      // spawn failures are handled, but do not resolve early: bootstrap
+      // rejection promises that the direct child lifecycle is finished.
+      child.once("error", () => undefined);
       child.once("close", (code, signal) => resolve({ code, signal }));
     });
-    // Drain stderr without exposing its contents. The candidate host is silent
-    // by default; the bound prevents a compromised child from using this side
-    // channel as an unbounded memory or pipe-pressure sink.
-    child.stderr.on("data", (chunk: Uint8Array) => {
-      this.stderrBytes += chunk.byteLength;
-      if (this.stderrBytes > MAX_STDERR_BYTES) {
-        this.abort();
-      }
-    });
-    child.stderr.on("error", () => this.abort());
+    // Stderr is never retained or exposed, so draining it has constant memory
+    // use and avoids pipe pressure regardless of volume. Stderr is not a
+    // protocol channel and must never become a blind process-kill trigger: a
+    // dump may already be committed while confidential cleanup is still live.
+    child.stderr.on("error", () => undefined);
+    child.stderr.resume();
     child.stdin.on("error", () => this.abort());
   }
 
@@ -166,11 +165,14 @@ export async function spawnEngine(options: EngineProcessOptions): Promise<Engine
   const transport = new NodeEngineTransport(child);
   try {
     return await EngineClient.connect(transport, {
+      startupTimeoutMs: options.startupTimeoutMs,
+      signal: options.signal,
       cancelTimeoutMs: options.cancelTimeoutMs,
       closeTimeoutMs: options.closeTimeoutMs,
     });
   } catch (error) {
     transport.abort();
+    await transport.completion;
     throw error;
   }
 }

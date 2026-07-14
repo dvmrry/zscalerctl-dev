@@ -220,11 +220,18 @@ type ResourceDiff struct {
 	Removed  []RecordRef    `json:"removed"`
 	Changed  []RecordChange `json:"changed"`
 	Note     string         `json:"note,omitempty"`
+
+	comparisonSkipped bool
 }
 
 func (r ResourceDiff) HasDrift() bool {
 	return len(r.Added) > 0 || len(r.Removed) > 0 || len(r.Changed) > 0
 }
+
+// WasCompared reports whether both dump sides supplied records for this
+// resource. Partial-dump reports retain a note-only entry when collection
+// failed on either side, but that entry is not a completed comparison.
+func (r ResourceDiff) WasCompared() bool { return !r.comparisonSkipped }
 
 type Identity struct {
 	Mode  string `json:"mode"`
@@ -367,6 +374,7 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 				return Report{}, err
 			}
 			resourceDiff.Note = failedCollectionNote(oldState, newState)
+			resourceDiff.comparisonSkipped = true
 			report.Resources = append(report.Resources, resourceDiff)
 			continue
 		}

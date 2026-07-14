@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/version"
@@ -149,7 +150,21 @@ func WriteContext(ctx context.Context, dir string, mode redact.Mode, result Resu
 // boundary. When force is true, only an empty directory or a structurally valid
 // zscalerctl dump may be replaced.
 func PublishContext(ctx context.Context, dir string, mode redact.Mode, result Result, force bool) error {
-	return publishContextWithHooks(ctx, dir, mode, result, force, publishContextHooks{})
+	return PublishContextWithCatalog(ctx, dir, mode, result, force, resources.Catalog())
+}
+
+// PublishContextWithCatalog publishes a sanitized dump while using catalog to
+// validate any existing artifact admitted for forced replacement. A nil
+// catalog selects the built-in catalog.
+func PublishContextWithCatalog(
+	ctx context.Context,
+	dir string,
+	mode redact.Mode,
+	result Result,
+	force bool,
+	catalog resources.ResourceCatalog,
+) error {
+	return publishContextWithCatalogAndHooks(ctx, dir, mode, result, force, catalog, publishContextHooks{})
 }
 
 type publishContextHooks struct {
@@ -165,7 +180,20 @@ func publishContextWithHooks(
 	force bool,
 	hooks publishContextHooks,
 ) error {
+	return publishContextWithCatalogAndHooks(ctx, dir, mode, result, force, resources.Catalog(), hooks)
+}
+
+func publishContextWithCatalogAndHooks(
+	ctx context.Context,
+	dir string,
+	mode redact.Mode,
+	result Result,
+	force bool,
+	catalog resources.ResourceCatalog,
+	hooks publishContextHooks,
+) error {
 	ctx = contextOrBackground(ctx)
+	catalog = snapshotPublicationCatalog(catalog)
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
@@ -239,13 +267,13 @@ func publishContextWithHooks(
 		return err
 	}
 	if force {
-		if err := publishReplacingDirectoryContext(ctx, stagingDir, dir, true); err != nil {
+		if err := publishReplacingDirectoryContext(ctx, stagingDir, dir, true, catalog); err != nil {
 			return err
 		}
 	} else {
-		err := publishDirectoryNoReplace(stagingDir, dir)
+		err := publishDirectoryNoReplace(ctx, stagingDir, dir)
 		if errors.Is(err, ErrUnsafeOverwrite) {
-			err = publishReplacingDirectoryContext(ctx, stagingDir, dir, false)
+			err = publishReplacingDirectoryContext(ctx, stagingDir, dir, false, catalog)
 		}
 		if err != nil {
 			return err
@@ -253,6 +281,16 @@ func publishContextWithHooks(
 	}
 	published = true
 	return nil
+}
+
+func snapshotPublicationCatalog(catalog resources.ResourceCatalog) resources.ResourceCatalog {
+	if catalog == nil {
+		catalog = resources.Catalog()
+	}
+	// Forced-replacement validation consumes only each spec's scalar identity
+	// and shape. Copying the slice snapshots those values for the whole publish
+	// operation even if the caller later reuses or mutates its catalog slice.
+	return append(resources.ResourceCatalog(nil), catalog...)
 }
 
 func writeArtifactContext(ctx context.Context, dir string, mode redact.Mode, result Result) error {
@@ -476,12 +514,18 @@ func preflightProcessStagingCleanup(path string, original os.FileInfo) error {
 	})
 }
 
-func publishDirectoryNoReplace(stagingDir, destination string) error {
-	if err := renameNoReplace(stagingDir, destination); err != nil {
+func publishDirectoryNoReplace(ctx context.Context, stagingDir, destination string) error {
+	err := effectcommit.Run(ctx, func() error {
+		return renameNoReplace(stagingDir, destination)
+	})
+	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("%w: %s", ErrUnsafeOverwrite, destination)
 		}
 		return fmt.Errorf("publish dump directory: %w", err)
+	}
+	if err := runPublicationTestHook("after_publish"); err != nil {
+		return err
 	}
 	return nil
 }

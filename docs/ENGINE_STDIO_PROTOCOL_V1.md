@@ -241,7 +241,18 @@ It is idempotent. An unknown, inactive, or outcome-committed ID is ignored.
 Cancellation wins only when the coordinator linearizes it before an outcome
 commit. A success commit occurs after whole-response serialization preflight
 and before the first semantic item; after it, cancellation is ignored and the
-precommitted success stream wins. There is no separate acknowledgment.
+precommitted success stream wins.
+
+`dump.write` also has an earlier internal effect boundary around the atomic
+directory publication attempt. Cancellation before that boundary prevents the
+attempt. Cancellation selected while the atomic operation is in flight is
+deferred: a failed attempt releases it, while a successful attempt commits the
+local effect and cancellation can no longer replace success. The request and
+process stay alive through forced-replacement quarantine cleanup, even if
+normal cancel or shutdown watchdog durations elapse. A broken output transport
+after this boundary is an indeterminate delivery failure, not a canceled
+filesystem operation. Protocol v1 has no separate wire acknowledgment for
+either commit boundary.
 
 ## Wire lifecycle
 
@@ -268,7 +279,9 @@ internal engine `started`/terminal events, converts only safe non-terminal
 events, reconciles the typed method's returned result/error with the internal
 terminal, and commits exactly one wire outcome. Runtime-construction errors
 before an internal stream become wire `failed` outcomes. Outcome commit is the
-cancellation linearization point. A request remains active for busy rejection
+ordinary cancellation linearization point. Dump's internal effect commit can
+make cancellation non-winning earlier, while the request remains active through
+cleanup and `terminal_written`. A request remains active for busy rejection
 purposes through `terminal_written`.
 
 The decoder stops granting new reads once a terminal is queued. One read permit
@@ -352,7 +365,12 @@ sizing, logging, or writer submission.
 
 Diff item order follows the admitted report: one `diff_resource`, then added,
 removed, and one item per changed field. Old/new dump references use fixed
-`side: old|new` labels and omit caller paths.
+`side: old|new` labels and omit caller paths. Protocol v1 emits a
+`diff_resource` only when both sides supplied records and the resource was
+actually compared. When `allow_partial` admits a selected resource whose
+collection failed, the in-process report retains its explanatory note while
+the v1 stream omits that note-only entry so `resources_compared` remains
+literal and reconcilable.
 
 The `diff_resource.identity` discriminant controls its following items.
 `get_key` requires `field`; `singleton` and `content_hash` forbid it. Added and
@@ -417,7 +435,8 @@ dump failures exactly match warning frames in order and content.
 On a successful dump, every selected resource is accounted for exactly once:
 `resources_written + warning_count` equals the final progress total. Diff
 progress likewise counts selected resources, but a resource empty on both
-sides is omitted from the report. Consequently, successful
+sides or skipped because partial collection failed is omitted from the wire
+report. Consequently, successful
 `resources_compared` may be less than, but never greater than, the final diff
 progress total.
 

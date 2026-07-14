@@ -146,15 +146,25 @@ type activeRequest struct {
 	messages      chan operationMessage
 	done          chan struct{}
 
-	workerStarted bool
-	workerDone    bool
-	cancelAsked   bool
-	cancelTimer   *time.Timer
-	committed     bool
-	success       bool
-	abandoned     bool
-	cursor        *successCursor
-	terminalWrote bool
+	workerStarted    bool
+	workerDone       bool
+	cancelAsked      bool
+	cancelTimer      *time.Timer
+	effectCommitting bool
+	effectCommitted  bool
+	committed        bool
+	success          bool
+	abandoned        bool
+	cursor           *successCursor
+	terminalWrote    bool
+}
+
+func (r *activeRequest) effectProtected() bool {
+	return r != nil && (r.effectCommitting || r.effectCommitted)
+}
+
+func (r *activeRequest) effectInFlight() bool {
+	return r != nil && !r.workerDone && r.effectProtected()
 }
 
 type coordinator struct {
@@ -264,7 +274,13 @@ func (c *coordinator) run(externalCtx context.Context, joinTimeout time.Duration
 			if !c.active.workerDone {
 				workerDone = c.active.done
 			}
-			if !c.active.abandoned && c.pending == nil && !c.active.committed {
+			canReceive := c.pending == nil || c.active.effectCommitting
+			if c.shutdown != nil &&
+				(c.shutdown.mode == shutdownFatal || c.shutdown.mode == shutdownTransport) &&
+				c.active.effectCommitted {
+				canReceive = true
+			}
+			if !c.active.abandoned && canReceive && !c.active.committed {
 				workerMessages = c.active.messages
 			}
 		}
@@ -310,7 +326,7 @@ func (c *coordinator) run(externalCtx context.Context, joinTimeout time.Duration
 			c.handleWorkerMessage(message, joinTimeout)
 
 		case <-workerDone:
-			c.markWorkerDone()
+			c.markWorkerDone(joinTimeout)
 			c.maybeReleaseActive()
 
 		case <-decoderDone:
@@ -326,9 +342,13 @@ func (c *coordinator) run(externalCtx context.Context, joinTimeout time.Duration
 			c.beginGraceful(externalCtx.Err(), joinTimeout)
 
 		case <-operationCancelTimer:
-			c.handleOperationCancelTimeout()
+			c.handleOperationCancelTimeout(joinTimeout)
 
 		case <-shutdownTimer:
+			if c.active != nil && c.active.effectInFlight() {
+				c.shutdown.timer = nil
+				continue
+			}
 			c.shutdown.timedOut = true
 			c.closeInput()
 			c.closeOutput()
@@ -537,13 +557,24 @@ func (c *coordinator) terminalQueued() bool {
 }
 
 func (c *coordinator) handleCancel(id enginewire.SafeInteger, joinTimeout time.Duration) {
-	if c.active == nil || c.active.request.id != id || c.active.committed || c.active.abandoned {
+	if c.active == nil || c.active.request.id != id || c.active.committed ||
+		c.active.effectCommitted || c.active.abandoned {
 		return
 	}
 	if c.active.cancelAsked {
 		return
 	}
 	c.active.cancelAsked = true
+	if c.active.effectCommitting {
+		return
+	}
+	c.cancelActiveOperation(joinTimeout)
+}
+
+func (c *coordinator) cancelActiveOperation(joinTimeout time.Duration) {
+	if c.active == nil || c.active.workerDone || c.active.cancelTimer != nil {
+		return
+	}
 	c.active.opCancel()
 	c.active.messageCancel()
 	c.active.cancelTimer = time.NewTimer(joinTimeout)
@@ -564,7 +595,7 @@ func (c *coordinator) launchWorker() {
 	}()
 }
 
-func (c *coordinator) markWorkerDone() {
+func (c *coordinator) markWorkerDone(joinTimeout time.Duration) {
 	if c.active == nil {
 		return
 	}
@@ -573,15 +604,18 @@ func (c *coordinator) markWorkerDone() {
 		c.active.cancelTimer.Stop()
 		c.active.cancelTimer = nil
 	}
+	if c.shutdown != nil && c.shutdown.timer == nil && !c.shutdown.timedOut {
+		c.shutdown.timer = time.NewTimer(joinTimeout)
+	}
 }
 
-func (c *coordinator) handleOperationCancelTimeout() {
-	if c.active == nil || c.active.workerDone || !c.active.cancelAsked {
+func (c *coordinator) handleOperationCancelTimeout(joinTimeout time.Duration) {
+	if c.active == nil || c.active.workerDone || !c.active.cancelAsked || c.active.effectProtected() {
 		return
 	}
 	select {
 	case <-c.active.done:
-		c.markWorkerDone()
+		c.markWorkerDone(joinTimeout)
 		c.maybeReleaseActive()
 		return
 	default:
@@ -601,8 +635,19 @@ func (c *coordinator) handleOperationCancelTimeout() {
 }
 
 func (c *coordinator) handleWorkerMessage(message operationMessage, joinTimeout time.Duration) {
+	if message.effect != nil {
+		c.handleEffectBoundary(*message.effect, joinTimeout)
+		return
+	}
 	if c.active == nil || c.active.abandoned || c.active.committed {
 		c.beginFatal(fmt.Errorf("%w: unexpected worker message", ErrInternal), enginewire.ProtocolErrorInternal, joinTimeout)
+		return
+	}
+	if c.shutdown != nil && c.active.effectProtected() &&
+		(c.shutdown.mode == shutdownFatal || c.shutdown.mode == shutdownTransport) {
+		if message.outcome != nil {
+			c.active.committed = true
+		}
 		return
 	}
 	if message.provisional != nil {
@@ -650,6 +695,102 @@ func (c *coordinator) handleWorkerMessage(message operationMessage, joinTimeout 
 		return
 	}
 	c.queueFailure(outcome.conversion.Failure, joinTimeout)
+}
+
+func (c *coordinator) handleEffectBoundary(boundary effectBoundary, joinTimeout time.Duration) {
+	ack := func(err error) {
+		select {
+		case boundary.ack <- err:
+		default:
+		}
+	}
+	if c.active == nil || c.active.abandoned || c.active.committed || boundary.ack == nil {
+		ack(errSessionClosing)
+		return
+	}
+	switch boundary.stage {
+	case effectBoundaryBegin:
+		c.handleReadyInputBeforeEffect(joinTimeout)
+		if c.active == nil || c.active.abandoned || c.active.committed {
+			ack(errSessionClosing)
+			return
+		}
+		if c.active.effectCommitting || c.active.effectCommitted {
+			ack(fmt.Errorf("%w: invalid effect commit transition", ErrInternal))
+			return
+		}
+		if c.active.cancelAsked || c.shutdown != nil {
+			ack(context.Canceled)
+			return
+		}
+		c.active.effectCommitting = true
+		ack(nil)
+
+	case effectBoundaryFinish:
+		if !c.active.effectCommitting || c.active.effectCommitted {
+			ack(fmt.Errorf("%w: invalid effect commit transition", ErrInternal))
+			return
+		}
+		c.active.effectCommitting = false
+		if boundary.applied {
+			c.active.effectCommitted = true
+			c.active.cancelAsked = false
+			if c.active.cancelTimer != nil {
+				c.active.cancelTimer.Stop()
+				c.active.cancelTimer = nil
+			}
+			if c.shutdown != nil && c.shutdown.timer != nil {
+				c.shutdown.timer.Stop()
+				c.shutdown.timer = nil
+			}
+			ack(nil)
+			return
+		}
+		if c.shutdown != nil {
+			// The shutdown timer was deliberately suppressed while the atomic
+			// effect result was indeterminate. A failed effect releases that
+			// protection, so restore the ordinary bounded shutdown behavior.
+			if c.shutdown.timer == nil {
+				c.shutdown.timer = time.NewTimer(joinTimeout)
+			}
+			if c.shutdown.mode == shutdownGraceful {
+				c.active.cancelAsked = true
+				c.active.opCancel()
+				c.active.messageCancel()
+				ack(context.Canceled)
+				return
+			}
+			c.active.abandoned = true
+			c.active.opCancel()
+			c.active.messageCancel()
+			c.active.outcomeCancel()
+			c.active.cursor = nil
+			ack(errSessionClosing)
+			return
+		}
+		if c.active.cancelAsked {
+			c.cancelActiveOperation(joinTimeout)
+			ack(context.Canceled)
+			return
+		}
+		ack(nil)
+
+	default:
+		ack(fmt.Errorf("%w: invalid effect commit stage", ErrInternal))
+	}
+}
+
+func (c *coordinator) handleReadyInputBeforeEffect(joinTimeout time.Duration) {
+	// The decoder receives at most one frame permit at a time. If that frame is
+	// already queued when an effect-begin rendezvous is selected, preserve input
+	// arrival order before acknowledging the irreversible attempt. Input that is
+	// not yet decoded remains concurrent and linearizes on a later select.
+	select {
+	case decoded := <-c.decodeResults:
+		c.readOutstanding = false
+		c.handleDecoded(decoded, joinTimeout)
+	default:
+	}
 }
 
 func (c *coordinator) queueFailure(failure enginewire.OperationFailure, joinTimeout time.Duration) {
@@ -762,12 +903,16 @@ func (c *coordinator) beginGraceful(result error, joinTimeout time.Duration) {
 	if c.shutdown != nil {
 		return
 	}
-	c.shutdown = &shutdownState{mode: shutdownGraceful, result: result, timer: time.NewTimer(joinTimeout)}
+	var timer *time.Timer
+	if c.active == nil || !c.active.effectInFlight() {
+		timer = time.NewTimer(joinTimeout)
+	}
+	c.shutdown = &shutdownState{mode: shutdownGraceful, result: result, timer: timer}
 	c.inputClosed = true
 	c.held = nil
 	c.heldBusy = false
 	c.closeInput()
-	if c.active != nil && !c.active.committed && !c.active.abandoned {
+	if c.active != nil && !c.active.committed && !c.active.effectInFlight() && !c.active.abandoned {
 		if c.active.cancelTimer != nil {
 			c.active.cancelTimer.Stop()
 			c.active.cancelTimer = nil
@@ -791,9 +936,14 @@ func (c *coordinator) beginFatal(
 			c.shutdown.timer.Stop()
 		}
 	}
+	protected := c.active != nil && c.active.effectInFlight()
+	var timer *time.Timer
+	if !protected {
+		timer = time.NewTimer(joinTimeout)
+	}
 	c.shutdown = &shutdownState{
 		mode: shutdownFatal, result: result, protocolKind: kind,
-		bootstrapFatal: c.phase != phaseRunning, timer: time.NewTimer(joinTimeout),
+		bootstrapFatal: c.phase != phaseRunning, timer: timer,
 	}
 	c.inputClosed = true
 	c.held = nil
@@ -805,13 +955,15 @@ func (c *coordinator) beginFatal(
 			c.active.cancelTimer.Stop()
 			c.active.cancelTimer = nil
 		}
-		c.active.abandoned = true
-		c.active.opCancel()
 		c.active.messageCancel()
-		c.active.outcomeCancel()
 		c.active.cursor = nil
-		if !c.active.workerStarted {
-			c.active.workerDone = true
+		if !protected {
+			c.active.abandoned = true
+			c.active.opCancel()
+			c.active.outcomeCancel()
+			if !c.active.workerStarted {
+				c.active.workerDone = true
+			}
 		}
 	}
 }
@@ -820,11 +972,20 @@ func (c *coordinator) beginTransport(result error, joinTimeout time.Duration) {
 	if c.shutdown != nil && c.shutdown.mode == shutdownTransport {
 		return
 	}
+	protected := c.active != nil && c.active.effectInFlight()
+	var timer *time.Timer
+	if !protected {
+		timer = time.NewTimer(joinTimeout)
+	}
 	if c.shutdown == nil {
-		c.shutdown = &shutdownState{mode: shutdownTransport, result: result, timer: time.NewTimer(joinTimeout)}
+		c.shutdown = &shutdownState{mode: shutdownTransport, result: result, timer: timer}
 	} else {
+		if c.shutdown.timer != nil {
+			c.shutdown.timer.Stop()
+		}
 		c.shutdown.mode = shutdownTransport
 		c.shutdown.result = result
+		c.shutdown.timer = timer
 	}
 	c.inputClosed = true
 	c.held = nil
@@ -837,12 +998,14 @@ func (c *coordinator) beginTransport(result error, joinTimeout time.Duration) {
 			c.active.cancelTimer.Stop()
 			c.active.cancelTimer = nil
 		}
-		c.active.abandoned = true
-		c.active.opCancel()
 		c.active.messageCancel()
-		c.active.outcomeCancel()
-		if !c.active.workerStarted {
-			c.active.workerDone = true
+		if !protected {
+			c.active.abandoned = true
+			c.active.opCancel()
+			c.active.outcomeCancel()
+			if !c.active.workerStarted {
+				c.active.workerDone = true
+			}
 		}
 	}
 }

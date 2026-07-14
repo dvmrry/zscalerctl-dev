@@ -8,8 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
+
+var errPublicationNotApplied = errors.New("atomic dump publication was not applied")
 
 type publishReplacementHooks struct {
 	beforeExchange       func()
@@ -22,8 +25,9 @@ func publishReplacingDirectoryContext(
 	stagingDir string,
 	dir string,
 	allowOwnedDump bool,
+	catalog resources.ResourceCatalog,
 ) error {
-	return publishReplacingDirectoryWithHooks(ctx, stagingDir, dir, allowOwnedDump, publishReplacementHooks{
+	return publishReplacingDirectoryWithCatalogAndHooks(ctx, stagingDir, dir, allowOwnedDump, catalog, publishReplacementHooks{
 		exchange: exchangeDirectories,
 	})
 }
@@ -35,7 +39,28 @@ func publishReplacingDirectoryWithHooks(
 	allowOwnedDump bool,
 	hooks publishReplacementHooks,
 ) error {
+	return publishReplacingDirectoryWithCatalogAndHooks(
+		ctx,
+		stagingDir,
+		dir,
+		allowOwnedDump,
+		resources.Catalog(),
+		hooks,
+	)
+}
+
+func publishReplacingDirectoryWithCatalogAndHooks(
+	ctx context.Context,
+	stagingDir string,
+	dir string,
+	allowOwnedDump bool,
+	catalog resources.ResourceCatalog,
+	hooks publishReplacementHooks,
+) error {
 	ctx = contextOrBackground(ctx)
+	if catalog == nil {
+		catalog = resources.Catalog()
+	}
 	if hooks.exchange == nil {
 		hooks.exchange = exchangeDirectories
 	}
@@ -46,7 +71,7 @@ func publishReplacingDirectoryWithHooks(
 	}
 	info, err := os.Lstat(dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return publishDirectoryNoReplace(stagingDir, dir)
+		return publishDirectoryNoReplace(ctx, stagingDir, dir)
 	}
 	if err != nil {
 		return replacementTargetError(allowOwnedDump, dir, "inspect dump directory", err)
@@ -88,7 +113,7 @@ func publishReplacingDirectoryWithHooks(
 	}
 	cleanupPlan := emptyPlan
 	if hasFiles {
-		cleanupPlan, err = validateExistingDumpRootContext(ctx, root, target)
+		cleanupPlan, err = validateExistingDumpRootContext(ctx, root, target, catalog)
 		if err != nil {
 			return err
 		}
@@ -119,12 +144,29 @@ func publishReplacingDirectoryWithHooks(
 	if hooks.beforeExchange != nil {
 		hooks.beforeExchange()
 	}
-	supported, err := hooks.exchange(stagingDir, target)
+	var supported bool
+	err = effectcommit.Run(ctx, func() error {
+		var exchangeErr error
+		supported, exchangeErr = hooks.exchange(stagingDir, target)
+		if exchangeErr != nil {
+			return exchangeErr
+		}
+		if !supported {
+			return errPublicationNotApplied
+		}
+		return nil
+	})
 	if err != nil {
+		if errors.Is(err, errPublicationNotApplied) {
+			return fmt.Errorf("%w: existing destination %s", ErrAtomicReplaceUnsupported, dir)
+		}
 		return fmt.Errorf("atomically replace dump directory: %w", err)
 	}
 	if !supported {
-		return fmt.Errorf("%w: existing destination %s", ErrAtomicReplaceUnsupported, dir)
+		return fmt.Errorf("%w: atomic exchange reported no publication", ErrUnsafePath)
+	}
+	if err := runPublicationTestHook("after_publish"); err != nil {
+		return err
 	}
 	swappedInfo, statErr := os.Lstat(stagingDir)
 	publishedInfo, publishedStatErr := os.Lstat(target)
@@ -132,7 +174,7 @@ func publishReplacingDirectoryWithHooks(
 		publishedStatErr != nil || !os.SameFile(stagedInfo, publishedInfo) {
 		return fmt.Errorf("%w: replacement paths changed during atomic exchange; rollback refused", ErrUnsafePath)
 	}
-	postPlan, postErr := replacementCleanupPlanContext(ctx, root, stagingDir, hasFiles)
+	postPlan, postErr := replacementCleanupPlanContext(ctx, root, stagingDir, hasFiles, catalog)
 	if postErr != nil {
 		return rollbackExchangedDirectory(
 			hooks.exchange,
@@ -159,6 +201,7 @@ func publishReplacingDirectoryWithHooks(
 		stagingDir,
 		openedInfo,
 		hasFiles,
+		catalog,
 		hooks.beforeQuarantineMove,
 	)
 	if cleanupErr != nil && rollbackSafe {
@@ -235,6 +278,7 @@ func removeReplacedDumpRoot(
 	path string,
 	openedInfo os.FileInfo,
 	hadFiles bool,
+	catalog resources.ResourceCatalog,
 	beforeFirstMove func(),
 ) (bool, error) {
 	parent := filepath.Dir(path)
@@ -268,7 +312,7 @@ func removeReplacedDumpRoot(
 		restoreErr := restoreRoot()
 		return restoreErr == nil, fmt.Errorf("%w: relocated dump root changed identity; restore: %v", ErrUnsafePath, restoreErr)
 	}
-	plan, err := replacementCleanupPlanContext(ctx, root, quarantinedRoot, hadFiles)
+	plan, err := replacementCleanupPlanContext(ctx, root, quarantinedRoot, hadFiles, catalog)
 	if err != nil {
 		restoreErr := restoreRoot()
 		return restoreErr == nil, fmt.Errorf("validate relocated dump root: %w; restore: %v", err, restoreErr)
@@ -280,6 +324,9 @@ func removeReplacedDumpRoot(
 	// The quarantine is owner-private and has already been validated for ACL and
 	// removal constraints. Other OS principals cannot traverse it; processes
 	// running as the same account are part of the operator trust boundary.
+	if err := runPublicationTestHook("before_cleanup"); err != nil {
+		return false, err
+	}
 	if err := clearDumpRootContext(context.Background(), root); err != nil {
 		return false, fmt.Errorf("clear quarantined dump root: %w", err)
 	}
@@ -340,9 +387,10 @@ func replacementCleanupPlanContext(
 	root *os.Root,
 	dir string,
 	hadFiles bool,
+	catalog resources.ResourceCatalog,
 ) (artifactCleanupPlan, error) {
 	if hadFiles {
-		return validateExistingDumpRootContext(ctx, root, dir)
+		return validateExistingDumpRootContext(ctx, root, dir, catalog)
 	}
 	plan, hasFiles, err := inspectDirectoryTreeContext(ctx, root)
 	if err != nil {
@@ -429,6 +477,7 @@ func validateExistingDumpRootContext(
 	ctx context.Context,
 	root *os.Root,
 	dir string,
+	catalog resources.ResourceCatalog,
 ) (artifactCleanupPlan, error) {
 	artifact, err := ValidateArtifactRootContext(ctx, root)
 	if err != nil {
@@ -452,7 +501,7 @@ func validateExistingDumpRootContext(
 		if resource.Status != "ok" {
 			continue
 		}
-		spec, ok := resources.FindSpec(resources.Product(resource.Product), resource.Name)
+		spec, ok := catalog.FindSpec(resources.Product(resource.Product), resource.Name)
 		if !ok || resource.Shape != ManifestResourceShape(spec) {
 			return artifactCleanupPlan{}, fmt.Errorf(
 				"%w: --force target %s does not match the current resource catalog",

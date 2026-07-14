@@ -89,6 +89,7 @@ EOF
 
 cat >"$tmp_dir/enginehost-good.imports" <<'EOF'
 context
+github.com/dvmrry/zscalerctl/internal/effectcommit
 github.com/dvmrry/zscalerctl/internal/enginewire
 github.com/dvmrry/zscalerctl/internal/enginewire/adapter
 github.com/dvmrry/zscalerctl/internal/machine
@@ -98,6 +99,11 @@ EOF
 cat >"$tmp_dir/enginehost-runtime-bad.imports" <<'EOF'
 github.com/dvmrry/zscalerctl/internal/enginewire
 github.com/dvmrry/zscalerctl/internal/runtime
+EOF
+
+cat >"$tmp_dir/enginehost-effect-child-bad.imports" <<'EOF'
+github.com/dvmrry/zscalerctl/internal/effectcommit/unsafe
+github.com/dvmrry/zscalerctl/internal/enginewire
 EOF
 
 cat >"$tmp_dir/enginehost-cgo-bad.imports" <<'EOF'
@@ -234,7 +240,7 @@ for fixture in sdk bridge third-party cgo; do
   fi
 done
 
-for fixture in runtime cgo; do
+for fixture in runtime effect-child cgo; do
   if ZSCALERCTL_ENGINEWIRE_IMPORTS_FILE="$tmp_dir/enginewire-good.imports" \
     ZSCALERCTL_ENGINEWIRE_ADAPTER_IMPORTS_FILE="$tmp_dir/enginewire-adapter-good.imports" \
     ZSCALERCTL_ENGINEHOST_IMPORTS_FILE="$tmp_dir/enginehost-${fixture}-bad.imports" \

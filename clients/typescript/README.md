@@ -19,11 +19,11 @@ The public entry point is [src/index.ts](src/index.ts). It provides:
 - request-relative sequence, item, progress, warning, result, and diff
   reconciliation;
 - exact fragment base64, size, order, SHA-256, and payload validation;
-- `AbortSignal` cancellation with success-commit race handling and bounded
-  cancellation/shutdown watchdogs; and
+- `AbortSignal` cancellation with bounded bootstrap, operation-cancellation,
+  and shutdown watchdogs; and
 - a no-shell Node child-process adapter that requires an absolute engine path,
-  passes only the host's five policy flags, bounds stderr, and exposes no
-  credential wire API.
+  passes only the host's five policy flags, drains and discards stderr, and
+  exposes no credential wire API.
 
 Minimal local use:
 
@@ -50,11 +50,28 @@ default), so credential lifetime and secret-provider behavior remain owned by
 the Go runtime. Event callbacks are synchronous and receive deeply frozen
 values; use them for quick state updates rather than blocking work.
 
-The client waits at most seven seconds for a canceled request terminal and
-eight seconds for session shutdown before aborting the child. Consumers may
-set `cancelTimeoutMs` and `closeTimeoutMs` on `spawnEngine` (or
+The client waits at most ten seconds for bootstrap, seven seconds for an
+ordinary canceled request terminal, and eight seconds for ordinary session
+shutdown before aborting the child. Consumers may set `startupTimeoutMs`,
+`cancelTimeoutMs`, and `closeTimeoutMs` on `spawnEngine` (or
 `EngineClient.connect`) from 1 through 300,000 milliseconds when their
-transport needs different bounds.
+transport needs different bounds. A bootstrap `signal` can terminate startup
+earlier; process-backed startup waits for the direct child to exit before
+rejecting, so the caller is never handed an unreachable live engine process.
+
+Dump cancellation is intentionally different because protocol v1 has no
+wire-visible filesystem commit marker. Once a dump is active, the reference
+client sends cancellation but does not apply its own cancel or close kill
+watchdog; the host remains responsible for promptly terminating pre-commit
+work and for staying alive through any committed confidential-artifact
+cleanup. This trades a bounded wait against an untrusted engine for avoiding a
+client-forced partial cleanup of a local effect.
+
+Stderr is not a protocol or diagnostic API: the process adapter continuously
+drains and discards it without retaining bytes, and neither stderr volume nor a
+read-side stderr error can terminate the child. This keeps memory bounded while
+preventing a non-authoritative side channel from killing committed dump
+cleanup. Protocol/stdin failures remain transport failures.
 
 V1 is response-atomic and has a 64 MiB per-item limit but no total-response
 limit. The client therefore retains validated semantic items until completion,

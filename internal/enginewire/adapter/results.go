@@ -316,6 +316,13 @@ func ToDiffResult(source machine.DiffResult) (DiffConversion, error) {
 	report := source.Report()
 	items := make([]SemanticItem, 0)
 	for _, resource := range report.Resources {
+		// The in-process report retains note-only entries for resources whose
+		// collection failed in a partial dump. Protocol v1 has no skipped-state
+		// discriminant, so emitting those as diff_resource would falsely count
+		// them as compared and violate the completion summary.
+		if !resource.WasCompared() {
+			continue
+		}
 		changedFields := 0
 		for _, change := range resource.Changed {
 			changedFields += len(change.Changes)
