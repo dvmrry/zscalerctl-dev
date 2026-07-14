@@ -347,11 +347,6 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 				spec.Name,
 			)
 		}
-		if oldState == collectionNotSelected {
-			continue
-		}
-		oldRes := oldDump.resources[key]
-		newRes := newDump.resources[key]
 		if progress != nil {
 			if err := checkContext(ctx); err != nil {
 				return Report{}, err
@@ -368,6 +363,11 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 				return Report{}, err
 			}
 		}
+		if oldState == collectionNotSelected {
+			continue
+		}
+		oldRes := oldDump.resources[key]
+		newRes := newDump.resources[key]
 		if oldState == collectionFailed || newState == collectionFailed {
 			resourceDiff, err := compareResource(ctx, spec, nil, nil, opts.IgnoreOperational)
 			if err != nil {

@@ -1102,6 +1102,155 @@ func TestCompareContextProgressIsOrderedAndNilSafe(t *testing.T) {
 	}
 }
 
+func TestCompareContextProgressIncludesSameScopeNotSelectedResources(t *testing.T) {
+	aSpec := testProgressSpec("a-resource")
+	zSpec := testProgressSpec("z-resource")
+	catalog := resources.ResourceCatalog{zSpec, aSpec}
+	wantProgress := []Progress{
+		{Product: resources.ProductZIA, Resource: "a-resource", Done: 1, Total: 2},
+		{Product: resources.ProductZIA, Resource: "z-resource", Done: 2, Total: 2},
+	}
+	tests := []struct {
+		name      string
+		collected resources.ResourceSpec
+	}{
+		{name: "first catalog resource", collected: aSpec},
+		{name: "second catalog resource", collected: zSpec},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := dumpFixture{entries: []dumpEntryFixture{{
+				spec: tt.collected, payload: `[{"label":"same"}]`,
+			}}}
+			oldDir := writeTestDump(t, catalog, fixture)
+			newDir := writeTestDump(t, catalog, fixture)
+
+			var gotProgress []Progress
+			report, err := CompareContext(
+				context.Background(),
+				oldDir,
+				newDir,
+				Options{Catalog: catalog},
+				func(progress Progress) error {
+					gotProgress = append(gotProgress, progress)
+					return nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("CompareContext(%s only) error = %v, want nil", tt.collected.Name, err)
+			}
+			if !reflect.DeepEqual(gotProgress, wantProgress) {
+				t.Errorf(
+					"CompareContext(%s only) progress = %#v, want %#v",
+					tt.collected.Name,
+					gotProgress,
+					wantProgress,
+				)
+			}
+			if report.Summary.ResourcesCompared != 1 || len(report.Resources) != 1 ||
+				report.Resources[0].Resource != tt.collected.Name {
+				t.Errorf(
+					"CompareContext(%s only) report = %#v, want exactly that resource compared",
+					tt.collected.Name,
+					report,
+				)
+			}
+		})
+	}
+}
+
+func TestCompareContextCollectionScopeMismatchPrecedesProgress(t *testing.T) {
+	aSpec := testProgressSpec("a-resource")
+	zSpec := testProgressSpec("z-resource")
+	catalog := resources.ResourceCatalog{zSpec, aSpec}
+	oldDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: aSpec, payload: `[{"label":"same"}]`},
+	}})
+	newDir := writeTestDump(t, catalog, dumpFixture{entries: []dumpEntryFixture{
+		{spec: aSpec, payload: `[{"label":"same"}]`},
+		{spec: zSpec, payload: `[{"label":"new-scope"}]`},
+	}})
+
+	var gotProgress []Progress
+	_, err := CompareContext(
+		context.Background(),
+		oldDir,
+		newDir,
+		Options{Catalog: catalog},
+		func(progress Progress) error {
+			gotProgress = append(gotProgress, progress)
+			return nil
+		},
+	)
+	if !errors.Is(err, ErrCollectionScopeMismatch) {
+		t.Fatalf("CompareContext(mismatched collection scope) error = %v, want ErrCollectionScopeMismatch", err)
+	}
+	wantProgress := []Progress{{
+		Product: resources.ProductZIA, Resource: "a-resource", Done: 1, Total: 2,
+	}}
+	if !reflect.DeepEqual(gotProgress, wantProgress) {
+		t.Fatalf("progress before collection-scope mismatch = %#v, want %#v", gotProgress, wantProgress)
+	}
+}
+
+func TestCompareContextNotSelectedProgressFailureBoundaries(t *testing.T) {
+	aSpec := testProgressSpec("a-resource")
+	zSpec := testProgressSpec("z-resource")
+	catalog := resources.ResourceCatalog{zSpec, aSpec}
+	fixture := dumpFixture{entries: []dumpEntryFixture{{
+		spec: zSpec, payload: `[{"label":"same"}]`,
+	}}}
+	oldDir := writeTestDump(t, catalog, fixture)
+	newDir := writeTestDump(t, catalog, fixture)
+	wantProgress := []Progress{{
+		Product: resources.ProductZIA, Resource: "a-resource", Done: 1, Total: 2,
+	}}
+
+	t.Run("callback error", func(t *testing.T) {
+		wantErr := errors.New("stop on not-selected resource")
+		var gotProgress []Progress
+		_, err := CompareContext(
+			context.Background(),
+			oldDir,
+			newDir,
+			Options{Catalog: catalog},
+			func(progress Progress) error {
+				gotProgress = append(gotProgress, progress)
+				return wantErr
+			},
+		)
+		if err != wantErr {
+			t.Fatalf("CompareContext() error = %v, want exact callback error %v", err, wantErr)
+		}
+		if !reflect.DeepEqual(gotProgress, wantProgress) {
+			t.Fatalf("progress before callback error = %#v, want %#v", gotProgress, wantProgress)
+		}
+	})
+
+	t.Run("cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var gotProgress []Progress
+		_, err := CompareContext(
+			ctx,
+			oldDir,
+			newDir,
+			Options{Catalog: catalog},
+			func(progress Progress) error {
+				gotProgress = append(gotProgress, progress)
+				cancel()
+				return nil
+			},
+		)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CompareContext() error = %v, want context.Canceled", err)
+		}
+		if !reflect.DeepEqual(gotProgress, wantProgress) {
+			t.Fatalf("progress before cancellation = %#v, want %#v", gotProgress, wantProgress)
+		}
+	})
+}
+
 func TestCompareContextProgressCallbackErrorIsReturnedUnchanged(t *testing.T) {
 	spec := testProgressSpec("only-resource")
 	catalog := resources.ResourceCatalog{spec}

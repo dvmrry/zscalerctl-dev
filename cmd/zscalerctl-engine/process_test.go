@@ -332,6 +332,71 @@ func TestProcessDiffAcceptsSelectedResourceFailedOnOnePartialSide(t *testing.T) 
 	}
 }
 
+func TestProcessDiffEmptySelectorsAccountForSameScopeSelectiveDumps(t *testing.T) {
+	firstSpec := dumpHostResourceSpec()
+	secondSpec := dumpHostSecondResourceSpec()
+	wantProgress := []resources.ResourceSpec{firstSpec, secondSpec}
+	tests := []struct {
+		name      string
+		collected resources.ResourceSpec
+	}{
+		{name: "first catalog resource", collected: firstSpec},
+		{name: "second catalog resource", collected: secondSpec},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldDir := writeSelectiveProcessDump(t, tt.collected)
+			newDir := writeSelectiveProcessDump(t, tt.collected)
+			process := startEngineProcessWith(t, dumpHostTestBinary, nil)
+			process.initialize(t)
+			request := enginewire.DiffRequest{
+				Type: "request", ID: 1,
+				Capability: enginewire.CapabilityDiffCompare, Operation: enginewire.OperationDiff,
+				Input: enginewire.DiffInput{
+					OldDir: oldDir, NewDir: newDir,
+					Products: []enginewire.Product{}, Resources: []enginewire.ResourceSelector{},
+				},
+			}
+			if err := enginewire.WriteClientFrame(process.stdin, request); err != nil {
+				t.Fatalf("WriteClientFrame(diff %s only) error = %v", tt.collected.Name, err)
+			}
+			if started, ok := process.readV1(t).(enginewire.Started); !ok || started.ID != 1 || started.Sequence != 1 {
+				t.Fatalf("diff %s only started = %#v, want request 1 sequence 1", tt.collected.Name, started)
+			}
+			for i, spec := range wantProgress {
+				progress, ok := process.readV1(t).(enginewire.Progress)
+				if !ok || progress.ID != 1 || progress.Sequence != enginewire.SafeInteger(i+2) ||
+					progress.Current != enginewire.SafeInteger(i+1) || progress.Total != 2 ||
+					progress.Product != enginewire.Product(spec.Product) || progress.Resource != spec.Name {
+					t.Fatalf(
+						"diff %s only progress %d = %#v, want %s/%s %d/2",
+						tt.collected.Name,
+						i+1,
+						progress,
+						spec.Product,
+						spec.Name,
+						i+1,
+					)
+				}
+			}
+			item, ok := process.readV1(t).(enginewire.Item[enginewire.DiffResource])
+			if !ok || item.ID != 1 || item.Sequence != 4 || item.Kind != enginewire.ItemDiffResource ||
+				item.Item.Product != enginewire.Product(tt.collected.Product) ||
+				item.Item.Resource != tt.collected.Name || item.Item.Added != 0 ||
+				item.Item.Removed != 0 || item.Item.ChangedFields != 0 {
+				t.Fatalf("diff %s only item = %#v, want one no-drift compared-resource item", tt.collected.Name, item)
+			}
+			completed, ok := process.readV1(t).(enginewire.Completed[enginewire.DiffSummary])
+			if !ok || completed.ID != 1 || completed.Sequence != 5 ||
+				completed.Result.Summary.ResourcesCompared != 1 || completed.Result.HasDrift ||
+				completed.Result.StreamItemsEmitted != 1 {
+				t.Fatalf("diff %s only completion = %#v, want one no-drift comparison", tt.collected.Name, completed)
+			}
+			closeAndWaitEngineProcess(t, process)
+		})
+	}
+}
+
 func TestProcessDumpCancelAfterNewDestinationCommitReturnsSuccess(t *testing.T) {
 	hookDir := t.TempDir()
 	outDir := filepath.Join(t.TempDir(), "dump")
@@ -409,9 +474,17 @@ func TestProcessDumpCancelCannotKillCommittedForceCleanup(t *testing.T) {
 }
 
 func dumpHostResourceSpec() resources.ResourceSpec {
+	return dumpHostNamedResourceSpec("engine-test-locations")
+}
+
+func dumpHostSecondResourceSpec() resources.ResourceSpec {
+	return dumpHostNamedResourceSpec("engine-test-rules")
+}
+
+func dumpHostNamedResourceSpec(name string) resources.ResourceSpec {
 	return resources.ResourceSpec{
 		Product:    resources.ProductZIA,
-		Name:       "engine-test-locations",
+		Name:       name,
 		Operations: resources.ListOperations(),
 		Fields: []resources.FieldSpec{
 			{
@@ -426,6 +499,22 @@ func dumpHostResourceSpec() resources.ResourceSpec {
 			},
 		},
 	}
+}
+
+func writeSelectiveProcessDump(t *testing.T, spec resources.ResourceSpec) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "dump")
+	if err := dumpartifact.Write(dir, redact.ModeStandard, dumpartifact.Result{
+		Entries: []dumpartifact.ResourceDump{{
+			Spec: spec,
+			Records: resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+				"id": "1", "name": "same",
+			}}),
+		}},
+	}); err != nil {
+		t.Fatalf("dump.Write(%s selective fixture) error = %v", spec.Name, err)
+	}
+	return dir
 }
 
 func writeDumpProcessRequest(t *testing.T, process *engineProcess, outDir string, force bool) {

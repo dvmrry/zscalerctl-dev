@@ -13,9 +13,12 @@ import (
 	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
 )
 
-const testResource = "engine-test-locations"
+const (
+	testResource       = "engine-test-locations"
+	testSecondResource = "engine-test-rules"
+)
 
-var errUnexpectedOperation = errors.New("unexpected dump test-engine operation")
+var errUnexpectedOperation = errors.New("unexpected test-engine operation")
 
 type reader struct{}
 
@@ -36,11 +39,11 @@ func (reader) Get(context.Context, resources.Product, string, string) (resources
 var _ browser.RecordReader = reader{}
 
 type engine struct {
-	manifest  machine.EngineManifest
+	runtime   *machineruntime.Engine
 	collector *machineruntime.DumpCollector
 }
 
-func (e *engine) EngineManifest() machine.EngineManifest { return e.manifest }
+func (e *engine) EngineManifest() machine.EngineManifest { return e.runtime.EngineManifest() }
 
 func (*engine) DiscoverCatalog(context.Context, machine.CatalogRequest) (machine.CatalogResult, error) {
 	return machine.CatalogResult{}, errUnexpectedOperation
@@ -66,14 +69,18 @@ func (e *engine) Dump(
 	return e.collector.Dump(ctx, request, sink)
 }
 
-func (*engine) Diff(context.Context, machine.DiffRequest, machine.EventSink) (machine.DiffResult, error) {
-	return machine.DiffResult{}, errUnexpectedOperation
+func (e *engine) Diff(
+	ctx context.Context,
+	request machine.DiffRequest,
+	sink machine.EventSink,
+) (machine.DiffResult, error) {
+	return e.runtime.Diff(ctx, request, sink)
 }
 
-func main() {
-	catalog := resources.ResourceCatalog{{
+func resourceSpec(name string) resources.ResourceSpec {
+	return resources.ResourceSpec{
 		Product:    resources.ProductZIA,
-		Name:       testResource,
+		Name:       name,
 		Operations: resources.ListOperations(),
 		Fields: []resources.FieldSpec{
 			{
@@ -87,9 +94,20 @@ func main() {
 				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 			},
 		},
-	}}
+	}
+}
+
+func main() {
+	catalog := resources.ResourceCatalog{
+		resourceSpec(testResource),
+		resourceSpec(testSecondResource),
+	}
+	runtimeEngine, err := machineruntime.NewEngine(machineruntime.Options{Catalog: catalog})
+	if err != nil {
+		os.Exit(1)
+	}
 	testEngine := &engine{
-		manifest:  machine.EngineManifestFromCatalog(catalog),
+		runtime:   runtimeEngine,
 		collector: machineruntime.NewDumpCollectorFromReader(reader{}, catalog, redact.ModeStandard),
 	}
 	host, err := enginehost.New(testEngine, "test")

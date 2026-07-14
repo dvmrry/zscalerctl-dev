@@ -9,9 +9,14 @@ validation. Preserve the supported CLI and the immutable stdio v1 schemas
 while making the candidate host and reference client truthful about local
 filesystem commit.
 
+Close the remaining empty-selector diff-progress defect reported against
+`1a03838`, while preserving literal comparison counters and wire items.
+
 ## Base / Head
 
 - Reviewed base: `89b715ad98f6f37898ccd4ce765d6e651f920764`
+- Empty-selector correction base:
+  `1a038380415500d832fca626f8e3c909dbc89c10`
 - Head: reviewed uncommitted working tree on `feature/stdio-engine-api`
 - Process baseline: `origin/main` at
   `b0597dfb8e673a06d99995e6e1360cfcc709f0a8`
@@ -31,6 +36,9 @@ filesystem commit.
   consumer documentation under `clients/typescript/`
 - Candidate protocol behavior documentation and core-boundary verification
   under `docs/ENGINE_STDIO_PROTOCOL_V1.md` and `scripts/`
+- Diff progress accounting, core regressions, process regressions, and the
+  two-resource process-test engine under `internal/diff/`,
+  `cmd/zscalerctl-engine/`, and `internal/enginehost/testdata/dumpengine/`
 - This review artifact
 
 ## Source Inputs Consulted
@@ -75,6 +83,9 @@ purpose-built test fixtures, not generated supported surface.
   dump cancellation but does not apply its own dump cancel/close kill watchdog.
 - Forced replacement uses the same snapshotted active catalog that advertised,
   selected, and collected the dump resources.
+- Diff progress accounts for every request-selected catalog resource on valid
+  equal-scope artifacts, including resources collected in neither dump, while
+  report and wire-item counts remain limited to real comparisons.
 
 ## Invariants Claimed
 
@@ -110,6 +121,10 @@ purpose-built test fixtures, not generated supported surface.
 - Windows amd64 cross-compilation of the engine command, dump, runtime, and
   engine-host test packages: pass
 - `git diff --check`: pass
+- Empty-selector first-only and second-only selective-dump process
+  regressions: pass
+- Collection-scope ordering and not-selected callback error/cancellation
+  regressions: pass, including 25 race-enabled repetitions
 
 ## Known Deferrals
 
@@ -138,12 +153,17 @@ purpose-built test fixtures, not generated supported surface.
 
 # Adversarial Review
 
-Fresh-context reviewer: Volta (`019f5e84-c60d-7d20-9a87-2543e58495b5`, Luna xhigh) and Dalton (`019f5e84-c7ee-7440-8ffb-4c98519fd1e3`, Luna max)
+Fresh-context reviewers: Volta
+(`019f5e84-c60d-7d20-9a87-2543e58495b5`, Luna xhigh), Dalton
+(`019f5e84-c7ee-7440-8ffb-4c98519fd1e3`, Luna max), Feynman
+(`019f6084-d6eb-7a00-8da3-3b4f862cd6f8`, Luna xhigh), and Chandrasekhar
+(`019f6084-d47e-7c41-b32c-0bf140fc0062`, Luna max)
 
-Both reviewers inspected the actual working tree read-only, ran independent
-focused tests, and did not implement or modify the change. The supplied
-independent PR review first identified four defects; the builder implemented
-their union and submitted the resulting tree for fresh adversarial review.
+Each reviewer inspected the applicable actual working tree read-only, ran
+independent focused tests, and did not implement or modify the change. The
+supplied independent PR review first identified four defects; the builder
+implemented their union and submitted the resulting tree for fresh adversarial
+review.
 
 ## Independent PR Findings Resolved
 
@@ -200,6 +220,41 @@ their union and submitted the resulting tree for fresh adversarial review.
 - Both reviewers confirmed that cancellation remains concurrent only when the
   input has not yet been decoded, and that the unbounded active-dump client
   watchdog is an intentional, accurately documented protocol-v1 limitation.
+
+## Empty-Selector Diff Correction
+
+A subsequent commit-pinned review at `1a03838` found that the default stdio
+diff request selected the full catalog, but `CompareContext` skipped resources
+collected in neither selective dump before emitting their progress. Depending
+on which resource was collected, the host therefore saw either a noncontiguous
+first event or an incomplete final progress count.
+
+Collection-scope mismatch validation still precedes progress. On valid
+equal-scope artifacts, progress now emits once for every request-selected spec
+before the both-not-selected early return. Not-selected resources remain absent
+from the report and immutable v1 item stream, so `resources_compared`, drift
+counters, and `stream_items_emitted` retain their literal meanings.
+
+Core regressions cover selective artifacts containing only the first and only
+the second resource. A real child-process regression sends explicit empty
+product and resource arrays through a two-resource runtime and stdio host,
+requiring progress `1/2`, `2/2`, one genuine comparison item, and a successful
+one-resource completion in both permutations.
+
+## Empty-Selector Fresh Review
+
+Feynman and Chandrasekhar independently reviewed the uncommitted correction
+read-only. Both initially approved with the same two test-hardening nits:
+explicitly prove that a mismatched spec emits no progress, and prove exact
+callback-error and cancellation behavior on a newly counted not-selected spec.
+Those focused tests were added without changing production code.
+
+Both reviewers then independently rechecked and explicitly approved the
+implementation diff, before this closure artifact was updated, at SHA-256
+`1abbbea640310bac9785a71cfe28ffcb62c177c443e09d9f0b3ef7b988ea9936`.
+Focused normal tests, 25 race-enabled repetitions, package/process tests,
+formatting, and diff checks passed. Neither reviewer changed the worktree, and
+no blocking or non-blocking finding remained.
 
 ## Non-Blocking Risks
 
