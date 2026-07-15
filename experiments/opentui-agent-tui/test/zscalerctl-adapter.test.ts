@@ -9,7 +9,7 @@ import {
 } from "../../../clients/typescript/src/index.ts";
 import {WorkspaceCommandError, type WorkspaceProgressEvent} from "../src/workspace.ts";
 import {createZscalerctlWorkspace} from "../src/zscalerctl/adapter.ts";
-import {CATALOG_RESPONSE, fakeEngine} from "./helpers.ts";
+import {CATALOG_RESPONSE, DIFF_RESPONSE, fakeEngine} from "./helpers.ts";
 
 const context = (signal = new AbortController().signal) => ({signal, emit: () => undefined});
 const OPTIONS = {theme: "tokyonight" as const, themeMode: "dark" as const, engine: "/absolute/zscalerctl-engine"};
@@ -88,7 +88,6 @@ describe("zscalerctl workspace adapter", () => {
 
   test("maps typed reads and preserves exact wire numbers", async () => {
     let request: ResourceListInput | undefined;
-    const progress: WorkspaceProgressEvent[] = [];
     const response: ResourceReadResponse = {
       id: 2,
       items: [{
@@ -101,36 +100,13 @@ describe("zscalerctl workspace adapter", () => {
       result: {kind: "resource_read_summary", records: 1, stream_items_emitted: 1}
     };
     const workspace = createZscalerctlWorkspace(OPTIONS, async () => fakeEngine({
-      list: async (input, options) => {
+      list: async input => {
         request = input;
-        options?.onEvent?.({
-          type: "progress",
-          id: 2,
-          seq: 2,
-          phase: "resource_started",
-          current: 1,
-          total: 3,
-          product: "zia",
-          resource: "locations"
-        });
-        options?.onEvent?.({
-          type: "progress",
-          id: 2,
-          seq: 3,
-          phase: "resource_started",
-          current: 3,
-          total: 3,
-          product: "zpa",
-          resource: "app-segments"
-        });
         return response;
       }
     }));
     await workspace.connect!(context());
-    const result = await workspace.execute!("/list zia locations --fields id,name --filter 'name=foo~bar' --search hq", {
-      signal: new AbortController().signal,
-      emit: event => progress.push(event)
-    });
+    const result = await workspace.execute!("/list zia locations --fields id,name --filter 'name=foo~bar' --search hq", context());
     expect(request).toEqual({
       product: "zia",
       resource: "locations",
@@ -141,9 +117,41 @@ describe("zscalerctl workspace adapter", () => {
     const data = result.data as {records: Array<{id: WireNumber}>};
     expect(data.records[0]?.id).toBeInstanceOf(WireNumber);
     expect(data.records[0]?.id.lexeme).toBe("900719925474099312345");
+    await workspace.close();
+  });
+
+  test("translates contiguous diff starts into completed-work progress", async () => {
+    const progress: WorkspaceProgressEvent[] = [];
+    const workspace = createZscalerctlWorkspace(OPTIONS, async () => fakeEngine({
+      diff: async (_input, options) => {
+        for (const [index, product, resource] of [
+          [1, "zia", "locations"],
+          [2, "zpa", "app-segments"],
+          [3, "zcc", "devices"]
+        ] as const) {
+          options?.onEvent?.({
+            type: "progress",
+            id: 2,
+            seq: index + 1,
+            phase: "resource_started",
+            current: index,
+            total: 3,
+            product,
+            resource
+          });
+        }
+        return DIFF_RESPONSE;
+      }
+    }));
+    await workspace.connect!(context());
+    await workspace.execute!("/diff /tmp/old /tmp/new", {
+      signal: new AbortController().signal,
+      emit: event => progress.push(event)
+    });
     expect(progress).toEqual([
       {kind: "progress", completed: 0, total: 3, message: "zia/locations"},
-      {kind: "progress", completed: 2, total: 3, message: "zpa/app-segments"}
+      {kind: "progress", completed: 1, total: 3, message: "zpa/app-segments"},
+      {kind: "progress", completed: 2, total: 3, message: "zcc/devices"}
     ]);
     await workspace.close();
   });

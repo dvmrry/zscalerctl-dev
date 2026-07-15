@@ -127,7 +127,7 @@ export const READ_RESPONSE: ResourceReadResponse = {
   result: {kind: "resource_read_summary", records: 0, stream_items_emitted: 0}
 };
 
-const DIFF_RESPONSE: DiffResponse = {
+export const DIFF_RESPONSE: DiffResponse = {
   id: 1,
   items: [],
   progress: [],

@@ -56,6 +56,28 @@ describe("toast presentation policy", () => {
     expect(published.at(-1)).toBeUndefined();
   });
 
+  test("dismisses only the identified active toast", () => {
+    let nextHandle = 1;
+    const callbacks = new Map<number, () => void>();
+    const timers: ToastTimerDriver = {
+      setTimeout(callback) {
+        const handle = nextHandle++;
+        callbacks.set(handle, callback);
+        return handle;
+      },
+      clearTimeout() {}
+    };
+    const published: Array<ToastState | undefined> = [];
+    const controller = new LatestToastController(toast => published.push(toast), timers);
+
+    const cancellation = controller.show("Waiting", "info");
+    const newer = controller.show("Copied", "success");
+    expect(controller.dismiss(cancellation)).toBe(false);
+    expect(published.at(-1)).toMatchObject({id: newer, message: "Copied"});
+    expect(controller.dismiss(newer)).toBe(true);
+    expect(published.at(-1)).toBeUndefined();
+  });
+
   test("restarts duplicate deadlines and invalidates callbacks on disposal", () => {
     let nextHandle = 1;
     const callbacks = new Map<number, () => void>();

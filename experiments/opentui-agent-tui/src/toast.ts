@@ -49,6 +49,7 @@ export class LatestToastController {
   readonly #publish: (toast: ToastState | undefined) => void;
   readonly #timers: ToastTimerDriver;
   #generation = 0;
+  #activeID: number | undefined;
   #timer: ToastTimerHandle | undefined;
 
   constructor(
@@ -59,20 +60,34 @@ export class LatestToastController {
     this.#timers = timers;
   }
 
-  show(message: string, tone: ToastTone): void {
+  show(message: string, tone: ToastTone): number {
     if (this.#timer !== undefined) this.#timers.clearTimeout(this.#timer);
     const id = ++this.#generation;
+    this.#activeID = id;
     this.#publish({id, message, tone});
     const timer = this.#timers.setTimeout(() => {
-      if (this.#generation !== id || this.#timer !== timer) return;
+      if (this.#activeID !== id || this.#timer !== timer) return;
+      this.#activeID = undefined;
       this.#timer = undefined;
       this.#publish(undefined);
     }, toastDurationMs(tone));
     this.#timer = timer;
+    return id;
+  }
+
+  dismiss(id: number): boolean {
+    if (this.#activeID !== id) return false;
+    this.#generation += 1;
+    this.#activeID = undefined;
+    if (this.#timer !== undefined) this.#timers.clearTimeout(this.#timer);
+    this.#timer = undefined;
+    this.#publish(undefined);
+    return true;
   }
 
   dispose(): void {
     this.#generation += 1;
+    this.#activeID = undefined;
     if (this.#timer !== undefined) this.#timers.clearTimeout(this.#timer);
     this.#timer = undefined;
   }

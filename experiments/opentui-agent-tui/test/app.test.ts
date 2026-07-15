@@ -547,6 +547,37 @@ describe("OpenTUI shell interactions", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("Operation canceled");
     expect(frame).toContain("Explore");
+    expect(frame).not.toContain("waiting for engine acknowledgment");
+  });
+
+  test("clears cancellation feedback when abort ends in a terminal failure", async () => {
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      commands: [{command: "/work", usage: "/work", summary: "Run test work"}],
+      execute: async (_input, context) => new Promise((_resolve, reject) => {
+        const failed = () => reject(new WorkspaceCommandError({
+          title: "Cancellation failed",
+          message: "The operation ended in a terminal failure.",
+          tone: "warning"
+        }));
+        if (context.signal.aborted) failed();
+        else context.signal.addEventListener("abort", failed, {once: true});
+      })
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 100, height: 28, exitOnCtrlC: false});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/work"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    await interact(() => setup.mockInput.pressKey("c", {ctrl: true}), setup.flush);
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("Cancellation failed");
+    expect(frame).not.toContain("waiting for engine acknowledgment");
   });
 
   test("renders inactive cancellation as informational transient feedback", async () => {

@@ -176,6 +176,7 @@ export function App(props: {
   const selectedIdRef = useRef(selectedId);
   const [toast, setToast] = useState<ToastState | undefined>();
   const toastController = useRef<LatestToastController | undefined>(undefined);
+  const cancellationToastID = useRef<number | undefined>(undefined);
   if (toastController.current === undefined) toastController.current = new LatestToastController(setToast);
   const [context, setContext] = useState<ContextState>(() => safeContextState(initialWorkspace.context));
   const [entries, setEntries] = useState<readonly TranscriptEntry[]>([
@@ -250,7 +251,7 @@ export function App(props: {
   }, []);
 
   const showToast = useCallback((message: string, tone: ToastState["tone"]) => {
-    toastController.current?.show(message, tone);
+    return toastController.current?.show(message, tone);
   }, []);
 
   const presentWorkspacePicker = useCallback((
@@ -348,6 +349,11 @@ export function App(props: {
       presentWorkspaceError(error);
     } finally {
       acceptingProgress = false;
+      const toastID = cancellationToastID.current;
+      if (toastID !== undefined) {
+        toastController.current?.dismiss(toastID);
+        cancellationToastID.current = undefined;
+      }
       if (activeOperationRef.current === controller) activeOperationRef.current = undefined;
       busyRef.current = false;
       setBusy(false);
@@ -460,7 +466,7 @@ export function App(props: {
       return;
     }
     active.abort();
-    showToast("Cancel requested; waiting for engine acknowledgment.", "info");
+    cancellationToastID.current = showToast("Cancel requested; waiting for engine acknowledgment.", "info");
   }, [showToast]);
 
   const quit = useCallback(async () => {
