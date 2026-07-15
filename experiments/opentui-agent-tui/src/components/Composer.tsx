@@ -1,9 +1,10 @@
 import {TextAttributes, type KeyBinding, type KeyEvent, type TextareaRenderable} from "@opentui/core";
 import {useEffect, useMemo, useRef, useState} from "react";
 
+import {isBusyControl} from "../commands.ts";
 import {suggestionsFor, type CommandDescriptor, type FocusTarget} from "../model.ts";
 import type {Palette} from "../theme.ts";
-import {useSpinnerFrame} from "../useSpinnerFrame.ts";
+import {useSpinnerFrame} from "../useMotion.ts";
 
 const KEY_BINDINGS: readonly KeyBinding[] = [
   {name: "return", action: "submit"},
@@ -101,8 +102,7 @@ export function Composer(props: ComposerProps) {
 
   const submit = () => {
     const value = (editor.current?.plainText ?? "").trim();
-    const busyControl = /^\/(?:cancel|quit)$/iu.test(value);
-    if (value.length === 0 || (props.busy && !busyControl)) return;
+    if (value.length === 0 || (props.busy && !isBusyControl(value))) return;
     editor.current?.clear();
     setDraft("");
     setMenuSuppressed(false);

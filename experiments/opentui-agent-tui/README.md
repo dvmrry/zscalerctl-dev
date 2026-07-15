@@ -16,6 +16,8 @@ effects, and error semantics. No model or shell execution is attached.
 - A zscalerctl-specific visual grammar: raised operator turns, flat assistant
   output, restrained spacing, and tenant-read-only status integrated into the
   composer.
+- A responsive Poison FIGlet `zscalerctl` identity on roomy terminals, with a
+  short color sweep that never changes the banner's text or cell geometry.
 - A quiet responsive context rail where the independently scrollable JSON tree
   remains the dominant workspace rather than another transcript attachment.
 - Typed result cards that turn adapter-owned command metadata into bounded
@@ -63,6 +65,9 @@ effects, and error semantics. No model or shell execution is attached.
   context rail, Ctrl+C or `/cancel` cancellation, and orderly child-process
   shutdown. Activity frames indicate liveness but never invent elapsed
   progress.
+- A delayed, data-reactive operation scene in the transcript that uses only the
+  real transport, authority, operation label, and completed-work counter. Full,
+  reduced, and off motion policies share one bounded clock.
 
 This is a UI vertical slice, not a second client implementation. The React
 shell receives data through a project-neutral `WorkspaceAdapter`; fixture and
@@ -114,6 +119,7 @@ Start with a different theme or activity style:
 ```sh
 bun start -- --theme tron
 bun start -- --theme tokyonight --theme-mode light
+bun start -- --motion reduced
 bun start -- --spinner braille
 ```
 
@@ -123,7 +129,11 @@ The default is `tokyonight` with automatic dark/light detection. Use
 floating picker; `/theme mode toggle` switches the current theme between dark
 and light without restarting. Activity uses the distinctive Hangul sequence by
 default; `--spinner braille|hangul|pipe|dots` selects a different fixed-width
-liveness animation at startup.
+liveness animation at startup. `--motion full|reduced|off` selects the startup
+motion policy; run `/motion` inside the TUI to choose the same modes from a
+floating picker. Full mode enables the brief banner sweep and normal liveness,
+reduced mode slows liveness and holds decorative artwork still, and off mode
+uses static artwork and activity indicators with no repeating motion timer.
 
 ## Controls
 
@@ -158,10 +168,11 @@ liveness animation at startup.
 | S while tree is focused | Toggle named-array ordering between source index and name |
 | Page Up / Page Down | Move through the focused tree eight rows at a time |
 | Ctrl+C | Cancel the active engine operation; exit and restore the terminal when idle |
+| `/motion` | Browse full, reduced, and off motion; valid motion changes remain available while an operation is active |
 | `/quit` | Close the engine, exit, and restore the terminal |
 
 Local commands include `/demo`, `/help`, `/clear`, `/find`, `/pin`, `/unpin`,
-`/theme`, `/sort`, `/sidebar`, `/inspect`, `/cancel`, and `/quit`; `/demo`
+`/theme`, `/motion`, `/sort`, `/sidebar`, `/inspect`, `/cancel`, and `/quit`; `/demo`
 appears only in fixture mode. `/pin` saves the current tree selection and
 `/unpin all` clears the working set without adding command noise to the
 transcript. Engine mode adds `/manifest`, `/catalog`, `/doctor`, `/auth`,
@@ -223,6 +234,13 @@ repository's supported release surface and root Go gate suite.
   on wide terminals.
 - Floating windows, drawers, and modal inspectors share explicit overlay
   layers; search remains non-modal so the tree behind it stays explorable.
+- The operation scene waits 320 ms before appearing, so quick operations do not
+  flash transient chrome. It disappears on success, cancellation, or failure;
+  late progress cannot revive it. The shared motion clock ticks only while the
+  welcome sweep or a real operation is active.
+- Motion uses React-rendered fixed-cell glyphs rather than OpenTUI timelines or
+  post-processing, keeping layout and mouse hit targets synchronized. Global
+  CRT, glitch, bloom, and other buffer effects remain future experiments.
 - Selection is local UI state; no operation is dispatched from a tree click.
 - Clipboard actions use the terminal's OSC 52 capability and fail visibly when
   the terminal declines it; they never invoke a platform clipboard process.
@@ -230,5 +248,5 @@ repository's supported release surface and root Go gate suite.
   filesystem discovery for custom themes is intentionally not wired into this
   fixture-only experiment yet.
 
-The vendored OpenCode theme assets and their MIT attribution are recorded in
+The Poison banner attribution and vendored OpenCode theme notices are recorded in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

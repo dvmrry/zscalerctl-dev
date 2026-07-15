@@ -1,6 +1,7 @@
 import {TextAttributes, type MouseEvent} from "@opentui/core";
 
 import type {
+  ContextState,
   FocusTarget,
   TranscriptActionID,
   TranscriptBlock,
@@ -10,6 +11,7 @@ import type {
 import {toneColor} from "../model.ts";
 import {fitCellText} from "../text.ts";
 import type {Palette} from "../theme.ts";
+import {OperationScene} from "./OperationScene.tsx";
 import {Welcome} from "./Welcome.tsx";
 
 export interface TranscriptProps {
@@ -17,8 +19,11 @@ export interface TranscriptProps {
   readonly entries: readonly TranscriptEntry[];
   readonly focus: FocusTarget;
   readonly compact: boolean;
+  readonly artwork: boolean;
   readonly availableWidth: number;
   readonly workspaceLabel: string;
+  readonly context: ContextState;
+  readonly operationSceneVisible: boolean;
   readonly interactive: boolean;
   readonly onFocus: () => void;
   readonly onAction: (entry: TranscriptEntry, action: TranscriptActionID) => void;
@@ -196,7 +201,13 @@ export function Transcript(props: TranscriptProps) {
           trackOptions: {backgroundColor: props.colors.background, foregroundColor: props.colors.borderActive}
         }}
       >
-        <Welcome colors={props.colors} compact={props.compact} workspaceLabel={props.workspaceLabel} />
+        <Welcome
+          colors={props.colors}
+          compact={props.compact}
+          artwork={props.artwork}
+          availableWidth={props.availableWidth}
+          workspaceLabel={props.workspaceLabel}
+        />
         {props.entries.map(entry => (
           <Entry
             key={entry.id}
@@ -209,6 +220,14 @@ export function Transcript(props: TranscriptProps) {
             onPinEvidence={props.onPinEvidence}
           />
         ))}
+        {props.operationSceneVisible && props.context.operation.status === "running" ? (
+          <OperationScene
+            colors={props.colors}
+            context={props.context}
+            availableWidth={props.availableWidth}
+            compact={props.compact}
+          />
+        ) : null}
       </scrollbox>
     </box>
   );

@@ -1,5 +1,24 @@
 # Third-party notices
 
+## FIGlet Poison banner
+
+The static `zscalerctl` banner in `src/brand.ts` was generated with FIGlet
+2.2.5 using its contributed Poison font:
+
+```sh
+figlet -w 100 -f poison zscalerctl
+```
+
+The blank outer rows and right-side padding were removed before embedding the
+result. The Poison font header credits Vinney Thai for the FIGlet composition,
+numbers, and punctuation; David Issel for the uppercase characters; and dates
+the font October 23, 1994. The source font is distributed with FIGlet and is
+also available in the pinned FIGlet.js font catalog:
+
+<https://github.com/patorjk/figlet.js/blob/v1.11.0/fonts/Poison.flf>
+
+No FIGlet parser or font file is shipped or loaded at runtime.
+
 ## OpenCode references
 
 The JSON files under `src/theme/assets/` are adapted verbatim from the OpenCode

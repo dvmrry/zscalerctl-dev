@@ -1,6 +1,7 @@
 import {isAbsolute} from "node:path";
 
 import type {Redaction} from "../../../clients/typescript/src/index.ts";
+import {DEFAULT_MOTION_MODE, isMotionMode, type MotionMode} from "./motion.ts";
 import {DEFAULT_SPINNER, isSpinnerType, type SpinnerType} from "./spinner.ts";
 import {containsUnsafeFormatCharacter} from "./text.ts";
 import {
@@ -15,6 +16,7 @@ const MAXIMUM_OPTION_CHARACTERS = 8_192;
 export interface ExperimentOptions {
   readonly theme: ThemeName;
   readonly themeMode: ThemeModePreference;
+  readonly motion?: MotionMode;
   readonly spinner?: SpinnerType;
   readonly engine?: string;
   readonly profile?: string;
@@ -40,6 +42,7 @@ Unsupported OpenTUI agent-shell experiment.
 Interface options:
   --theme NAME       Built-in theme name (default: tokyonight)
   --theme-mode MODE  auto, dark, or light (default: auto)
+  --motion MODE      full, reduced, or off (default: ${DEFAULT_MOTION_MODE})
   --spinner TYPE     braille, hangul, pipe, or dots (default: ${DEFAULT_SPINNER})
   --fixture          Ignore ZSCALERCTL_ENGINE_PATH and use sanitized fixture data
 
@@ -85,6 +88,7 @@ export function parseOptions(
 ): ParsedOptions {
   let theme: ThemeName = "tokyonight";
   let themeMode: ThemeModePreference = "auto";
+  let motion: MotionMode = DEFAULT_MOTION_MODE;
   let spinner: SpinnerType = DEFAULT_SPINNER;
   let engine: string | undefined;
   let profile: string | undefined;
@@ -140,6 +144,14 @@ export function parseOptions(
       spinner = spinnerValue;
       continue;
     }
+    const motionValue = valueOption("--motion");
+    if (motionValue !== undefined) {
+      if (!isMotionMode(motionValue)) {
+        throw new OptionError("--motion must be full, reduced, or off.");
+      }
+      motion = motionValue;
+      continue;
+    }
     const engineValue = valueOption("--engine");
     if (engineValue !== undefined) {
       engine = assignOnce(engine, "--engine", engineValue);
@@ -191,6 +203,7 @@ export function parseOptions(
     options: {
       theme,
       themeMode,
+      motion,
       spinner,
       ...(engine === undefined ? {} : {engine}),
       ...(profile === undefined ? {} : {profile}),

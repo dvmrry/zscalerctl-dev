@@ -1,8 +1,47 @@
 import {TextAttributes} from "@opentui/core";
 
+import {
+  poisonBannerForWidth,
+  poisonBeamSegments,
+  type PoisonBanner
+} from "../brand.ts";
 import type {Palette} from "../theme.ts";
+import {useMotionFrame} from "../useMotion.ts";
 
-export function Welcome(props: {readonly colors: Palette; readonly compact: boolean; readonly workspaceLabel: string}) {
+function PoisonArtwork(props: {readonly banner: PoisonBanner; readonly colors: Palette}) {
+  const motion = useMotionFrame();
+  return (
+    <box flexDirection="column" marginBottom={1}>
+      {props.banner.lines.map((line, index) => {
+        const segments = poisonBeamSegments(
+          line,
+          motion.frameIndex,
+          props.banner.width,
+          motion.active && motion.mode === "full"
+        );
+        const baseColor = index < 3
+          ? props.colors.accent
+          : index < 7 ? props.colors.text : props.colors.accentSecondary;
+        return (
+          <text key={index} wrapMode="none">
+            <span style={{fg: baseColor}}>{segments.before}</span>
+            <span style={{fg: props.colors.warning}}>{segments.beam}</span>
+            <span style={{fg: baseColor}}>{segments.after}</span>
+          </text>
+        );
+      })}
+      <text fg={props.colors.textMuted}>OpenTUI lab</text>
+    </box>
+  );
+}
+
+export function Welcome(props: {
+  readonly colors: Palette;
+  readonly compact: boolean;
+  readonly artwork: boolean;
+  readonly availableWidth: number;
+  readonly workspaceLabel: string;
+}) {
   if (props.compact) {
     return (
       <box flexDirection="column" marginBottom={1} paddingLeft={1}>
@@ -13,6 +52,7 @@ export function Welcome(props: {readonly colors: Palette; readonly compact: bool
       </box>
     );
   }
+  const banner = props.artwork ? poisonBannerForWidth(props.availableWidth) : undefined;
   return (
     <box
       flexDirection="column"
@@ -21,9 +61,13 @@ export function Welcome(props: {readonly colors: Palette; readonly compact: bool
       paddingBottom={1}
       marginBottom={1}
     >
-      <text fg={props.colors.text} attributes={TextAttributes.BOLD}>
-        <span style={{fg: props.colors.accent}}>◆ </span>zscalerctl <span style={{fg: props.colors.textMuted}}>OpenTUI lab</span>
-      </text>
+      {banner === undefined ? (
+        <text fg={props.colors.text} attributes={TextAttributes.BOLD}>
+          <span style={{fg: props.colors.accent}}>◆ </span>zscalerctl <span style={{fg: props.colors.textMuted}}>OpenTUI lab</span>
+        </text>
+      ) : (
+        <PoisonArtwork banner={banner} colors={props.colors} />
+      )}
       <text fg={props.colors.textMuted}>Agentic tenant explorer with a structured data workspace.</text>
       <box flexDirection="row" gap={2}>
         <text fg={props.colors.success}>● tenant read-only</text>

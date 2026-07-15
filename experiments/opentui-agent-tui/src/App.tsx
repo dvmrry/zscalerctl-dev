@@ -4,6 +4,7 @@ import type {WireValue} from "../../../clients/typescript/src/index.ts";
 
 import {
   activeInteractionMode,
+  isBusyControl,
   resolveInteractionCommand
 } from "./commands.ts";
 import {Composer} from "./components/Composer.tsx";
@@ -27,6 +28,16 @@ import {
   type TranscriptEvidence,
   type TranscriptEntry
 } from "./model.ts";
+import {
+  DEFAULT_MOTION_MODE,
+  isMotionMode,
+  motionDescription,
+  OPERATION_SCENE_DELAY_MS,
+  SYSTEM_MOTION_TIMERS,
+  WELCOME_MOTION_DURATION_MS,
+  type MotionTimerDriver,
+  type MotionMode
+} from "./motion.ts";
 import {DEFAULT_SPINNER, type SpinnerType} from "./spinner.ts";
 import {safeInlineText} from "./text.ts";
 import {
@@ -56,7 +67,7 @@ import {
   type TreeSearchMatch,
   type TreeRow
 } from "./tree.ts";
-import {SpinnerFrameProvider} from "./useSpinnerFrame.ts";
+import {MotionProvider} from "./useMotion.ts";
 import {
   FIXTURE_WORKSPACE_ADAPTER,
   WorkspaceCommandError,
@@ -106,13 +117,31 @@ function themePickerFor(currentTheme: ThemeName, mode: ThemeMode): WorkspacePick
   };
 }
 
+function motionPickerFor(currentMode: MotionMode): WorkspacePicker {
+  return {
+    title: "Choose motion",
+    placeholder: "Filter motion modes…",
+    instruction: "Choose how much terminal animation to render.",
+    emptyMessage: "No motion modes match this search.",
+    items: (["full", "reduced", "off"] as const).map(mode => ({
+      id: mode,
+      title: mode,
+      description: motionDescription(mode),
+      searchText: "animation accessibility liveness",
+      category: "Motion",
+      ...(mode === currentMode ? {badge: "current"} : {}),
+      command: `/motion ${mode}`
+    }))
+  };
+}
+
 interface SearchSnapshot {
   readonly selectedId: string;
   readonly expanded: ReadonlySet<string>;
   readonly resultId?: number;
 }
 
-type WorkspacePickerPurpose = "workspace" | "theme";
+type WorkspacePickerPurpose = "workspace" | "theme" | "motion";
 
 function selectedSearchMatch(
   matches: readonly TreeSearchMatch[],
@@ -147,11 +176,14 @@ function footerHelpFor(focus: FocusTarget, availableWidth: number): string {
 export function App(props: {
   readonly initialMode: ThemeMode;
   readonly initialTheme: ThemeName;
+  readonly initialMotion?: MotionMode;
+  readonly motionTimers?: MotionTimerDriver;
   readonly workspace?: WorkspaceAdapter;
   readonly spinner?: SpinnerType;
 }) {
   const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
+  const motionTimers = props.motionTimers ?? SYSTEM_MOTION_TIMERS;
   const workspace = props.workspace ?? FIXTURE_WORKSPACE_ADAPTER;
   const initialWorkspace = workspace.initial;
   const initialDataRef = useRef<WireValue | undefined>(undefined);
@@ -162,6 +194,11 @@ export function App(props: {
   const nextResultID = useRef(initialWorkspace.context.connection === "connecting" ? 1 : 2);
   const [themeName, setThemeName] = useState(props.initialTheme);
   const [themeMode, setThemeMode] = useState(props.initialMode);
+  const [motionMode, setMotionMode] = useState(props.initialMotion ?? DEFAULT_MOTION_MODE);
+  const [welcomeMotionActive, setWelcomeMotionActive] = useState(
+    (props.initialMotion ?? DEFAULT_MOTION_MODE) === "full"
+  );
+  const [operationSceneVisible, setOperationSceneVisible] = useState(false);
   const colors = useMemo(() => paletteFor(themeName, themeMode), [themeMode, themeName]);
   const [focus, setFocus] = useState<FocusTarget>("composer");
   const [sidebarMode, setSidebarMode] = useState<"auto" | "hide">("auto");
@@ -246,6 +283,8 @@ export function App(props: {
   const sidebarOverlay = sidebarVisible && !wide;
   const conversationWidth = dimensions.width - (sidebarVisible && wide ? railWidth : 0);
   const compact = dimensions.width < 88 || dimensions.height < 25;
+  const artworkVisible = !compact && dimensions.height >= 42;
+  const motionActive = busy || (welcomeMotionActive && artworkVisible);
   const rows = useMemo(() => flattenTree(data, expanded, {arrayOrder}), [arrayOrder, data, expanded]);
   const searchResult = useMemo(
     () => searchTree(data, searchQuery, {arrayOrder}),
@@ -532,6 +571,17 @@ export function App(props: {
     setWorkspacePickerSelectedId(next?.id);
   }, []);
 
+  const changeMotionMode = useCallback((mode: MotionMode) => {
+    setMotionMode(mode);
+    setWelcomeMotionActive(false);
+    append({
+      role: "assistant",
+      title: "Motion changed",
+      blocks: textTranscriptBlocks([`Now using ${mode} motion · ${motionDescription(mode)}.`]),
+      tone: "success"
+    });
+  }, [append]);
+
   const commitWorkspacePicker = useCallback((id?: string) => {
     const requested = id ?? workspacePickerSelectedIdRef.current;
     const item = filteredWorkspacePickerRef.current.items.find(candidate => candidate.id === requested);
@@ -552,8 +602,16 @@ export function App(props: {
       });
       return;
     }
+    if (purpose === "motion") {
+      if (!isMotionMode(item.id)) {
+        showToast("The selected motion mode is unavailable.", "warning");
+        return;
+      }
+      changeMotionMode(item.id);
+      return;
+    }
     submitRef.current(item.command);
-  }, [append, closeWorkspacePicker, showToast, themeMode]);
+  }, [append, changeMotionMode, closeWorkspacePicker, showToast, themeMode]);
 
   const cancelActiveOperation = useCallback(() => {
     const active = activeOperationRef.current;
@@ -581,6 +639,31 @@ export function App(props: {
   useEffect(() => () => {
     toastController.current?.dispose();
   }, []);
+
+  useEffect(() => {
+    if (!welcomeMotionActive) return;
+    let accepting = true;
+    const timer = motionTimers.setTimeout(() => {
+      if (accepting) setWelcomeMotionActive(false);
+    }, WELCOME_MOTION_DURATION_MS);
+    return () => {
+      accepting = false;
+      motionTimers.clearTimeout(timer);
+    };
+  }, [motionTimers, welcomeMotionActive]);
+
+  useEffect(() => {
+    setOperationSceneVisible(false);
+    if (!busy) return;
+    let accepting = true;
+    const timer = motionTimers.setTimeout(() => {
+      if (accepting && busyRef.current) setOperationSceneVisible(true);
+    }, OPERATION_SCENE_DELAY_MS);
+    return () => {
+      accepting = false;
+      motionTimers.clearTimeout(timer);
+    };
+  }, [busy, motionTimers]);
 
   useEffect(() => {
     const connect = workspace.connect;
@@ -857,6 +940,14 @@ export function App(props: {
     });
   }, [cancelSearch, presentWorkspacePicker, themeMode, themeName]);
 
+  const openMotionPicker = useCallback(() => {
+    if (searchOpenRef.current) cancelSearch();
+    presentWorkspacePicker(motionPickerFor(motionMode), {
+      preferredId: motionMode,
+      purpose: "motion"
+    });
+  }, [cancelSearch, motionMode, presentWorkspacePicker]);
+
   const commitSearch = useCallback((matchId?: string, inspect = false) => {
     const match = selectedSearchMatch(searchResultRef.current.matches, matchId ?? searchSelectedIdRef.current);
     if (match === undefined) return;
@@ -899,6 +990,7 @@ export function App(props: {
   }, [rows, selectedId]);
 
   useKeyboard(event => {
+    if (welcomeMotionActive) setWelcomeMotionActive(false);
     const mode = activeInteractionMode({
       search: searchOpenRef.current,
       picker: workspacePicker !== undefined,
@@ -1107,8 +1199,7 @@ export function App(props: {
   };
 
   const handleSubmit = async (input: string) => {
-    const controlWhileBusy = /^\/(?:cancel|quit)$/iu.test(input.trim());
-    if (busyRef.current && !controlWhileBusy) return;
+    if (busyRef.current && !isBusyControl(input)) return;
     const tokens = input.trim().split(/\s+/u);
     const command = tokens[0]?.toLowerCase();
 
@@ -1124,6 +1215,11 @@ export function App(props: {
     }
     if (command === "/theme" && (tokens[1] === undefined || tokens[1] === "list")) {
       openThemePicker();
+      return;
+    }
+    const motionRequest = command === "/motion" ? tokens[1]?.toLowerCase() : undefined;
+    if (command === "/motion" && (motionRequest === undefined || motionRequest === "list")) {
+      openMotionPicker();
       return;
     }
     if (command === "/pin" && tokens.length === 1) {
@@ -1233,6 +1329,15 @@ export function App(props: {
       assistant("Theme changed", [`Now using ${selected} · ${selectedMode}.`], "success");
       return;
     }
+    if (command === "/motion") {
+      const requested = motionRequest;
+      if (tokens.length !== 2 || requested === undefined || !isMotionMode(requested)) {
+        assistant("Unknown motion mode", ["Choose full, reduced, or off; /motion opens the picker."], "warning");
+        return;
+      }
+      changeMotionMode(requested);
+      return;
+    }
     if (command === "/sort") {
       const requested = tokens[1];
       if (requested === undefined) {
@@ -1333,8 +1438,11 @@ export function App(props: {
             entries={entries}
             focus={focus}
             compact={compact}
+            artwork={artworkVisible}
             availableWidth={Math.max(20, conversationWidth - 7)}
             workspaceLabel={workspace.id === "fixture" ? "fixture" : "stdio v1"}
+            context={context}
+            operationSceneVisible={operationSceneVisible}
             interactive={!busy}
             onFocus={() => setFocus("transcript")}
             onAction={handleTranscriptAction}
@@ -1474,8 +1582,13 @@ export function App(props: {
   );
 
   return (
-    <SpinnerFrameProvider spinner={props.spinner ?? DEFAULT_SPINNER} active={busy}>
+    <MotionProvider
+      spinner={props.spinner ?? DEFAULT_SPINNER}
+      mode={motionMode}
+      active={motionActive}
+      timers={motionTimers}
+    >
       {shell}
-    </SpinnerFrameProvider>
+    </MotionProvider>
   );
 }

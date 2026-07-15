@@ -2,6 +2,7 @@ import {describe, expect, test} from "bun:test";
 
 import {
   activeInteractionMode,
+  isBusyControl,
   resolveInteractionCommand
 } from "../src/commands.ts";
 
@@ -45,5 +46,24 @@ describe("interaction command routing", () => {
     expect(resolveInteractionCommand("picker", {name: "tab", shift: true})).toBe("picker.scope-previous");
     expect(resolveInteractionCommand("picker", {name: "left"})).toBeUndefined();
     expect(resolveInteractionCommand("picker", {name: "escape"})).toBe("picker.cancel");
+  });
+
+  test("permits only cancellation, shutdown, and valid motion controls while busy", () => {
+    for (const command of [
+      "/cancel",
+      "/quit",
+      "/motion",
+      "/motion list",
+      "/motion full",
+      "/motion reduced",
+      "/motion off"
+    ]) expect(isBusyControl(command)).toBeTrue();
+    for (const command of [
+      "/demo",
+      "/motion maximum",
+      "/motion off extra",
+      "/cancel now",
+      "plain text"
+    ]) expect(isBusyControl(command)).toBeFalse();
   });
 });

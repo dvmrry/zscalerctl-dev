@@ -13,12 +13,23 @@ export const SLASH_COMMANDS: readonly SlashCommandDescriptor[] = Object.freeze([
   {command: "/pin", usage: "/pin", summary: "Pin the selected evidence to the working set"},
   {command: "/unpin", usage: "/unpin [all]", summary: "Clear pinned evidence from the working set"},
   {command: "/theme", usage: "/theme [<name> [auto|dark|light]|list|next|mode [auto|dark|light|toggle]]", summary: "Browse themes or change appearance"},
+  {command: "/motion", usage: "/motion [full|reduced|off|list]", summary: "Browse or change terminal motion"},
   {command: "/sort", usage: "/sort <index|name|toggle>", summary: "Order named array items by source index or name"},
   {command: "/sidebar", usage: "/sidebar", summary: "Toggle the context rail"},
   {command: "/inspect", usage: "/inspect", summary: "Toggle the wide JSON inspector"},
   {command: "/cancel", usage: "/cancel", summary: "Cancel the active engine operation"},
   {command: "/quit", usage: "/quit", summary: "Exit and restore the terminal"}
 ]);
+
+export function isBusyControl(input: string): boolean {
+  const tokens = input.trim().toLowerCase().split(/\s+/u);
+  const command = tokens[0];
+  if ((command === "/cancel" || command === "/quit") && tokens.length === 1) return true;
+  if (command !== "/motion") return false;
+  if (tokens.length === 1) return true;
+  return tokens.length === 2
+    && (tokens[1] === "full" || tokens[1] === "reduced" || tokens[1] === "off" || tokens[1] === "list");
+}
 
 export function suggestSlashCommands(
   draft: string,

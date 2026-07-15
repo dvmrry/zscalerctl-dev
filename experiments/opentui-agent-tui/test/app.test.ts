@@ -1,8 +1,10 @@
 import {afterEach, describe, expect, test} from "bun:test";
+import {ManualClock} from "@opentui/core/testing";
 import {testRender} from "@opentui/react/test-utils";
 import {act, createElement} from "react";
 
 import {App} from "../src/App.tsx";
+import {OPERATION_SCENE_DELAY_MS} from "../src/motion.ts";
 import {
   FIXTURE_WORKSPACE_ADAPTER,
   WorkspaceCommandError,
@@ -302,6 +304,35 @@ describe("OpenTUI shell interactions", () => {
     expect(lines[statusRow]).toContain("Enter send");
     expect(lines[statusRow]).not.toContain("tenant read-only");
     expect(lines[statusRow]).not.toContain("/ commands");
+  });
+
+  test("selects Poison artwork from the actual pane width across the rail breakpoint", async () => {
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "off"
+    }), {width: 120, height: 42});
+    renderers.push(setup.renderer);
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
+
+    await act(async () => setup.resize(120, 41));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
+    expect(setup.captureCharFrame()).not.toContain("@@@@@@@@   @@@@@@");
+    await act(async () => setup.resize(120, 42));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
+
+    await act(async () => setup.resize(121, 42));
+    await setup.flush();
+    const withRail = setup.captureCharFrame();
+    expect(withRail).toContain("◆ zscalerctl OpenTUI lab");
+    expect(withRail).not.toContain("@@@@@@@@   @@@@@@");
+
+    await act(async () => setup.resize(120, 42));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
   });
 
   test("opens the searchable theme picker for bare theme commands and applies a selection", async () => {
@@ -715,6 +746,7 @@ describe("OpenTUI shell interactions", () => {
   });
 
   test("routes Ctrl+C to active engine cancellation without destroying the shell", async () => {
+    const clock = new ManualClock();
     const initial: WorkspaceSnapshot = {
       data: {records: []},
       context: {
@@ -747,6 +779,8 @@ describe("OpenTUI shell interactions", () => {
     const setup = await testRender(createElement(App, {
       initialMode: "dark",
       initialTheme: "tokyonight",
+      initialMotion: "off",
+      motionTimers: clock,
       workspace
     }), {width: 100, height: 28, exitOnCtrlC: false});
     renderers.push(setup.renderer);
@@ -754,14 +788,19 @@ describe("OpenTUI shell interactions", () => {
     await interact(() => setup.mockInput.typeText("/list zia locations"), setup.flush);
     await interact(() => setup.mockInput.pressEnter(), setup.flush);
     expect(setup.captureCharFrame()).toContain("Working");
+    await act(async () => clock.advance(OPERATION_SCENE_DELAY_MS));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("ACTIVE OPERATION");
     await interact(() => setup.mockInput.pressKey("c", {ctrl: true}), setup.flush);
     const frame = setup.captureCharFrame();
     expect(frame).toContain("Operation canceled");
     expect(frame).toContain("Explore");
     expect(frame).not.toContain("waiting for engine acknowledgment");
+    expect(frame).not.toContain("ACTIVE OPERATION");
   });
 
   test("clears cancellation feedback when abort ends in a terminal failure", async () => {
+    const clock = new ManualClock();
     const workspace: WorkspaceAdapter = {
       ...FIXTURE_WORKSPACE_ADAPTER,
       commands: [{command: "/work", usage: "/work", summary: "Run test work"}],
@@ -778,6 +817,8 @@ describe("OpenTUI shell interactions", () => {
     const setup = await testRender(createElement(App, {
       initialMode: "dark",
       initialTheme: "tokyonight",
+      initialMotion: "off",
+      motionTimers: clock,
       workspace
     }), {width: 100, height: 28, exitOnCtrlC: false});
     renderers.push(setup.renderer);
@@ -785,10 +826,14 @@ describe("OpenTUI shell interactions", () => {
 
     await interact(() => setup.mockInput.typeText("/work"), setup.flush);
     await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    await act(async () => clock.advance(OPERATION_SCENE_DELAY_MS));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("ACTIVE OPERATION");
     await interact(() => setup.mockInput.pressKey("c", {ctrl: true}), setup.flush);
     const frame = setup.captureCharFrame();
     expect(frame).toContain("Cancellation failed");
     expect(frame).not.toContain("waiting for engine acknowledgment");
+    expect(frame).not.toContain("ACTIVE OPERATION");
   });
 
   test("renders inactive cancellation as informational transient feedback", async () => {
@@ -804,5 +849,137 @@ describe("OpenTUI shell interactions", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("No engine operation is active.");
     expect(frame).toContain("i No engine operation");
+  });
+
+  test("keeps motion local and exposes its picker without engine dispatch", async () => {
+    const executed: string[] = [];
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      execute: async input => {
+        executed.push(input);
+        return {announcement: {title: "Unexpected dispatch", body: [input], tone: "danger"}};
+      }
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "full",
+      workspace
+    }), {width: 110, height: 32});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/motion"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const picker = setup.captureCharFrame();
+    expect(picker).toContain("Choose motion");
+    expect(picker).toContain("full");
+    expect(picker).toContain("reduced");
+    expect(picker).toContain("off");
+
+    await interact(() => setup.mockInput.typeText("off"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Now using off motion");
+
+    await interact(() => setup.mockInput.typeText("/motion reduced"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Now using reduced motion");
+
+    await interact(() => setup.mockInput.typeText("/motion maximum"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Unknown motion mode");
+    expect(executed).toEqual([]);
+  });
+
+  test("delays the operation scene, reports only real progress, and permits motion off while busy", async () => {
+    const clock = new ManualClock();
+    const calls: string[] = [];
+    let emitProgress!: (event: {kind: "progress"; completed: number; total: number; message: string}) => void;
+    let resolveOperation!: (result: WorkspaceResult) => void;
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      commands: [{command: "/work", usage: "/work", summary: "Run test work"}],
+      execute: async (input, context) => {
+        calls.push(input);
+        emitProgress = context.emit;
+        context.emit({kind: "progress", completed: 0, total: 3, message: "zia/locations"});
+        return new Promise(resolve => { resolveOperation = resolve; });
+      }
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "full",
+      motionTimers: clock,
+      workspace
+    }), {width: 100, height: 30});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/work"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).not.toContain("ACTIVE OPERATION");
+
+    await act(async () => clock.advance(OPERATION_SCENE_DELAY_MS - 1));
+    await setup.flush();
+    expect(setup.captureCharFrame()).not.toContain("ACTIVE OPERATION");
+    await act(async () => clock.advance(1));
+    await setup.flush();
+    const visible = setup.captureCharFrame();
+    expect(visible).toContain("ACTIVE OPERATION · tenant read-only");
+    expect(visible).toContain("zia/locations");
+    expect(visible).toContain("0/3");
+    expect(visible).not.toContain("1/3");
+
+    await act(async () => emitProgress({kind: "progress", completed: 1, total: 3, message: "zpa/app-segments"}));
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("1/3");
+
+    await interact(() => setup.mockInput.typeText("/motion off"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Now using off motion");
+    expect(calls).toEqual(["/work"]);
+
+    await act(async () => resolveOperation({
+      announcement: {title: "Work complete", body: ["No replacement data."], tone: "success"}
+    }));
+    await setup.flush();
+    expect(setup.captureCharFrame()).not.toContain("ACTIVE OPERATION");
+
+    await act(async () => emitProgress({kind: "progress", completed: 2, total: 3, message: "late event"}));
+    await act(async () => clock.advance(OPERATION_SCENE_DELAY_MS * 2));
+    await setup.flush();
+    const settled = setup.captureCharFrame();
+    expect(settled).not.toContain("ACTIVE OPERATION");
+    expect(settled).not.toContain("late event");
+    expect(settled).not.toContain("2/3");
+  });
+
+  test("never flashes the delayed scene for a quick operation", async () => {
+    const clock = new ManualClock();
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      commands: [{command: "/quick", usage: "/quick", summary: "Complete immediately"}],
+      execute: async () => ({
+        announcement: {title: "Quick complete", body: ["Finished before the scene delay."], tone: "success"}
+      })
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "off",
+      motionTimers: clock,
+      workspace
+    }), {width: 100, height: 30});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/quick"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    await act(async () => clock.advance(OPERATION_SCENE_DELAY_MS * 2));
+    await setup.flush();
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("Quick complete");
+    expect(frame).not.toContain("ACTIVE OPERATION");
   });
 });

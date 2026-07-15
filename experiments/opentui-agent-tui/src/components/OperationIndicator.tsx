@@ -1,7 +1,7 @@
 import type {OperationState} from "../model.ts";
 import {fitCellText, safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
-import {useSpinnerFrame} from "../useSpinnerFrame.ts";
+import {useSpinnerFrame} from "../useMotion.ts";
 
 export interface NormalizedProgress {
   readonly completed: number;
