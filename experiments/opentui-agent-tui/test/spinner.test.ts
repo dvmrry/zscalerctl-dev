@@ -25,6 +25,12 @@ function PassiveProbe(props: {readonly onRender: () => void}) {
   return createElement("text", null, "steady");
 }
 
+function ObservedSpinnerProbe(props: {readonly onRender: (frame: string) => void}) {
+  const activityFrame = useSpinnerFrame();
+  props.onRender(activityFrame);
+  return createElement("text", null, activityFrame);
+}
+
 afterEach(async () => {
   await act(async () => {
     for (const renderer of renderers.splice(0)) renderer.destroy();
@@ -102,11 +108,12 @@ describe("activity spinner presentation", () => {
 
   test("does not rerender non-consumers on animation ticks", async () => {
     let passiveRenders = 0;
+    const activeFrames: string[] = [];
     const setup = await testRender(createElement(
       SpinnerFrameProvider,
       {spinner: "hangul", active: true},
       createElement("box", null,
-        createElement(SpinnerProbe),
+        createElement(ObservedSpinnerProbe, {onRender: frame => { activeFrames.push(frame); }}),
         createElement(PassiveProbe, {onRender: () => { passiveRenders += 1; }})
       )
     ), {width: 12, height: 2});
@@ -114,9 +121,10 @@ describe("activity spinner presentation", () => {
     await setup.flush();
 
     await act(async () => {
-      await Bun.sleep(SPINNER_INTERVAL_MS * 3 + 40);
+      await Bun.sleep(SPINNER_INTERVAL_MS + 40);
       await setup.flush();
     });
+    expect(new Set(activeFrames).size).toBeGreaterThan(1);
     expect(passiveRenders).toBe(1);
   });
 });
