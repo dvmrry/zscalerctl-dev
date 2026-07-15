@@ -62,6 +62,10 @@ describe("zscalerctl workspace adapter", () => {
       noCache: true
     });
     expect(result.announcement.title).toBe("Engine connected");
+    expect(result.announcement.summary?.facets?.[0]).toEqual({
+      label: "Products",
+      values: [{label: "ZIA", count: 2}, {label: "ZTW", count: 1}]
+    });
     expect(result.context?.records).toBe(3);
     expect(result.context?.effects).toBe("none");
     await workspace.close();
@@ -114,6 +118,12 @@ describe("zscalerctl workspace adapter", () => {
       filters: [{field: "name", operator: "exact", value: "foo~bar"}],
       search: "hq"
     });
+    expect(result.announcement.summary?.metrics).toEqual([
+      {label: "Operation", value: "list"},
+      {label: "Fields", value: "2"},
+      {label: "Filters", value: "1"},
+      {label: "Search", value: "applied"}
+    ]);
     const data = result.data as {records: Array<{id: WireNumber}>};
     expect(data.records[0]?.id).toBeInstanceOf(WireNumber);
     expect(data.records[0]?.id.lexeme).toBe("900719925474099312345");

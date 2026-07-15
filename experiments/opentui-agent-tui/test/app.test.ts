@@ -28,6 +28,157 @@ async function interact(callback: () => void | Promise<void>, flush: () => Promi
 }
 
 describe("OpenTUI shell interactions", () => {
+  test("turns result cards into restorable evidence and keeps a bounded working set", async () => {
+    const initial: WorkspaceSnapshot = {
+      data: {
+        records: [
+          {id: "1", name: "Alpha location", status: "enabled"},
+          {id: "2", name: "Beta location", status: "disabled"}
+        ]
+      },
+      context: {
+        connection: "connected",
+        transport: "test stdio",
+        authority: "tenant read-only",
+        scope: "initial/locations",
+        records: 2,
+        effects: "none",
+        operation: {status: "complete", label: "ready"}
+      },
+      announcement: {
+        title: "Initial locations",
+        body: ["Two projected locations."],
+        tone: "success",
+        summary: {
+          facets: [{
+            label: "Status",
+            values: [{label: "disabled", count: 1}, {label: "enabled", count: 1}]
+          }]
+        }
+      }
+    };
+    const workspace: WorkspaceAdapter = {
+      id: "workbench-test",
+      initial,
+      commands: [{command: "/next", usage: "/next", summary: "Load another result"}],
+      execute: async () => ({
+        data: {records: [{id: "3", name: "Gamma location", status: "enabled"}]},
+        context: {...initial.context, scope: "next/locations", records: 1},
+        announcement: {title: "Next locations", body: ["One projected location."], tone: "success"}
+      }),
+      close: async () => undefined
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 121, height: 40});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    const initialFrame = setup.captureCharFrame();
+    expect(initialFrame).toContain("scope initial/locations");
+    expect(initialFrame).toContain("status  disabled 1 · enabled 1");
+    expect(initialFrame).toContain("[Inspect] Ctrl+O");
+
+    const initialEvidence = setup.renderer.root.findDescendantById("transcript-evidence-1-0");
+    expect(initialEvidence).toBeDefined();
+    await interact(
+      () => setup.mockMouse.click(initialEvidence!.screenX + 1, initialEvidence!.screenY),
+      setup.flush
+    );
+    expect(setup.captureCharFrame()).toContain("Alpha location · object");
+
+    const initialPin = setup.renderer.root.findDescendantById("transcript-pin-1-0");
+    expect(initialPin).toBeDefined();
+    await interact(
+      () => setup.mockMouse.click(initialPin!.screenX + 1, initialPin!.screenY),
+      setup.flush
+    );
+    expect(setup.captureCharFrame()).toContain("Pinned Alpha location");
+    expect(setup.renderer.root.findDescendantById("working-set-pin-1")).toBeDefined();
+
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("/next"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("next/locations");
+    expect(setup.captureCharFrame()).toContain("Gamma location");
+
+    const pinned = setup.renderer.root.findDescendantById("working-set-pin-1");
+    expect(pinned).toBeDefined();
+    await interact(() => setup.mockMouse.click(pinned!.screenX + 1, pinned!.screenY), setup.flush);
+    const restored = setup.captureCharFrame();
+    expect(restored).toContain("initial/locations");
+    expect(restored).toContain("Alpha location · object");
+
+    const remove = setup.renderer.root.findDescendantById("working-set-remove-1");
+    expect(remove).toBeDefined();
+    await interact(() => setup.mockMouse.click(remove!.screenX, remove!.screenY), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Pinned none · saved evidence survives result changes");
+  });
+
+  test("keeps local pin commands out of the transcript", async () => {
+    const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 120,
+      height: 36
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/pin"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const pinned = setup.captureCharFrame();
+    expect(pinned).toContain("Pinned result");
+    expect(pinned).not.toContain("/pin");
+    expect(setup.renderer.root.findDescendantById("working-set-pin-1")).toBeDefined();
+
+    await interact(() => setup.mockInput.typeText("/unpin all"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const cleared = setup.captureCharFrame();
+    expect(cleared).toContain("Pinned none · saved evidence survives result changes");
+    expect(cleared).not.toContain("/unpin all");
+  });
+
+  test("fails closed when a search match cannot materialize inside the bounded tree", async () => {
+    const records = Array.from({length: 900}, (_, index) => ({
+      name: index === 899 ? "needle-beyond-tree-bound" : `record-${index}`
+    }));
+    const workspace: WorkspaceAdapter = {
+      id: "bounded-tree-test",
+      initial: {
+        data: {records},
+        context: {
+          connection: "connected",
+          transport: "test",
+          authority: "tenant read-only",
+          scope: "large/result",
+          records: records.length,
+          effects: "none",
+          operation: {status: "complete", label: "ready"}
+        },
+        announcement: {title: "Large result", body: ["A bounded tree fixture."], tone: "success"}
+      },
+      close: async () => undefined
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 120, height: 36});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/find needle-beyond-tree-bound"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("That match falls outside the bounded tree view.");
+    expect(frame).toContain("Context result · object");
+    expect(frame).not.toContain("Context needle-beyond-tree-bound");
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Find in structured data");
+  });
+
   test("previews grouped search results, commits with Enter, and cancels with Escape", async () => {
     const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
       width: 120,

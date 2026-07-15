@@ -4,9 +4,9 @@ import {act, createElement} from "react";
 import {WireNumber} from "../../../clients/typescript/src/index.ts";
 
 import {MINIMUM_TERMINAL_TEXT_CONTRAST, contrastRatioOver} from "../src/color.ts";
-import {JsonTree, resolveJsonTreeColors} from "../src/components/JsonTree.tsx";
+import {JsonTree, jsonTreeRowRenderID, resolveJsonTreeColors} from "../src/components/JsonTree.tsx";
 import {paletteFor, THEME_NAMES} from "../src/theme.ts";
-import {flattenTree, initialExpansion, type TreeKind} from "../src/tree.ts";
+import {flattenTree, initialExpansion, pathKey, type TreeKind} from "../src/tree.ts";
 
 const renderers: Array<{destroy(): void}> = [];
 
@@ -26,6 +26,10 @@ afterEach(async () => {
 });
 
 describe("JSON tree presentation", () => {
+  test("derives stable render identities from source paths", () => {
+    expect(jsonTreeRowRenderID(pathKey(["records", 1, "id"]))).toBe('json-tree-row:["records",1,"id"]');
+  });
+
   test("uses neutral keys and distinct type colors for value previews", async () => {
     const data = {name: "Raleigh", enabled: true, missing: null};
     const rows = flattenTree(data, initialExpansion(data));

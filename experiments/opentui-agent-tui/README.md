@@ -18,6 +18,17 @@ effects, and error semantics. No model or shell execution is attached.
   composer.
 - A quiet responsive context rail where the independently scrollable JSON tree
   remains the dominant workspace rather than another transcript attachment.
+- Typed result cards that turn adapter-owned command metadata into bounded
+  metrics, facets, notes, evidence links, and contextual actions. Catalog,
+  manifest, status, read, lookup, and diff results each summarize only semantics
+  their adapter can substantiate; arbitrary record fields are not promoted into
+  inferred insights.
+- Immutable in-memory result snapshots behind every evidence link, so a click
+  on an older transcript result restores the exact data and context it came
+  from rather than applying a stale path to the newest result.
+- A compact working set above the composer with up to eight manually pinned
+  evidence references. Pins survive result changes without copying whole result
+  trees and can be activated or removed with the mouse.
 - Mouse-wheel transcript and tree scrolling, clickable expansion carets, and
   click-to-select JSON rows.
 - A reusable, viewport-clamped picker window with categories, two-line detail
@@ -138,19 +149,24 @@ liveness animation at startup.
 | Shift+C / Shift+P while searching | Copy the sanitized scalar value / exact JSON path with OSC 52 |
 | Escape | Close an overlay or return focus to the composer |
 | Mouse wheel | Scroll the region under the pointer |
+| Click a transcript evidence row | Restore its exact result snapshot and reveal it in the tree |
+| Click `+ pin` | Add that evidence reference to the working set |
 | Click row | Select a JSON value |
 | Click product pill | Restrict the resource map and its search to that product |
 | Click caret | Expand or collapse an object or array |
+| P while tree is focused | Pin the selected JSON value to the working set |
 | S while tree is focused | Toggle named-array ordering between source index and name |
 | Page Up / Page Down | Move through the focused tree eight rows at a time |
 | Ctrl+C | Cancel the active engine operation; exit and restore the terminal when idle |
 | `/quit` | Close the engine, exit, and restore the terminal |
 
-Local commands include `/demo`, `/help`, `/clear`, `/find`, `/theme`, `/sort`,
-`/sidebar`, `/inspect`, `/cancel`, and `/quit`; `/demo` appears only in fixture
-mode. Engine mode adds `/manifest`, `/catalog`, `/doctor`, `/auth`, `/config`,
-`/lookup`, `/list`, `/get`, `/show`, and `/diff`. Theme examples include
-`/theme next`, `/theme github light`, and `/theme mode auto`.
+Local commands include `/demo`, `/help`, `/clear`, `/find`, `/pin`, `/unpin`,
+`/theme`, `/sort`, `/sidebar`, `/inspect`, `/cancel`, and `/quit`; `/demo`
+appears only in fixture mode. `/pin` saves the current tree selection and
+`/unpin all` clears the working set without adding command noise to the
+transcript. Engine mode adds `/manifest`, `/catalog`, `/doctor`, `/auth`,
+`/config`, `/lookup`, `/list`, `/get`, `/show`, and `/diff`. Theme examples
+include `/theme next`, `/theme github light`, and `/theme mode auto`.
 
 ## Verify it
 
@@ -189,7 +205,16 @@ repository's supported release surface and root Go gate suite.
   keyring, or operator-configured `cmd:` provider access. The context rail
   states those effects; set `ZSCALERCTL_DISALLOW_CMD=true` when process-backed
   secret providers should be forbidden.
-- The transcript is session-memory only and currently unbounded.
+- The transcript and its referenced result snapshots are session-memory only
+  and currently unbounded. `/clear` releases snapshots that are not active or
+  pinned; the working set itself is capped at eight references.
+- Transcript summaries are deterministic presentation metadata, not model
+  context. Evidence enters the working set only through an explicit pin, and no
+  local or remote model transport exists in this experiment yet.
+- No generic relationship graph is inferred from matching names or `*id`
+  fields. A future dependency explorer will need catalog-backed targets or
+  resource-specific extractors so unresolved candidates are never presented as
+  authoritative edges.
 - The context rail becomes an overlay on narrow terminals and remains inline
   on wide terminals.
 - Floating windows, drawers, and modal inspectors share explicit overlay

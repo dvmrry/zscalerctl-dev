@@ -33,6 +33,16 @@ import {
   ZSCALERCTL_COMMANDS,
   type ParsedCommand
 } from "./commands.ts";
+import {
+  summarizeAuth,
+  summarizeCatalog,
+  summarizeConfig,
+  summarizeDiff,
+  summarizeDoctor,
+  summarizeLookup,
+  summarizeManifest,
+  summarizeRead
+} from "./summaries.ts";
 
 export type EnginePort = Pick<EngineClient,
   "ready" | "manifest" | "catalog" | "doctor" | "authStatus" | "configStatus" |
@@ -206,7 +216,8 @@ function catalogResult(response: CatalogResponse, command: Extract<ParsedCommand
         `${matched.length} of ${response.result.resources} projected resources match.`,
         "Choose a row to run its default read, or keep typing to narrow the catalog."
       ],
-      tone: "info"
+      tone: "info",
+      summary: summarizeCatalog(matched, response.result.resources)
     },
     data: catalogData(matched),
     context: contextState({scope: command.product === undefined ? "catalog" : `catalog/${command.product}`, records: matched.length, effects: "none", label: `${matched.length} resources discovered`}),
@@ -214,13 +225,19 @@ function catalogResult(response: CatalogResponse, command: Extract<ParsedCommand
   };
 }
 
-function readResult(response: ResourceReadResponse, product: string, resource: string): WorkspaceResult {
+function readResult(
+  response: ResourceReadResponse,
+  product: string,
+  resource: string,
+  summary: WorkspaceResult["announcement"]["summary"]
+): WorkspaceResult {
   const records = response.items.map(item => item.value.record);
   return {
     announcement: {
       title: `Read ${product}/${resource}`,
       body: [`${response.result.records} projected record${response.result.records === 1 ? "" : "s"} returned.`],
-      tone: "success"
+      tone: "success",
+      summary
     },
     data: wireValue({records}),
     context: contextState({
@@ -248,7 +265,8 @@ function diffResult(response: DiffResponse): WorkspaceResult {
         `${summary.resources_compared} resources compared · ${summary.records_added} added · ${summary.records_removed} removed · ${summary.records_changed} changed`,
         ...(partial ? ["At least one dump was partial; uncollected resources were not compared."] : [])
       ],
-      tone: partial || response.result.has_drift ? "warning" : "success"
+      tone: partial || response.result.has_drift ? "warning" : "success",
+      summary: summarizeDiff(response.result)
     },
     data: diffData(response),
     context: contextState({scope: "local dump diff", records: response.items.length, effects: "local filesystem read", label: `${summary.resources_compared} resources compared`})
@@ -263,9 +281,15 @@ function simpleResult(options: {
   readonly scope: string;
   readonly records?: number;
   readonly effects: string;
+  readonly summary?: WorkspaceResult["announcement"]["summary"];
 }): WorkspaceResult {
   return {
-    announcement: {title: options.title, body: options.body, tone: options.tone},
+    announcement: {
+      title: options.title,
+      body: options.body,
+      tone: options.tone,
+      ...(options.summary === undefined ? {} : {summary: options.summary})
+    },
     data: wireValue(options.data),
     context: contextState({scope: options.scope, records: options.records ?? 1, effects: options.effects, label: options.title.toLowerCase()})
   };
@@ -366,7 +390,16 @@ export function createZscalerctlWorkspace(
   async function connect(context: WorkspaceExecutionContext): Promise<WorkspaceResult> {
     if (closed) throw new WorkspaceCommandError({title: "Engine closed", message: "The local engine session is closed."});
     if (client !== undefined && catalog !== undefined) {
-      return simpleResult({title: "Engine connected", body: ["The existing local stdio session is ready."], tone: "success", data: {status: "ready"}, scope: "catalog", records: catalog.result.resources, effects: "none"});
+      return simpleResult({
+        title: "Engine connected",
+        body: ["The existing local stdio session is ready."],
+        tone: "success",
+        data: {status: "ready"},
+        scope: "catalog",
+        records: catalog.result.resources,
+        effects: "none",
+        summary: summarizeCatalog(catalog.items.map(item => item.value), catalog.result.resources, client.ready.engine.capabilities.length)
+      });
     }
     const linked = linkedSignal(context.signal, lifecycle.signal);
     let created: EnginePort | undefined;
@@ -393,7 +426,12 @@ export function createZscalerctlWorkspace(
             `${created.ready.server.name} ${created.ready.server.version} · stdio v${created.ready.version} · ${created.ready.engine.capabilities.length} capabilities`,
             `${catalog.result.resources} projected resources discovered without loading tenant credentials.`
           ],
-          tone: "success"
+          tone: "success",
+          summary: summarizeCatalog(
+            catalog.items.map(item => item.value),
+            catalog.result.resources,
+            created.ready.engine.capabilities.length
+          )
         },
         data: catalogData(catalog.items.map(item => item.value)),
         context: contextState({scope: "catalog", records: catalog.result.resources, effects: "none", label: `${catalog.result.resources} resources discovered`})
@@ -429,7 +467,8 @@ export function createZscalerctlWorkspace(
             data: response.result.manifest,
             scope: "engine manifest",
             records: response.result.manifest.capabilities.length,
-            effects: "none"
+            effects: "none",
+            summary: summarizeManifest(response.result.manifest)
           });
         }
         case "catalog": {
@@ -438,32 +477,47 @@ export function createZscalerctlWorkspace(
         }
         case "doctor": {
           const response = await connected.doctor(requestOptions);
-          return simpleResult({title: "Operational readiness", body: [`Status: ${response.result.status.status}`], tone: response.result.status.status.toLowerCase() === "ok" ? "success" : "warning", data: response.result.status, scope: "status/doctor", effects: "configuration-dependent local reads/process execution"});
+          return simpleResult({title: "Operational readiness", body: [`Status: ${response.result.status.status}`], tone: response.result.status.status.toLowerCase() === "ok" ? "success" : "warning", data: response.result.status, scope: "status/doctor", effects: "configuration-dependent local reads/process execution", summary: summarizeDoctor(response.result.status)});
         }
         case "auth": {
           const response = await connected.authStatus(requestOptions);
-          return simpleResult({title: "Authentication readiness", body: [`Credentials: ${response.result.status.credentials}`], tone: response.result.status.credentials === "configured" ? "success" : "warning", data: response.result.status, scope: "status/auth", effects: "configuration-dependent local reads/process execution"});
+          return simpleResult({title: "Authentication readiness", body: [`Credentials: ${response.result.status.credentials}`], tone: response.result.status.credentials === "configured" ? "success" : "warning", data: response.result.status, scope: "status/auth", effects: "configuration-dependent local reads/process execution", summary: summarizeAuth(response.result.status)});
         }
         case "config": {
           const response = await connected.configStatus(requestOptions);
-          return simpleResult({title: "Configuration metadata", body: [`Source: ${response.result.status.source}`], tone: "info", data: response.result.status, scope: "status/config", effects: "configuration-dependent local reads/process execution"});
+          return simpleResult({title: "Configuration metadata", body: [`Source: ${response.result.status.source}`], tone: "info", data: response.result.status, scope: "status/config", effects: "configuration-dependent local reads/process execution", summary: summarizeConfig(response.result.status)});
         }
         case "lookup": {
           const request: URLLookupInput = {urls: command.urls};
           const response = await connected.lookup(request, requestOptions);
-          return simpleResult({title: "URL classification", body: [`${response.result.classifications} classification${response.result.classifications === 1 ? "" : "s"} returned.`], tone: "success", data: {classifications: response.items.map(item => item.value)}, scope: "zia/url-lookup", records: response.result.classifications, effects: "network access; configuration-dependent local reads/process execution"});
+          return simpleResult({title: "URL classification", body: [`${response.result.classifications} classification${response.result.classifications === 1 ? "" : "s"} returned.`], tone: "success", data: {classifications: response.items.map(item => item.value)}, scope: "zia/url-lookup", records: response.result.classifications, effects: "network access; configuration-dependent local reads/process execution", summary: summarizeLookup(command.urls.length)});
         }
         case "list": {
           const request: ResourceListInput = {product: command.product, resource: command.resource, fields: command.fields, filters: command.filters, search: command.search};
-          return readResult(await connected.list(request, requestOptions as OperationOptions<ProjectedRecordItem>), command.product, command.resource);
+          return readResult(
+            await connected.list(request, requestOptions as OperationOptions<ProjectedRecordItem>),
+            command.product,
+            command.resource,
+            summarizeRead({operation: "list", fields: command.fields, filterCount: command.filters.length, hasSearch: command.search.length > 0})
+          );
         }
         case "get": {
           const request: ResourceGetInput = {product: command.product, resource: command.resource, record_id: command.recordID, fields: command.fields};
-          return readResult(await connected.get(request, requestOptions as OperationOptions<ProjectedRecordItem>), command.product, command.resource);
+          return readResult(
+            await connected.get(request, requestOptions as OperationOptions<ProjectedRecordItem>),
+            command.product,
+            command.resource,
+            summarizeRead({operation: "get", fields: command.fields})
+          );
         }
         case "show": {
           const request: ResourceShowInput = {product: command.product, resource: command.resource, fields: command.fields};
-          return readResult(await connected.show(request, requestOptions as OperationOptions<ProjectedRecordItem>), command.product, command.resource);
+          return readResult(
+            await connected.show(request, requestOptions as OperationOptions<ProjectedRecordItem>),
+            command.product,
+            command.resource,
+            summarizeRead({operation: "show", fields: command.fields})
+          );
         }
         case "diff": return diffResult(await connected.diff({
           old_dir: command.oldDirectory,

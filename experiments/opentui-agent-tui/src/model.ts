@@ -4,17 +4,73 @@ import {
   suggestSlashCommands,
   type SlashCommandDescriptor
 } from "./commands.ts";
+import type {JsonPath, TreeKind} from "./tree.ts";
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 export type FocusTarget = "composer" | "tree" | "transcript" | "search" | "picker";
+
+export interface TranscriptMetric {
+  readonly label: string;
+  readonly value: string;
+  readonly tone?: Tone;
+}
+
+export interface TranscriptFacetValue {
+  readonly label: string;
+  readonly count: number;
+}
+
+export interface TranscriptFacet {
+  readonly label: string;
+  readonly values: readonly TranscriptFacetValue[];
+}
+
+export interface TranscriptEvidence {
+  readonly path: JsonPath;
+  readonly label: string;
+  readonly detail: string;
+  readonly kind: TreeKind;
+  readonly preview: string;
+}
+
+export type TranscriptActionID = "inspect" | "find";
+
+export interface TranscriptAction {
+  readonly id: TranscriptActionID;
+  readonly label: string;
+  readonly hint?: string;
+}
+
+export type TranscriptBlock =
+  | {readonly id: string; readonly kind: "text"; readonly lines: readonly string[]}
+  | {readonly id: string; readonly kind: "metrics"; readonly items: readonly TranscriptMetric[]}
+  | {readonly id: string; readonly kind: "facets"; readonly items: readonly TranscriptFacet[]}
+  | {readonly id: string; readonly kind: "evidence"; readonly items: readonly TranscriptEvidence[]}
+  | {readonly id: string; readonly kind: "actions"; readonly items: readonly TranscriptAction[]};
 
 export interface TranscriptEntry {
   readonly id: number;
   readonly role: "user" | "assistant" | "system";
   readonly title?: string;
-  readonly body: readonly string[];
+  readonly blocks: readonly TranscriptBlock[];
   readonly tone?: Tone;
-  readonly data?: WireValue;
+  readonly resultId?: number;
+}
+
+export interface PinnedEvidence extends TranscriptEvidence {
+  readonly id: number;
+  readonly ref: EvidenceReference;
+}
+
+export interface EvidenceReference {
+  readonly resultId: number;
+  readonly path: JsonPath;
+}
+
+export interface ResultSnapshot {
+  readonly id: number;
+  readonly data: WireValue;
+  readonly context?: ContextState;
 }
 
 export interface OperationState {

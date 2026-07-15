@@ -6,6 +6,9 @@ test("README documents interaction controls and spinner choices", async () => {
   expect(readme).toContain("/quit` | Close the engine, exit, and restore the terminal");
   expect(readme).toContain("Ctrl+B / Ctrl+F in a text input | Move the editing cursor backward / forward");
   expect(readme).toContain("Tab | Accept the selected autocomplete suggestion; when none exists, move focus forward");
+  expect(readme).toContain("P while tree is focused | Pin the selected JSON value to the working set");
+  expect(readme).toContain("`/unpin all` clears the working set without adding command noise");
+  expect(readme).toContain("Transcript summaries are deterministic presentation metadata, not model\n  context");
   expect(readme).toContain("--spinner braille|hangul|pipe|dots");
   expect(readme).toContain("Hangul sequence by\ndefault");
 });

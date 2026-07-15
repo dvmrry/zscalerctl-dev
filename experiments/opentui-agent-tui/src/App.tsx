@@ -14,12 +14,17 @@ import type {PickerInputMethod} from "./components/PickerWindow.tsx";
 import {SearchBox} from "./components/SearchBox.tsx";
 import {Toast} from "./components/Toast.tsx";
 import {Transcript} from "./components/Transcript.tsx";
+import {WorkingSet} from "./components/WorkingSet.tsx";
 import {WorkspacePickerWindow, workspacePickerScopeBarVisible} from "./components/WorkspacePicker.tsx";
 import {
   COMMANDS,
   type ContextState,
   type FocusTarget,
+  type PinnedEvidence,
+  type ResultSnapshot,
   type Tone,
+  type TranscriptActionID,
+  type TranscriptEvidence,
   type TranscriptEntry
 } from "./model.ts";
 import {DEFAULT_SPINNER, type SpinnerType} from "./spinner.ts";
@@ -36,6 +41,7 @@ import {
   type ThemeName
 } from "./theme.ts";
 import {LatestToastController, type ToastState} from "./toast.ts";
+import {resultTranscriptBlocks, textTranscriptBlocks, valueAtPath} from "./transcript.ts";
 import {
   expandAncestors,
   flattenTree,
@@ -102,6 +108,7 @@ function themePickerFor(currentTheme: ThemeName, mode: ThemeMode): WorkspacePick
 interface SearchSnapshot {
   readonly selectedId: string;
   readonly expanded: ReadonlySet<string>;
+  readonly resultId?: number;
 }
 
 type WorkspacePickerPurpose = "workspace" | "theme";
@@ -139,9 +146,11 @@ export function App(props: {
   const workspace = props.workspace ?? FIXTURE_WORKSPACE_ADAPTER;
   const initialWorkspace = workspace.initial;
   const nextID = useRef(2);
+  const nextPinID = useRef(1);
+  const nextResultID = useRef(initialWorkspace.context.connection === "connecting" ? 1 : 2);
   const [themeName, setThemeName] = useState(props.initialTheme);
   const [themeMode, setThemeMode] = useState(props.initialMode);
-  const colors = paletteFor(themeName, themeMode);
+  const colors = useMemo(() => paletteFor(themeName, themeMode), [themeMode, themeName]);
   const [focus, setFocus] = useState<FocusTarget>("composer");
   const [sidebarMode, setSidebarMode] = useState<"auto" | "hide">("auto");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -173,6 +182,7 @@ export function App(props: {
   const [workspacePickerInputMethod, setWorkspacePickerInputMethod] = useState<PickerInputMethod>("keyboard");
   const [arrayOrder, setArrayOrder] = useState<ArrayOrder>("index");
   const [data, setData] = useState(initialWorkspace.data);
+  const dataRef = useRef<WireValue>(data);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initialExpansion(initialWorkspace.data));
   const expandedRef = useRef<ReadonlySet<string>>(expanded);
   const [selectedId, setSelectedId] = useState(pathKey([]));
@@ -182,16 +192,37 @@ export function App(props: {
   const cancellationToastID = useRef<number | undefined>(undefined);
   if (toastController.current === undefined) toastController.current = new LatestToastController(setToast);
   const [context, setContext] = useState<ContextState>(() => safeContextState(initialWorkspace.context));
+  const contextRef = useRef<ContextState>(context);
+  const initialEntryHasData = initialWorkspace.context.connection !== "connecting";
+  const initialResultId = initialEntryHasData ? 1 : undefined;
+  const snapshotsRef = useRef<Map<number, ResultSnapshot> | undefined>(undefined);
+  if (snapshotsRef.current === undefined) {
+    snapshotsRef.current = new Map(initialResultId === undefined ? [] : [[initialResultId, {
+      id: initialResultId,
+      data: initialWorkspace.data,
+      context: safeContextState(initialWorkspace.context)
+    }]]);
+  }
+  const [activeResultId, setActiveResultId] = useState<number | undefined>(initialResultId);
+  const activeResultIdRef = useRef<number | undefined>(activeResultId);
+  const [pins, setPins] = useState<readonly PinnedEvidence[]>([]);
+  const pinsRef = useRef<readonly PinnedEvidence[]>(pins);
   const [entries, setEntries] = useState<readonly TranscriptEntry[]>([
     {
       id: 1,
       role: "assistant",
       title: safeInlineText(initialWorkspace.announcement.title, 180),
-      body: initialWorkspace.announcement.body.map(line => safeInlineText(line, 4_096)),
+      blocks: resultTranscriptBlocks(
+        initialWorkspace.announcement.body,
+        initialEntryHasData ? initialWorkspace.data : undefined,
+        safeContextState(initialWorkspace.context),
+        initialWorkspace.announcement.summary
+      ),
       tone: initialWorkspace.announcement.tone,
-      ...(initialWorkspace.context.connection === "connecting" ? {} : {data: initialWorkspace.data})
+      ...(initialResultId === undefined ? {} : {resultId: initialResultId})
     }
   ]);
+  const entriesRef = useRef<readonly TranscriptEntry[]>(entries);
 
   const commands = useMemo(
     () => [...(workspace.commands ?? []), ...COMMANDS.filter(command => command.command !== "/demo" || workspace.reload !== undefined)],
@@ -221,10 +252,15 @@ export function App(props: {
   searchResultRef.current = searchResult;
   searchQueryRef.current = searchQuery;
   searchSelectedIdRef.current = searchSelectedId;
+  dataRef.current = data;
   selectedIdRef.current = selectedId;
   expandedRef.current = expanded;
   focusRef.current = focus;
   busyRef.current = busy;
+  contextRef.current = context;
+  activeResultIdRef.current = activeResultId;
+  pinsRef.current = pins;
+  entriesRef.current = entries;
   workspacePickerQueryRef.current = workspacePickerQuery;
   workspacePickerScopeIdRef.current = effectiveWorkspacePickerScopeId;
   workspacePickerSelectedIdRef.current = workspacePickerSelectedId;
@@ -237,20 +273,31 @@ export function App(props: {
     [searchOpen, searchResult]
   );
   const selectedRow = rows.find(row => row.id === selectedId) ?? rows[0]!;
+  const selectedEvidence: TranscriptEvidence = {
+    path: selectedRow.path,
+    label: safeInlineText(formatBreadcrumb(rows, selectedRow), 80),
+    detail: safeInlineText(formatPath(selectedRow.path), 120),
+    kind: selectedRow.kind,
+    preview: selectedRow.preview
+  };
   const footerHelp = footerHelpFor(focus, conversationWidth);
   const breadcrumb = safeInlineText(
     formatBreadcrumb(rows, selectedRow),
     Math.max(10, Math.min(54, conversationWidth - [...footerHelp].length - 6))
   );
 
-  const append = useCallback((entry: Omit<TranscriptEntry, "id">) => {
+  const append = useCallback((entry: Omit<TranscriptEntry, "id">): number => {
     const id = nextID.current++;
-    setEntries(current => [...current, {
-      ...entry,
-      id,
-      ...(entry.title === undefined ? {} : {title: safeInlineText(entry.title, 180)}),
-      body: entry.body.map(line => safeInlineText(line, 4_096))
-    }]);
+    setEntries(current => {
+      const next = [...current, {
+        ...entry,
+        id,
+        ...(entry.title === undefined ? {} : {title: safeInlineText(entry.title, 180)})
+      }];
+      entriesRef.current = next;
+      return next;
+    });
+    return id;
   }, []);
 
   const showToast = useCallback((message: string, tone: ToastState["tone"]) => {
@@ -278,17 +325,40 @@ export function App(props: {
   }, []);
 
   const applyWorkspaceResult = useCallback((result: WorkspaceResult) => {
-    if (result.data !== undefined) {
-      setData(result.data);
-      setExpanded(initialExpansion(result.data));
-      setSelectedId(pathKey([]));
+    const resultContext = result.context === undefined
+      ? contextRef.current
+      : safeContextState(result.context);
+    const resultId = result.data === undefined ? undefined : nextResultID.current++;
+    if (result.data !== undefined && resultId !== undefined) {
+      snapshotsRef.current!.set(resultId, {id: resultId, data: result.data, context: resultContext});
     }
-    if (result.context !== undefined) setContext(safeContextState(result.context));
     append({
       role: "assistant",
-      ...result.announcement,
-      ...(result.data === undefined ? {} : {data: result.data})
+      title: result.announcement.title,
+      blocks: resultTranscriptBlocks(
+        result.announcement.body,
+        result.data,
+        resultContext,
+        result.announcement.summary
+      ),
+      tone: result.announcement.tone,
+      ...(resultId === undefined ? {} : {resultId})
     });
+    if (result.data !== undefined) {
+      dataRef.current = result.data;
+      setData(result.data);
+      const nextExpanded = initialExpansion(result.data);
+      expandedRef.current = nextExpanded;
+      selectedIdRef.current = pathKey([]);
+      setExpanded(nextExpanded);
+      setSelectedId(selectedIdRef.current);
+      activeResultIdRef.current = resultId;
+      setActiveResultId(resultId);
+    }
+    if (result.context !== undefined) {
+      contextRef.current = resultContext;
+      setContext(resultContext);
+    }
     if (result.picker !== undefined) presentWorkspacePicker(result.picker);
   }, [append, presentWorkspacePicker]);
 
@@ -304,7 +374,7 @@ export function App(props: {
     append({
       role: "assistant",
       title: failure.title,
-      body: [failure.message, ...failure.details],
+      blocks: textTranscriptBlocks([failure.message, ...failure.details]),
       tone: failure.tone
     });
   }, [append]);
@@ -454,7 +524,7 @@ export function App(props: {
       append({
         role: "assistant",
         title: "Theme changed",
-        body: [`Now using ${item.id} · ${themeMode}.`],
+        blocks: textTranscriptBlocks([`Now using ${item.id} · ${themeMode}.`]),
         tone: "success"
       });
       return;
@@ -539,20 +609,31 @@ export function App(props: {
     setArrayOrder(current => current === "index" ? "name" : "index");
   }, []);
 
-  const previewSearchMatch = useCallback((matchId: string) => {
+  const previewSearchMatch = useCallback((matchId: string): boolean => {
     const match = searchResultRef.current.matches.find(candidate => candidate.id === matchId);
-    if (match === undefined) return;
+    if (match === undefined) return false;
+    const baseExpansion = searchSnapshotRef.current?.expanded ?? expandedRef.current;
+    const nextExpanded = expandAncestors(baseExpansion, match.path);
+    if (!flattenTree(dataRef.current, nextExpanded, {arrayOrder}).some(row => row.id === match.id)) {
+      showToast("That match falls outside the bounded tree view.", "warning");
+      return false;
+    }
     searchSelectedIdRef.current = match.id;
     setSearchSelectedId(match.id);
-    const baseExpansion = searchSnapshotRef.current?.expanded ?? expandedRef.current;
-    setExpanded(expandAncestors(baseExpansion, match.path));
+    expandedRef.current = nextExpanded;
+    selectedIdRef.current = match.id;
+    setExpanded(nextExpanded);
     setSelectedId(match.id);
-  }, []);
+    return true;
+  }, [arrayOrder, showToast]);
 
   const restoreSearchSnapshot = useCallback(() => {
     const snapshot = searchSnapshotRef.current;
-    if (snapshot === undefined) return;
-    setExpanded(new Set(snapshot.expanded));
+    if (snapshot === undefined || snapshot.resultId !== activeResultIdRef.current) return;
+    const restoredExpanded = new Set(snapshot.expanded);
+    expandedRef.current = restoredExpanded;
+    selectedIdRef.current = snapshot.selectedId;
+    setExpanded(restoredExpanded);
     setSelectedId(snapshot.selectedId);
   }, []);
 
@@ -587,19 +668,16 @@ export function App(props: {
     searchSelectedIdRef.current = next?.id;
     setSearchSelectedId(next?.id);
     if (next === undefined) restoreSearchSnapshot();
-    else {
-      const baseExpansion = searchSnapshotRef.current?.expanded ?? expandedRef.current;
-      setExpanded(expandAncestors(baseExpansion, next.path));
-      setSelectedId(next.id);
-    }
-  }, [arrayOrder, data, restoreSearchSnapshot]);
+    else previewSearchMatch(next.id);
+  }, [arrayOrder, data, previewSearchMatch, restoreSearchSnapshot]);
 
   const openSearch = useCallback((initialQuery?: string) => {
     if (!searchOpenRef.current) {
       searchReturnFocusRef.current = focusRef.current;
       searchSnapshotRef.current = {
         selectedId: selectedIdRef.current,
-        expanded: new Set(expandedRef.current)
+        expanded: new Set(expandedRef.current),
+        resultId: activeResultIdRef.current
       };
     }
     searchOpenRef.current = true;
@@ -637,6 +715,117 @@ export function App(props: {
 
   const cancelSearch = useCallback(() => finishSearch(true), [finishSearch]);
 
+  const activateResultView = useCallback((resultId: number, path: readonly (string | number)[]): boolean => {
+    if (busyRef.current) {
+      showToast("Wait for the active operation before changing evidence views.", "warning");
+      return false;
+    }
+    const snapshot = snapshotsRef.current!.get(resultId);
+    if (snapshot === undefined) {
+      showToast("That result snapshot is no longer available.", "warning");
+      return false;
+    }
+    if (valueAtPath(snapshot.data, path) === undefined) {
+      showToast("That evidence path is no longer available.", "warning");
+      return false;
+    }
+    const nextExpanded = expandAncestors(initialExpansion(snapshot.data), path);
+    const nextSelectedId = pathKey(path);
+    if (!flattenTree(snapshot.data, nextExpanded, {arrayOrder}).some(row => row.id === nextSelectedId)) {
+      showToast("That evidence falls outside the bounded tree view.", "warning");
+      return false;
+    }
+    if (searchOpenRef.current) cancelSearch();
+    if (workspacePicker !== undefined) closeWorkspacePicker();
+    dataRef.current = snapshot.data;
+    expandedRef.current = nextExpanded;
+    selectedIdRef.current = nextSelectedId;
+    activeResultIdRef.current = resultId;
+    setData(snapshot.data);
+    setExpanded(nextExpanded);
+    setSelectedId(nextSelectedId);
+    setActiveResultId(resultId);
+    if (snapshot.context !== undefined) {
+      contextRef.current = snapshot.context;
+      setContext(snapshot.context);
+    }
+    return true;
+  }, [arrayOrder, cancelSearch, closeWorkspacePicker, showToast, workspacePicker]);
+
+  const revealTranscriptEvidence = useCallback((entry: TranscriptEntry, evidence: TranscriptEvidence) => {
+    if (entry.resultId === undefined || !activateResultView(entry.resultId, evidence.path)) return;
+    focusTree();
+  }, [activateResultView, focusTree]);
+
+  const handleTranscriptAction = useCallback((entry: TranscriptEntry, action: TranscriptActionID) => {
+    if (entry.resultId === undefined || !activateResultView(entry.resultId, [])) return;
+    if (action === "inspect") {
+      setInspectorOpen(true);
+      focusTree();
+      return;
+    }
+    setInspectorOpen(false);
+    openSearch();
+  }, [activateResultView, focusTree, openSearch]);
+
+  const pinEvidence = useCallback((resultId: number, evidence: TranscriptEvidence) => {
+    const snapshot = snapshotsRef.current!.get(resultId);
+    if (snapshot === undefined || valueAtPath(snapshot.data, evidence.path) === undefined) {
+      showToast("That evidence path is no longer available.", "warning");
+      return;
+    }
+    const evidenceKey = pathKey(evidence.path);
+    if (pinsRef.current.some(pin => pin.ref.resultId === resultId && pathKey(pin.ref.path) === evidenceKey)) {
+      showToast("That evidence is already pinned.", "info");
+      return;
+    }
+    if (pinsRef.current.length >= 8) {
+      showToast("The working set is full; remove a pin before adding another.", "warning");
+      return;
+    }
+    const pin: PinnedEvidence = {
+      ...evidence,
+      id: nextPinID.current++,
+      ref: {resultId, path: evidence.path}
+    };
+    const next = [...pinsRef.current, pin];
+    pinsRef.current = next;
+    setPins(next);
+    showToast(`Pinned ${evidence.label}.`, "success");
+  }, [showToast]);
+
+  const pinTranscriptEvidence = useCallback((entry: TranscriptEntry, evidence: TranscriptEvidence) => {
+    if (entry.resultId === undefined) return;
+    pinEvidence(entry.resultId, evidence);
+  }, [pinEvidence]);
+
+  const pinCurrentEvidence = useCallback(() => {
+    const resultId = activeResultIdRef.current;
+    if (resultId === undefined) {
+      showToast("The current engine result has not committed yet.", "warning");
+      return;
+    }
+    pinEvidence(resultId, selectedEvidence);
+  }, [pinEvidence, selectedEvidence, showToast]);
+
+  const activatePin = useCallback((pin: PinnedEvidence) => {
+    if (!activateResultView(pin.ref.resultId, pin.ref.path)) return;
+    focusTree();
+  }, [activateResultView, focusTree]);
+
+  const removePin = useCallback((id: number) => {
+    const removed = pinsRef.current.find(pin => pin.id === id);
+    const next = pinsRef.current.filter(pin => pin.id !== id);
+    pinsRef.current = next;
+    setPins(next);
+    if (removed !== undefined
+        && removed.ref.resultId !== activeResultIdRef.current
+        && !entriesRef.current.some(entry => entry.resultId === removed.ref.resultId)
+        && !next.some(pin => pin.ref.resultId === removed.ref.resultId)) {
+      snapshotsRef.current!.delete(removed.ref.resultId);
+    }
+  }, []);
+
   const openThemePicker = useCallback(() => {
     if (searchOpenRef.current) cancelSearch();
     presentWorkspacePicker(themePickerFor(themeName, themeMode), {
@@ -650,7 +839,7 @@ export function App(props: {
     if (requested === undefined) return;
     const match = searchResultRef.current.matches.find(candidate => candidate.id === requested);
     if (match === undefined) return;
-    previewSearchMatch(match.id);
+    if (!previewSearchMatch(match.id)) return;
     finishSearch(false, inspect);
   }, [finishSearch, previewSearchMatch]);
 
@@ -845,6 +1034,11 @@ export function App(props: {
       toggleArrayOrder();
       return;
     }
+    if (event.name === "p" && !event.ctrl && !event.meta && !event.option) {
+      event.preventDefault();
+      pinCurrentEvidence();
+      return;
+    }
     if (event.name === "up" || event.name === "down") {
       event.preventDefault();
       selectRelative(event.name === "up" ? -1 : 1);
@@ -882,8 +1076,13 @@ export function App(props: {
     }
   });
 
-  const assistant = (title: string, body: readonly string[], tone: Tone = "neutral", attachedData?: WireValue) => {
-    append({role: "assistant", title, body, tone, ...(attachedData === undefined ? {} : {data: attachedData})});
+  const assistant = (title: string, body: readonly string[], tone: Tone = "neutral") => {
+    append({
+      role: "assistant",
+      title,
+      blocks: textTranscriptBlocks(body),
+      tone
+    });
   };
 
   const handleSubmit = async (input: string) => {
@@ -893,15 +1092,44 @@ export function App(props: {
     const command = tokens[0]?.toLowerCase();
 
     if (command === "/clear" && tokens.length === 1) {
+      entriesRef.current = [];
       setEntries([]);
+      const retained = new Set<number>(pinsRef.current.map(pin => pin.ref.resultId));
+      if (activeResultIdRef.current !== undefined) retained.add(activeResultIdRef.current);
+      for (const resultId of snapshotsRef.current!.keys()) {
+        if (!retained.has(resultId)) snapshotsRef.current!.delete(resultId);
+      }
       return;
     }
     if (command === "/theme" && (tokens[1] === undefined || tokens[1] === "list")) {
       openThemePicker();
       return;
     }
+    if (command === "/pin" && tokens.length === 1) {
+      pinCurrentEvidence();
+      return;
+    }
+    if (command === "/unpin" && (tokens.length === 1 || (tokens.length === 2 && tokens[1] === "all"))) {
+      const count = pinsRef.current.length;
+      const removedResultIds = new Set(pinsRef.current.map(pin => pin.ref.resultId));
+      pinsRef.current = [];
+      setPins([]);
+      for (const resultId of removedResultIds) {
+        if (resultId !== activeResultIdRef.current
+            && !entriesRef.current.some(entry => entry.resultId === resultId)) {
+          snapshotsRef.current!.delete(resultId);
+        }
+      }
+      showToast(
+        count === 0
+          ? "The working set is already empty."
+          : `${count} pinned evidence item${count === 1 ? "" : "s"} removed.`,
+        count === 0 ? "info" : "success"
+      );
+      return;
+    }
 
-    append({role: "user", body: [input]});
+    append({role: "user", blocks: textTranscriptBlocks([input])});
 
     if (command === "/quit" && tokens.length === 1) {
       void quit();
@@ -1084,8 +1312,23 @@ export function App(props: {
             entries={entries}
             focus={focus}
             compact={compact}
+            availableWidth={Math.max(20, conversationWidth - 7)}
             workspaceLabel={workspace.id === "fixture" ? "fixture" : "stdio v1"}
+            interactive={!busy}
             onFocus={() => setFocus("transcript")}
+            onAction={handleTranscriptAction}
+            onEvidence={revealTranscriptEvidence}
+            onPinEvidence={pinTranscriptEvidence}
+          />
+          <WorkingSet
+            colors={colors}
+            current={selectedEvidence}
+            pins={pins}
+            availableWidth={Math.max(20, conversationWidth - 6)}
+            compact={dimensions.height < 26}
+            onPinCurrent={pinCurrentEvidence}
+            onActivate={activatePin}
+            onRemove={removePin}
           />
           <Composer
             colors={colors}

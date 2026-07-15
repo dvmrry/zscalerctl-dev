@@ -1,13 +1,20 @@
 import type {WireValue} from "../../../clients/typescript/src/index.ts";
 
 import {DEMO_DATA} from "./fixture.ts";
-import type {CommandDescriptor, ContextState, Tone} from "./model.ts";
+import type {CommandDescriptor, ContextState, Tone, TranscriptFacet, TranscriptMetric} from "./model.ts";
 import {safeInlineText} from "./text.ts";
+
+export interface WorkspaceSummary {
+  readonly metrics?: readonly TranscriptMetric[];
+  readonly facets?: readonly TranscriptFacet[];
+  readonly notes?: readonly string[];
+}
 
 export interface WorkspaceAnnouncement {
   readonly title: string;
   readonly body: readonly string[];
   readonly tone: Tone;
+  readonly summary?: WorkspaceSummary;
 }
 
 export interface WorkspaceSnapshot {

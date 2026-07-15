@@ -69,19 +69,25 @@ export interface JsonTreeProps {
   readonly onToggle: (row: TreeRow) => void;
 }
 
+export function jsonTreeRowRenderID(rowId: string): string {
+  return `json-tree-row:${rowId}`;
+}
+
 export function JsonTree(props: JsonTreeProps) {
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const [hovered, setHovered] = useState<string | undefined>();
   const scrollAcceleration = useMemo(() => new MacOSScrollAccel({maxMultiplier: 4}), []);
   const resolvedColors = useMemo(() => resolveJsonTreeColors(props.colors), [props.colors]);
   const selectedIndex = useMemo(
-    () => Math.max(0, props.rows.findIndex(row => row.id === props.selectedId)),
+    () => props.rows.findIndex(row => row.id === props.selectedId),
     [props.rows, props.selectedId]
   );
 
   useEffect(() => {
-    scroll.current?.scrollChildIntoView(`json-tree-row-${selectedIndex}`);
-  }, [selectedIndex]);
+    if (selectedIndex < 0) return;
+    const selected = props.rows[selectedIndex];
+    if (selected !== undefined) scroll.current?.scrollChildIntoView(jsonTreeRowRenderID(selected.id));
+  }, [props.rows, selectedIndex]);
 
   const stopAndToggle = (event: MouseEvent, row: TreeRow) => {
     event.stopPropagation();
@@ -105,7 +111,7 @@ export function JsonTree(props: JsonTreeProps) {
       horizontalScrollbarOptions={{visible: false}}
       onMouseDown={props.onFocus}
     >
-      {props.rows.map((row, index) => {
+      {props.rows.map(row => {
         const selected = row.id === props.selectedId;
         const matched = props.matchedIds?.has(row.id) === true;
         const activeMatch = row.id === props.activeMatchId;
@@ -127,7 +133,7 @@ export function JsonTree(props: JsonTreeProps) {
             : resolvedColors.normalValues[row.kind];
         return (
           <box
-            id={`json-tree-row-${index}`}
+            id={jsonTreeRowRenderID(row.id)}
             key={row.id}
             flexDirection="row"
             width="100%"
