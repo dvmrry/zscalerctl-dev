@@ -34,8 +34,15 @@ export interface WorkspacePickerItem {
   readonly description: string;
   readonly searchText?: string;
   readonly category: string;
+  readonly scopeId?: string;
   readonly badge?: string;
   readonly command: string;
+}
+
+export interface WorkspacePickerScope {
+  readonly id: string;
+  readonly label: string;
+  readonly count: number;
 }
 
 export interface WorkspacePicker {
@@ -44,6 +51,8 @@ export interface WorkspacePicker {
   readonly instruction: string;
   readonly emptyMessage: string;
   readonly items: readonly WorkspacePickerItem[];
+  readonly scopes?: readonly WorkspacePickerScope[];
+  readonly scopeLabel?: string;
   readonly initialQuery?: string;
 }
 
@@ -92,19 +101,37 @@ export interface FilteredWorkspacePicker {
 }
 
 export function normalizeWorkspacePicker(picker: WorkspacePicker): WorkspacePicker {
+  const items = picker.items.map(item => ({
+    ...item,
+    title: safeInlineText(item.title, 240),
+    description: safeInlineText(item.description, 500),
+    category: safeInlineText(item.category, 120),
+    ...(item.badge === undefined ? {} : {badge: safeInlineText(item.badge, 80)}),
+    ...(item.searchText === undefined ? {} : {searchText: safeInlineText(item.searchText, 4_096)})
+  }));
+  const scopeCounts = new Map<string, number>();
+  for (const item of items) {
+    if (item.scopeId !== undefined) scopeCounts.set(item.scopeId, (scopeCounts.get(item.scopeId) ?? 0) + 1);
+  }
+  const seenScopeIds = new Set<string>();
+  const scopes = picker.scopes?.flatMap(scope => {
+    if (seenScopeIds.has(scope.id)) return [];
+    seenScopeIds.add(scope.id);
+    const count = scopeCounts.get(scope.id) ?? 0;
+    return count === 0 ? [] : [{
+      id: scope.id,
+      label: safeInlineText(scope.label, 80),
+      count
+    }];
+  });
   return {
     title: safeInlineText(picker.title, 180),
     placeholder: safeInlineText(picker.placeholder, 180),
     instruction: safeInlineText(picker.instruction, 500),
     emptyMessage: safeInlineText(picker.emptyMessage, 500),
-    items: picker.items.map(item => ({
-      ...item,
-      title: safeInlineText(item.title, 240),
-      description: safeInlineText(item.description, 500),
-      category: safeInlineText(item.category, 120),
-      ...(item.badge === undefined ? {} : {badge: safeInlineText(item.badge, 80)}),
-      ...(item.searchText === undefined ? {} : {searchText: safeInlineText(item.searchText, 4_096)})
-    })),
+    ...(picker.scopeLabel === undefined ? {} : {scopeLabel: safeInlineText(picker.scopeLabel, 80)}),
+    ...(scopes === undefined ? {} : {scopes}),
+    items,
     ...(picker.initialQuery === undefined ? {} : {initialQuery: safeInlineText(picker.initialQuery, 120)})
   };
 }
@@ -112,12 +139,15 @@ export function normalizeWorkspacePicker(picker: WorkspacePicker): WorkspacePick
 export function filterWorkspacePicker(
   items: readonly WorkspacePickerItem[],
   query: string,
-  limit = 80
+  options: number | {readonly limit?: number; readonly scopeId?: string} = {}
 ): FilteredWorkspacePicker {
+  const limit = typeof options === "number" ? options : options.limit ?? 80;
+  const scopeId = typeof options === "number" ? undefined : options.scopeId;
+  const scoped = scopeId === undefined ? items : items.filter(item => item.scopeId === scopeId);
   const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
   const matched = terms.length === 0
-    ? items
-    : items.filter(item => {
+    ? scoped
+    : scoped.filter(item => {
         const text = `${item.category} ${item.title} ${item.description} ${item.searchText ?? ""} ${item.badge ?? ""}`.toLowerCase();
         return terms.every(term => text.includes(term));
       });

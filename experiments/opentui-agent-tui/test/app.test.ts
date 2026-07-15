@@ -115,7 +115,7 @@ describe("OpenTUI shell interactions", () => {
     await interact(() => setup.mockInput.pressEnter(), setup.flush);
     const pickerFrame = setup.captureCharFrame();
     expect(pickerFrame).toContain("Choose theme");
-    expect(pickerFrame).toContain("OpenCode themes");
+    expect(pickerFrame).toContain("Curated themes");
     expect(pickerFrame).toContain("tokyonight");
     expect(pickerFrame).toContain("current");
     expect(pickerFrame).not.toContain("/theme");
@@ -139,7 +139,7 @@ describe("OpenTUI shell interactions", () => {
 
     await interact(() => setup.mockInput.typeText("tron"), setup.flush);
     const filteredFrame = setup.captureCharFrame();
-    expect(filteredFrame).toContain("Experiment themes");
+    expect(filteredFrame).toContain("Experimental themes");
     expect(filteredFrame).toContain("tron");
     expect(filteredFrame).not.toContain("tokyonight");
 
@@ -267,14 +267,31 @@ describe("OpenTUI shell interactions", () => {
               placeholder: "Filter resources…\u001b\u202e",
               instruction: "Choose a resource.\u001b\u202e",
               emptyMessage: "No resources.\u001b\u202e",
-              items: [{
-                id: "zia/locations",
-                title: "locations",
-                description: "list, get · 12 fields",
-                category: "ZIA",
-                badge: "list\u001b\u202e",
-                command: "/list zia locations"
-              }]
+              scopeLabel: "Product\u001b\u202e",
+              scopes: [
+                {id: "__all__", label: "ZIA", count: 1},
+                {id: "zpa", label: "ZPA", count: 1}
+              ],
+              items: [
+                {
+                  id: "zia/locations",
+                  title: "locations",
+                  description: "list, get · 12 fields",
+                  category: "ZIA · Internet Access",
+                  scopeId: "__all__",
+                  badge: "list\u001b\u202e",
+                  command: "/list zia locations"
+                },
+                {
+                  id: "zpa/app-segments",
+                  title: "app-segments",
+                  description: "list, get · 8 fields",
+                  category: "ZPA · Private Access",
+                  scopeId: "zpa",
+                  badge: "list",
+                  command: "/list zpa app-segments"
+                }
+              ]
             }
           };
         }
@@ -300,12 +317,86 @@ describe("OpenTUI shell interactions", () => {
     const pickerFrame = setup.captureCharFrame();
     expect(pickerFrame).toContain("Resource catalog");
     expect(pickerFrame).toContain("locations");
+    expect(pickerFrame).toContain("PRODUCT");
+    expect(pickerFrame).toContain("ALL 2");
+    expect(pickerFrame).toContain("ZIA 1");
+    expect(pickerFrame).toContain("ZPA 1");
     expect(pickerFrame).not.toContain("\u001b");
     expect(pickerFrame).not.toContain("\u202e");
     expect(pickerFrame).toContain("�");
 
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    expect(setup.captureCharFrame()).not.toContain("app-segments");
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    const zpaFrame = setup.captureCharFrame();
+    expect(zpaFrame).toContain("ZPA · 1/1");
+    expect(zpaFrame).toContain("app-segments");
+    expect(zpaFrame).not.toContain("locations");
+
     await interact(() => setup.mockInput.pressEnter(), setup.flush);
     expect(setup.captureCharFrame()).toContain("Read zia/locations");
+    expect(calls).toEqual(["/catalog", "/list zpa app-segments"]);
+  });
+
+  test("resets a selected product scope when resize hides its controls", async () => {
+    const calls: string[] = [];
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      commands: [{command: "/catalog", usage: "/catalog", summary: "Browse resources"}],
+      execute: async input => {
+        calls.push(input);
+        if (input === "/catalog") {
+          return {
+            announcement: {title: "Resource catalog", body: ["Choose a resource."], tone: "info"},
+            picker: {
+              title: "Zscaler resource map",
+              placeholder: "Search resources",
+              instruction: "Choose a resource",
+              emptyMessage: "No resources",
+              scopeLabel: "Product",
+              scopes: [
+                {id: "zia", label: "ZIA", count: 1},
+                {id: "zpa", label: "ZPA", count: 1},
+                {id: "zcc", label: "ZCC", count: 1},
+                {id: "ztw", label: "ZTW", count: 1},
+                {id: "zidentity", label: "ZIDENTITY", count: 1}
+              ],
+              items: [
+                {id: "zia/locations", title: "locations", description: "list", category: "ZIA", scopeId: "zia", command: "/list zia locations"},
+                {id: "zpa/app-segments", title: "app-segments", description: "list", category: "ZPA", scopeId: "zpa", command: "/list zpa app-segments"},
+                {id: "zcc/devices", title: "devices", description: "list", category: "ZCC", scopeId: "zcc", command: "/list zcc devices"},
+                {id: "ztw/workloads", title: "workloads", description: "list", category: "ZTW", scopeId: "ztw", command: "/list ztw workloads"},
+                {id: "zidentity/groups", title: "groups", description: "list", category: "ZIDENTITY", scopeId: "zidentity", command: "/list zidentity groups"}
+              ]
+            }
+          };
+        }
+        return {announcement: {title: "Read complete", body: [input], tone: "success"}};
+      }
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 30, height: 16});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/catalog"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("PRODUCT");
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("ZPA · 1/1");
+    expect(setup.captureCharFrame()).toContain("app-seg");
+
+    await interact(() => setup.resize(30, 14), setup.flush);
+    const compactFrame = setup.captureCharFrame();
+    expect(compactFrame).not.toContain("PRODUCT");
+    expect(compactFrame).not.toContain("ZPA · 1/1");
+    expect(compactFrame).toContain("locations");
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
     expect(calls).toEqual(["/catalog", "/list zia locations"]);
   });
 

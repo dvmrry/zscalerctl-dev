@@ -66,6 +66,8 @@ export type InteractionCommand =
   | "picker.page-previous"
   | "picker.first"
   | "picker.last"
+  | "picker.scope-next"
+  | "picker.scope-previous"
   | "sidebar.toggle"
   | "inspector.toggle"
   | "overlay.close"
@@ -97,6 +99,7 @@ export function resolveInteractionCommand(mode: InteractionMode, key: KeyStroke)
     if (unmodified(key) && name === "pagedown") return "picker.page-next";
     if (unmodified(key) && name === "home") return "picker.first";
     if (unmodified(key) && name === "end") return "picker.last";
+    if (unmodified(key) && name === "tab") return key.shift === true ? "picker.scope-previous" : "picker.scope-next";
     return undefined;
   }
 

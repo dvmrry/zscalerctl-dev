@@ -35,6 +35,9 @@ describe("interaction command routing", () => {
     expect(resolveInteractionCommand("picker", {name: "return"})).toBe("picker.commit");
     expect(resolveInteractionCommand("picker", {name: "down"})).toBe("picker.next");
     expect(resolveInteractionCommand("picker", {name: "pagedown"})).toBe("picker.page-next");
+    expect(resolveInteractionCommand("picker", {name: "tab"})).toBe("picker.scope-next");
+    expect(resolveInteractionCommand("picker", {name: "tab", shift: true})).toBe("picker.scope-previous");
+    expect(resolveInteractionCommand("picker", {name: "left"})).toBeUndefined();
     expect(resolveInteractionCommand("picker", {name: "escape"})).toBe("picker.cancel");
   });
 });

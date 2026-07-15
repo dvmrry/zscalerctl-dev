@@ -73,9 +73,15 @@ describe("zscalerctl workspace adapter", () => {
     const result = await workspace.execute!("/catalog", context());
     expect(result.picker?.items.map(item => ({id: item.id, command: item.command}))).toEqual([
       {id: "zia/locations", command: "/list zia 'locations'"},
-      {id: "ztw/advanced-settings", command: "/show ztw 'advanced-settings'"},
-      {id: "zia/auth-settings", command: "/list zia 'auth-settings'"}
+      {id: "zia/auth-settings", command: "/list zia 'auth-settings'"},
+      {id: "ztw/advanced-settings", command: "/show ztw 'advanced-settings'"}
     ]);
+    expect(result.picker?.title).toBe("Zscaler resource map");
+    expect(result.picker?.scopes).toEqual([
+      {id: "zia", label: "ZIA", count: 2},
+      {id: "ztw", label: "ZTW", count: 1}
+    ]);
+    expect(result.picker?.items.map(item => item.scopeId)).toEqual(["zia", "zia", "ztw"]);
     expect(result.context?.records).toBe(3);
     await workspace.close();
   });

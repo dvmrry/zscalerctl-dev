@@ -14,7 +14,7 @@ import type {PickerInputMethod} from "./components/PickerWindow.tsx";
 import {SearchBox} from "./components/SearchBox.tsx";
 import {Toast} from "./components/Toast.tsx";
 import {Transcript} from "./components/Transcript.tsx";
-import {WorkspacePickerWindow} from "./components/WorkspacePicker.tsx";
+import {WorkspacePickerWindow, workspacePickerScopeBarVisible} from "./components/WorkspacePicker.tsx";
 import {
   COMMANDS,
   type ContextState,
@@ -85,9 +85,9 @@ function themePickerFor(currentTheme: ThemeName, mode: ThemeMode): WorkspacePick
       return {
         id: name,
         title: name,
-        description: `${experimentTheme ? "Experiment" : "OpenCode"} palette · apply in ${mode} mode`,
-        searchText: experimentTheme ? "local experiment" : "opencode catalog",
-        category: experimentTheme ? "Experiment themes" : "OpenCode themes",
+        description: `${experimentTheme ? "Experimental" : "Curated"} palette · apply in ${mode} mode`,
+        searchText: experimentTheme ? "local experimental theme" : "curated theme",
+        category: experimentTheme ? "Experimental themes" : "Curated themes",
         ...(name === currentTheme ? {badge: "current"} : {}),
         command: `/theme ${name}`
       };
@@ -156,6 +156,8 @@ export function App(props: {
   const [workspacePicker, setWorkspacePicker] = useState<WorkspacePicker | undefined>();
   const [workspacePickerQuery, setWorkspacePickerQuery] = useState("");
   const workspacePickerQueryRef = useRef("");
+  const [workspacePickerScopeId, setWorkspacePickerScopeId] = useState<string | undefined>();
+  const workspacePickerScopeIdRef = useRef<string | undefined>(undefined);
   const [workspacePickerSelectedId, setWorkspacePickerSelectedId] = useState<string | undefined>();
   const workspacePickerSelectedIdRef = useRef<string | undefined>(undefined);
   const [workspacePickerInputMethod, setWorkspacePickerInputMethod] = useState<PickerInputMethod>("keyboard");
@@ -194,9 +196,12 @@ export function App(props: {
     [arrayOrder, data, searchQuery]
   );
   const searchResultRef = useRef(searchResult);
+  const workspacePickerScopeVisible = workspacePicker !== undefined
+    && workspacePickerScopeBarVisible(workspacePicker, dimensions.width, dimensions.height);
+  const effectiveWorkspacePickerScopeId = workspacePickerScopeVisible ? workspacePickerScopeId : undefined;
   const filteredWorkspacePicker = useMemo(
-    () => filterWorkspacePicker(workspacePicker?.items ?? [], workspacePickerQuery),
-    [workspacePicker, workspacePickerQuery]
+    () => filterWorkspacePicker(workspacePicker?.items ?? [], workspacePickerQuery, {scopeId: effectiveWorkspacePickerScopeId}),
+    [effectiveWorkspacePickerScopeId, workspacePicker, workspacePickerQuery]
   );
   const filteredWorkspacePickerRef = useRef(filteredWorkspacePicker);
   filteredWorkspacePickerRef.current = filteredWorkspacePicker;
@@ -208,6 +213,7 @@ export function App(props: {
   focusRef.current = focus;
   busyRef.current = busy;
   workspacePickerQueryRef.current = workspacePickerQuery;
+  workspacePickerScopeIdRef.current = effectiveWorkspacePickerScopeId;
   workspacePickerSelectedIdRef.current = workspacePickerSelectedId;
   if (focus === "search") searchPendingFocusRef.current = false;
   const requestedSearchIndex = searchResult.matches.findIndex(match => match.id === searchSelectedId);
@@ -258,6 +264,8 @@ export function App(props: {
     setWorkspacePicker(picker);
     setWorkspacePickerQuery(query);
     workspacePickerQueryRef.current = query;
+    setWorkspacePickerScopeId(undefined);
+    workspacePickerScopeIdRef.current = undefined;
     setWorkspacePickerSelectedId(selected?.id);
     workspacePickerSelectedIdRef.current = selected?.id;
     setWorkspacePickerInputMethod("keyboard");
@@ -335,6 +343,8 @@ export function App(props: {
     setWorkspacePicker(undefined);
     setWorkspacePickerQuery("");
     workspacePickerQueryRef.current = "";
+    setWorkspacePickerScopeId(undefined);
+    workspacePickerScopeIdRef.current = undefined;
     setWorkspacePickerSelectedId(undefined);
     workspacePickerSelectedIdRef.current = undefined;
     workspacePickerPurposeRef.current = "workspace";
@@ -343,15 +353,46 @@ export function App(props: {
 
   const updateWorkspacePickerQuery = useCallback((value: string) => {
     const query = safeInlineText(value, 120);
-    const filtered = filterWorkspacePicker(workspacePicker?.items ?? [], query);
+    const filtered = filterWorkspacePicker(workspacePicker?.items ?? [], query, {scopeId: workspacePickerScopeIdRef.current});
     const retained = filtered.items.find(item => item.id === workspacePickerSelectedIdRef.current);
     const next = retained ?? filtered.items[0];
+    filteredWorkspacePickerRef.current = filtered;
     workspacePickerQueryRef.current = query;
     workspacePickerSelectedIdRef.current = next?.id;
     setWorkspacePickerQuery(query);
     setWorkspacePickerSelectedId(next?.id);
     setWorkspacePickerInputMethod("keyboard");
   }, [workspacePicker]);
+
+  const updateWorkspacePickerScope = useCallback((requestedScopeId: string | undefined) => {
+    const scopes = workspacePicker?.scopes ?? [];
+    const scopeId = requestedScopeId !== undefined && scopes.some(scope => scope.id === requestedScopeId)
+      ? requestedScopeId
+      : undefined;
+    const filtered = filterWorkspacePicker(workspacePicker?.items ?? [], workspacePickerQueryRef.current, {scopeId});
+    const next = filtered.items[0];
+    filteredWorkspacePickerRef.current = filtered;
+    workspacePickerScopeIdRef.current = scopeId;
+    workspacePickerSelectedIdRef.current = next?.id;
+    setWorkspacePickerScopeId(scopeId);
+    setWorkspacePickerSelectedId(next?.id);
+  }, [workspacePicker]);
+
+  const cycleWorkspacePickerScope = useCallback((delta: number) => {
+    const scopes = workspacePicker?.scopes ?? [];
+    if (scopes.length < 2) return;
+    const ids: readonly (string | undefined)[] = [undefined, ...scopes.map(scope => scope.id)];
+    const current = ids.findIndex(id => id === workspacePickerScopeIdRef.current);
+    const origin = current < 0 ? 0 : current;
+    const next = ids[((origin + delta) % ids.length + ids.length) % ids.length];
+    updateWorkspacePickerScope(next);
+    setWorkspacePickerInputMethod("keyboard");
+  }, [updateWorkspacePickerScope, workspacePicker]);
+
+  useEffect(() => {
+    if (workspacePicker === undefined || workspacePickerScopeId === undefined || workspacePickerScopeVisible) return;
+    updateWorkspacePickerScope(undefined);
+  }, [updateWorkspacePickerScope, workspacePicker, workspacePickerScopeId, workspacePickerScopeVisible]);
 
   const moveWorkspacePicker = useCallback((delta: number, wrap = true) => {
     const items = filteredWorkspacePickerRef.current.items;
@@ -616,6 +657,9 @@ export function App(props: {
       drawer: sidebarOverlay
     });
     const command = resolveInteractionCommand(mode, event);
+    if (command === "picker.scope-next" || command === "picker.scope-previous") {
+      if (workspacePicker === undefined || !workspacePickerScopeBarVisible(workspacePicker, dimensions.width, dimensions.height)) return;
+    }
     if (command !== undefined) {
       event.preventDefault();
       event.stopPropagation();
@@ -695,6 +739,12 @@ export function App(props: {
           break;
         case "picker.last":
           moveWorkspacePickerToBoundary("last");
+          break;
+        case "picker.scope-next":
+          cycleWorkspacePickerScope(1);
+          break;
+        case "picker.scope-previous":
+          cycleWorkspacePickerScope(-1);
           break;
         case "sidebar.toggle":
           toggleSidebar();
@@ -1083,6 +1133,7 @@ export function App(props: {
           picker={workspacePicker}
           query={workspacePickerQuery}
           items={filteredWorkspacePicker.items}
+          activeScopeId={effectiveWorkspacePickerScopeId}
           selectedId={workspacePickerSelectedId}
           truncated={filteredWorkspacePicker.truncated}
           focused={focus === "picker"}
@@ -1095,6 +1146,7 @@ export function App(props: {
             setWorkspacePickerSelectedId(id);
           }}
           onSelect={commitWorkspacePicker}
+          onScopeChange={updateWorkspacePickerScope}
           onCancel={closeWorkspacePicker}
         />
       )}

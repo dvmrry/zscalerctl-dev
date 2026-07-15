@@ -13,8 +13,9 @@ effects, and error semantics. No model or shell execution is attached.
 ## What it explores
 
 - A full-screen alternate-screen layout with a composer pinned to the bottom.
-- An OpenCode-leaning visual grammar: raised user turns, flat assistant output,
-  restrained spacing, and status integrated into the composer.
+- A zscalerctl-specific visual grammar: raised operator turns, flat assistant
+  output, restrained spacing, and tenant-read-only status integrated into the
+  composer.
 - A quiet responsive context rail where the independently scrollable JSON tree
   remains the dominant workspace rather than another transcript attachment.
 - Mouse-wheel transcript and tree scrolling, clickable expansion carets, and
@@ -23,6 +24,9 @@ effects, and error semantics. No model or shell execution is attached.
   rows, stable selection IDs, contextual actions, keyboard paging, and mouse
   selection that does not jump merely because content moved under a stationary
   pointer.
+- A product-first resource map that exposes every discovered Zscaler product
+  and readable-resource count before scrolling. Search stays inside the active
+  product; product pills support mouse selection and Tab / Shift+Tab cycling.
 - Structured search built on that picker: logical record groups, deterministic
   name/field/value ranking, fuzzy matching for names and fields only, and exact
   scalar matching inside collapsed branches. Every hit retains its exact JSON
@@ -48,6 +52,11 @@ effects, and error semantics. No model or shell execution is attached.
 This is a UI vertical slice, not a second client implementation. The React
 shell receives data through a project-neutral `WorkspaceAdapter`; fixture and
 zscalerctl stdio adapters implement that boundary independently.
+
+The shell borrows useful terminal interaction patterns from several agent
+interfaces, but its information architecture follows zscalerctl: product
+scope, read surface, projected fields, local effects, and sanitized tenant
+data are the primary concepts.
 
 ## Requirements
 
@@ -106,6 +115,7 @@ and light without restarting.
 | Up / Down | Choose a slash suggestion or move through the tree when it has focus |
 | Tab | Accept the selected autocomplete suggestion |
 | Shift+Tab | Cycle focus between composer, transcript, and tree |
+| Tab / Shift+Tab in the resource map | Select the next / previous product scope |
 | Enter | Accept a partial suggestion or submit the composer |
 | Shift+Enter | Insert a composer newline |
 | Ctrl+B | Toggle the context rail |
@@ -120,6 +130,7 @@ and light without restarting.
 | Escape | Close an overlay or return focus to the composer |
 | Mouse wheel | Scroll the region under the pointer |
 | Click row | Select a JSON value |
+| Click product pill | Restrict the resource map and its search to that product |
 | Click caret | Expand or collapse an object or array |
 | S while tree is focused | Toggle named-array ordering between source index and name |
 | Page Up / Page Down | Move through the focused tree eight rows at a time |

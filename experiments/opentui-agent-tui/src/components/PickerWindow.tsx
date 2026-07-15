@@ -3,6 +3,7 @@ import {useEffect, useMemo, useRef} from "react";
 
 import {safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
+import {placeFloatingWindow} from "../overlay.ts";
 import {FloatingWindow} from "./Overlay.tsx";
 
 export type PickerInputMethod = "keyboard" | "mouse";
@@ -28,6 +29,12 @@ export interface PickerAction<T> {
   readonly onTrigger: (item: PickerItem<T> | undefined) => void;
 }
 
+export interface PickerScope {
+  readonly id?: string;
+  readonly label: string;
+  readonly count: number;
+}
+
 export interface PickerWindowProps<T> {
   readonly colors: Palette;
   readonly viewportWidth: number;
@@ -45,17 +52,94 @@ export interface PickerWindowProps<T> {
   readonly inputMethod: PickerInputMethod;
   readonly showItemsWithoutQuery?: boolean;
   readonly actions?: readonly PickerAction<T>[];
+  readonly scopeLabel?: string;
+  readonly scopes?: readonly PickerScope[];
+  readonly activeScopeId?: string;
   readonly onInput: (value: string) => void;
   readonly onFocus: () => void;
   readonly onInputMethodChange: (method: PickerInputMethod) => void;
   readonly onMove: (id: string) => void;
   readonly onSelect: (id: string) => void;
+  readonly onScopeChange?: (id: string | undefined) => void;
   readonly onCancel: () => void;
 }
 
 function categoryKey<T>(item: PickerItem<T>): string | undefined {
   if (item.category === undefined) return undefined;
   return item.categoryId ?? item.category;
+}
+
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, {granularity: "grapheme"});
+
+export function fitPickerCellText(value: string, maximumWidth: number): string {
+  const width = Math.max(1, Math.floor(maximumWidth));
+  if (Bun.stringWidth(value) <= width) return value;
+  if (width === 1) return "…";
+  let output = "";
+  let used = 0;
+  for (const {segment} of GRAPHEME_SEGMENTER.segment(value)) {
+    const segmentWidth = Bun.stringWidth(segment);
+    if (used + segmentWidth + 1 > width) break;
+    output += segment;
+    used += segmentWidth;
+  }
+  return `${output}…`;
+}
+
+export function pickerScopeText(scope: PickerScope, availableWidth: number): string {
+  const width = Math.max(1, Math.floor(availableWidth));
+  const label = safeInlineText(scope.label, 80);
+  const count = String(scope.count);
+  const padded = ` ${label} ${count} `;
+  if (Bun.stringWidth(padded) <= width) return padded;
+  const compact = `${label} ${count}`;
+  if (Bun.stringWidth(compact) <= width) return compact;
+  const suffix = ` ${count}`;
+  const suffixWidth = Bun.stringWidth(suffix);
+  if (suffixWidth >= width) return fitPickerCellText(compact, width);
+  return `${fitPickerCellText(label, width - suffixWidth)}${suffix}`;
+}
+
+export function pickerScopeRowCount(scopes: readonly PickerScope[], label: string, availableWidth: number): number {
+  if (scopes.length === 0) return 0;
+  const width = Math.max(1, availableWidth);
+  const widths = [
+    Bun.stringWidth(fitPickerCellText(label, width)),
+    ...scopes.map(scope => Bun.stringWidth(pickerScopeText(scope, width)))
+  ];
+  let rows = 1;
+  let used = 0;
+  for (const itemWidth of widths) {
+    const next = used === 0 ? itemWidth : used + 1 + itemWidth;
+    if (used > 0 && next > width) {
+      rows += 1;
+      used = itemWidth;
+    } else {
+      used = next;
+    }
+  }
+  return rows;
+}
+
+export function pickerScopeBarVisible(options: {
+  readonly scopes: readonly PickerScope[];
+  readonly label: string;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly preferredWidth: number;
+}): boolean {
+  if (options.scopes.length <= 1) return false;
+  const maximum = placeFloatingWindow({
+    viewportWidth: options.viewportWidth,
+    viewportHeight: options.viewportHeight,
+    preferredWidth: options.preferredWidth,
+    preferredHeight: Number.MAX_SAFE_INTEGER,
+    placement: "top-center"
+  });
+  const label = safeInlineText(options.label, 80).toUpperCase();
+  const rows = pickerScopeRowCount(options.scopes, label, Math.max(1, maximum.width - 4));
+  const minimumWindowHeight = 9 + rows + 1;
+  return maximum.height >= minimumWindowHeight;
 }
 
 export function PickerWindow<T>(props: PickerWindowProps<T>) {
@@ -68,6 +152,20 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
   const compactWidth = windowWidth < 62;
   const veryCompactWidth = windowWidth < 44;
   const showResults = props.viewportHeight >= 10;
+  const visibleScopes = props.scopes ?? [];
+  const rawScopeLabel = safeInlineText(props.scopeLabel ?? "Scope", 80).toUpperCase();
+  const scopeContentWidth = Math.max(1, windowWidth - 4);
+  const showScopeBar = props.onScopeChange !== undefined && pickerScopeBarVisible({
+    scopes: visibleScopes,
+    label: rawScopeLabel,
+    viewportWidth: props.viewportWidth,
+    viewportHeight: props.viewportHeight,
+    preferredWidth: props.preferredWidth
+  });
+  const scopeLabel = fitPickerCellText(rawScopeLabel, scopeContentWidth);
+  const scopeTexts = visibleScopes.map(scope => pickerScopeText(scope, scopeContentWidth));
+  const scopeRows = showScopeBar ? pickerScopeRowCount(visibleScopes, rawScopeLabel, scopeContentWidth) : 0;
+  const scopeChromeRows = scopeRows === 0 ? 0 : scopeRows + 1;
   const categoryRows = props.items.reduce((count, item, index) => {
     const key = categoryKey(item);
     if (key === undefined) return count;
@@ -75,9 +173,9 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
   }, 0);
   const contentRows = props.items.length * 2 + categoryRows;
   const preferredHeight = showResults
-    ? Math.min(20, Math.max(9, Math.min(14, Math.max(2, contentRows)) + 6))
-    : 5;
-  const visibleItemEstimate = Math.max(1, Math.floor((preferredHeight - 6) / 2));
+    ? Math.min(23, Math.max(9 + scopeChromeRows, Math.min(14, Math.max(2, contentRows)) + 6 + scopeChromeRows))
+    : 5 + scopeChromeRows;
+  const visibleItemEstimate = Math.max(1, Math.floor((preferredHeight - 6 - scopeChromeRows) / 2));
   const total = props.items.length;
   const status = props.query.trim().length === 0
     ? props.showItemsWithoutQuery === true && total > 0
@@ -86,6 +184,8 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
     : total === 0
       ? "no matches"
       : `${selectedIndex + 1}/${total}${props.truncated === true ? "+" : ""}`;
+  const activeScope = visibleScopes.find(scope => scope.id === props.activeScopeId);
+  const scopedStatus = showScopeBar && activeScope !== undefined ? `${activeScope.label} · ${status}` : status;
   const visibleActions = compactWidth
     ? (props.actions ?? []).slice(0, veryCompactWidth ? 1 : 2)
     : props.actions ?? [];
@@ -112,7 +212,7 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
       placement="top-center"
       layer="utility"
       title={` ${safeInlineText(props.title, Math.max(4, windowWidth - 8))} `}
-      bottomTitle={` ${status} `}
+      bottomTitle={` ${scopedStatus} `}
       onFocus={props.onFocus}
     >
       <box flexGrow={1} minHeight={0} flexDirection="column" paddingLeft={1} paddingRight={1}>
@@ -141,6 +241,39 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
             }}
           />
         </box>
+
+        {showScopeBar ? (
+          <box
+            height={scopeRows}
+            flexShrink={0}
+            flexDirection="row"
+            flexWrap="wrap"
+            columnGap={1}
+            rowGap={0}
+            marginTop={1}
+          >
+            <text fg={props.colors.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">{scopeLabel}</text>
+            {visibleScopes.map((scope, index) => {
+              const active = scope.id === props.activeScopeId;
+              return (
+                <text
+                  id={`picker-scope-${index}`}
+                  key={`picker-scope-${index}`}
+                  fg={active ? props.colors.selectionText : props.colors.text}
+                  bg={active ? props.colors.selection : props.colors.panelRaised}
+                  attributes={active ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseDown={() => {
+                    props.onInputMethodChange("mouse");
+                    props.onScopeChange?.(scope.id);
+                  }}
+                >
+                  {scopeTexts[index]}
+                </text>
+              );
+            })}
+          </box>
+        ) : null}
 
         {showResults ? (
           <scrollbox
@@ -231,6 +364,7 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
                 </text>
               );
             })}
+            {showScopeBar ? <text fg={props.colors.textMuted}>{veryCompactWidth ? "Tab" : "Tab product"}</text> : null}
           </box>
           <text fg={props.colors.textMuted} onMouseDown={props.onCancel}>{veryCompactWidth ? "Esc" : "Esc cancel"}</text>
         </box>

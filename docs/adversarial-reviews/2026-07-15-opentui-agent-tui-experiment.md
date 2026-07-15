@@ -416,4 +416,202 @@ findings survived, engine/catalog picker dispatch remained intact, and no
 supported CLI, engine, machine, schema, redaction, projection, secret, or
 tenant contract changed.
 
+Prior disposition: approve
+
+## Product-Scoped Resource Map Follow-Up
+
+User testing found that the 165-resource catalog was difficult to navigate
+because available Zscaler products were discoverable only by scrolling through
+group headers or typing a product name.
+
+Delta from PR #112 commit
+`54fbbae85f4e9b89fb393d49819487f054fa4437`:
+
+- Add optional, adapter-owned scopes to the reusable workspace picker model.
+  Scope labels and counts cross the same normalized presentation boundary as
+  the existing picker metadata; scope IDs remain opaque matching keys.
+- Turn the engine catalog into a Zscaler resource map with persistent `ALL`,
+  `ZIA`, `ZPA`, `ZCC`, `ZTW`, and `ZIDENTITY` pills and exact readable-resource
+  counts derived from the catalog response.
+- Group resources in product-navigation order while preserving source order
+  within each product. Rows identify the product family and report recursive
+  projected-field counts.
+- Keep search inside the selected product. Tab and Shift+Tab cycle scopes;
+  mouse clicks select a scope; Left and Right remain available to the focused
+  search input.
+- Wrap scope pills by terminal cell width, including Hangul-width accounting,
+  and include scope chrome in the floating window's height calculation.
+- Remove OpenCode branding from shell-owned theme picker categories and clarify
+  in the README that the information architecture is zscalerctl-specific.
+
+Changed files:
+
+- `experiments/opentui-agent-tui/README.md`
+- `experiments/opentui-agent-tui/src/App.tsx`
+- `experiments/opentui-agent-tui/src/commands.ts`
+- `experiments/opentui-agent-tui/src/components/PickerWindow.tsx`
+- `experiments/opentui-agent-tui/src/components/WorkspacePicker.tsx`
+- `experiments/opentui-agent-tui/src/workspace.ts`
+- `experiments/opentui-agent-tui/src/zscalerctl/adapter.ts`
+- `experiments/opentui-agent-tui/test/app.test.ts`
+- `experiments/opentui-agent-tui/test/commands.test.ts`
+- `experiments/opentui-agent-tui/test/integration/engine.test.ts`
+- `experiments/opentui-agent-tui/test/picker-window.test.ts`
+- `experiments/opentui-agent-tui/test/workspace.test.ts`
+- `experiments/opentui-agent-tui/test/zscalerctl-adapter.test.ts`
+
+Invariants claimed:
+
+- No supported CLI, Go engine, stdio protocol, TypeScript client, schema,
+  projection, redaction, credential, or tenant-read-only contract changes.
+- Product counts are derived only from read-capable catalog resources and sum
+  to the picker item count; they are not hardcoded.
+- Product scoping narrows the already projected catalog and cannot widen fields
+  or initiate a live read until the operator selects a resource row.
+- The existing 80-row render bound remains in force. Scope counts describe the
+  full readable catalog while the bottom status retains the `+` truncation
+  marker for a bounded result list.
+- Picker selection is reset to a valid first row whenever scope changes, and
+  the synchronous picker ref is updated before a subsequent commit event.
+- Scope navigation is intercepted only when a picker advertises at least two
+  scopes, so the theme picker does not lose its prior Tab behavior.
+
+Builder verification:
+
+- `go build -mod=vendor -o /tmp/zscalerctl-engine-opentui-pr112
+  ./cmd/zscalerctl-engine`: pass.
+- `ZSCALERCTL_ENGINE_TEST_BINARY=/tmp/zscalerctl-engine-opentui-pr112 bun run
+  check`: strict typecheck and 58/58 tests pass with 728 assertions, including
+  the real config-free Go engine process integration.
+- Real integration confirms scope order `zia`, `zpa`, `zcc`, `ztw`,
+  `zidentity`, exact scope-count summation, and product-narrowed queries.
+- `make verify-experiment-boundaries verify-release-artifacts`: pass.
+- `bun install --frozen-lockfile`: pass without lockfile changes.
+- `git diff --check`: pass.
+- Current 80-file non-`node_modules` experiment aggregate SHA-256:
+  `370f8b0ac27a92b50fd372fe6d022cdc8d0d3cc397adf658a18fe1cc7d97c394`.
+- No credentialed tenant access was required or performed.
+
+Known deferrals:
+
+- Dynamic FUI-style loading animation remains a later motion-system slice. It
+  should include delayed display, reduced-motion fallback, and a bounded frame
+  rate rather than being coupled to this navigation change.
+- The experiment remains unsupported and source-only; no model loop, shell
+  runner, web server, OpenAPI path, `/dump`, or plugin loader is introduced.
+
+Fresh review should attack scope-count truthfulness, product ordering,
+selection/query races, opaque scope-ID handling, Tab interception, mouse
+dispatch, narrow-terminal wrapping/height calculations, Hangul cell width,
+terminal-text normalization, and any path by which scoping could alter or
+bypass typed resource command generation.
+
+### Initial Product-Map Delta Review
+
+Fresh-context reviewer: Codex subagent `Socrates`, session
+`019f65a7-77b0-7e93-928d-bc2786b2e4d9`, read-only against the isolated PR
+worktree.
+
+Initial disposition: request changes. The reviewer reproduced three blocking
+picker-primitive defects and one related generic-contract risk:
+
+1. A scope pill wider than the available inner width wrapped internally even
+   though row allocation counted it as one row. At 16 columns, `ZIDENTITY 3`
+   collided with the first ZIA category.
+2. The scope bar remained enabled when `FloatingWindow` clamped the requested
+   height below its fixed chrome. At short heights, pills or rows crossed the
+   bottom border; when hidden by the old height threshold, Tab could still
+   change scope invisibly.
+3. The synthetic ALL React key `__all__` collided with that valid opaque scope
+   ID, and duplicate adapter scope IDs could mark multiple pills active and
+   trap Tab cycling.
+4. A stale advertised scope count could claim items that did not exist in the
+   picker.
+
+Resolution mapping:
+
+- Finding 1 root cause: row calculation measured the unconstrained text, but
+  the renderable retained wrapping behavior. Fix: fit headings and pills to a
+  bounded terminal-cell width, preserve counts while ellipsizing labels, mark
+  scope text `wrapMode="none"`, and calculate rows from the exact rendered
+  strings. Regression: captured 16x30 render plus direct overwide-pill and
+  Hangul-width assertions; no `3ZIA` collision survives.
+- Finding 2 root cause: scope visibility used a viewport-height threshold
+  independent of the final floating-window rectangle. Fix: derive maximum
+  clamped geometry through `placeFloatingWindow`, require room for all fixed
+  scope chrome, and share that exact predicate with App-level Tab routing.
+  Regression: captured renders at heights 8, 10, 12, 14, and the first visible
+  16-row boundary; an App test confirms hidden scopes do not consume Tab.
+- Finding 3 root cause: a data-derived ID doubled as a reserved React key and
+  normalization admitted duplicate IDs. Fix: use position-owned React/render
+  keys, preserve opaque IDs only as callback/filter values, and normalize
+  scopes with stable first-ID deduplication. Regression: render and mouse-select
+  a legitimate `__all__` scope and verify exact callback identity; normalize
+  duplicate IDs deterministically.
+- Risk 4 root cause: adapter-advertised counts were trusted separately from
+  item membership. Fix: derive normalized counts from actual item `scopeId`
+  membership and omit empty/stale scopes. Regression: hostile counts,
+  duplicate IDs, and a stale scope normalize to two unique scopes with exact
+  counts 1 and 2.
+
+Post-fix builder verification:
+
+- Focused picker/workspace/App suite: 20/20 pass, 128 assertions.
+- `ZSCALERCTL_ENGINE_TEST_BINARY=/tmp/zscalerctl-engine-opentui-pr112 bun run
+  check`: strict typecheck and 63/63 tests pass with 777 assertions, including
+  the real config-free Go process integration.
+- Manual real-catalog captures at 16x30, 30x8, 30x12, 30x14, 30x16, 42x26,
+  60x26, and 100x30 confirm bounded scope chrome. At 16 columns the long pill
+  renders as `ZIDENTI… 3`; at 30x16 all six pills fit inside the border.
+- `git diff --check`: pass.
+- Post-fix 80-file non-`node_modules` experiment aggregate SHA-256:
+  `1c54801a954811408c5edcfb5679bfa0599812440d98d0cf8522e26c5de04756`.
+- No credentialed tenant access was required or performed.
+
+### First Product-Map Recheck
+
+The same fresh-context reviewer closed the overwide-pill finding, the opaque
+and duplicate-ID finding, and the stale-count risk. It retained `request
+changes` for one transition missing from the first height fix: after selecting
+a product in a visible 30x16 picker, shrinking to 30x14 hid the product strip
+and active-scope status but left the prior product filter applied. Tab was then
+correctly not intercepted, so the hidden filter could not be changed without
+resizing or reopening the picker.
+
+Second resolution mapping:
+
+- Root cause: scope-bar visibility controlled rendering and keyboard routing,
+  but persisted scope state independently controlled filtering.
+- Fix: derive an effective scope synchronously from the shared visibility
+  predicate. Hidden scope chrome now means ALL for filtering, selected-scope
+  refs, and rendered status in the same render. A resize effect then clears the
+  persisted scope and resets selection through the existing scope-transition
+  function.
+- Regression: open a realistic five-product picker at 30x16, cycle to ZPA,
+  verify the ZPA-only row, resize to 30x14, verify the strip and ZPA status are
+  absent while the first ALL resource is present, press Tab, and commit the ZIA
+  row. This covers visible-selected-to-hidden rather than merely opening while
+  already hidden.
+- Verification: focused transition test passes; the complete real-engine suite
+  remains 63/63 with 782 assertions; `git diff --check` passes.
+- Current 80-file non-`node_modules` experiment aggregate SHA-256:
+  `7de4f78707cc550e78a14d5fafcef3d3537c7a787867462a0f6669505f97ee08`.
+
+### Final Product-Map Recheck
+
+Fresh-context reviewer: Codex subagent `Socrates`, session
+`019f65a7-77b0-7e93-928d-bc2786b2e4d9`, read-only against the unchanged
+isolated PR worktree.
+
+The reviewer independently reproduced the 30x16 ZPA selection followed by a
+30x14 resize and confirmed that ALL rows return immediately, hidden Tab does
+not change scope, Enter dispatches `/list zia locations`, and visible scope
+cycling remains intact. It found no stale ref, invalid selection, hidden
+filter/status drift, resize loop, or regression introduced by the final fix.
+
+Reviewer verification reproduced 63/63 tests with 782 assertions against the
+real engine, passed `git diff --check`, and matched the 80-file digest above.
+No supported CLI, engine, protocol, schema, projection, redaction, credential,
+or tenant-read-only contract changed.
+
 Verdict: approve

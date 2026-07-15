@@ -134,26 +134,61 @@ function catalogMatches(resource: CatalogResource, command: Extract<ParsedComman
   return command.query.split(/\s+/u).filter(Boolean).every(term => haystack.includes(term));
 }
 
+const PRODUCT_PRESENTATION: Readonly<Record<CatalogResource["product"], {
+  readonly short: string;
+  readonly name: string;
+  readonly order: number;
+}>> = Object.freeze({
+  zia: {short: "ZIA", name: "Internet Access", order: 0},
+  zpa: {short: "ZPA", name: "Private Access", order: 1},
+  zcc: {short: "ZCC", name: "Client Connector", order: 2},
+  ztw: {short: "ZTW", name: "Workload", order: 3},
+  zidentity: {short: "ZIDENTITY", name: "Identity", order: 4}
+});
+
 function catalogPicker(resources: readonly CatalogResource[], initialQuery = ""): WorkspacePicker {
+  const readable = resources
+    .filter(resource => resource.operations.includes("show") || resource.operations.includes("list"))
+    .map((resource, index) => ({resource, index}))
+    .sort((left, right) => {
+      const byProduct = PRODUCT_PRESENTATION[left.resource.product].order - PRODUCT_PRESENTATION[right.resource.product].order;
+      return byProduct === 0 ? left.index - right.index : byProduct;
+    })
+    .map(entry => entry.resource);
+  const counts = new Map<CatalogResource["product"], number>();
+  for (const resource of readable) counts.set(resource.product, (counts.get(resource.product) ?? 0) + 1);
+  const scopes = Object.entries(PRODUCT_PRESENTATION)
+    .map(([id, presentation]) => ({id: id as CatalogResource["product"], ...presentation}))
+    .sort((left, right) => left.order - right.order)
+    .flatMap(scope => {
+      const count = counts.get(scope.id) ?? 0;
+      return count === 0 ? [] : [{id: scope.id, label: scope.short, count}];
+    });
+  const onlyScope = scopes.length === 1 ? scopes[0] : undefined;
   return {
-    title: "Resource catalog",
-    placeholder: "Filter by product, resource, operation, or field…",
-    instruction: "Choose a resource to issue its default tenant-read-only read.",
-    emptyMessage: "No catalog resources match this filter.",
+    title: onlyScope === undefined ? "Zscaler resource map" : `${onlyScope.label} resource map`,
+    placeholder: "Search resources, operations, or projected fields…",
+    instruction: "Choose a read surface to inspect sanitized tenant data.",
+    emptyMessage: "No readable resources in this product match the search.",
+    scopeLabel: "Product",
+    scopes,
     initialQuery,
-    items: resources
-      .filter(resource => resource.operations.includes("show") || resource.operations.includes("list"))
-      .map(resource => ({
-      id: `${resource.product}/${resource.name}`,
-      title: resource.name,
-      description: `${resource.operations.join(", ")} · ${resource.fields.length} fields`,
-      searchText: catalogFieldNames(resource.fields).join(" "),
-      category: resource.product.toUpperCase(),
-      badge: resource.shape,
-      command: resource.operations.includes("show")
-        ? `/show ${resource.product} ${quoteToken(resource.name)}`
-        : `/list ${resource.product} ${quoteToken(resource.name)}`
-    }))
+    items: readable.map(resource => {
+      const fields = catalogFieldNames(resource.fields);
+      const presentation = PRODUCT_PRESENTATION[resource.product];
+      return {
+        id: `${resource.product}/${resource.name}`,
+        title: resource.name,
+        description: `${resource.operations.join(" · ")} · ${fields.length} projected field${fields.length === 1 ? "" : "s"}`,
+        searchText: fields.join(" "),
+        category: `${presentation.short} · ${presentation.name}`,
+        scopeId: resource.product,
+        badge: resource.shape,
+        command: resource.operations.includes("show")
+          ? `/show ${resource.product} ${quoteToken(resource.name)}`
+          : `/list ${resource.product} ${quoteToken(resource.name)}`
+      };
+    })
   };
 }
 
