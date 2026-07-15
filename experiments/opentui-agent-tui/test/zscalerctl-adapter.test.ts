@@ -67,6 +67,7 @@ describe("zscalerctl workspace adapter", () => {
       values: [{label: "ZIA", count: 2}, {label: "ZTW", count: 1}]
     });
     expect(result.context?.records).toBe(3);
+    expect(result.context?.countLabel).toBe("Resources");
     expect(result.context?.effects).toBe("none");
     await workspace.close();
   });
@@ -87,6 +88,7 @@ describe("zscalerctl workspace adapter", () => {
     ]);
     expect(result.picker?.items.map(item => item.scopeId)).toEqual(["zia", "zia", "ztw"]);
     expect(result.context?.records).toBe(3);
+    expect(result.context?.countLabel).toBe("Resources");
     await workspace.close();
   });
 
@@ -124,6 +126,7 @@ describe("zscalerctl workspace adapter", () => {
       {label: "Filters", value: "1"},
       {label: "Search", value: "applied"}
     ]);
+    expect(result.context?.countLabel).toBe("Records");
     const data = result.data as {records: Array<{id: WireNumber}>};
     expect(data.records[0]?.id).toBeInstanceOf(WireNumber);
     expect(data.records[0]?.id.lexeme).toBe("900719925474099312345");
@@ -154,7 +157,7 @@ describe("zscalerctl workspace adapter", () => {
       }
     }));
     await workspace.connect!(context());
-    await workspace.execute!("/diff /tmp/old /tmp/new", {
+    const result = await workspace.execute!("/diff /tmp/old /tmp/new", {
       signal: new AbortController().signal,
       emit: event => progress.push(event)
     });
@@ -163,6 +166,16 @@ describe("zscalerctl workspace adapter", () => {
       {kind: "progress", completed: 1, total: 3, message: "zpa/app-segments"},
       {kind: "progress", completed: 2, total: 3, message: "zcc/devices"}
     ]);
+    expect(result.context?.countLabel).toBe("Diff items");
+    await workspace.close();
+  });
+
+  test("labels non-record result counts by their actual meaning", async () => {
+    const workspace = createZscalerctlWorkspace(OPTIONS, async () => fakeEngine());
+    await workspace.connect!(context());
+    expect((await workspace.execute!("/manifest", context())).context?.countLabel).toBe("Capabilities");
+    expect((await workspace.execute!("/lookup https://example.com", context())).context?.countLabel).toBe("Classifications");
+    expect((await workspace.execute!("/doctor", context())).context?.countLabel).toBeUndefined();
     await workspace.close();
   });
 

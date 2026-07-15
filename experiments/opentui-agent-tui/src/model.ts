@@ -87,6 +87,8 @@ export interface ContextState {
   readonly authority: string;
   readonly scope: string;
   readonly records: number;
+  /** Human meaning of the numeric context count; omit when no count is useful. */
+  readonly countLabel?: string;
   readonly effects: string;
   readonly operation: OperationState;
 }

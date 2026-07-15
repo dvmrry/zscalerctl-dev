@@ -168,6 +168,7 @@ const FIXTURE_CONTEXT: ContextState = {
   authority: "tenant read-only",
   scope: "zia/locations",
   records: 2,
+  countLabel: "Records",
   effects: "none",
   operation: {status: "idle", label: "ready"}
 };

@@ -76,7 +76,9 @@ export function ContextRail(props: ContextRailProps) {
           onMouseDown={() => setScopeOpen(value => !value)}
         >
           <text fg={props.colors.text} attributes={TextAttributes.BOLD}>{scopeOpen ? "▾" : "▸"} Scope</text>
-          <text fg={props.colors.textMuted}>{props.context.records} records</text>
+          {props.context.countLabel === undefined ? null : (
+            <text fg={props.colors.textMuted}>{props.context.records} {props.context.countLabel.toLowerCase()}</text>
+          )}
         </box>
         {scopeOpen ? (
           <box paddingLeft={2}>

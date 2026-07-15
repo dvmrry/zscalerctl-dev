@@ -6,6 +6,7 @@ import type {ContextState} from "../src/model.ts";
 import {
   evidenceAtPath,
   resultTranscriptBlocks,
+  snapshotWireValue,
   textTranscriptBlocks,
   valueAtPath
 } from "../src/transcript.ts";
@@ -16,6 +17,7 @@ const CONTEXT: ContextState = {
   authority: "tenant read-only",
   scope: "zia/locations",
   records: 2,
+  countLabel: "Records",
   effects: "none",
   operation: {status: "complete", label: "ready"}
 };
@@ -83,5 +85,40 @@ describe("transcript presentation model", () => {
       {id: "content", kind: "text", lines: ["hello", "world"]}
     ]);
     expect(textTranscriptBlocks([])).toEqual([]);
+  });
+
+  test("commits an immutable wire snapshot without losing exact numbers", () => {
+    const source: WireValue = {
+      records: [{id: new WireNumber("900719925474099312345"), name: "Original"}]
+    };
+    const snapshot = snapshotWireValue(source);
+    const sourceRecords = (source as {records: Array<{name: string}>}).records;
+    sourceRecords[0]!.name = "Mutated";
+    sourceRecords.reverse();
+
+    expect(valueAtPath(snapshot, ["records", 0, "name"])).toBe("Original");
+    expect(valueAtPath(snapshot, ["records", 0, "id"])).toEqual(new WireNumber("900719925474099312345"));
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(valueAtPath(snapshot, ["records"]) as object)).toBe(true);
+    expect(Object.isFrozen(valueAtPath(snapshot, ["records", 0]) as object)).toBe(true);
+
+    const cyclic: {self?: unknown} = {};
+    cyclic.self = cyclic;
+    expect(() => snapshotWireValue(cyclic as WireValue)).toThrow("Workspace data contains a cycle.");
+  });
+
+  test("uses an explicit semantic count label instead of assuming records", () => {
+    const blocks = resultTranscriptBlocks([], {resources: [{}, {}, {}]}, {
+      ...CONTEXT,
+      scope: "catalog",
+      records: 3,
+      countLabel: "Resources"
+    });
+    const metrics = blocks.find(block => block.kind === "metrics");
+    expect(metrics?.items.map(item => [item.label, item.value])).toEqual([
+      ["Scope", "catalog"],
+      ["Resources", "3"]
+    ]);
+    expect(metrics?.items.some(item => item.label === "Records")).toBe(false);
   });
 });

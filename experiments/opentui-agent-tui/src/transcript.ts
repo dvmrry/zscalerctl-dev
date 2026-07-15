@@ -146,9 +146,15 @@ function metricsFor(
   const metrics: TranscriptMetric[] = [];
   if (context !== undefined) {
     metrics.push({label: "Scope", value: safeInlineText(context.scope, 80), tone: "info"});
-    metrics.push({label: "Records", value: String(context.records), tone: context.records === 0 ? "neutral" : "success"});
+    if (context.countLabel !== undefined) {
+      metrics.push({
+        label: safeInlineText(context.countLabel, 40),
+        value: String(context.records),
+        tone: context.records === 0 ? "neutral" : "success"
+      });
+    }
   }
-  if (collection !== undefined && (context === undefined || collection.items.length !== context.records)) {
+  if (collection !== undefined && (context?.countLabel === undefined || collection.items.length !== context.records)) {
     metrics.push({label: humanizeField(collection.label), value: String(collection.items.length)});
   } else if (context === undefined) {
     const object = wireObject(value);
@@ -202,6 +208,40 @@ export function resultTranscriptBlocks(
     ]
   });
   return blocks;
+}
+
+export function snapshotWireValue(value: WireValue): WireValue {
+  const memo = new WeakMap<object, WireValue>();
+  const active = new WeakSet<object>();
+
+  const snapshot = (candidate: unknown, depth: number): WireValue => {
+    if (depth > 128) throw new TypeError("Workspace data exceeds the snapshot depth limit.");
+    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") return candidate;
+    if (isWireNumber(candidate)) return candidate;
+    if (typeof candidate !== "object") throw new TypeError("Workspace data is not a valid wire value.");
+    if (active.has(candidate)) throw new TypeError("Workspace data contains a cycle.");
+    const existing = memo.get(candidate);
+    if (existing !== undefined) return existing;
+
+    active.add(candidate);
+    if (Array.isArray(candidate)) {
+      const copy: WireValue[] = [];
+      memo.set(candidate, copy);
+      for (const item of candidate) copy.push(snapshot(item, depth + 1));
+      active.delete(candidate);
+      return Object.freeze(copy) as unknown as WireValue;
+    }
+
+    const copy: Record<string, WireValue> = Object.create(null) as Record<string, WireValue>;
+    memo.set(candidate, copy);
+    for (const key of Object.keys(candidate)) {
+      copy[key] = snapshot((candidate as Readonly<Record<string, unknown>>)[key], depth + 1);
+    }
+    active.delete(candidate);
+    return Object.freeze(copy) as WireValue;
+  };
+
+  return snapshot(value, 1);
 }
 
 export function valueAtPath(value: WireValue, path: JsonPath): WireValue | undefined {

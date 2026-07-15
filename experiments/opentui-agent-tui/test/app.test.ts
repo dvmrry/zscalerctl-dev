@@ -29,13 +29,14 @@ async function interact(callback: () => void | Promise<void>, flush: () => Promi
 
 describe("OpenTUI shell interactions", () => {
   test("turns result cards into restorable evidence and keeps a bounded working set", async () => {
+    const initialData = {
+      records: [
+        {id: "1", name: "Alpha location", status: "enabled"},
+        {id: "2", name: "Beta location", status: "disabled"}
+      ]
+    };
     const initial: WorkspaceSnapshot = {
-      data: {
-        records: [
-          {id: "1", name: "Alpha location", status: "enabled"},
-          {id: "2", name: "Beta location", status: "disabled"}
-        ]
-      },
+      data: initialData,
       context: {
         connection: "connected",
         transport: "test stdio",
@@ -105,12 +106,16 @@ describe("OpenTUI shell interactions", () => {
     expect(setup.captureCharFrame()).toContain("next/locations");
     expect(setup.captureCharFrame()).toContain("Gamma location");
 
+    initialData.records[0]!.name = "Mutated location";
+    initialData.records.reverse();
+
     const pinned = setup.renderer.root.findDescendantById("working-set-pin-1");
     expect(pinned).toBeDefined();
     await interact(() => setup.mockMouse.click(pinned!.screenX + 1, pinned!.screenY), setup.flush);
     const restored = setup.captureCharFrame();
     expect(restored).toContain("initial/locations");
-    expect(restored).toContain("Alpha location · object");
+    expect(restored).toContain("Context records › Alpha location · object");
+    expect(restored).not.toContain("Context records › Mutated location · object");
 
     const remove = setup.renderer.root.findDescendantById("working-set-remove-1");
     expect(remove).toBeDefined();
@@ -177,6 +182,61 @@ describe("OpenTUI shell interactions", () => {
     expect(frame).not.toContain("Context needle-beyond-tree-bound");
     await interact(() => setup.mockInput.pressEnter(), setup.flush);
     expect(setup.captureCharFrame()).toContain("Find in structured data");
+  });
+
+  test("reconciles the actionable search match when an in-flight result replaces data", async () => {
+    let resolveReplacement!: (result: WorkspaceResult) => void;
+    const workspace: WorkspaceAdapter = {
+      id: "search-replacement-test",
+      initial: {
+        data: {old: {name: "shared-search-target"}},
+        context: {
+          connection: "connected",
+          transport: "test",
+          authority: "tenant read-only",
+          scope: "old/result",
+          records: 1,
+          effects: "none",
+          operation: {status: "complete", label: "ready"}
+        },
+        announcement: {title: "Old result", body: ["Ready."], tone: "success"}
+      },
+      commands: [{command: "/replace", usage: "/replace", summary: "Replace the result"}],
+      execute: async () => new Promise(resolve => { resolveReplacement = resolve; }),
+      close: async () => undefined
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 120, height: 36});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/replace"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
+    await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("shared-search-target"), setup.flush);
+
+    await interact(() => resolveReplacement({
+      data: {replacement: {name: "shared-search-target"}},
+      context: {
+        ...workspace.initial.context,
+        scope: "replacement/result",
+        operation: {status: "complete", label: "replaced"}
+      },
+      announcement: {title: "Replacement result", body: ["Replacement committed."], tone: "success"}
+    }), setup.flush);
+    const replaced = setup.captureCharFrame();
+    expect(replaced).toContain("Find in structured data");
+    expect(replaced).toContain("shared-search-target");
+
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const committed = setup.captureCharFrame();
+    expect(committed).not.toContain("Find in structured data");
+    expect(committed).toContain("replacement/result");
+    expect(committed).toContain("Context replacement › name · string");
   });
 
   test("previews grouped search results, commits with Enter, and cancels with Escape", async () => {

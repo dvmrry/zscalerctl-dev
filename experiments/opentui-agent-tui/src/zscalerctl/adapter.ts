@@ -90,6 +90,7 @@ function wireValue(value: unknown): WireValue {
 function contextState(options: {
   readonly scope: string;
   readonly records: number;
+  readonly countLabel?: string;
   readonly effects: string;
   readonly label: string;
   readonly tone?: "complete" | "error";
@@ -100,6 +101,7 @@ function contextState(options: {
     authority: "tenant read-only",
     scope: options.scope,
     records: options.records,
+    ...(options.countLabel === undefined ? {} : {countLabel: options.countLabel}),
     effects: options.effects,
     operation: {status: options.tone ?? "complete", label: options.label}
   };
@@ -220,7 +222,7 @@ function catalogResult(response: CatalogResponse, command: Extract<ParsedCommand
       summary: summarizeCatalog(matched, response.result.resources)
     },
     data: catalogData(matched),
-    context: contextState({scope: command.product === undefined ? "catalog" : `catalog/${command.product}`, records: matched.length, effects: "none", label: `${matched.length} resources discovered`}),
+    context: contextState({scope: command.product === undefined ? "catalog" : `catalog/${command.product}`, records: matched.length, countLabel: "Resources", effects: "none", label: `${matched.length} resources discovered`}),
     picker: catalogPicker(productResources, command.query)
   };
 }
@@ -243,6 +245,7 @@ function readResult(
     context: contextState({
       scope: `${product}/${resource}`,
       records: response.result.records,
+      countLabel: "Records",
       effects: "network access; configuration-dependent local reads/process execution",
       label: `${response.result.records} records projected`
     })
@@ -269,7 +272,7 @@ function diffResult(response: DiffResponse): WorkspaceResult {
       summary: summarizeDiff(response.result)
     },
     data: diffData(response),
-    context: contextState({scope: "local dump diff", records: response.items.length, effects: "local filesystem read", label: `${summary.resources_compared} resources compared`})
+    context: contextState({scope: "local dump diff", records: response.items.length, countLabel: "Diff items", effects: "local filesystem read", label: `${summary.resources_compared} resources compared`})
   };
 }
 
@@ -280,6 +283,7 @@ function simpleResult(options: {
   readonly data: unknown;
   readonly scope: string;
   readonly records?: number;
+  readonly countLabel?: string;
   readonly effects: string;
   readonly summary?: WorkspaceResult["announcement"]["summary"];
 }): WorkspaceResult {
@@ -291,7 +295,7 @@ function simpleResult(options: {
       ...(options.summary === undefined ? {} : {summary: options.summary})
     },
     data: wireValue(options.data),
-    context: contextState({scope: options.scope, records: options.records ?? 1, effects: options.effects, label: options.title.toLowerCase()})
+    context: contextState({scope: options.scope, records: options.records ?? 1, countLabel: options.countLabel, effects: options.effects, label: options.title.toLowerCase()})
   };
 }
 
@@ -397,6 +401,7 @@ export function createZscalerctlWorkspace(
         data: {status: "ready"},
         scope: "catalog",
         records: catalog.result.resources,
+        countLabel: "Resources",
         effects: "none",
         summary: summarizeCatalog(catalog.items.map(item => item.value), catalog.result.resources, client.ready.engine.capabilities.length)
       });
@@ -434,7 +439,7 @@ export function createZscalerctlWorkspace(
           )
         },
         data: catalogData(catalog.items.map(item => item.value)),
-        context: contextState({scope: "catalog", records: catalog.result.resources, effects: "none", label: `${catalog.result.resources} resources discovered`})
+        context: contextState({scope: "catalog", records: catalog.result.resources, countLabel: "Resources", effects: "none", label: `${catalog.result.resources} resources discovered`})
       };
     } catch (error) {
       if (created !== undefined && client === created) client = undefined;
@@ -467,6 +472,7 @@ export function createZscalerctlWorkspace(
             data: response.result.manifest,
             scope: "engine manifest",
             records: response.result.manifest.capabilities.length,
+            countLabel: "Capabilities",
             effects: "none",
             summary: summarizeManifest(response.result.manifest)
           });
@@ -490,7 +496,7 @@ export function createZscalerctlWorkspace(
         case "lookup": {
           const request: URLLookupInput = {urls: command.urls};
           const response = await connected.lookup(request, requestOptions);
-          return simpleResult({title: "URL classification", body: [`${response.result.classifications} classification${response.result.classifications === 1 ? "" : "s"} returned.`], tone: "success", data: {classifications: response.items.map(item => item.value)}, scope: "zia/url-lookup", records: response.result.classifications, effects: "network access; configuration-dependent local reads/process execution", summary: summarizeLookup(command.urls.length)});
+          return simpleResult({title: "URL classification", body: [`${response.result.classifications} classification${response.result.classifications === 1 ? "" : "s"} returned.`], tone: "success", data: {classifications: response.items.map(item => item.value)}, scope: "zia/url-lookup", records: response.result.classifications, countLabel: "Classifications", effects: "network access; configuration-dependent local reads/process execution", summary: summarizeLookup(command.urls.length)});
         }
         case "list": {
           const request: ResourceListInput = {product: command.product, resource: command.resource, fields: command.fields, filters: command.filters, search: command.search};

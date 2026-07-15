@@ -41,7 +41,7 @@ import {
   type ThemeName
 } from "./theme.ts";
 import {LatestToastController, type ToastState} from "./toast.ts";
-import {resultTranscriptBlocks, textTranscriptBlocks, valueAtPath} from "./transcript.ts";
+import {resultTranscriptBlocks, snapshotWireValue, textTranscriptBlocks, valueAtPath} from "./transcript.ts";
 import {
   expandAncestors,
   flattenTree,
@@ -53,6 +53,7 @@ import {
   searchTree,
   toggleExpansion,
   type ArrayOrder,
+  type TreeSearchMatch,
   type TreeRow
 } from "./tree.ts";
 import {SpinnerFrameProvider} from "./useSpinnerFrame.ts";
@@ -113,12 +114,20 @@ interface SearchSnapshot {
 
 type WorkspacePickerPurpose = "workspace" | "theme";
 
+function selectedSearchMatch(
+  matches: readonly TreeSearchMatch[],
+  requestedId: string | undefined
+): TreeSearchMatch | undefined {
+  return matches.find(match => match.id === requestedId) ?? matches[0];
+}
+
 function safeContextState(context: ContextState): ContextState {
   return {
     ...context,
     transport: safeInlineText(context.transport, 160),
     authority: safeInlineText(context.authority, 120),
     scope: safeInlineText(context.scope, 240),
+    ...(context.countLabel === undefined ? {} : {countLabel: safeInlineText(context.countLabel, 40)}),
     effects: safeInlineText(context.effects, 240),
     operation: {...context.operation, label: safeInlineText(context.operation.label, 240)}
   };
@@ -145,6 +154,9 @@ export function App(props: {
   const dimensions = useTerminalDimensions();
   const workspace = props.workspace ?? FIXTURE_WORKSPACE_ADAPTER;
   const initialWorkspace = workspace.initial;
+  const initialDataRef = useRef<WireValue | undefined>(undefined);
+  if (initialDataRef.current === undefined) initialDataRef.current = snapshotWireValue(initialWorkspace.data);
+  const initialData = initialDataRef.current;
   const nextID = useRef(2);
   const nextPinID = useRef(1);
   const nextResultID = useRef(initialWorkspace.context.connection === "connecting" ? 1 : 2);
@@ -181,9 +193,9 @@ export function App(props: {
   const workspacePickerSelectedIdRef = useRef<string | undefined>(undefined);
   const [workspacePickerInputMethod, setWorkspacePickerInputMethod] = useState<PickerInputMethod>("keyboard");
   const [arrayOrder, setArrayOrder] = useState<ArrayOrder>("index");
-  const [data, setData] = useState(initialWorkspace.data);
+  const [data, setData] = useState(initialData);
   const dataRef = useRef<WireValue>(data);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initialExpansion(initialWorkspace.data));
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initialExpansion(initialData));
   const expandedRef = useRef<ReadonlySet<string>>(expanded);
   const [selectedId, setSelectedId] = useState(pathKey([]));
   const selectedIdRef = useRef(selectedId);
@@ -199,7 +211,7 @@ export function App(props: {
   if (snapshotsRef.current === undefined) {
     snapshotsRef.current = new Map(initialResultId === undefined ? [] : [[initialResultId, {
       id: initialResultId,
-      data: initialWorkspace.data,
+      data: initialData,
       context: safeContextState(initialWorkspace.context)
     }]]);
   }
@@ -214,7 +226,7 @@ export function App(props: {
       title: safeInlineText(initialWorkspace.announcement.title, 180),
       blocks: resultTranscriptBlocks(
         initialWorkspace.announcement.body,
-        initialEntryHasData ? initialWorkspace.data : undefined,
+        initialEntryHasData ? initialData : undefined,
         safeContextState(initialWorkspace.context),
         initialWorkspace.announcement.summary
       ),
@@ -265,9 +277,10 @@ export function App(props: {
   workspacePickerScopeIdRef.current = effectiveWorkspacePickerScopeId;
   workspacePickerSelectedIdRef.current = workspacePickerSelectedId;
   if (focus === "search") searchPendingFocusRef.current = false;
-  const requestedSearchIndex = searchResult.matches.findIndex(match => match.id === searchSelectedId);
-  const activeSearchIndex = requestedSearchIndex < 0 ? 0 : requestedSearchIndex;
-  const activeMatch = searchResult.matches[activeSearchIndex];
+  const activeMatch = selectedSearchMatch(searchResult.matches, searchSelectedId);
+  const activeSearchIndex = activeMatch === undefined
+    ? -1
+    : searchResult.matches.findIndex(match => match.id === activeMatch.id);
   const matchedIds = useMemo<ReadonlySet<string>>(
     () => searchOpen ? new Set(searchResult.matches.map(match => match.id)) : EMPTY_IDS,
     [searchOpen, searchResult]
@@ -328,32 +341,42 @@ export function App(props: {
     const resultContext = result.context === undefined
       ? contextRef.current
       : safeContextState(result.context);
-    const resultId = result.data === undefined ? undefined : nextResultID.current++;
-    if (result.data !== undefined && resultId !== undefined) {
-      snapshotsRef.current!.set(resultId, {id: resultId, data: result.data, context: resultContext});
+    const committedData = result.data === undefined ? undefined : snapshotWireValue(result.data);
+    const resultId = committedData === undefined ? undefined : nextResultID.current++;
+    if (committedData !== undefined && resultId !== undefined) {
+      snapshotsRef.current!.set(resultId, {id: resultId, data: committedData, context: resultContext});
     }
     append({
       role: "assistant",
       title: result.announcement.title,
       blocks: resultTranscriptBlocks(
         result.announcement.body,
-        result.data,
+        committedData,
         resultContext,
         result.announcement.summary
       ),
       tone: result.announcement.tone,
       ...(resultId === undefined ? {} : {resultId})
     });
-    if (result.data !== undefined) {
-      dataRef.current = result.data;
-      setData(result.data);
-      const nextExpanded = initialExpansion(result.data);
+    if (committedData !== undefined) {
+      dataRef.current = committedData;
+      setData(committedData);
+      const nextExpanded = initialExpansion(committedData);
       expandedRef.current = nextExpanded;
       selectedIdRef.current = pathKey([]);
       setExpanded(nextExpanded);
       setSelectedId(selectedIdRef.current);
       activeResultIdRef.current = resultId;
       setActiveResultId(resultId);
+      if (searchOpenRef.current) {
+        searchSnapshotRef.current = {
+          selectedId: selectedIdRef.current,
+          expanded: new Set(nextExpanded),
+          resultId
+        };
+        searchSelectedIdRef.current = undefined;
+        setSearchSelectedId(undefined);
+      }
     }
     if (result.context !== undefined) {
       contextRef.current = resultContext;
@@ -835,16 +858,14 @@ export function App(props: {
   }, [cancelSearch, presentWorkspacePicker, themeMode, themeName]);
 
   const commitSearch = useCallback((matchId?: string, inspect = false) => {
-    const requested = matchId ?? searchSelectedIdRef.current;
-    if (requested === undefined) return;
-    const match = searchResultRef.current.matches.find(candidate => candidate.id === requested);
+    const match = selectedSearchMatch(searchResultRef.current.matches, matchId ?? searchSelectedIdRef.current);
     if (match === undefined) return;
     if (!previewSearchMatch(match.id)) return;
     finishSearch(false, inspect);
   }, [finishSearch, previewSearchMatch]);
 
   const copySearchValue = useCallback((matchId?: string) => {
-    const match = searchResultRef.current.matches.find(candidate => candidate.id === matchId);
+    const match = selectedSearchMatch(searchResultRef.current.matches, matchId ?? searchSelectedIdRef.current);
     if (match?.copyText === undefined) {
       showToast("Only scalar search results have a copyable value.", "warning");
       return;
@@ -859,7 +880,7 @@ export function App(props: {
   }, [renderer, showToast]);
 
   const copySearchPath = useCallback((matchId?: string) => {
-    const match = searchResultRef.current.matches.find(candidate => candidate.id === matchId);
+    const match = selectedSearchMatch(searchResultRef.current.matches, matchId ?? searchSelectedIdRef.current);
     if (match === undefined) return;
     let copied = false;
     try {

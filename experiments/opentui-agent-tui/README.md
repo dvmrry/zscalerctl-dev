@@ -188,6 +188,10 @@ repository's supported release surface and root Go gate suite.
 
 - The tree displays at most 800 visible rows so an accidentally large result
   cannot overwhelm one render pass.
+- Workspace data is copied and deeply frozen when a result commits, preserving
+  historical evidence even if a project adapter retains and mutates its source
+  object. Cyclic values and structures deeper than 128 levels fail at this
+  boundary instead of entering the snapshot registry.
 - Search visits at most 5,000 nodes and retains at most 200 matches. It searches
   only the sanitized tree presented to the frontend; it cannot widen the Go
   engine's projection or recover dropped fields. Approximate matching is
