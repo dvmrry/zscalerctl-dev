@@ -1,4 +1,5 @@
-import {TextAttributes} from "@opentui/core";
+import {TextAttributes, type BoxRenderable} from "@opentui/core";
+import type {Ref} from "react";
 
 import {
   poisonBannerForWidth,
@@ -8,28 +9,34 @@ import {
 import type {Palette} from "../theme.ts";
 import {useMotionFrame} from "../useMotion.ts";
 
-function PoisonArtwork(props: {readonly banner: PoisonBanner; readonly colors: Palette}) {
+function PoisonArtwork(props: {
+  readonly banner: PoisonBanner;
+  readonly colors: Palette;
+  readonly bannerRef?: Ref<BoxRenderable>;
+}) {
   const motion = useMotionFrame();
   return (
     <box flexDirection="column" marginBottom={1}>
-      {props.banner.lines.map((line, index) => {
-        const segments = poisonBeamSegments(
-          line,
-          motion.frameIndex,
-          props.banner.width,
-          motion.active && motion.mode === "full"
-        );
-        const baseColor = index < 3
-          ? props.colors.accent
-          : index < 7 ? props.colors.text : props.colors.accentSecondary;
-        return (
-          <text key={index} wrapMode="none">
-            <span style={{fg: baseColor}}>{segments.before}</span>
-            <span style={{fg: props.colors.warning}}>{segments.beam}</span>
-            <span style={{fg: baseColor}}>{segments.after}</span>
-          </text>
-        );
-      })}
+      <box id="welcome-poison-banner" ref={props.bannerRef} flexDirection="column">
+        {props.banner.lines.map((line, index) => {
+          const segments = poisonBeamSegments(
+            line,
+            motion.frameIndex,
+            props.banner.width,
+            motion.active && motion.mode === "full"
+          );
+          const baseColor = index < 3
+            ? props.colors.accent
+            : index < 7 ? props.colors.text : props.colors.accentSecondary;
+          return (
+            <text key={index} wrapMode="none">
+              <span style={{fg: baseColor}}>{segments.before}</span>
+              <span style={{fg: props.colors.warning}}>{segments.beam}</span>
+              <span style={{fg: baseColor}}>{segments.after}</span>
+            </text>
+          );
+        })}
+      </box>
       <text fg={props.colors.textMuted}>OpenTUI lab</text>
     </box>
   );
@@ -41,6 +48,7 @@ export function Welcome(props: {
   readonly artwork: boolean;
   readonly availableWidth: number;
   readonly workspaceLabel: string;
+  readonly poisonBannerRef?: Ref<BoxRenderable>;
 }) {
   if (props.compact) {
     return (
@@ -66,7 +74,7 @@ export function Welcome(props: {
           <span style={{fg: props.colors.accent}}>◆ </span>zscalerctl <span style={{fg: props.colors.textMuted}}>OpenTUI lab</span>
         </text>
       ) : (
-        <PoisonArtwork banner={banner} colors={props.colors} />
+        <PoisonArtwork banner={banner} colors={props.colors} bannerRef={props.poisonBannerRef} />
       )}
       <text fg={props.colors.textMuted}>Agentic tenant explorer with a structured data workspace.</text>
       <box flexDirection="row" gap={2}>

@@ -199,6 +199,7 @@ export function App(props: {
   const [welcomeMotionActive, setWelcomeMotionActive] = useState(
     (props.initialMotion ?? DEFAULT_MOTION_MODE) === "full"
   );
+  const [poisonViewportVisible, setPoisonViewportVisible] = useState(false);
   const [operationSceneVisible, setOperationSceneVisible] = useState(false);
   const colors = useMemo(() => paletteFor(themeName, themeMode), [themeMode, themeName]);
   const [focus, setFocus] = useState<FocusTarget>("composer");
@@ -287,7 +288,8 @@ export function App(props: {
   const compact = dimensions.width < 88 || dimensions.height < 25;
   const artworkVisible = !compact && dimensions.height >= 42;
   const poisonArtworkVisible = artworkVisible
-    && poisonBannerForWidth(transcriptAvailableWidth) !== undefined;
+    && poisonBannerForWidth(transcriptAvailableWidth) !== undefined
+    && poisonViewportVisible;
   const welcomeSweepVisible = welcomeMotionActive && poisonArtworkVisible;
   const motionActive = busy || welcomeSweepVisible;
   const rows = useMemo(() => flattenTree(data, expanded, {arrayOrder}), [arrayOrder, data, expanded]);
@@ -1449,6 +1451,7 @@ export function App(props: {
             context={context}
             operationSceneVisible={operationSceneVisible}
             interactive={!busy}
+            onPoisonVisibilityChange={setPoisonViewportVisible}
             onFocus={() => setFocus("transcript")}
             onAction={handleTranscriptAction}
             onEvidence={revealTranscriptEvidence}

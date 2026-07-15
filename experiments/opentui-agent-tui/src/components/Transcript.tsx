@@ -1,4 +1,10 @@
-import {TextAttributes, type MouseEvent} from "@opentui/core";
+import {
+  TextAttributes,
+  type BoxRenderable,
+  type MouseEvent,
+  type ScrollBoxRenderable
+} from "@opentui/core";
+import {useCallback, useRef} from "react";
 
 import type {
   ContextState,
@@ -25,6 +31,7 @@ export interface TranscriptProps {
   readonly context: ContextState;
   readonly operationSceneVisible: boolean;
   readonly interactive: boolean;
+  readonly onPoisonVisibilityChange: (visible: boolean) => void;
   readonly onFocus: () => void;
   readonly onAction: (entry: TranscriptEntry, action: TranscriptActionID) => void;
   readonly onEvidence: (entry: TranscriptEntry, evidence: TranscriptEvidence) => void;
@@ -187,10 +194,35 @@ function Entry(props: {
 }
 
 export function Transcript(props: TranscriptProps) {
+  const scrollboxRef = useRef<ScrollBoxRenderable | null>(null);
+  const poisonBannerRef = useRef<BoxRenderable | null>(null);
+  const poisonVisibilityRef = useRef(false);
+  const publishPoisonVisibility = useCallback((visible: boolean) => {
+    if (poisonVisibilityRef.current === visible) return;
+    poisonVisibilityRef.current = visible;
+    props.onPoisonVisibilityChange(visible);
+  }, [props.onPoisonVisibilityChange]);
+  const reportPoisonVisibility = useCallback(() => {
+    const scrollbox = scrollboxRef.current;
+    const banner = poisonBannerRef.current;
+    if (scrollbox === null || banner === null || !scrollbox.visible || !banner.visible) {
+      publishPoisonVisibility(false);
+      return;
+    }
+    const viewport = scrollbox.viewport;
+    const fullyVisible = banner.screenX >= viewport.screenX
+      && banner.screenY >= viewport.screenY
+      && banner.screenX + banner.width <= viewport.screenX + viewport.width
+      && banner.screenY + banner.height <= viewport.screenY + viewport.height;
+    publishPoisonVisibility(fullyVisible);
+  }, [publishPoisonVisibility]);
+
   return (
     <box flexDirection="column" flexGrow={1} minHeight={0} onMouseDown={props.onFocus}>
       <scrollbox
         id="transcript-scrollbox"
+        ref={scrollboxRef}
+        renderAfter={reportPoisonVisibility}
         flexGrow={1}
         minHeight={0}
         stickyScroll
@@ -208,6 +240,7 @@ export function Transcript(props: TranscriptProps) {
           artwork={props.artwork}
           availableWidth={props.availableWidth}
           workspaceLabel={props.workspaceLabel}
+          poisonBannerRef={poisonBannerRef}
         />
         {props.entries.map(entry => (
           <Entry

@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, test} from "bun:test";
+import type {ScrollBoxRenderable} from "@opentui/core";
 import {ManualClock} from "@opentui/core/testing";
 import {testRender} from "@opentui/react/test-utils";
 import {act, createElement} from "react";
@@ -107,6 +108,12 @@ async function interact(callback: () => void | Promise<void>, flush: () => Promi
   await act(async () => {
     await callback();
     await new Promise(resolve => setTimeout(resolve, 100));
+    await flush();
+  });
+}
+
+async function flushUpdates(flush: () => Promise<void>): Promise<void> {
+  await act(async () => {
     await flush();
   });
 }
@@ -395,25 +402,25 @@ describe("OpenTUI shell interactions", () => {
       initialMotion: "off"
     }), {width: 120, height: 42});
     renderers.push(setup.renderer);
-    await setup.flush();
+    await flushUpdates(setup.flush);
     expectCompletePoison(setup.captureCharFrame());
 
     await act(async () => setup.resize(120, 41));
-    await setup.flush();
+    await flushUpdates(setup.flush);
     expect(setup.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
     expectNoPoison(setup.captureCharFrame());
     await act(async () => setup.resize(120, 42));
-    await setup.flush();
+    await flushUpdates(setup.flush);
     expectCompletePoison(setup.captureCharFrame());
 
     await act(async () => setup.resize(121, 42));
-    await setup.flush();
+    await flushUpdates(setup.flush);
     const withRail = setup.captureCharFrame();
     expect(withRail).toContain("◆ zscalerctl OpenTUI lab");
     expectNoPoison(withRail);
 
     await act(async () => setup.resize(120, 42));
-    await setup.flush();
+    await flushUpdates(setup.flush);
     expectCompletePoison(setup.captureCharFrame());
   });
 
@@ -426,7 +433,7 @@ describe("OpenTUI shell interactions", () => {
       motionTimers: narrowClock
     }), {width: 103, height: 42});
     renderers.push(narrow.renderer);
-    await narrow.flush();
+    await flushUpdates(narrow.flush);
     expect(narrow.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
     expectNoPoison(narrow.captureCharFrame());
     expect(narrowClock.intervalCount).toBe(0);
@@ -434,7 +441,7 @@ describe("OpenTUI shell interactions", () => {
 
     narrowClock.elapseWhileIdle(WELCOME_MOTION_DURATION_MS - 100);
     await act(async () => narrow.resize(104, 42));
-    await narrow.flush();
+    await flushUpdates(narrow.flush);
     expectCompletePoison(narrow.captureCharFrame());
     expect(narrowClock.intervalCount).toBe(1);
     expect(narrowClock.timeoutCount).toBe(1);
@@ -443,7 +450,7 @@ describe("OpenTUI shell interactions", () => {
     const staleTimeout = narrowClock.latestTimeoutHandle();
 
     await act(async () => narrow.resize(103, 42));
-    await narrow.flush();
+    await flushUpdates(narrow.flush);
     expect(narrow.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
     expectNoPoison(narrow.captureCharFrame());
     expect(narrowClock.intervalCount).toBe(0);
@@ -451,7 +458,7 @@ describe("OpenTUI shell interactions", () => {
 
     narrowClock.elapseWhileIdle(WELCOME_MOTION_DURATION_MS - 100);
     await act(async () => narrow.resize(104, 42));
-    await narrow.flush();
+    await flushUpdates(narrow.flush);
     expect(narrowClock.intervalCount).toBe(1);
     expect(narrowClock.timeoutCount).toBe(1);
     expect(narrowClock.nextTimeoutRemainingMs).toBe(WELCOME_MOTION_DURATION_MS);
@@ -459,7 +466,7 @@ describe("OpenTUI shell interactions", () => {
       narrowClock.fireStale(staleInterval);
       narrowClock.fireStale(staleTimeout);
     });
-    await narrow.flush();
+    await flushUpdates(narrow.flush);
     expectCompletePoison(narrow.captureCharFrame());
     expect(narrowClock.intervalCount).toBe(1);
     expect(narrowClock.timeoutCount).toBe(1);
@@ -478,20 +485,20 @@ describe("OpenTUI shell interactions", () => {
       motionTimers: railClock
     }), {width: 120, height: 42});
     renderers.push(rail.renderer);
-    await rail.flush();
+    await flushUpdates(rail.flush);
     expectCompletePoison(rail.captureCharFrame());
     expect(railClock.intervalCount).toBe(1);
     expect(railClock.timeoutCount).toBe(1);
 
     await act(async () => rail.resize(121, 42));
-    await rail.flush();
+    await flushUpdates(rail.flush);
     expect(rail.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
     expectNoPoison(rail.captureCharFrame());
     expect(railClock.intervalCount).toBe(0);
     expect(railClock.timeoutCount).toBe(0);
 
     await act(async () => rail.resize(120, 42));
-    await rail.flush();
+    await flushUpdates(rail.flush);
     expectCompletePoison(rail.captureCharFrame());
     expect(railClock.intervalCount).toBe(1);
     expect(railClock.timeoutCount).toBe(1);
@@ -499,6 +506,62 @@ describe("OpenTUI shell interactions", () => {
     await interact(() => rail.mockInput.pressTab(), rail.flush);
     expect(rail.renderer.root.findDescendantById("transcript-scrollbox")?.focused).toBeTrue();
     expectCompletePoison(rail.captureCharFrame());
+  });
+
+  test("pauses the Poison sweep while sticky transcript content covers the banner", async () => {
+    const clock = new InspectableMotionClock();
+    const initial = FIXTURE_WORKSPACE_ADAPTER.initial;
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      id: "long-transcript-test",
+      initial: {
+        ...initial,
+        announcement: {
+          ...initial.announcement,
+          body: Array.from({length: 80}, (_, index) => `Historical transcript line ${index + 1}.`)
+        }
+      }
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "full",
+      motionTimers: clock,
+      workspace
+    }), {width: 104, height: 42});
+    renderers.push(setup.renderer);
+    await flushUpdates(setup.flush);
+
+    const hidden = setup.captureCharFrame();
+    expectNoPoison(hidden);
+    expect(hidden).not.toContain("◆ zscalerctl OpenTUI lab");
+    expect(clock.intervalCount).toBe(0);
+    expect(clock.timeoutCount).toBe(0);
+    expect(setup.renderer.liveRequestCount).toBe(0);
+
+    const transcript = setup.renderer.root.findDescendantById("transcript-scrollbox") as ScrollBoxRenderable | undefined;
+    expect(transcript).toBeDefined();
+    expect(transcript!.scrollTop).toBeGreaterThan(0);
+    await act(async () => transcript!.scrollTo(0));
+    await flushUpdates(setup.flush);
+    expectCompletePoison(setup.captureCharFrame());
+    expect(clock.intervalCount).toBe(1);
+    expect(clock.timeoutCount).toBe(1);
+    expect(clock.nextTimeoutRemainingMs).toBe(WELCOME_MOTION_DURATION_MS);
+
+    await act(async () => transcript!.scrollTo(2));
+    await flushUpdates(setup.flush);
+    expect(POISON_ZSCALERCTL.lines.every(line => setup.captureCharFrame().includes(line))).toBeFalse();
+    expect(clock.intervalCount).toBe(0);
+    expect(clock.timeoutCount).toBe(0);
+
+    clock.elapseWhileIdle(WELCOME_MOTION_DURATION_MS - 100);
+    await act(async () => transcript!.scrollTo(0));
+    await flushUpdates(setup.flush);
+    expectCompletePoison(setup.captureCharFrame());
+    expect(clock.intervalCount).toBe(1);
+    expect(clock.timeoutCount).toBe(1);
+    expect(clock.nextTimeoutRemainingMs).toBe(WELCOME_MOTION_DURATION_MS);
   });
 
   test("opens the searchable theme picker for bare theme commands and applies a selection", async () => {

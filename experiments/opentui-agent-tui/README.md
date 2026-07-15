@@ -237,7 +237,11 @@ repository's supported release surface and root Go gate suite.
 - The operation scene waits 320 ms before appearing, so quick operations do not
   flash transient chrome. It disappears on success, cancellation, or failure;
   late progress cannot revive it. The shared motion clock ticks only while the
-  welcome sweep or a real operation is active.
+  complete Poison banner is inside the transcript viewport or a real operation
+  is active. Scrolling any banner row out of view pauses the sweep without
+  consuming its duration; mouse-scrolling back to the top starts a fresh full
+  sweep unless ordinary keyboard interaction has already dismissed the startup
+  motion.
 - Motion uses React-rendered fixed-cell glyphs rather than OpenTUI timelines or
   post-processing, keeping layout and mouse hit targets synchronized. Global
   CRT, glitch, bloom, and other buffer effects remain future experiments.
