@@ -80,8 +80,8 @@ export function OperationScene(props: {
       ? ""
       : ` ${fixedCellText(fitProgressCounter(counter, counterWidth), counterWidth, "right")}`;
     return (
-      <box flexShrink={0} marginTop={1} paddingLeft={1}>
-        <text fg={props.colors.accent} wrapMode="none">
+      <box id="operation-scene-compact" flexShrink={0} marginTop={1} paddingLeft={1}>
+        <text id="operation-scene-compact-text" fg={props.colors.accent} wrapMode="none">
           {prefix}<span style={{fg: props.colors.text}}>{labelText}</span><span style={{fg: props.colors.textMuted}}>{counterText}</span>
         </text>
       </box>

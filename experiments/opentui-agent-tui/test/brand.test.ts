@@ -76,7 +76,7 @@ describe("Poison welcome identity", () => {
     renderers.push(art.renderer);
     await art.flush();
     const artFrame = art.captureCharFrame();
-    expect(artFrame).toContain(POISON_ZSCALERCTL.lines[0]);
+    for (const line of POISON_ZSCALERCTL.lines) expect(artFrame).toContain(line);
     expect(artFrame).toContain("OpenTUI lab");
     await act(async () => art.renderer.destroy());
     renderers.pop();
@@ -92,7 +92,7 @@ describe("Poison welcome identity", () => {
     await fallback.flush();
     const fallbackFrame = fallback.captureCharFrame();
     expect(fallbackFrame).toContain("◆ zscalerctl OpenTUI lab");
-    expect(fallbackFrame).not.toContain("@@@@@@@@");
+    for (const line of POISON_ZSCALERCTL.lines) expect(fallbackFrame).not.toContain(line);
     expect(fallbackFrame).not.toContain("ZCTL");
   });
 });

@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, test} from "bun:test";
+import type {TextRenderable} from "@opentui/core";
 import {testRender} from "@opentui/react/test-utils";
 import {act, createElement} from "react";
 
@@ -50,6 +51,48 @@ async function captureScene(mode: MotionMode, frame: number, value = context(), 
   await act(async () => setup.renderer.destroy());
   renderers.pop();
   return rendered;
+}
+
+async function captureCompactScene(
+  mode: MotionMode,
+  frame: number,
+  value: ContextState,
+  width: number
+): Promise<{
+  readonly frame: string;
+  readonly sceneHeight: number;
+  readonly textHeight: number;
+  readonly textPlain: string;
+  readonly textWidth: number;
+}> {
+  const setup = await testRender(createElement(
+    MotionProvider,
+    {spinner: "hangul", mode, active: false},
+    createElement(OperationScene, {
+      colors,
+      context: value,
+      availableWidth: width,
+      compact: true,
+      motionFrame: frame
+    })
+  ), {width, height: 7});
+  renderers.push(setup.renderer);
+  await setup.flush();
+  try {
+    const scene = setup.renderer.root.findDescendantById("operation-scene-compact");
+    const text = setup.renderer.root.findDescendantById("operation-scene-compact-text") as TextRenderable | undefined;
+    if (scene === undefined || text === undefined) throw new Error("compact operation scene renderables are missing");
+    return {
+      frame: setup.captureCharFrame(),
+      sceneHeight: scene.height,
+      textHeight: text.height,
+      textPlain: text.plainText,
+      textWidth: text.width
+    };
+  } finally {
+    await act(async () => setup.renderer.destroy());
+    renderers.pop();
+  }
 }
 
 afterEach(async () => {
@@ -125,10 +168,17 @@ describe("data-reactive operation scene", () => {
       for (const width of [12, 20, 40, 51]) {
         let renderedWidth: number | undefined;
         for (const progress of progressCases) {
-          const frame = await captureScene(mode, 3, context(progress), width);
-          const nonblank = frame.split("\n").filter(line => line.trim().length > 0);
+          const captured = await captureCompactScene(mode, 3, context({
+            ...progress,
+            label: "locations"
+          }), width);
+          const nonblank = captured.frame.split("\n").filter(line => line.trim().length > 0);
           expect(nonblank).toHaveLength(1);
-          expect(nonblank[0]).toContain("/");
+          expect(captured.textPlain).toMatch(/ (?:\d|…)+\/(?:\d|…)+$/u);
+          expect(Bun.stringWidth(captured.textPlain)).toBe(width - 1);
+          expect(captured.textWidth).toBe(width - 1);
+          expect(captured.sceneHeight).toBe(1);
+          expect(captured.textHeight).toBe(1);
           const lineWidth = Bun.stringWidth(nonblank[0]!.trimEnd());
           expect(lineWidth).toBeLessThanOrEqual(width);
           renderedWidth ??= lineWidth;

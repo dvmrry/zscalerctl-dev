@@ -190,6 +190,7 @@ export function Transcript(props: TranscriptProps) {
   return (
     <box flexDirection="column" flexGrow={1} minHeight={0} onMouseDown={props.onFocus}>
       <scrollbox
+        id="transcript-scrollbox"
         flexGrow={1}
         minHeight={0}
         stickyScroll
