@@ -22,6 +22,7 @@ import {
   type Tone,
   type TranscriptEntry
 } from "./model.ts";
+import {DEFAULT_SPINNER, type SpinnerType} from "./spinner.ts";
 import {safeInlineText} from "./text.ts";
 import {
   isThemeMode,
@@ -48,6 +49,7 @@ import {
   type ArrayOrder,
   type TreeRow
 } from "./tree.ts";
+import {SpinnerFrameProvider} from "./useSpinnerFrame.ts";
 import {
   FIXTURE_WORKSPACE_ADAPTER,
   WorkspaceCommandError,
@@ -130,6 +132,7 @@ export function App(props: {
   readonly initialMode: ThemeMode;
   readonly initialTheme: ThemeName;
   readonly workspace?: WorkspaceAdapter;
+  readonly spinner?: SpinnerType;
 }) {
   const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
@@ -1062,7 +1065,7 @@ export function App(props: {
     />
   );
 
-  return (
+  const shell = (
     <box width={dimensions.width} height={dimensions.height} backgroundColor={colors.background} flexDirection="column">
       <box flexDirection="row" flexGrow={1} minHeight={0}>
         <box
@@ -1204,5 +1207,11 @@ export function App(props: {
         />
       )}
     </box>
+  );
+
+  return (
+    <SpinnerFrameProvider spinner={props.spinner ?? DEFAULT_SPINNER} active={busy}>
+      {shell}
+    </SpinnerFrameProvider>
   );
 }

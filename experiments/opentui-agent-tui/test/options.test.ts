@@ -1,19 +1,32 @@
 import {describe, expect, test} from "bun:test";
 
 import {commandSuggestions} from "../src/model.ts";
-import {OptionError, parseOptions} from "../src/options.ts";
+import {OptionError, parseOptions, USAGE} from "../src/options.ts";
 
 describe("experiment options", () => {
   test("uses Tokyo Night auto appearance by default and accepts explicit values", () => {
-    expect(parseOptions([], {})).toEqual({kind: "run", options: {theme: "tokyonight", themeMode: "auto"}});
+    expect(parseOptions([], {})).toEqual({kind: "run", options: {theme: "tokyonight", themeMode: "auto", spinner: "hangul"}});
     expect(parseOptions(["--theme", "tokyonight", "--theme-mode", "dark"], {})).toEqual({
       kind: "run",
-      options: {theme: "tokyonight", themeMode: "dark"}
+      options: {theme: "tokyonight", themeMode: "dark", spinner: "hangul"}
     });
     expect(parseOptions(["--theme=cyberpunk", "--theme-mode=light"], {})).toEqual({
       kind: "run",
-      options: {theme: "cyberpunk", themeMode: "light"}
+      options: {theme: "cyberpunk", themeMode: "light", spinner: "hangul"}
     });
+    expect(parseOptions(["--spinner", "braille"], {})).toEqual({
+      kind: "run",
+      options: {theme: "tokyonight", themeMode: "auto", spinner: "braille"}
+    });
+    expect(parseOptions(["--spinner=pipe"], {})).toEqual({
+      kind: "run",
+      options: {theme: "tokyonight", themeMode: "auto", spinner: "pipe"}
+    });
+    expect(parseOptions(["--spinner=dots"], {})).toEqual({
+      kind: "run",
+      options: {theme: "tokyonight", themeMode: "auto", spinner: "dots"}
+    });
+    expect(USAGE).toContain("--spinner TYPE     braille, hangul, pipe, or dots (default: hangul)");
   });
 
   test("accepts explicit or environment-selected absolute engines and safe process policy", () => {
@@ -29,6 +42,7 @@ describe("experiment options", () => {
       options: {
         theme: "tokyonight",
         themeMode: "auto",
+        spinner: "hangul",
         engine: "/tmp/zscalerctl-engine",
         profile: "lab",
         config: "/tmp/config.yaml",
@@ -39,17 +53,18 @@ describe("experiment options", () => {
     });
     expect(parseOptions([], {ZSCALERCTL_ENGINE_PATH: "/opt/zscalerctl-engine"})).toEqual({
       kind: "run",
-      options: {theme: "tokyonight", themeMode: "auto", engine: "/opt/zscalerctl-engine"}
+      options: {theme: "tokyonight", themeMode: "auto", spinner: "hangul", engine: "/opt/zscalerctl-engine"}
     });
     expect(parseOptions(["--fixture"], {ZSCALERCTL_ENGINE_PATH: "/opt/zscalerctl-engine"})).toEqual({
       kind: "run",
-      options: {theme: "tokyonight", themeMode: "auto"}
+      options: {theme: "tokyonight", themeMode: "auto", spinner: "hangul"}
     });
   });
 
   test("rejects unknown options and themes", () => {
     expect(() => parseOptions(["--theme", "ultraviolet"], {})).toThrow(OptionError);
     expect(() => parseOptions(["--theme-mode", "sepia"], {})).toThrow(OptionError);
+    expect(() => parseOptions(["--spinner", "rotator"], {})).toThrow(OptionError);
     expect(() => parseOptions(["--engine", "relative-engine"], {})).toThrow(OptionError);
     expect(() => parseOptions(["--engine", "/one", "--engine", "/two"], {})).toThrow(OptionError);
     expect(() => parseOptions(["--fixture", "--engine", "/engine"], {})).toThrow(OptionError);

@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     }
   }
   createRoot(renderer).render(
-    <App initialMode={initialMode} initialTheme={parsed.options.theme} workspace={workspace} />
+    <App initialMode={initialMode} initialTheme={parsed.options.theme} spinner={parsed.options.spinner} workspace={workspace} />
   );
   await destroyed;
   try {

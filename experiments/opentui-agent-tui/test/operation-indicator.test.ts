@@ -7,6 +7,7 @@ import {
   normalizeOperationProgress,
   progressBarSegments
 } from "../src/components/OperationIndicator.tsx";
+import {spinnerFrame} from "../src/spinner.ts";
 import {paletteFor} from "../src/theme.ts";
 
 const renderers: Array<{destroy(): void}> = [];
@@ -46,7 +47,8 @@ describe("operation progress presentation", () => {
         colors: paletteFor("tokyonight", "dark"),
         operation: {status: "running", label: "긴 작업", completed: 2, total: 3},
         detail: "network + config",
-        availableWidth: width
+        availableWidth: width,
+        activityFrame: spinnerFrame("hangul", 0)
       }), {width, height: 2});
       renderers.push(setup.renderer);
       await setup.flush();
@@ -67,7 +69,8 @@ describe("operation progress presentation", () => {
         colors: paletteFor("tokyonight", "dark"),
         operation: {status: "running", label: "indeterminate"},
         detail: "network + config",
-        availableWidth: width
+        availableWidth: width,
+        activityFrame: spinnerFrame("hangul", 0)
       }), {width, height: 2});
       renderers.push(setup.renderer);
       await setup.flush();
@@ -75,5 +78,22 @@ describe("operation progress presentation", () => {
       await act(async () => { setup.renderer.destroy(); });
       renderers.pop();
     }
+  });
+
+  test("renders a supplied Braille liveness frame", async () => {
+    const width = 2;
+    const setup = await testRender(createElement(OperationIndicator, {
+      colors: paletteFor("tokyonight", "dark"),
+      operation: {status: "running", label: "긴 작업", completed: 2, total: 3},
+      detail: "network + config",
+      availableWidth: width,
+      activityFrame: spinnerFrame("braille", 0)
+    }), {width, height: 2});
+    renderers.push(setup.renderer);
+    await setup.flush();
+    const visible = setup.captureCharFrame().trim();
+    expect(visible).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u);
+    await act(async () => { setup.renderer.destroy(); });
+    renderers.pop();
   });
 });

@@ -1,10 +1,7 @@
-import {useEffect, useState} from "react";
-
 import type {OperationState} from "../model.ts";
 import {fitCellText, safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
-
-export const ACTIVITY_FRAMES = ["삼", "이", "일"] as const;
+import {useSpinnerFrame} from "../useSpinnerFrame.ts";
 
 export interface NormalizedProgress {
   readonly completed: number;
@@ -68,28 +65,23 @@ export function OperationIndicator(props: {
   readonly operation: OperationState;
   readonly detail: string;
   readonly availableWidth: number;
+  readonly activityFrame?: string;
 }) {
-  const [activityFrame, setActivityFrame] = useState(0);
-
-  useEffect(() => {
-    if (props.operation.status !== "running") return;
-    const timer = setInterval(() => setActivityFrame(value => (value + 1) % ACTIVITY_FRAMES.length), 120);
-    return () => clearInterval(timer);
-  }, [props.operation.status]);
-
+  const sharedActivityFrame = useSpinnerFrame();
+  const activityFrame = props.activityFrame ?? sharedActivityFrame;
   const width = Math.max(1, Math.floor(props.availableWidth));
   const progress = props.operation.status === "running"
     ? normalizeOperationProgress(props.operation.completed, props.operation.total)
     : undefined;
   const counter = progress === undefined ? undefined : `${progress.completed}/${progress.total}`;
-  const activity = props.operation.status === "running" ? `${ACTIVITY_FRAMES[activityFrame]} ` : "";
+  const activity = props.operation.status === "running" ? `${activityFrame} ` : "";
   const rawLabel = safeInlineText(`${activity}${props.operation.label}`, 240);
   const color = operationColor(props.operation, props.colors);
 
   if (progress === undefined || counter === undefined) {
     if (width < 8) {
       const compactLabel = props.operation.status === "running"
-        ? width === 1 ? "·" : fitCellText(ACTIVITY_FRAMES[activityFrame], width)
+        ? width === 1 ? "·" : fitCellText(activityFrame, width)
         : fitCellText(rawLabel, width);
       return (
         <box height={1} flexShrink={0} marginTop={1}>
@@ -136,7 +128,7 @@ export function OperationIndicator(props: {
   if (width >= counterWidth + 3) {
     return (
       <box height={1} flexShrink={0} marginTop={1} flexDirection="row" justifyContent="space-between">
-        <text fg={color} wrapMode="none">{fitCellText(ACTIVITY_FRAMES[activityFrame], 2)}</text>
+        <text fg={color} wrapMode="none">{fitCellText(activityFrame, 2)}</text>
         <text fg={props.colors.textMuted} wrapMode="none">{counter}</text>
       </box>
     );
@@ -144,7 +136,7 @@ export function OperationIndicator(props: {
 
   return (
     <box height={1} flexShrink={0} marginTop={1}>
-      <text fg={color} wrapMode="none">{width === 1 ? "·" : fitCellText(ACTIVITY_FRAMES[activityFrame], width)}</text>
+      <text fg={color} wrapMode="none">{width === 1 ? "·" : fitCellText(activityFrame, width)}</text>
     </box>
   );
 }

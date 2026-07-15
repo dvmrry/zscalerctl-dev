@@ -1,6 +1,7 @@
 import {isAbsolute} from "node:path";
 
 import type {Redaction} from "../../../clients/typescript/src/index.ts";
+import {DEFAULT_SPINNER, isSpinnerType, type SpinnerType} from "./spinner.ts";
 import {containsUnsafeFormatCharacter} from "./text.ts";
 import {
   isThemeModePreference,
@@ -14,6 +15,7 @@ const MAXIMUM_OPTION_CHARACTERS = 8_192;
 export interface ExperimentOptions {
   readonly theme: ThemeName;
   readonly themeMode: ThemeModePreference;
+  readonly spinner?: SpinnerType;
   readonly engine?: string;
   readonly profile?: string;
   readonly config?: string;
@@ -38,6 +40,7 @@ Unsupported OpenTUI agent-shell experiment.
 Interface options:
   --theme NAME       Built-in theme name (default: tokyonight)
   --theme-mode MODE  auto, dark, or light (default: auto)
+  --spinner TYPE     braille, hangul, pipe, or dots (default: ${DEFAULT_SPINNER})
   --fixture          Ignore ZSCALERCTL_ENGINE_PATH and use sanitized fixture data
 
 Engine options:
@@ -82,6 +85,7 @@ export function parseOptions(
 ): ParsedOptions {
   let theme: ThemeName = "tokyonight";
   let themeMode: ThemeModePreference = "auto";
+  let spinner: SpinnerType = DEFAULT_SPINNER;
   let engine: string | undefined;
   let profile: string | undefined;
   let config: string | undefined;
@@ -126,6 +130,14 @@ export function parseOptions(
     if (modeValue !== undefined) {
       if (!isThemeModePreference(modeValue)) throw new OptionError(`Unknown theme mode ${JSON.stringify(modeValue)}.`);
       themeMode = modeValue;
+      continue;
+    }
+    const spinnerValue = valueOption("--spinner");
+    if (spinnerValue !== undefined) {
+      if (!isSpinnerType(spinnerValue)) {
+        throw new OptionError("--spinner must be braille, hangul, pipe, or dots.");
+      }
+      spinner = spinnerValue;
       continue;
     }
     const engineValue = valueOption("--engine");
@@ -179,6 +191,7 @@ export function parseOptions(
     options: {
       theme,
       themeMode,
+      spinner,
       ...(engine === undefined ? {} : {engine}),
       ...(profile === undefined ? {} : {profile}),
       ...(config === undefined ? {} : {config}),

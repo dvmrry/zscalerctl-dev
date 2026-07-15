@@ -87,9 +87,10 @@ export function JsonTree(props: JsonTreeProps) {
             <text fg={row.expandable ? props.colors.accent : props.colors.textMuted} onMouseDown={event => stopAndToggle(event, row)}>
               {`${"  ".repeat(row.depth)}${caret} `}
             </text>
-            <text fg={activeMatch ? props.colors.warning : matched ? props.colors.accentSecondary : selected ? props.colors.selectionText : kindColor(row.kind, props.colors)} wrapMode="none">
-              <span style={{attributes: selected || matched ? TextAttributes.BOLD : undefined}}>{row.label}</span>
-              <span style={{fg: props.colors.textMuted}}>{`: ${row.preview}`}</span>
+            <text fg={selected ? props.colors.selectionText : props.colors.text} wrapMode="none">
+              <span style={{attributes: selected || matched ? TextAttributes.BOLD : undefined, fg: selected ? props.colors.selectionText : activeMatch ? props.colors.warning : matched ? props.colors.accentSecondary : undefined}}>{row.label}</span>
+              <span style={{fg: selected ? props.colors.selectionText : props.colors.textMuted}}>{": "}</span>
+              <span style={{fg: selected ? props.colors.selectionText : kindColor(row.kind, props.colors)}}>{row.preview}</span>
             </text>
           </box>
         );

@@ -38,8 +38,9 @@ effects, and error semantics. No model or shell execution is attached.
   latest-action toasts whose lifetime reflects informational versus warning
   severity.
 - Keyboard tree navigation without taking arrow keys away from the composer.
-- A wide JSON inspector, slash-command palette, Hangul activity frames, and
-  OpenCode's 33-theme catalog plus four local compatibility themes.
+- A wide JSON inspector, slash-command palette, configurable activity frames
+  with a Hangul default, and OpenCode's 33-theme catalog plus four local
+  compatibility themes.
 - JSON theme references, ANSI colors, transparent colors, dark/light variants,
   and automatic appearance selection from the terminal background.
 - Exact JSON number lexemes through the existing TypeScript client's
@@ -49,7 +50,8 @@ effects, and error semantics. No model or shell execution is attached.
   local sanitized-dump comparison.
 - One active operation at a time, truthful completed-work progress in the
   context rail, Ctrl+C or `/cancel` cancellation, and orderly child-process
-  shutdown. Hangul frames indicate liveness but never invent elapsed progress.
+  shutdown. Activity frames indicate liveness but never invent elapsed
+  progress.
 
 This is a UI vertical slice, not a second client implementation. The React
 shell receives data through a project-neutral `WorkspaceAdapter`; fixture and
@@ -96,18 +98,21 @@ Optional engine policy flags are `--profile`, `--config`, `--timeout`,
 repository, agents should prefer injected `ZSCALERCTL_*` environment variables
 over profiles.
 
-Start with a different theme:
+Start with a different theme or activity style:
 
 ```sh
 bun start -- --theme tron
 bun start -- --theme tokyonight --theme-mode light
+bun start -- --spinner braille
 ```
 
 The default is `tokyonight` with automatic dark/light detection. Use
 `--theme-mode auto|dark|light` to control appearance explicitly. Run `/theme`
 (or `/theme list`) inside the TUI to browse and filter all 37 themes in the
 floating picker; `/theme mode toggle` switches the current theme between dark
-and light without restarting.
+and light without restarting. Activity uses the distinctive Hangul sequence by
+default; `--spinner braille|hangul|pipe|dots` selects a different fixed-width
+liveness animation at startup.
 
 ## Controls
 

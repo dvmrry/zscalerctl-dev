@@ -3,6 +3,7 @@ import {useEffect, useMemo, useRef, useState} from "react";
 
 import {suggestionsFor, type CommandDescriptor, type FocusTarget} from "../model.ts";
 import type {Palette} from "../theme.ts";
+import {useSpinnerFrame} from "../useSpinnerFrame.ts";
 
 const KEY_BINDINGS: readonly KeyBinding[] = [
   {name: "return", action: "submit"},
@@ -19,12 +20,14 @@ export interface ComposerProps {
   readonly workspaceLabel: string;
   readonly availableWidth: number;
   readonly roomy: boolean;
+  readonly activityFrame?: string;
   readonly onFocus: () => void;
   readonly onFocusNext: () => void;
   readonly onSubmit: (value: string) => void;
 }
 
 export function Composer(props: ComposerProps) {
+  const sharedActivityFrame = useSpinnerFrame();
   const editor = useRef<TextareaRenderable | null>(null);
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState(0);
@@ -166,7 +169,7 @@ export function Composer(props: ComposerProps) {
         />
         <box height={1} flexDirection="row" justifyContent="space-between">
           <box flexDirection="row" gap={1}>
-            <text fg={props.colors.accent}>{props.busy ? "삼 Working" : "Explore"}</text>
+            <text fg={props.colors.accent}>{props.busy ? `${props.activityFrame ?? sharedActivityFrame} Working` : "Explore"}</text>
             {minimalChrome ? null : (
               <text fg={props.colors.textMuted}>
                 {compactChrome ? `· ${props.workspaceLabel}` : `tenant read-only · ${props.workspaceLabel}`}
