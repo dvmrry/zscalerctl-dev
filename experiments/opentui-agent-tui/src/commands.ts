@@ -71,7 +71,10 @@ export type InteractionCommand =
   | "sidebar.toggle"
   | "inspector.toggle"
   | "overlay.close"
+  | "focus.next"
   | "focus.previous";
+
+export type InteractionFocus = "composer" | "tree" | "transcript" | "search" | "picker";
 
 export interface KeyStroke {
   readonly name: string;
@@ -85,10 +88,15 @@ function unmodified(key: KeyStroke): boolean {
   return key.ctrl !== true && key.meta !== true && key.option !== true;
 }
 
-export function resolveInteractionCommand(mode: InteractionMode, key: KeyStroke): InteractionCommand | undefined {
+export function resolveInteractionCommand(
+  mode: InteractionMode,
+  key: KeyStroke,
+  focus?: InteractionFocus
+): InteractionCommand | undefined {
   const name = key.name.toLowerCase();
+  const textEntryOwnsEditingShortcut = focus === "composer" || mode === "search" || mode === "picker";
   if (key.ctrl === true && name === "c") return "app.interrupt";
-  if (key.ctrl === true && name === "f") return "search.toggle";
+  if (key.ctrl === true && name === "f" && !textEntryOwnsEditingShortcut) return "search.toggle";
 
   if (mode === "picker") {
     if (name === "escape") return "picker.cancel";
@@ -119,9 +127,10 @@ export function resolveInteractionCommand(mode: InteractionMode, key: KeyStroke)
     return undefined;
   }
 
-  if (key.ctrl === true && name === "b") return "sidebar.toggle";
+  if (key.ctrl === true && name === "b" && !textEntryOwnsEditingShortcut) return "sidebar.toggle";
   if (key.ctrl === true && name === "o") return "inspector.toggle";
   if (name === "escape") return "overlay.close";
   if (unmodified(key) && key.shift === true && name === "tab") return "focus.previous";
+  if (unmodified(key) && name === "tab" && focus !== undefined && focus !== "composer") return "focus.next";
   return undefined;
 }

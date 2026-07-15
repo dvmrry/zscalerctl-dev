@@ -25,10 +25,16 @@ describe("interaction command routing", () => {
 
   test("keeps global and base commands deterministic", () => {
     expect(resolveInteractionCommand("picker", {name: "c", ctrl: true})).toBe("app.interrupt");
-    expect(resolveInteractionCommand("search", {name: "f", ctrl: true})).toBe("search.toggle");
-    expect(resolveInteractionCommand("base", {name: "b", ctrl: true})).toBe("sidebar.toggle");
+    expect(resolveInteractionCommand("base", {name: "f", ctrl: true}, "composer")).toBeUndefined();
+    expect(resolveInteractionCommand("base", {name: "b", ctrl: true}, "composer")).toBeUndefined();
+    expect(resolveInteractionCommand("search", {name: "f", ctrl: true})).toBeUndefined();
+    expect(resolveInteractionCommand("picker", {name: "f", ctrl: true})).toBeUndefined();
+    expect(resolveInteractionCommand("base", {name: "f", ctrl: true}, "tree")).toBe("search.toggle");
+    expect(resolveInteractionCommand("base", {name: "b", ctrl: true}, "transcript")).toBe("sidebar.toggle");
     expect(resolveInteractionCommand("inspector", {name: "escape"})).toBe("overlay.close");
     expect(resolveInteractionCommand("base", {name: "tab", shift: true})).toBe("focus.previous");
+    expect(resolveInteractionCommand("base", {name: "tab"}, "tree")).toBe("focus.next");
+    expect(resolveInteractionCommand("base", {name: "tab"}, "composer")).toBeUndefined();
   });
 
   test("routes resource picker navigation ahead of the base shell", () => {

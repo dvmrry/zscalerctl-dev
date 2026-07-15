@@ -18,7 +18,8 @@ export interface WorkspaceSnapshot {
 
 export interface WorkspaceProgressEvent {
   readonly kind: "progress";
-  readonly current: number;
+  /** Work units fully completed; the in-flight unit is never included. */
+  readonly completed: number;
   readonly total: number;
   readonly message: string;
 }

@@ -1,16 +1,16 @@
 import {TextAttributes} from "@opentui/core";
-import {useEffect, useState} from "react";
+import {useState} from "react";
 
 import type {ContextState, FocusTarget} from "../model.ts";
 import {safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
 import type {ArrayOrder, TreeRow} from "../tree.ts";
 import {JsonTree} from "./JsonTree.tsx";
-
-const ACTIVITY_FRAMES = ["삼", "이", "일"] as const;
+import {OperationIndicator} from "./OperationIndicator.tsx";
 
 export interface ContextRailProps {
   readonly colors: Palette;
+  readonly width: number;
   readonly context: ContextState;
   readonly rows: readonly TreeRow[];
   readonly selectedId: string;
@@ -33,49 +33,32 @@ export interface ContextRailProps {
 
 export function ContextRail(props: ContextRailProps) {
   const [scopeOpen, setScopeOpen] = useState(true);
-  const [activityFrame, setActivityFrame] = useState(0);
-
-  useEffect(() => {
-    if (props.context.operation.status !== "running") return;
-    const timer = setInterval(() => setActivityFrame(value => (value + 1) % ACTIVITY_FRAMES.length), 120);
-    return () => clearInterval(timer);
-  }, [props.context.operation.status]);
-
-  const operation = props.context.operation;
-  const operationLabel = operation.status === "running"
-    ? `${ACTIVITY_FRAMES[activityFrame]} ${operation.label}`
-    : operation.label;
+  const textEntryFocused = props.focus === "composer" || props.focus === "search" || props.focus === "picker";
+  const horizontalPadding = props.width >= 8 ? 2 : props.width >= 3 ? 1 : 0;
+  const innerWidth = Math.max(1, props.width - horizontalPadding * 2);
   const selectedLabel = safeInlineText(`${props.selectedRow.label} · ${props.selectedRow.kind}`, 30);
   const themeLabel = safeInlineText(`${props.colors.name} · ${props.colors.mode}`, 15);
-  const operationColor = operation.status === "error"
-    ? props.colors.danger
-    : operation.status === "running"
-      ? props.colors.accent
-      : operation.status === "complete"
-        ? props.colors.success
-        : props.colors.textMuted;
   const connectionColor = props.context.connection === "connected" || props.context.connection === "fixture"
     ? props.colors.success
     : props.context.connection === "error"
       ? props.colors.danger
       : props.colors.warning;
-  const hasProgress = operation.current !== undefined && operation.total !== undefined;
 
   return (
     <box
-      width={48}
+      width={props.width}
       height="100%"
       flexDirection="column"
       backgroundColor={props.colors.panel}
-      paddingLeft={2}
-      paddingRight={2}
+      paddingLeft={horizontalPadding}
+      paddingRight={horizontalPadding}
       paddingTop={1}
       paddingBottom={1}
     >
       <box flexDirection="row" justifyContent="space-between" height={1} flexShrink={0}>
         <text fg={props.colors.text} attributes={TextAttributes.BOLD}>Tenant workspace</text>
         <text fg={props.colors.textMuted} onMouseDown={props.overlay ? props.onClose : undefined}>
-          {props.overlay ? "close" : "Ctrl+B"}
+          {props.overlay ? "close" : textEntryFocused ? "/sidebar" : "Ctrl+B"}
         </text>
       </box>
       <box height={1} flexShrink={0} flexDirection="row" justifyContent="space-between">
@@ -120,7 +103,9 @@ export function ContextRail(props: ContextRailProps) {
           <text fg={props.colors.textMuted}>{props.selectedRow.kind} · Ctrl+O</text>
         </box>
         <box height={1} flexShrink={0} flexDirection="row" justifyContent="space-between">
-          <text fg={props.colors.textMuted} onMouseDown={props.onSearch}>{props.searchSummary ?? "Ctrl+F find"}</text>
+          <text fg={props.colors.textMuted} onMouseDown={props.onSearch}>
+            {props.searchSummary ?? (textEntryFocused ? "/find" : "Ctrl+F find")}
+          </text>
           <text fg={props.colors.accent} onMouseDown={props.onToggleOrder}>{props.arrayOrder} order · S</text>
         </box>
         <JsonTree
@@ -136,14 +121,12 @@ export function ContextRail(props: ContextRailProps) {
         />
       </box>
 
-      <box height={1} flexShrink={0} marginTop={1} flexDirection="row" justifyContent="space-between">
-        <text fg={operationColor} wrapMode="none">{safeInlineText(operationLabel, hasProgress ? 29 : 22)}</text>
-        <text fg={props.colors.textMuted}>
-          {!hasProgress
-            ? safeInlineText(props.context.effects, 18)
-            : `${operation.current}/${operation.total}`}
-        </text>
-      </box>
+      <OperationIndicator
+        colors={props.colors}
+        operation={props.context.operation}
+        detail={props.context.effects}
+        availableWidth={innerWidth}
+      />
     </box>
   );
 }

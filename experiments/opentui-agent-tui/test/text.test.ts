@@ -2,6 +2,7 @@ import {describe, expect, test} from "bun:test";
 
 import {
   containsUnsafeFormatCharacter,
+  fitCellText,
   safeInlineText,
   UNSAFE_FORMAT_RANGES
 } from "../src/text.ts";
@@ -17,5 +18,12 @@ describe("terminal text safety", () => {
   test("replaces terminal controls and unsafe formats before display", () => {
     expect(safeInlineText("safe\u001b[31m\u202eevil\nnext", 80)).toBe("safe�[31m�evil�next");
     expect(safeInlineText("ordinary 한글", 80)).toBe("ordinary 한글");
+  });
+
+  test("fits whole graphemes to terminal cells", () => {
+    const fitted = fitCellText("삼 combining e\u0301 한글", 12);
+    expect(Bun.stringWidth(fitted)).toBeLessThanOrEqual(12);
+    expect(fitted).toEndWith("…");
+    expect(fitted).not.toContain("e…\u0301");
   });
 });

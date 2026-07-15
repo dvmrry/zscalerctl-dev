@@ -102,7 +102,7 @@ function operationOptions(context: WorkspaceExecutionContext): OperationOptions 
       if (event.type === "progress") {
         context.emit({
           kind: "progress",
-          current: event.current,
+          completed: event.current - 1,
           total: event.total,
           message: `${event.product}/${event.resource}`
         });

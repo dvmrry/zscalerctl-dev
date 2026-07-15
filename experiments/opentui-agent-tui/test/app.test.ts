@@ -36,6 +36,7 @@ describe("OpenTUI shell interactions", () => {
     renderers.push(setup.renderer);
     await setup.flush();
 
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
     await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
     expect(setup.captureCharFrame()).toContain("Find in structured data");
 
@@ -63,7 +64,8 @@ describe("OpenTUI shell interactions", () => {
     renderers.push(setup.renderer);
     await setup.flush();
     await interact(() => setup.resize(50, 12), setup.flush);
-    await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("/find"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
     await interact(() => setup.mockInput.typeText("500"), setup.flush);
 
     const frame = setup.captureCharFrame();
@@ -167,7 +169,9 @@ describe("OpenTUI shell interactions", () => {
     renderers.push(setup.renderer);
     await setup.flush();
 
-    await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("/find"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Find in structured data");
     await interact(() => setup.mockInput.typeText("서울"), setup.flush);
     await interact(() => setup.mockInput.pressKey("o", {ctrl: true}), setup.flush);
     expect(setup.captureCharFrame()).toContain("JSON Inspector");
@@ -181,7 +185,8 @@ describe("OpenTUI shell interactions", () => {
     });
     renderers.push(setup.renderer);
     await setup.flush();
-    await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("/find"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
     await interact(() => setup.mockInput.typeText("500"), setup.flush);
     const secondItem = setup.renderer.root.findDescendantById("picker-item-1");
     expect(secondItem).toBeDefined();
@@ -192,6 +197,65 @@ describe("OpenTUI shell interactions", () => {
     const frame = setup.captureCharFrame();
     expect(frame).not.toContain("Find in structured data");
     expect(frame).toContain("records › Seoul Branch");
+  });
+
+  test("preserves composer editing keys and uses Tab only after autocomplete declines it", async () => {
+    const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 100,
+      height: 28
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("ac"), setup.flush);
+    await interact(() => setup.mockInput.pressKey("b", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("b"), setup.flush);
+    await interact(() => setup.mockInput.pressKey("f", {ctrl: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("d"), setup.flush);
+    const edited = setup.captureCharFrame();
+    expect(edited).toContain("abcd");
+    expect(edited).not.toContain("Find in structured data");
+    expect(edited).not.toContain("Tenant workspace");
+
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    await interact(() => setup.mockInput.typeText("x"), setup.flush);
+    expect(setup.captureCharFrame()).not.toContain("abcdx");
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
+    await interact(() => setup.mockInput.typeText("x"), setup.flush);
+    expect(setup.captureCharFrame()).toContain("abcdx");
+
+    await interact(() => setup.mockInput.pressTab({shift: true}), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Tenant workspace");
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    await interact(() => setup.mockInput.typeText("y"), setup.flush);
+    expect(setup.captureCharFrame()).toContain("abcdxy");
+    expect(setup.captureCharFrame()).not.toContain("Tenant workspace");
+  });
+
+  test("keeps autocomplete ahead of focus movement and opens search with slash from the tree", async () => {
+    const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 121,
+      height: 30
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/th"), setup.flush);
+    await interact(() => setup.mockInput.pressTab(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("/theme");
+
+    await act(async () => { setup.renderer.destroy(); });
+    renderers.pop();
+
+    const treeSetup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 121,
+      height: 30
+    });
+    renderers.push(treeSetup.renderer);
+    await treeSetup.flush();
+    await interact(() => treeSetup.mockInput.pressTab({shift: true}), treeSetup.flush);
+    await interact(() => treeSetup.mockInput.pressKey("/"), treeSetup.flush);
+    expect(treeSetup.captureCharFrame()).toContain("Find in structured data");
   });
 
   test("accepts an injected workspace adapter without coupling the shell to fixtures", async () => {
@@ -227,6 +291,45 @@ describe("OpenTUI shell interactions", () => {
     await setup.flush();
 
     expect(setup.captureCharFrame()).toContain("Injected workspace ready");
+  });
+
+  test("shows completed-work progress and reconciles context-free success", async () => {
+    let resolveOperation!: (result: WorkspaceResult) => void;
+    let emitLate!: (event: {kind: "progress"; completed: number; total: number; message: string}) => void;
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      commands: [{command: "/work", usage: "/work", summary: "Run test work"}],
+      execute: async (_input, context) => new Promise(resolve => {
+        resolveOperation = resolve;
+        emitLate = context.emit;
+        context.emit({kind: "progress", completed: 0, total: 3, message: "zia/locations"});
+      })
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {width: 121, height: 30});
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/work"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const running = setup.captureCharFrame();
+    expect(running).toContain("zia/locations");
+    expect(running).toContain("0/3");
+    expect(running).not.toContain("3/3");
+
+    await interact(() => resolveOperation({
+      announcement: {title: "Work complete", body: ["The adapter returned no replacement context."], tone: "success"}
+    }), setup.flush);
+    const completed = setup.captureCharFrame();
+    expect(completed).toContain("Work complete");
+    expect(completed).not.toContain("0/3");
+
+    await interact(() => emitLate({kind: "progress", completed: 2, total: 3, message: "late event"}), setup.flush);
+    expect(setup.captureCharFrame()).not.toContain("late event");
+    expect(setup.captureCharFrame()).not.toContain("2/3");
   });
 
   test("connects an injected engine workspace and executes catalog picker choices", async () => {
@@ -444,5 +547,20 @@ describe("OpenTUI shell interactions", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("Operation canceled");
     expect(frame).toContain("Explore");
+  });
+
+  test("renders inactive cancellation as informational transient feedback", async () => {
+    const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 100,
+      height: 28
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/cancel"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("No engine operation is active.");
+    expect(frame).toContain("i No engine operation");
   });
 });

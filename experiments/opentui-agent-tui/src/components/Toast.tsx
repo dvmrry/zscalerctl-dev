@@ -3,17 +3,18 @@ import {TextAttributes} from "@opentui/core";
 import {OVERLAY_Z_INDEX} from "../overlay.ts";
 import {safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
+import {toastColorRole, toastMarker, type ToastTone} from "../toast.ts";
 
 export interface ToastProps {
   readonly colors: Palette;
   readonly viewportWidth: number;
   readonly message: string;
-  readonly tone: "success" | "warning";
+  readonly tone: ToastTone;
 }
 
 export function Toast(props: ToastProps) {
   const width = Math.max(1, Math.min(52, props.viewportWidth - 2));
-  const color = props.tone === "success" ? props.colors.success : props.colors.warning;
+  const color = props.colors[toastColorRole(props.tone)];
   return (
     <box
       position="absolute"
@@ -31,7 +32,7 @@ export function Toast(props: ToastProps) {
       border={['left']}
       borderColor={color}
     >
-      <text fg={color} attributes={TextAttributes.BOLD}>{props.tone === "success" ? "✓" : "!"}</text>
+      <text fg={color} attributes={TextAttributes.BOLD}>{toastMarker(props.tone)}</text>
       <text fg={props.colors.text} wrapMode="none">{safeInlineText(props.message, Math.max(1, width - 5))}</text>
     </box>
   );

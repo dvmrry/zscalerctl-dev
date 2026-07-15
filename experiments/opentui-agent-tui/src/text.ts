@@ -1,4 +1,5 @@
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/gu;
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, {granularity: "grapheme"});
 
 export const UNSAFE_FORMAT_RANGES: readonly (readonly [number, number])[] = [
   [0x00ad, 0x00ad], [0x0600, 0x0605], [0x061c, 0x061c], [0x06dd, 0x06dd],
@@ -35,4 +36,19 @@ export function safeInlineText(value: string, maximumCharacters = 120): string {
   const characters = [...safe];
   if (characters.length <= maximumCharacters) return safe;
   return `${characters.slice(0, Math.max(0, maximumCharacters - 1)).join("")}…`;
+}
+
+export function fitCellText(value: string, maximumWidth: number): string {
+  const width = Math.max(1, Math.floor(maximumWidth));
+  if (Bun.stringWidth(value) <= width) return value;
+  if (width === 1) return "…";
+  let output = "";
+  let used = 0;
+  for (const {segment} of GRAPHEME_SEGMENTER.segment(value)) {
+    const segmentWidth = Bun.stringWidth(segment);
+    if (used + segmentWidth + 1 > width) break;
+    output += segment;
+    used += segmentWidth;
+  }
+  return `${output}…`;
 }

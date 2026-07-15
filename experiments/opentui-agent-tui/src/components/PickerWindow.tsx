@@ -1,7 +1,7 @@
 import {MacOSScrollAccel, TextAttributes, type MouseEvent, type ScrollBoxRenderable} from "@opentui/core";
 import {useEffect, useMemo, useRef} from "react";
 
-import {safeInlineText} from "../text.ts";
+import {fitCellText, safeInlineText} from "../text.ts";
 import type {Palette} from "../theme.ts";
 import {placeFloatingWindow} from "../overlay.ts";
 import {FloatingWindow} from "./Overlay.tsx";
@@ -69,22 +69,7 @@ function categoryKey<T>(item: PickerItem<T>): string | undefined {
   return item.categoryId ?? item.category;
 }
 
-const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, {granularity: "grapheme"});
-
-export function fitPickerCellText(value: string, maximumWidth: number): string {
-  const width = Math.max(1, Math.floor(maximumWidth));
-  if (Bun.stringWidth(value) <= width) return value;
-  if (width === 1) return "…";
-  let output = "";
-  let used = 0;
-  for (const {segment} of GRAPHEME_SEGMENTER.segment(value)) {
-    const segmentWidth = Bun.stringWidth(segment);
-    if (used + segmentWidth + 1 > width) break;
-    output += segment;
-    used += segmentWidth;
-  }
-  return `${output}…`;
-}
+export const fitPickerCellText = fitCellText;
 
 export function pickerScopeText(scope: PickerScope, availableWidth: number): string {
   const width = Math.max(1, Math.floor(availableWidth));

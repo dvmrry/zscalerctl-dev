@@ -34,6 +34,7 @@ import {
   type ThemeMode,
   type ThemeName
 } from "./theme.ts";
+import {LatestToastController, type ToastState} from "./toast.ts";
 import {
   expandAncestors,
   flattenTree,
@@ -53,6 +54,7 @@ import {
   filterWorkspacePicker,
   normalizeWorkspacePicker,
   type WorkspaceAdapter,
+  type WorkspaceExecutionContext,
   type WorkspacePicker,
   type WorkspaceResult
 } from "./workspace.ts";
@@ -100,12 +102,6 @@ interface SearchSnapshot {
   readonly expanded: ReadonlySet<string>;
 }
 
-interface ToastState {
-  readonly id: number;
-  readonly message: string;
-  readonly tone: "success" | "warning";
-}
-
 type WorkspacePickerPurpose = "workspace" | "theme";
 
 function safeContextState(context: ContextState): ContextState {
@@ -117,6 +113,17 @@ function safeContextState(context: ContextState): ContextState {
     effects: safeInlineText(context.effects, 240),
     operation: {...context.operation, label: safeInlineText(context.operation.label, 240)}
   };
+}
+
+function footerHelpFor(focus: FocusTarget, availableWidth: number): string {
+  if (focus === "composer" || focus === "search" || focus === "picker") {
+    return availableWidth < 82
+      ? "Tab complete/focus · /find · /sidebar"
+      : "Tab complete/focus · /find search · /sidebar context · Ctrl+O inspect";
+  }
+  return availableWidth < 82
+    ? "Tab focus · Ctrl+F find · Ctrl+B context"
+    : "Tab/Shift+Tab focus · Ctrl+F find · Ctrl+B context · Ctrl+O inspect";
 }
 
 export function App(props: {
@@ -168,7 +175,8 @@ export function App(props: {
   const [selectedId, setSelectedId] = useState(pathKey([]));
   const selectedIdRef = useRef(selectedId);
   const [toast, setToast] = useState<ToastState | undefined>();
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const toastController = useRef<LatestToastController | undefined>(undefined);
+  if (toastController.current === undefined) toastController.current = new LatestToastController(setToast);
   const [context, setContext] = useState<ContextState>(() => safeContextState(initialWorkspace.context));
   const [entries, setEntries] = useState<readonly TranscriptEntry[]>([
     {
@@ -186,9 +194,10 @@ export function App(props: {
     [workspace.commands, workspace.reload]
   );
   const wide = dimensions.width > 120;
+  const railWidth = Math.max(1, Math.min(48, dimensions.width));
   const sidebarVisible = sidebarOpen || (sidebarMode === "auto" && wide);
   const sidebarOverlay = sidebarVisible && !wide;
-  const conversationWidth = dimensions.width - (sidebarVisible && wide ? 48 : 0);
+  const conversationWidth = dimensions.width - (sidebarVisible && wide ? railWidth : 0);
   const compact = dimensions.width < 88 || dimensions.height < 25;
   const rows = useMemo(() => flattenTree(data, expanded, {arrayOrder}), [arrayOrder, data, expanded]);
   const searchResult = useMemo(
@@ -224,9 +233,7 @@ export function App(props: {
     [searchOpen, searchResult]
   );
   const selectedRow = rows.find(row => row.id === selectedId) ?? rows[0]!;
-  const footerHelp = conversationWidth < 82
-    ? "Ctrl+F find · Ctrl+B context"
-    : "Shift+Tab focus · Ctrl+F find · Ctrl+B context · Ctrl+O inspect";
+  const footerHelp = footerHelpFor(focus, conversationWidth);
   const breadcrumb = safeInlineText(
     formatBreadcrumb(rows, selectedRow),
     Math.max(10, Math.min(54, conversationWidth - [...footerHelp].length - 6))
@@ -243,13 +250,7 @@ export function App(props: {
   }, []);
 
   const showToast = useCallback((message: string, tone: ToastState["tone"]) => {
-    if (toastTimer.current !== undefined) clearTimeout(toastTimer.current);
-    const id = Date.now();
-    setToast({id, message, tone});
-    toastTimer.current = setTimeout(() => {
-      setToast(current => current?.id === id ? undefined : current);
-      toastTimer.current = undefined;
-    }, 2_200);
+    toastController.current?.show(message, tone);
   }, []);
 
   const presentWorkspacePicker = useCallback((
@@ -306,33 +307,47 @@ export function App(props: {
 
   const runWorkspaceOperation = useCallback(async (
     label: string,
-    operation: (context: {readonly signal: AbortSignal; readonly emit: (event: {readonly kind: "progress"; readonly current: number; readonly total: number; readonly message: string}) => void}) => Promise<WorkspaceResult>
+    operation: (context: WorkspaceExecutionContext) => Promise<WorkspaceResult>
   ) => {
     if (busyRef.current || quittingRef.current) return;
     busyRef.current = true;
     setBusy(true);
     const controller = new AbortController();
+    let acceptingProgress = true;
     activeOperationRef.current = controller;
     setContext(current => ({...current, operation: {status: "running", label}}));
     try {
       const result = await operation({
         signal: controller.signal,
         emit: event => {
+          if (!acceptingProgress || activeOperationRef.current !== controller || controller.signal.aborted) return;
           setContext(current => ({
             ...current,
             operation: {
               status: "running",
               label: safeInlineText(event.message, 240),
-              current: event.current,
+              completed: event.completed,
               total: event.total
             }
           }));
         }
       });
+      acceptingProgress = false;
       applyWorkspaceResult(result);
+      setContext(current => current.operation.status === "running"
+        ? {
+            ...current,
+            operation: {
+              status: "complete",
+              label: safeInlineText(result.announcement.title, 240)
+            }
+          }
+        : current);
     } catch (error) {
+      acceptingProgress = false;
       presentWorkspaceError(error);
     } finally {
+      acceptingProgress = false;
       if (activeOperationRef.current === controller) activeOperationRef.current = undefined;
       busyRef.current = false;
       setBusy(false);
@@ -441,11 +456,11 @@ export function App(props: {
   const cancelActiveOperation = useCallback(() => {
     const active = activeOperationRef.current;
     if (active === undefined) {
-      showToast("No engine operation is active.", "warning");
+      showToast("No engine operation is active.", "info");
       return;
     }
     active.abort();
-    showToast("Cancel requested; waiting for engine acknowledgment.", "warning");
+    showToast("Cancel requested; waiting for engine acknowledgment.", "info");
   }, [showToast]);
 
   const quit = useCallback(async () => {
@@ -461,15 +476,17 @@ export function App(props: {
     }
   }, [renderer, workspace]);
 
+  useEffect(() => () => {
+    toastController.current?.dispose();
+  }, []);
+
   useEffect(() => {
     const connect = workspace.connect;
     if (connect === undefined) return () => {
-      if (toastTimer.current !== undefined) clearTimeout(toastTimer.current);
       void workspace.close();
     };
     void runWorkspaceOperation("negotiating stdio v1", context => connect(context));
     return () => {
-      if (toastTimer.current !== undefined) clearTimeout(toastTimer.current);
       activeOperationRef.current?.abort();
       void workspace.close();
     };
@@ -491,6 +508,19 @@ export function App(props: {
     if (wide && sidebarMode === "hide" && !inspectorOpen) setSidebarMode("auto");
     setFocus("tree");
   }, [inspectorOpen, sidebarMode, sidebarOpen, wide]);
+
+  const moveFocus = useCallback((direction: 1 | -1) => {
+    const order: readonly FocusTarget[] = ["composer", "transcript", "tree"];
+    const current = order.indexOf(focusRef.current);
+    const origin = current < 0 ? 0 : current;
+    const target = order[(origin + direction + order.length) % order.length]!;
+    if (target === "tree") focusTree();
+    else {
+      if (inspectorOpen) setInspectorOpen(false);
+      if (!wide && sidebarOpen) setSidebarOpen(false);
+      setFocus(target);
+    }
+  }, [focusTree, inspectorOpen, sidebarOpen, wide]);
 
   const toggleRow = useCallback((row: TreeRow) => {
     setExpanded(current => toggleExpansion(current, row));
@@ -656,7 +686,7 @@ export function App(props: {
       inspector: inspectorOpen,
       drawer: sidebarOverlay
     });
-    const command = resolveInteractionCommand(mode, event);
+    const command = resolveInteractionCommand(mode, event, focusRef.current);
     if (command === "picker.scope-next" || command === "picker.scope-previous") {
       if (workspacePicker === undefined || !workspacePickerScopeBarVisible(workspacePicker, dimensions.width, dimensions.height)) return;
     }
@@ -769,10 +799,11 @@ export function App(props: {
             setFocus("composer");
           }
           break;
+        case "focus.next":
+          moveFocus(1);
+          break;
         case "focus.previous":
-          if (focus === "composer") setFocus("transcript");
-          else if (focus === "transcript") focusTree();
-          else setFocus("composer");
+          moveFocus(-1);
           break;
       }
       return;
@@ -795,6 +826,11 @@ export function App(props: {
     const index = Math.max(0, rows.findIndex(row => row.id === selectedId));
     const row = rows[index];
     if (row === undefined) return;
+    if (event.name === "/" && !event.ctrl && !event.meta) {
+      event.preventDefault();
+      openSearch();
+      return;
+    }
     if (event.name === "s" && !event.ctrl && !event.meta) {
       event.preventDefault();
       toggleArrayOrder();
@@ -878,7 +914,7 @@ export function App(props: {
     }
     if (command === "/sidebar" && tokens.length === 1) {
       toggleSidebar();
-      assistant("Context rail toggled", ["Ctrl+B performs the same action without entering a command."], "info");
+      assistant("Context rail toggled", ["Use /sidebar while editing; Ctrl+B toggles it from the workspace."], "info");
       return;
     }
     if (command === "/inspect" && tokens.length === 1) {
@@ -988,6 +1024,7 @@ export function App(props: {
   const rail = (
     <ContextRail
       colors={colors}
+      width={railWidth}
       context={context}
       rows={rows}
       selectedId={selectedRow.id}
@@ -1050,6 +1087,7 @@ export function App(props: {
             availableWidth={conversationWidth}
             roomy={dimensions.height >= 20}
             onFocus={() => setFocus("composer")}
+            onFocusNext={() => moveFocus(1)}
             onSubmit={value => { void handleSubmit(value); }}
           />
           <box height={1} flexShrink={0} flexDirection="row" justifyContent="space-between">
@@ -1065,7 +1103,7 @@ export function App(props: {
           layer="drawer"
           align="end"
           dim={70}
-          contentWidth={48}
+          contentWidth={railWidth}
           contentHeight="100%"
           onDismiss={() => {
             if (searchOpenRef.current) cancelSearch();

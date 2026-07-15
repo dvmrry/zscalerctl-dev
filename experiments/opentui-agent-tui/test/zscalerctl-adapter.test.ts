@@ -7,7 +7,7 @@ import {
   type ResourceListInput,
   type ResourceReadResponse
 } from "../../../clients/typescript/src/index.ts";
-import {WorkspaceCommandError} from "../src/workspace.ts";
+import {WorkspaceCommandError, type WorkspaceProgressEvent} from "../src/workspace.ts";
 import {createZscalerctlWorkspace} from "../src/zscalerctl/adapter.ts";
 import {CATALOG_RESPONSE, fakeEngine} from "./helpers.ts";
 
@@ -88,6 +88,7 @@ describe("zscalerctl workspace adapter", () => {
 
   test("maps typed reads and preserves exact wire numbers", async () => {
     let request: ResourceListInput | undefined;
+    const progress: WorkspaceProgressEvent[] = [];
     const response: ResourceReadResponse = {
       id: 2,
       items: [{
@@ -100,13 +101,36 @@ describe("zscalerctl workspace adapter", () => {
       result: {kind: "resource_read_summary", records: 1, stream_items_emitted: 1}
     };
     const workspace = createZscalerctlWorkspace(OPTIONS, async () => fakeEngine({
-      list: async input => {
+      list: async (input, options) => {
         request = input;
+        options?.onEvent?.({
+          type: "progress",
+          id: 2,
+          seq: 2,
+          phase: "resource_started",
+          current: 1,
+          total: 3,
+          product: "zia",
+          resource: "locations"
+        });
+        options?.onEvent?.({
+          type: "progress",
+          id: 2,
+          seq: 3,
+          phase: "resource_started",
+          current: 3,
+          total: 3,
+          product: "zpa",
+          resource: "app-segments"
+        });
         return response;
       }
     }));
     await workspace.connect!(context());
-    const result = await workspace.execute!("/list zia locations --fields id,name --filter 'name=foo~bar' --search hq", context());
+    const result = await workspace.execute!("/list zia locations --fields id,name --filter 'name=foo~bar' --search hq", {
+      signal: new AbortController().signal,
+      emit: event => progress.push(event)
+    });
     expect(request).toEqual({
       product: "zia",
       resource: "locations",
@@ -117,6 +141,10 @@ describe("zscalerctl workspace adapter", () => {
     const data = result.data as {records: Array<{id: WireNumber}>};
     expect(data.records[0]?.id).toBeInstanceOf(WireNumber);
     expect(data.records[0]?.id.lexeme).toBe("900719925474099312345");
+    expect(progress).toEqual([
+      {kind: "progress", completed: 0, total: 3, message: "zia/locations"},
+      {kind: "progress", completed: 2, total: 3, message: "zpa/app-segments"}
+    ]);
     await workspace.close();
   });
 

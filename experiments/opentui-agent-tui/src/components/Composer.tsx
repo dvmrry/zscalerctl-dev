@@ -20,6 +20,7 @@ export interface ComposerProps {
   readonly availableWidth: number;
   readonly roomy: boolean;
   readonly onFocus: () => void;
+  readonly onFocusNext: () => void;
   readonly onSubmit: (value: string) => void;
 }
 
@@ -69,6 +70,7 @@ export function Composer(props: ComposerProps) {
       event.stopPropagation();
       if (liveSuggestions.length > 0) acceptSuggestion(liveSuggestions);
       else if (menuSuppressed && liveDraft.trimStart().startsWith("/")) setMenuSuppressed(false);
+      else props.onFocusNext();
       return;
     }
     if (liveSuggestions.length === 0) return;

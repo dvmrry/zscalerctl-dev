@@ -52,7 +52,7 @@ function Entry(props: {readonly colors: Palette; readonly entry: TranscriptEntry
           <text key={`${props.entry.id}:${index}`} fg={props.colors.textMuted} wrapMode="word">{line}</text>
         ))}
         {props.entry.data === undefined ? null : (
-          <text fg={props.colors.accent}>↳ Structured result · Ctrl+O inspect · Ctrl+F find</text>
+          <text fg={props.colors.accent}>↳ Structured result · Ctrl+O inspect · /find search</text>
         )}
       </box>
     </box>

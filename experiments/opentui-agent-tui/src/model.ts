@@ -20,7 +20,8 @@ export interface TranscriptEntry {
 export interface OperationState {
   readonly status: "idle" | "running" | "complete" | "error";
   readonly label: string;
-  readonly current?: number;
+  /** Work units fully completed; the in-flight unit is never included. */
+  readonly completed?: number;
   readonly total?: number;
 }
 

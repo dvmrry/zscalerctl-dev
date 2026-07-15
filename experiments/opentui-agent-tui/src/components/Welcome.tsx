@@ -32,8 +32,8 @@ export function Welcome(props: {readonly colors: Palette; readonly compact: bool
       </box>
       <text fg={props.colors.textMuted}>
         {props.workspaceLabel === "fixture"
-          ? "/demo reloads data · Ctrl+F searches · Ctrl+O opens the inspector"
-          : "/catalog browses resources · Ctrl+F searches data · Ctrl+O inspects"}
+          ? "/demo reloads data · /find searches · Ctrl+O opens the inspector"
+          : "/catalog browses resources · /find searches data · Ctrl+O inspects"}
       </text>
     </box>
   );

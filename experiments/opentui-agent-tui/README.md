@@ -35,7 +35,8 @@ effects, and error semantics. No model or shell execution is attached.
   Enter commits the reveal, Ctrl+O commits into the inspector, and Escape
   restores the selection and expansion state from before search opened.
 - OSC 52 copy actions for sanitized scalar values and exact JSON paths, with
-  transient success or capability-failure toasts.
+  latest-action toasts whose lifetime reflects informational versus warning
+  severity.
 - Keyboard tree navigation without taking arrow keys away from the composer.
 - A wide JSON inspector, slash-command palette, Hangul activity frames, and
   OpenCode's 33-theme catalog plus four local compatibility themes.
@@ -46,8 +47,9 @@ effects, and error semantics. No model or shell execution is attached.
 - Config-free engine bootstrap and catalog discovery, a searchable resource
   picker, typed `list`/`get`/`show` reads, safe status views, URL lookup, and
   local sanitized-dump comparison.
-- One active operation at a time, progress in the context rail, Ctrl+C or
-  `/cancel` cancellation, and orderly child-process shutdown.
+- One active operation at a time, truthful completed-work progress in the
+  context rail, Ctrl+C or `/cancel` cancellation, and orderly child-process
+  shutdown. Hangul frames indicate liveness but never invent elapsed progress.
 
 This is a UI vertical slice, not a second client implementation. The React
 shell receives data through a project-neutral `WorkspaceAdapter`; fixture and
@@ -111,15 +113,17 @@ and light without restarting.
 
 | Input | Action |
 |---|---|
-| `/` | Open the command menu; keep typing to narrow it |
+| `/` in the composer | Open the command menu; keep typing to narrow it |
+| `/` while the tree is focused | Open structured-data search |
 | Up / Down | Choose a slash suggestion or move through the tree when it has focus |
-| Tab | Accept the selected autocomplete suggestion |
-| Shift+Tab | Cycle focus between composer, transcript, and tree |
+| Tab | Accept the selected autocomplete suggestion; when none exists, move focus forward |
+| Shift+Tab | Move focus backward between composer, transcript, and tree |
 | Tab / Shift+Tab in the resource map | Select the next / previous product scope |
 | Enter | Accept a partial suggestion or submit the composer |
 | Shift+Enter | Insert a composer newline |
-| Ctrl+B | Toggle the context rail |
-| Ctrl+F | Open structured-data search |
+| Ctrl+B / Ctrl+F in a text input | Move the editing cursor backward / forward |
+| Ctrl+B from the transcript or tree | Toggle the context rail |
+| Ctrl+F from the transcript or tree | Open structured-data search |
 | Ctrl+O | Toggle the wide JSON inspector |
 | Up / Down while searching | Preview the previous / next exact match |
 | Page Up / Page Down while searching | Move through search results five at a time |
