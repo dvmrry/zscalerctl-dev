@@ -941,6 +941,8 @@ export function App(props: {
             busy={busy}
             commands={commands}
             workspaceLabel={workspace.id === "fixture" ? "fixture" : "stdio v1"}
+            availableWidth={conversationWidth}
+            roomy={dimensions.height >= 20}
             onFocus={() => setFocus("composer")}
             onSubmit={value => { void handleSubmit(value); }}
           />

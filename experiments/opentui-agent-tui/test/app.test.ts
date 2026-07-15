@@ -71,6 +71,25 @@ describe("OpenTUI shell interactions", () => {
     expect(frame.split("\n").every(line => [...line].length <= 50)).toBe(true);
   });
 
+  test("keeps the composer roomy when the context rail narrows the conversation", async () => {
+    const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
+      width: 121,
+      height: 30
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    const lines = setup.captureCharFrame().split("\n");
+    const promptRow = lines.findIndex(line => line.includes("Ask about tenant configuration"));
+    const statusRow = lines.findIndex(line => line.includes("Explore"));
+    expect(promptRow).toBeGreaterThanOrEqual(0);
+    expect(statusRow - promptRow).toBeGreaterThanOrEqual(3);
+    expect(lines[statusRow]).toContain("Explore · fixture");
+    expect(lines[statusRow]).toContain("Enter send");
+    expect(lines[statusRow]).not.toContain("tenant read-only");
+    expect(lines[statusRow]).not.toContain("/ commands");
+  });
+
   test("commits a search result into the inspector from the keyboard", async () => {
     const setup = await testRender(createElement(App, {initialMode: "dark", initialTheme: "tokyonight"}), {
       width: 120,

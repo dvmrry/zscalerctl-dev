@@ -299,4 +299,52 @@ staged tree, independently recomputed the 79-file aggregate digest, and
 confirmed that the two source changes only removed extra blank EOF lines. It
 reported no blockers or nits and approved the publication-hygiene delta.
 
+## Composer Layout Follow-Up
+
+User testing after publication reported that the pinned composer felt
+squeezed, especially around the breakpoint where the 48-column context rail
+becomes inline and abruptly narrows the conversation pane.
+
+Delta from PR #112 commit
+`89ee315b6228076c77d262179a54049e560a049d`:
+
+- Give the editor three rows plus bottom breathing room on terminals at least
+  20 rows high, retaining the smaller footprint on short terminals.
+- Select full, compact, or minimal composer chrome from the conversation
+  pane's actual width rather than total terminal width.
+- Preserve full status/help text when it fits; collapse to
+  `Explore · <workspace>` and `Enter send`, then `Explore` and `Enter`, before
+  labels can collide.
+- Add a 121x30 regression at the exact inline-rail breakpoint.
+
+Changed source/test files:
+
+- `src/components/Composer.tsx`
+- `src/App.tsx`
+- `test/app.test.ts`
+
+Verification before delta review:
+
+- strict TypeScript typecheck: pass
+- real-engine experiment suite: 54/54 pass, 618 assertions
+- experiment-boundary gate: pass
+- post-delta 79-file aggregate SHA-256:
+  `0c2481e9fdf8f5545fffa4eb290d05051ae7097d3019102c9f6cb3f7d22e8e7b`
+- captured renders inspected at 121x30, 140x32, 64x20, and 50x12
+
+Fresh-context composer delta reviewer: Codex CLI `gpt-5.5`, read-only
+ephemeral session `019f657b-6e69-7bc3-ae0d-db17715838fc`.
+
+The reviewer independently inspected the four-file delta, ran the focused and
+full credential-free suites, and rendered boundary probes at 57, 58, 87, 88,
+120, and 121 columns plus short heights. It found no overflow, collision,
+machine-contract change, or safety-path change and reported no blocking
+finding.
+
+The reviewer retained one evidence nit: its sandbox had no
+`ZSCALERCTL_ENGINE_TEST_BINARY`, so it reproduced 53 passes plus the skipped
+real-engine integration rather than the builder's 54/54 real-engine run. It
+independently confirmed the post-delta aggregate digest. The builder's
+real-process command and result remain recorded above.
+
 Verdict: approve with nits

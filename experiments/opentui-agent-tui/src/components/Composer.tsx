@@ -17,6 +17,8 @@ export interface ComposerProps {
   readonly busy: boolean;
   readonly commands: readonly CommandDescriptor[];
   readonly workspaceLabel: string;
+  readonly availableWidth: number;
+  readonly roomy: boolean;
   readonly onFocus: () => void;
   readonly onSubmit: (value: string) => void;
 }
@@ -26,6 +28,11 @@ export function Composer(props: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState(0);
   const [menuSuppressed, setMenuSuppressed] = useState(false);
+  const compactChrome = props.availableWidth < 88;
+  const minimalChrome = props.availableWidth < 58;
+  const placeholder = minimalChrome
+    ? "Ask…  / commands"
+    : "Ask about tenant configuration…  / opens commands";
   const suggestions = useMemo(
     () => menuSuppressed ? [] : suggestionsFor(draft, props.commands),
     [draft, menuSuppressed, props.commands]
@@ -133,15 +140,16 @@ export function Composer(props: ComposerProps) {
         borderColor={props.focus === "composer" ? props.colors.accent : props.colors.border}
         backgroundColor={props.colors.panelRaised}
         paddingTop={1}
+        paddingBottom={props.roomy ? 1 : 0}
         paddingLeft={2}
         paddingRight={2}
       >
         <textarea
           ref={value => { editor.current = value; }}
           focused={props.focus === "composer"}
-          height={2}
+          height={props.roomy ? 3 : 2}
           width="100%"
-          placeholder="Ask about tenant configuration…  / opens commands"
+          placeholder={placeholder}
           backgroundColor={props.colors.panelRaised}
           focusedBackgroundColor={props.colors.panelRaised}
           textColor={props.colors.text}
@@ -157,11 +165,17 @@ export function Composer(props: ComposerProps) {
         <box height={1} flexDirection="row" justifyContent="space-between">
           <box flexDirection="row" gap={1}>
             <text fg={props.colors.accent}>{props.busy ? "삼 Working" : "Explore"}</text>
-            <text fg={props.colors.textMuted}>tenant read-only · {props.workspaceLabel}</text>
+            {minimalChrome ? null : (
+              <text fg={props.colors.textMuted}>
+                {compactChrome ? `· ${props.workspaceLabel}` : `tenant read-only · ${props.workspaceLabel}`}
+              </text>
+            )}
           </box>
-          <box flexDirection="row" gap={2}>
-            <text fg={props.colors.textMuted}>/ commands</text>
-            <text fg={props.colors.text}>Enter <span style={{fg: props.colors.textMuted}}>send</span></text>
+          <box flexDirection="row" gap={compactChrome ? 1 : 2}>
+            {compactChrome ? null : <text fg={props.colors.textMuted}>/ commands</text>}
+            <text fg={props.colors.text}>
+              Enter{minimalChrome ? null : <> <span style={{fg: props.colors.textMuted}}>send</span></>}
+            </text>
           </box>
         </box>
       </box>
