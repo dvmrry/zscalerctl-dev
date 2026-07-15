@@ -4,6 +4,7 @@ import {act, createElement} from "react";
 
 import {App} from "../src/App.tsx";
 import {
+  FIXTURE_WORKSPACE_ADAPTER,
   WorkspaceCommandError,
   type WorkspaceAdapter,
   type WorkspaceResult,
@@ -88,6 +89,74 @@ describe("OpenTUI shell interactions", () => {
     expect(lines[statusRow]).toContain("Enter send");
     expect(lines[statusRow]).not.toContain("tenant read-only");
     expect(lines[statusRow]).not.toContain("/ commands");
+  });
+
+  test("opens the searchable theme picker for bare theme commands and applies a selection", async () => {
+    const workspaceCommands: string[] = [];
+    const workspace: WorkspaceAdapter = {
+      ...FIXTURE_WORKSPACE_ADAPTER,
+      execute: async input => {
+        workspaceCommands.push(input);
+        return {announcement: {title: "Unexpected dispatch", body: [input], tone: "danger"}};
+      }
+    };
+    const setup = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      workspace
+    }), {
+      width: 120,
+      height: 36
+    });
+    renderers.push(setup.renderer);
+    await setup.flush();
+
+    await interact(() => setup.mockInput.typeText("/theme"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const pickerFrame = setup.captureCharFrame();
+    expect(pickerFrame).toContain("Choose theme");
+    expect(pickerFrame).toContain("OpenCode themes");
+    expect(pickerFrame).toContain("tokyonight");
+    expect(pickerFrame).toContain("current");
+    expect(pickerFrame).not.toContain("/theme");
+
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const unchangedFrame = setup.captureCharFrame();
+    expect(unchangedFrame).toContain("Now using tokyonight · dark.");
+    expect(unchangedFrame).not.toContain("Now using opencode · dark.");
+    expect(unchangedFrame).not.toContain("/theme");
+
+    await interact(() => setup.mockInput.typeText("/clear"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    await interact(() => setup.mockInput.typeText("/theme"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+
+    await interact(() => setup.mockInput.pressEscape(), setup.flush);
+    expect(setup.captureCharFrame()).not.toContain("/theme");
+    await interact(() => setup.mockInput.typeText("/theme list"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    expect(setup.captureCharFrame()).toContain("Choose theme");
+
+    await interact(() => setup.mockInput.typeText("tron"), setup.flush);
+    const filteredFrame = setup.captureCharFrame();
+    expect(filteredFrame).toContain("Experiment themes");
+    expect(filteredFrame).toContain("tron");
+    expect(filteredFrame).not.toContain("tokyonight");
+
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const appliedFrame = setup.captureCharFrame();
+    expect(appliedFrame).not.toContain("Choose theme");
+    expect(appliedFrame).toContain("Theme changed");
+    expect(appliedFrame).toContain("Now using tron · dark.");
+    expect(appliedFrame).not.toContain("/theme list");
+    expect(appliedFrame).not.toContain("/theme tron");
+
+    await interact(() => setup.mockInput.typeText("/theme next"), setup.flush);
+    await interact(() => setup.mockInput.pressEnter(), setup.flush);
+    const directFrame = setup.captureCharFrame();
+    expect(directFrame).toContain("/theme next");
+    expect(directFrame).toContain("Now using cyberpunk · dark.");
+    expect(workspaceCommands).toEqual([]);
   });
 
   test("commits a search result into the inspector from the keyboard", async () => {

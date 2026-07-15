@@ -347,4 +347,73 @@ real-engine integration rather than the builder's 54/54 real-engine run. It
 independently confirmed the post-delta aggregate digest. The builder's
 real-process command and result remain recorded above.
 
-Verdict: approve with nits
+Composer delta disposition: approve with nits.
+
+## Theme Picker Follow-Up
+
+User testing requested that bare `/theme` behave like theme listing and use the
+existing floating searchable picker rather than adding transcript prose.
+
+Delta from PR #112 commit
+`bce911e840e43037a5e7b2be713f2ff2d9ac8209`:
+
+- Route bare `/theme` and `/theme list` to the reusable picker modal.
+- Keep `/theme <name>`, `/theme next`, and `/theme mode ...` as direct local
+  commands.
+- Present the active theme first and selected, group OpenCode-catalog and local
+  experiment themes, and filter all 37 built-ins.
+- Keep theme selection local to the shell while preserving the existing
+  generated-command dispatch for engine/catalog pickers.
+- Correct the command usage text to include the supported `toggle` mode.
+
+Changed files:
+
+- `experiments/opentui-agent-tui/README.md`
+- `experiments/opentui-agent-tui/src/App.tsx`
+- `experiments/opentui-agent-tui/src/commands.ts`
+- `experiments/opentui-agent-tui/test/app.test.ts`
+
+Fresh-context read-only reviewer session
+`019f6587-6619-7633-9314-7e0edbc411b7` initially requested changes for two
+source-verifiable issues:
+
+1. The first implementation selected `opencode` rather than the active theme,
+   so immediate Enter unexpectedly changed the default Tokyo Night theme.
+2. Reusing generated-command dispatch logged both the picker launcher and its
+   generated `/theme <name>` command, while Escape left an unanswered launcher
+   entry.
+
+Resolution mapping:
+
+- Active selection: order the active theme first within its category and pass
+  it as the preferred picker ID; regress immediate Enter for both catalog and
+  local themes.
+- Transcript semantics: intercept modal launch before transcript append, tag
+  picker purpose locally, validate selected built-in IDs, and apply theme
+  selections without `submitRef` or `workspace.execute`; regress apply,
+  cancellation, direct-command logging, and injected-workspace isolation.
+- Help nit: advertise `toggle` only in the `/theme mode` branch.
+
+Post-fix builder verification:
+
+- `ZSCALERCTL_ENGINE_TEST_BINARY=/tmp/zscalerctl-engine-theme-picker bun run
+  check`: 55/55 pass, 639 assertions, including the real config-free Go engine
+  process integration.
+- `make verify-experiment-boundaries`: pass.
+- `make verify-release-artifacts`: pass.
+- `git diff --check`: pass.
+- Runnable and isolated publication copies of all four changed files:
+  byte-identical.
+- Post-fix 79-file aggregate SHA-256:
+  `f587b18ae829bc403715b637c18fdee286676399b62870445006250064352236`.
+- No credentialed tenant access was performed and no engine process remained.
+
+The same reviewer rechecked only the findings, their fix surface, and the help
+nit. It independently reproduced 55 passing tests with 639 assertions plus
+focused keyboard, mouse, transcript, direct-command, local-theme, and
+workspace-picker probes. Both findings were closed, no new or non-blocking
+findings survived, engine/catalog picker dispatch remained intact, and no
+supported CLI, engine, machine, schema, redaction, projection, secret, or
+tenant contract changed.
+
+Verdict: approve

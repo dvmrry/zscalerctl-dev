@@ -93,9 +93,10 @@ bun start -- --theme tokyonight --theme-mode light
 ```
 
 The default is `tokyonight` with automatic dark/light detection. Use
-`--theme-mode auto|dark|light` to control appearance explicitly. Run `/theme
-list` inside the TUI to browse all 37 themes; `/theme mode toggle` switches the
-current theme between dark and light without restarting.
+`--theme-mode auto|dark|light` to control appearance explicitly. Run `/theme`
+(or `/theme list`) inside the TUI to browse and filter all 37 themes in the
+floating picker; `/theme mode toggle` switches the current theme between dark
+and light without restarting.
 
 ## Controls
 

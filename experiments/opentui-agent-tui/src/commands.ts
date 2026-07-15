@@ -10,7 +10,7 @@ export const SLASH_COMMANDS: readonly SlashCommandDescriptor[] = Object.freeze([
   {command: "/help", usage: "/help", summary: "Show local experiment commands"},
   {command: "/clear", usage: "/clear", summary: "Clear the conversation transcript"},
   {command: "/find", usage: "/find [text]", summary: "Search keys and rendered values in the structured result"},
-  {command: "/theme", usage: "/theme <name|list|next|mode> [auto|dark|light]", summary: "Browse themes or change appearance"},
+  {command: "/theme", usage: "/theme [<name> [auto|dark|light]|list|next|mode [auto|dark|light|toggle]]", summary: "Browse themes or change appearance"},
   {command: "/sort", usage: "/sort <index|name|toggle>", summary: "Order named array items by source index or name"},
   {command: "/sidebar", usage: "/sidebar", summary: "Toggle the context rail"},
   {command: "/inspect", usage: "/inspect", summary: "Toggle the wide JSON inspector"},

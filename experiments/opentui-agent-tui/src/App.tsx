@@ -58,6 +58,42 @@ import {
 } from "./workspace.ts";
 
 const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
+const EXPERIMENT_THEME_NAMES: ReadonlySet<ThemeName> = new Set<ThemeName>([
+  "signal",
+  "tron",
+  "cyberpunk",
+  "mono"
+]);
+
+function themePickerFor(currentTheme: ThemeName, mode: ThemeMode): WorkspacePicker {
+  const catalogThemes = THEME_NAMES.filter(name => !EXPERIMENT_THEME_NAMES.has(name));
+  const experimentThemes = THEME_NAMES.filter(name => EXPERIMENT_THEME_NAMES.has(name));
+  const currentGroup = EXPERIMENT_THEME_NAMES.has(currentTheme) ? experimentThemes : catalogThemes;
+  const otherGroup = currentGroup === experimentThemes ? catalogThemes : experimentThemes;
+  const orderedThemes = [
+    currentTheme,
+    ...currentGroup.filter(name => name !== currentTheme),
+    ...otherGroup
+  ];
+  return {
+    title: "Choose theme",
+    placeholder: "Filter themes…",
+    instruction: "Type to filter themes, then press Enter to apply one.",
+    emptyMessage: "No themes match this search.",
+    items: orderedThemes.map(name => {
+      const experimentTheme = EXPERIMENT_THEME_NAMES.has(name);
+      return {
+        id: name,
+        title: name,
+        description: `${experimentTheme ? "Experiment" : "OpenCode"} palette · apply in ${mode} mode`,
+        searchText: experimentTheme ? "local experiment" : "opencode catalog",
+        category: experimentTheme ? "Experiment themes" : "OpenCode themes",
+        ...(name === currentTheme ? {badge: "current"} : {}),
+        command: `/theme ${name}`
+      };
+    })
+  };
+}
 
 interface SearchSnapshot {
   readonly selectedId: string;
@@ -69,6 +105,8 @@ interface ToastState {
   readonly message: string;
   readonly tone: "success" | "warning";
 }
+
+type WorkspacePickerPurpose = "workspace" | "theme";
 
 function safeContextState(context: ContextState): ContextState {
   return {
@@ -114,6 +152,7 @@ export function App(props: {
   const activeOperationRef = useRef<AbortController | undefined>(undefined);
   const quittingRef = useRef(false);
   const submitRef = useRef<(input: string) => void>(() => undefined);
+  const workspacePickerPurposeRef = useRef<WorkspacePickerPurpose>("workspace");
   const [workspacePicker, setWorkspacePicker] = useState<WorkspacePicker | undefined>();
   const [workspacePickerQuery, setWorkspacePickerQuery] = useState("");
   const workspacePickerQueryRef = useRef("");
@@ -207,6 +246,24 @@ export function App(props: {
     }, 2_200);
   }, []);
 
+  const presentWorkspacePicker = useCallback((
+    source: WorkspacePicker,
+    options: {readonly preferredId?: string; readonly purpose?: WorkspacePickerPurpose} = {}
+  ) => {
+    const picker = normalizeWorkspacePicker(source);
+    const query = picker.initialQuery ?? "";
+    const filtered = filterWorkspacePicker(picker.items, query);
+    const selected = filtered.items.find(item => item.id === options.preferredId) ?? filtered.items[0];
+    workspacePickerPurposeRef.current = options.purpose ?? "workspace";
+    setWorkspacePicker(picker);
+    setWorkspacePickerQuery(query);
+    workspacePickerQueryRef.current = query;
+    setWorkspacePickerSelectedId(selected?.id);
+    workspacePickerSelectedIdRef.current = selected?.id;
+    setWorkspacePickerInputMethod("keyboard");
+    setFocus("picker");
+  }, []);
+
   const applyWorkspaceResult = useCallback((result: WorkspaceResult) => {
     if (result.data !== undefined) {
       setData(result.data);
@@ -219,20 +276,8 @@ export function App(props: {
       ...result.announcement,
       ...(result.data === undefined ? {} : {data: result.data})
     });
-    if (result.picker !== undefined) {
-      const picker = normalizeWorkspacePicker(result.picker);
-      const query = picker.initialQuery ?? "";
-      const filtered = filterWorkspacePicker(picker.items, query);
-      setWorkspacePicker(picker);
-      setWorkspacePickerQuery(query);
-      workspacePickerQueryRef.current = query;
-      const first = filtered.items[0]?.id;
-      setWorkspacePickerSelectedId(first);
-      workspacePickerSelectedIdRef.current = first;
-      setWorkspacePickerInputMethod("keyboard");
-      setFocus("picker");
-    }
-  }, [append]);
+    if (result.picker !== undefined) presentWorkspacePicker(result.picker);
+  }, [append, presentWorkspacePicker]);
 
   const presentWorkspaceError = useCallback((error: unknown) => {
     const failure = error instanceof WorkspaceCommandError
@@ -289,8 +334,10 @@ export function App(props: {
   const closeWorkspacePicker = useCallback(() => {
     setWorkspacePicker(undefined);
     setWorkspacePickerQuery("");
+    workspacePickerQueryRef.current = "";
     setWorkspacePickerSelectedId(undefined);
     workspacePickerSelectedIdRef.current = undefined;
+    workspacePickerPurposeRef.current = "workspace";
     setFocus("composer");
   }, []);
 
@@ -331,9 +378,24 @@ export function App(props: {
     const requested = id ?? workspacePickerSelectedIdRef.current;
     const item = filteredWorkspacePickerRef.current.items.find(candidate => candidate.id === requested);
     if (item === undefined) return;
+    const purpose = workspacePickerPurposeRef.current;
     closeWorkspacePicker();
+    if (purpose === "theme") {
+      if (!isThemeName(item.id)) {
+        showToast("The selected theme is unavailable.", "warning");
+        return;
+      }
+      setThemeName(item.id);
+      append({
+        role: "assistant",
+        title: "Theme changed",
+        body: [`Now using ${item.id} · ${themeMode}.`],
+        tone: "success"
+      });
+      return;
+    }
     submitRef.current(item.command);
-  }, [closeWorkspacePicker]);
+  }, [append, closeWorkspacePicker, showToast, themeMode]);
 
   const cancelActiveOperation = useCallback(() => {
     const active = activeOperationRef.current;
@@ -494,6 +556,14 @@ export function App(props: {
   }, [focusTree, restoreSearchSnapshot]);
 
   const cancelSearch = useCallback(() => finishSearch(true), [finishSearch]);
+
+  const openThemePicker = useCallback(() => {
+    if (searchOpenRef.current) cancelSearch();
+    presentWorkspacePicker(themePickerFor(themeName, themeMode), {
+      preferredId: themeName,
+      purpose: "theme"
+    });
+  }, [cancelSearch, presentWorkspacePicker, themeMode, themeName]);
 
   const commitSearch = useCallback((matchId?: string, inspect = false) => {
     const requested = matchId ?? searchSelectedIdRef.current;
@@ -731,6 +801,10 @@ export function App(props: {
       setEntries([]);
       return;
     }
+    if (command === "/theme" && (tokens[1] === undefined || tokens[1] === "list")) {
+      openThemePicker();
+      return;
+    }
 
     append({role: "user", body: [input]});
 
@@ -764,25 +838,7 @@ export function App(props: {
     }
     if (command === "/theme") {
       const requested = tokens[1];
-      if (requested === undefined) {
-        assistant(
-          "Theme",
-          [
-            `Current: ${themeName} · ${themeMode}`,
-            "Use /theme list, /theme next, /theme mode <auto|dark|light|toggle>, or /theme <name> [auto|dark|light]."
-          ],
-          "info"
-        );
-        return;
-      }
-      if (requested === "list") {
-        const lines: string[] = [];
-        for (let index = 0; index < THEME_NAMES.length; index += 6) {
-          lines.push(THEME_NAMES.slice(index, index + 6).join(" · "));
-        }
-        assistant("Theme catalog", lines, "info");
-        return;
-      }
+      if (requested === undefined || requested === "list") return;
       if (requested === "mode") {
         const modeRequest = tokens[2];
         if (modeRequest === undefined) {
