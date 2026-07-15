@@ -4,7 +4,12 @@ import {testRender} from "@opentui/react/test-utils";
 import {act, createElement} from "react";
 
 import {App} from "../src/App.tsx";
-import {OPERATION_SCENE_DELAY_MS} from "../src/motion.ts";
+import {
+  OPERATION_SCENE_DELAY_MS,
+  WELCOME_MOTION_DURATION_MS,
+  type MotionTimerDriver,
+  type MotionTimerHandle
+} from "../src/motion.ts";
 import {
   FIXTURE_WORKSPACE_ADAPTER,
   WorkspaceCommandError,
@@ -14,6 +19,54 @@ import {
 } from "../src/workspace.ts";
 
 const renderers: Array<{destroy(): void}> = [];
+
+class InspectableMotionClock implements MotionTimerDriver {
+  #nextHandle = 1;
+  #now = 0;
+  readonly #intervals = new Map<number, {readonly callback: () => void; readonly delayMs: number}>();
+  readonly #timeouts = new Map<number, {readonly callback: () => void; readonly dueAt: number}>();
+
+  get intervalCount(): number {
+    return this.#intervals.size;
+  }
+
+  get timeoutCount(): number {
+    return this.#timeouts.size;
+  }
+
+  get nextTimeoutRemainingMs(): number | undefined {
+    const next = [...this.#timeouts.values()].sort((left, right) => left.dueAt - right.dueAt)[0];
+    return next === undefined ? undefined : next.dueAt - this.#now;
+  }
+
+  setInterval(callback: () => void, delayMs: number): number {
+    const handle = this.#nextHandle++;
+    this.#intervals.set(handle, {callback, delayMs});
+    return handle;
+  }
+
+  clearInterval(handle: MotionTimerHandle): void {
+    this.#intervals.delete(handle as number);
+  }
+
+  setTimeout(callback: () => void, delayMs: number): number {
+    const handle = this.#nextHandle++;
+    this.#timeouts.set(handle, {callback, dueAt: this.#now + delayMs});
+    return handle;
+  }
+
+  clearTimeout(handle: MotionTimerHandle): void {
+    this.#timeouts.delete(handle as number);
+  }
+
+  elapseWhileIdle(delayMs: number): void {
+    if (this.intervalCount !== 0 || this.timeoutCount !== 0) {
+      throw new Error("elapseWhileIdle requires an idle timer driver");
+    }
+    this.#now += delayMs;
+  }
+
+}
 
 afterEach(async () => {
   await act(async () => {
@@ -333,6 +386,67 @@ describe("OpenTUI shell interactions", () => {
     await act(async () => setup.resize(120, 42));
     await setup.flush();
     expect(setup.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
+  });
+
+  test("runs the Poison sweep only while the complete artwork is visible", async () => {
+    const narrowClock = new InspectableMotionClock();
+    const narrow = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "full",
+      motionTimers: narrowClock
+    }), {width: 103, height: 42});
+    renderers.push(narrow.renderer);
+    await narrow.flush();
+    expect(narrow.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
+    expect(narrowClock.intervalCount).toBe(0);
+    expect(narrowClock.timeoutCount).toBe(0);
+
+    narrowClock.elapseWhileIdle(WELCOME_MOTION_DURATION_MS - 100);
+    await act(async () => narrow.resize(104, 42));
+    await narrow.flush();
+    expect(narrow.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
+    expect(narrowClock.intervalCount).toBe(1);
+    expect(narrowClock.timeoutCount).toBe(1);
+    expect(narrowClock.nextTimeoutRemainingMs).toBe(WELCOME_MOTION_DURATION_MS);
+
+    await act(async () => narrow.resize(103, 42));
+    await narrow.flush();
+    expect(narrowClock.intervalCount).toBe(0);
+    expect(narrowClock.timeoutCount).toBe(0);
+
+    narrowClock.elapseWhileIdle(WELCOME_MOTION_DURATION_MS - 100);
+    await act(async () => narrow.resize(104, 42));
+    await narrow.flush();
+    expect(narrowClock.intervalCount).toBe(1);
+    expect(narrowClock.timeoutCount).toBe(1);
+    expect(narrowClock.nextTimeoutRemainingMs).toBe(WELCOME_MOTION_DURATION_MS);
+    await act(async () => narrow.renderer.destroy());
+    renderers.pop();
+
+    const railClock = new InspectableMotionClock();
+    const rail = await testRender(createElement(App, {
+      initialMode: "dark",
+      initialTheme: "tokyonight",
+      initialMotion: "full",
+      motionTimers: railClock
+    }), {width: 120, height: 42});
+    renderers.push(rail.renderer);
+    await rail.flush();
+    expect(rail.captureCharFrame()).toContain("@@@@@@@@   @@@@@@");
+    expect(railClock.intervalCount).toBe(1);
+    expect(railClock.timeoutCount).toBe(1);
+
+    await act(async () => rail.resize(121, 42));
+    await rail.flush();
+    expect(rail.captureCharFrame()).toContain("◆ zscalerctl OpenTUI lab");
+    expect(railClock.intervalCount).toBe(0);
+    expect(railClock.timeoutCount).toBe(0);
+
+    await act(async () => rail.resize(120, 42));
+    await rail.flush();
+    expect(railClock.intervalCount).toBe(1);
+    expect(railClock.timeoutCount).toBe(1);
   });
 
   test("opens the searchable theme picker for bare theme commands and applies a selection", async () => {

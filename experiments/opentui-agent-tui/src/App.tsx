@@ -2,6 +2,7 @@ import {useKeyboard, useRenderer, useTerminalDimensions} from "@opentui/react";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import type {WireValue} from "../../../clients/typescript/src/index.ts";
 
+import {poisonBannerForWidth} from "./brand.ts";
 import {
   activeInteractionMode,
   isBusyControl,
@@ -282,9 +283,13 @@ export function App(props: {
   const sidebarVisible = sidebarOpen || (sidebarMode === "auto" && wide);
   const sidebarOverlay = sidebarVisible && !wide;
   const conversationWidth = dimensions.width - (sidebarVisible && wide ? railWidth : 0);
+  const transcriptAvailableWidth = Math.max(20, conversationWidth - 7);
   const compact = dimensions.width < 88 || dimensions.height < 25;
   const artworkVisible = !compact && dimensions.height >= 42;
-  const motionActive = busy || (welcomeMotionActive && artworkVisible);
+  const poisonArtworkVisible = artworkVisible
+    && poisonBannerForWidth(transcriptAvailableWidth) !== undefined;
+  const welcomeSweepVisible = welcomeMotionActive && poisonArtworkVisible;
+  const motionActive = busy || welcomeSweepVisible;
   const rows = useMemo(() => flattenTree(data, expanded, {arrayOrder}), [arrayOrder, data, expanded]);
   const searchResult = useMemo(
     () => searchTree(data, searchQuery, {arrayOrder}),
@@ -641,7 +646,7 @@ export function App(props: {
   }, []);
 
   useEffect(() => {
-    if (!welcomeMotionActive) return;
+    if (!welcomeSweepVisible) return;
     let accepting = true;
     const timer = motionTimers.setTimeout(() => {
       if (accepting) setWelcomeMotionActive(false);
@@ -650,7 +655,7 @@ export function App(props: {
       accepting = false;
       motionTimers.clearTimeout(timer);
     };
-  }, [motionTimers, welcomeMotionActive]);
+  }, [motionTimers, welcomeSweepVisible]);
 
   useEffect(() => {
     setOperationSceneVisible(false);
@@ -1439,7 +1444,7 @@ export function App(props: {
             focus={focus}
             compact={compact}
             artwork={artworkVisible}
-            availableWidth={Math.max(20, conversationWidth - 7)}
+            availableWidth={transcriptAvailableWidth}
             workspaceLabel={workspace.id === "fixture" ? "fixture" : "stdio v1"}
             context={context}
             operationSceneVisible={operationSceneVisible}

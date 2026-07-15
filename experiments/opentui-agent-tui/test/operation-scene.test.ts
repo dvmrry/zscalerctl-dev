@@ -112,4 +112,29 @@ describe("data-reactive operation scene", () => {
       expect(frame.split("\n").every(line => Bun.stringWidth(line.trimEnd()) <= width)).toBeTrue();
     }
   });
+
+  test("keeps compact progress on one stable row across valid counter sizes", async () => {
+    const progressCases = [
+      {completed: 1, total: 3},
+      {completed: 99_999, total: 100_000},
+      {completed: 1_000_000, total: 1_000_000},
+      {completed: Number.MAX_SAFE_INTEGER, total: Number.MAX_SAFE_INTEGER}
+    ] as const;
+
+    for (const mode of ["full", "off"] as const) {
+      for (const width of [12, 20, 40, 51]) {
+        let renderedWidth: number | undefined;
+        for (const progress of progressCases) {
+          const frame = await captureScene(mode, 3, context(progress), width);
+          const nonblank = frame.split("\n").filter(line => line.trim().length > 0);
+          expect(nonblank).toHaveLength(1);
+          expect(nonblank[0]).toContain("/");
+          const lineWidth = Bun.stringWidth(nonblank[0]!.trimEnd());
+          expect(lineWidth).toBeLessThanOrEqual(width);
+          renderedWidth ??= lineWidth;
+          expect(lineWidth).toBe(renderedWidth);
+        }
+      }
+    }
+  });
 });

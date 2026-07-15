@@ -27,6 +27,25 @@ function progressCounter(context: ContextState): string | undefined {
   return progress === undefined ? undefined : `${progress.completed}/${progress.total}`;
 }
 
+function fixedCellText(value: string, width: number, align: "left" | "right" = "left"): string {
+  const cells = Math.max(1, Math.floor(width));
+  const fitted = fitCellText(value, cells);
+  const padding = " ".repeat(Math.max(0, cells - Bun.stringWidth(fitted)));
+  return align === "right" ? `${padding}${fitted}` : `${fitted}${padding}`;
+}
+
+function fitProgressCounter(counter: string, width: number): string {
+  const cells = Math.max(1, Math.floor(width));
+  if (Bun.stringWidth(counter) <= cells) return counter;
+  if (cells < 3) return fitCellText(counter, cells);
+  const separator = counter.indexOf("/");
+  if (separator < 0) return fitCellText(counter, cells);
+  const numericCells = cells - 1;
+  const completedCells = Math.floor(numericCells / 2);
+  const totalCells = numericCells - completedCells;
+  return `${fitCellText(counter.slice(0, separator), completedCells)}/${fitCellText(counter.slice(separator + 1), totalCells)}`;
+}
+
 export function OperationScene(props: {
   readonly colors: Palette;
   readonly context: ContextState;
@@ -42,15 +61,29 @@ export function OperationScene(props: {
   const counter = progressCounter(props.context);
 
   if (props.compact || width < 52) {
-    const counterWidth = counter === undefined ? 0 : Bun.stringWidth(counter) + 1;
     const activity = operationTrack(mode === "off" ? 3 : 5, frameIndex, mode);
     const prefix = `${activity} `;
+    const contentWidth = Math.max(1, width - 1);
+    const detailWidth = Math.max(1, contentWidth - Bun.stringWidth(prefix));
+    const counterWidth = counter === undefined
+      ? 0
+      : Math.max(1, Math.min(
+        detailWidth - 2,
+        Bun.stringWidth(counter),
+        Math.max(3, Math.floor(detailWidth / 2))
+      ));
+    const labelWidth = counter === undefined
+      ? detailWidth
+      : Math.max(1, detailWidth - counterWidth - 1);
+    const labelText = fixedCellText(label, labelWidth);
+    const counterText = counter === undefined
+      ? ""
+      : ` ${fixedCellText(fitProgressCounter(counter, counterWidth), counterWidth, "right")}`;
     return (
-      <box flexDirection="row" flexShrink={0} marginTop={1} paddingLeft={1} justifyContent="space-between">
+      <box flexShrink={0} marginTop={1} paddingLeft={1}>
         <text fg={props.colors.accent} wrapMode="none">
-          {prefix}<span style={{fg: props.colors.text}}>{fitCellText(label, Math.max(4, width - Bun.stringWidth(prefix) - counterWidth - 1))}</span>
+          {prefix}<span style={{fg: props.colors.text}}>{labelText}</span><span style={{fg: props.colors.textMuted}}>{counterText}</span>
         </text>
-        {counter === undefined ? null : <text fg={props.colors.textMuted}>{counter}</text>}
       </box>
     );
   }
