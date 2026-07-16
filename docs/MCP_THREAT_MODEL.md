@@ -110,10 +110,13 @@ unless an implementation proves their sink is value-free. The default
 destination is stderr and the default level is warn.
 
 **D6 — Synchronous tools only.** D1 exposes no MCP prompts, resources, roots,
-elicitation, sampling, server-originated logging messages, or task-augmented
-tool execution. Tool `execution.taskSupport` is absent/forbidden, and any
-`CallToolRequestParams.task` is rejected before handler admission. Each omitted
-feature requires a new decision and review before use.
+elicitation, sampling, server-originated logging messages, or task capability.
+It does not advertise `tasks.requests.tools.call` or tool
+`execution.taskSupport`. For a negotiated protocol that requires a receiver
+without task capability to ignore task-augmentation metadata, the server
+processes that request as an ordinary synchronous tool call: it creates no task
+state and returns no task handle. Unsupported `tasks/*` methods remain protocol
+errors. Each omitted feature requires a new decision and review before use.
 
 **D7 — The stdio host is the trust decision.** Stdio has no independently
 authenticatable peer: the process that starts the server is the host. A host
@@ -172,9 +175,10 @@ semantic input rejection after handler admission, cancellation, deadlines, and
 engine/business errors all use this value-free form and conform to the error
 branch of the tool's output schema. Malformed/unsupported JSON-RPC, an unknown
 tool, unknown or wrongly typed arguments, missing required arguments, invalid
-schema enums, disallowed task parameters, or another failure before handler
-admission uses the negotiated protocol version's value-free JSON-RPC error
-(including `-32602` where required), not a `CallToolResult`.
+schema enums, or another failure before handler admission uses the negotiated
+protocol version's value-free JSON-RPC error (including `-32602` where
+required), not a `CallToolResult`. Task metadata follows D6 instead of being
+treated as a tool argument.
 
 For protocol compatibility, `TextContent.text` is the canonical compact JSON
 serialization of the exact `structuredContent` object. Fixtures validate both
@@ -193,7 +197,9 @@ tool-error envelope and does not reuse the machine `usage` error kind.
 The bounded transport separately defaults to 1000 complete inbound JSON-RPC
 messages per session, with a server-start range of 1-10000 and no unlimited
 value. It counts malformed-method, unknown-tool, pre-admission argument, and
-task-augmented attempts, so they cannot bypass all session accounting. On
+unsupported-task-method attempts, so they cannot bypass all session accounting.
+A task-augmented tool request that D6 requires the server to process normally
+also consumes a tool-call unit at handler admission. On message-budget
 exhaustion the server emits a value-free protocol error when a response is
 possible and closes the session. Unknown or invalid calls never reach an engine
 or tenant. Starting a new process resets both budgets.
@@ -286,10 +292,10 @@ brief and implementation must inherit D1-D14 and additionally prove:
   of SDK, credential, source-record, CLI, and unrelated transport internals;
 - no linked or started network listener and no generic request passthrough;
 - process-level tests for `share` enforcement, unconditional `cmd:` denial,
-  one-operation admission, both budgets, task rejection, strict input framing,
-  per-version protocol/tool error fixtures, output preflight, schema-conforming
-  success/error objects, exact structured/text DTO equivalence, and no partial
-  data;
+  one-operation admission, both budgets, per-version task behavior and
+  protocol/tool error fixtures, strict input framing, output preflight,
+  schema-conforming success/error objects, exact structured/text DTO
+  equivalence, and no partial data;
 - fakes that fail if a D1 tenant tool invokes `List` or `Get`, plus an exact
   assertion that only the 23 reviewed `Show` operation pairs are admitted and
   return one record regardless of catalog shape defaults;
