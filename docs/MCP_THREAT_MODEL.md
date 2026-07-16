@@ -80,6 +80,12 @@ pair. Zidentity and every collection or ID lookup are excluded.
 not emitted as the raw engine manifest or full engine catalog, so excluded
 capabilities and resources are not advertised.
 
+Here, singleton means the engine's `show` path returns exactly one projected
+record. The registry does not infer eligibility from `ResourceSpec.Shape` or
+`EffectiveShape()`, whose default is list-shaped even for the current `show`
+entries. Standard MCP `tools/list` is generated from the same frozen registry;
+it cannot reveal an unregistered tool or raw engine capability.
+
 The exact D1 tools are:
 
 | MCP tool | Engine source | Boundary |
@@ -103,9 +109,11 @@ frames, or raw errors. MCP SDK debug/protocol logging and tracing are disabled
 unless an implementation proves their sink is value-free. The default
 destination is stderr and the default level is warn.
 
-**D6 — Tools only.** D1 exposes no MCP prompts, resources, roots, elicitation,
-sampling, or server-originated logging messages. Each is a separate capability
-and requires a new decision and review before use.
+**D6 — Synchronous tools only.** D1 exposes no MCP prompts, resources, roots,
+elicitation, sampling, server-originated logging messages, or task-augmented
+tool execution. Tool `execution.taskSupport` is absent/forbidden, and any
+`CallToolRequestParams.task` is rejected before handler admission. Each omitted
+feature requires a new decision and review before use.
 
 **D7 — The stdio host is the trust decision.** Stdio has no independently
 authenticatable peer: the process that starts the server is the host. A host
@@ -121,6 +129,9 @@ implementation toggle.
 
 D1 pins a stable, non-prerelease MCP Go SDK release. The implementation records
 and tests every protocol version that pin can negotiate for the D1 feature set.
+Transport/schema argument failures and tool-execution failures follow the
+negotiated version's official error rules, with a committed fixture for each
+admitted version; a version without a proven mapping is disabled.
 An SDK bump or newly admitted protocol version requires review of tool schemas,
 result/error behavior, stdio framing, and security-sensitive transport changes
 before it is enabled.
@@ -132,7 +143,8 @@ clients may ignore them. Config-free discovery and local status tools use
 `resource_show` uses the same read/destructive hints and `openWorldHint: true`.
 D12's unconditional `cmd:` prohibition is required for the read-only claim.
 
-Every tool has a committed MCP-specific output schema. The adapter does not
+Every tool has a committed MCP-specific output schema whose `oneOf` branches
+cover both the success and tool-error objects below. The adapter does not
 serialize internal engine result types directly. Successful
 `structuredContent` is always an object of this form:
 
@@ -156,9 +168,13 @@ Tool execution failures use:
 ```
 
 Their `CallToolResult` sets `isError: true`. Budget exhaustion, oversize output,
-semantic input rejection, cancellation, deadlines, and engine/business errors
-all use this value-free form. Only malformed/unsupported JSON-RPC, an unknown
-tool, or a failure before a registered tool can run is an MCP protocol error.
+semantic input rejection after handler admission, cancellation, deadlines, and
+engine/business errors all use this value-free form and conform to the error
+branch of the tool's output schema. Malformed/unsupported JSON-RPC, an unknown
+tool, unknown or wrongly typed arguments, missing required arguments, invalid
+schema enums, disallowed task parameters, or another failure before handler
+admission uses the negotiated protocol version's value-free JSON-RPC error
+(including `-32602` where required), not a `CallToolResult`.
 
 For protocol compatibility, `TextContent.text` is the canonical compact JSON
 serialization of the exact `structuredContent` object. Fixtures validate both
@@ -166,15 +182,21 @@ representations and every output schema. A fixed server-authored description
 warns that tenant content is untrusted data. No tenant value is interpolated
 into that warning, and any namespaced metadata marker is defense-in-depth only.
 
-**D10 — One active operation and a finite session call budget.** The adapter
-inherits the engine's synchronous operation and bounded retry behavior. It
-admits at most one operation at a time and defaults to 100 registered tool calls
-per stdio session, with a server-start range of 1-1000 and no unlimited value.
-A call consumes one unit when its registered handler admits it; errors,
-cancellation, and timeouts do not refund it. Unknown tools and malformed
-protocol messages never reach an engine or tenant. Starting a new process
-creates a new session budget. Exhaustion uses the D9 tool-error envelope and
-does not reuse the machine `usage` error kind.
+**D10 — One active operation and finite session budgets.** The adapter inherits
+the engine's synchronous operation and bounded retry behavior. It admits at most
+one operation at a time and defaults to 100 registered tool calls per stdio
+session, with a server-start range of 1-1000 and no unlimited value. A call
+consumes one unit when its registered handler admits it; semantic argument
+errors, cancellation, and timeouts do not refund it. Exhaustion uses the D9
+tool-error envelope and does not reuse the machine `usage` error kind.
+
+The bounded transport separately defaults to 1000 complete inbound JSON-RPC
+messages per session, with a server-start range of 1-10000 and no unlimited
+value. It counts malformed-method, unknown-tool, pre-admission argument, and
+task-augmented attempts, so they cannot bypass all session accounting. On
+exhaustion the server emits a value-free protocol error when a response is
+possible and closes the session. Unknown or invalid calls never reach an engine
+or tenant. Starting a new process resets both budgets.
 
 **D11 — Host transcripts are sensitive data stores.** Documentation must tell
 operators to choose hosts whose transcript retention and cloud synchronization
@@ -224,8 +246,11 @@ Config-free/status tools have no tenant-controlled string arguments.
 `resource_show` accepts one registry-backed pair plus at most 128 unique `fields`;
 each field must be an admitted catalog field and at most 128 UTF-8 bytes. No D1
 tool accepts a free-form ID, filter, search string, path, URL, provider, or
-operation. All argument rejection occurs before config/provider/network work
-and returns a static D9 tool error without echoing the rejected value.
+operation. Schema/transport rejection occurs before handler admission and uses
+the D9 version-specific protocol-error path. A decoded field that fails
+registry-dependent semantic validation consumes a tool-call unit and uses the
+D9 tool-error envelope. Both paths occur before config/provider/network work and
+never echo the rejected value.
 
 ## Explicitly out of scope for D1
 
@@ -261,10 +286,15 @@ brief and implementation must inherit D1-D14 and additionally prove:
   of SDK, credential, source-record, CLI, and unrelated transport internals;
 - no linked or started network listener and no generic request passthrough;
 - process-level tests for `share` enforcement, unconditional `cmd:` denial,
-  one-operation admission, budgets, strict input framing, output preflight,
-  exact structured/text DTO equivalence, error semantics, and no partial data;
+  one-operation admission, both budgets, task rejection, strict input framing,
+  per-version protocol/tool error fixtures, output preflight, schema-conforming
+  success/error objects, exact structured/text DTO equivalence, and no partial
+  data;
 - fakes that fail if a D1 tenant tool invokes `List` or `Get`, plus an exact
-  assertion that only the 23 reviewed `Show` pairs are admitted;
+  assertion that only the 23 reviewed `Show` operation pairs are admitted and
+  return one record regardless of catalog shape defaults;
+- standard `tools/list`, `server_capabilities`, and `catalog_schema` expose only
+  the same frozen registry;
 - malformed inputs, dependency diagnostics, and adapter errors cannot leak
   arguments or tenant values;
 - the experiment remains unreleased and unsupported until the separate D2 host
