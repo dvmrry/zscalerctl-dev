@@ -194,15 +194,18 @@ consumes one unit when its registered handler admits it; semantic argument
 errors, cancellation, and timeouts do not refund it. Exhaustion uses the D9
 tool-error envelope and does not reuse the machine `usage` error kind.
 
-The bounded transport separately defaults to 1000 complete inbound JSON-RPC
-messages per session, with a server-start range of 1-10000 and no unlimited
-value. It counts malformed-method, unknown-tool, pre-admission argument, and
-unsupported-task-method attempts, so they cannot bypass all session accounting.
-A task-augmented tool request that D6 requires the server to process normally
-also consumes a tool-call unit at handler admission. On message-budget
-exhaustion the server emits a value-free protocol error when a response is
-possible and closes the session. Unknown or invalid calls never reach an engine
-or tenant. Starting a new process resets both budgets.
+The bounded transport separately defaults to 1000 inbound frame attempts per
+session, with a server-start range of 1-10000 and no unlimited value. It charges
+a unit before frame or JSON-RPC validation, so invalid UTF-8, duplicate-key,
+depth, trailing-data, oversize, malformed-method, unknown-tool, pre-admission
+argument, and unsupported-task-method attempts cannot bypass accounting. Any
+invalid or oversize frame closes the session immediately after a value-free
+protocol error when a response is possible; the server does not attempt stream
+resynchronization. A task-augmented tool request that D6 requires the server to
+process normally also consumes a tool-call unit at handler admission. On
+message-budget exhaustion the server likewise emits a value-free protocol error
+when possible and closes the session. Unknown or invalid calls never reach an
+engine or tenant. Starting a new process resets both budgets.
 
 **D11 — Host transcripts are sensitive data stores.** Documentation must tell
 operators to choose hosts whose transcript retention and cloud synchronization
@@ -244,7 +247,11 @@ transport rejects any complete inbound JSON-RPC message over 64 KiB before the
 MCP SDK allocates an unbounded payload. It also rejects invalid UTF-8, duplicate
 JSON keys, nesting deeper than 32, and trailing data. If the pinned SDK cannot
 enforce those checks before ordinary decoding, D1 supplies a bounded transport
-wrapper; this is a launch gate.
+wrapper; this is a launch gate. Every frame attempt, including an empty line,
+consumes D10's transport budget before these checks. Every framing failure,
+including an over-limit frame without a terminating newline, terminates the
+session after bounded draining or immediate close; later bytes can never reach
+a handler.
 
 Registered tools reject unknown argument keys before engine construction.
 Config-free/status tools have no tenant-controlled string arguments.
@@ -296,6 +303,9 @@ brief and implementation must inherit D1-D14 and additionally prove:
   protocol/tool error fixtures, strict input framing, output preflight,
   schema-conforming success/error objects, exact structured/text DTO
   equivalence, and no partial data;
+- with transport budget one, every invalid-UTF-8, duplicate-key, excessive-depth,
+  trailing-data, empty/malformed, and oversize frame class consumes the unit,
+  closes the session, and prevents a following valid handler call;
 - fakes that fail if a D1 tenant tool invokes `List` or `Get`, plus an exact
   assertion that only the 23 reviewed `Show` operation pairs are admitted and
   return one record regardless of catalog shape defaults;
