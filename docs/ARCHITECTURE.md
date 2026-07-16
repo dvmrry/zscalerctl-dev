@@ -75,19 +75,24 @@ deliberate: it keeps the production surface to one audited read-only binary,
 while agents start from `machine manifest`, use `schema list` for field
 metadata, parse deterministic JSON or NDJSON, and branch on stable exit codes.
 
-An MCP adapter is not part of the v1 supported surface. The accepted Phase 5
-threat model in [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) authorizes an isolated,
-local-stdio experiment over the common Go engine. Until and unless that
+An MCP adapter is not part of the v1 supported surface. The owner-accepted Phase
+5 threat model in [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) permits an isolated,
+local-stdio experiment over the common Go engine only after its exact policy
+delta has an approved fresh-context review artifact. Until and unless the
 experiment passes its host-workflow proof and is deliberately promoted, the
-supported agent interface remains the CLI contract plus skill guidance.
+supported agent interface remains the CLI contract plus skill guidance. This
+checkpoint supersedes earlier point-in-time design notes that treated all MCP
+work as a non-goal.
 
-The experiment receives only an explicit allow-list of typed engine operations:
-config-free engine/catalog discovery, sanitized status inspection, and
-catalog-backed resource `list`/`get`/`show`. It cannot expose generic execution,
-SDK clients, source records, credentials, per-call redaction/config authority,
-filesystem operations, URL lookup, dump/diff, or a network listener. MCP-specific
-`share` redaction, call/result budgets, and command-provider policy live in the
-adapter and do not weaken or fork the engine contract.
+The experiment owns a frozen adapter registry rather than advertising the full
+engine manifest or catalog. Its initial tenant-bearing surface contains only 23
+reviewed singleton `show` operations plus config-free adapter/catalog discovery
+and sanitized status inspection. It cannot expose collection `list`,
+potentially list-backed `get`, generic execution, SDK clients, source records,
+credentials, `cmd:` providers, per-call redaction/config authority, filesystem
+operations, URL lookup, dump/diff, or a network listener. MCP-specific `share`
+redaction, strict input framing, explicit result DTOs, and call/result budgets
+live in the adapter and do not weaken or fork the engine contract.
 
 ## Initial Package Shape
 

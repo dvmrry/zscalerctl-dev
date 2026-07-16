@@ -1,9 +1,9 @@
 # MCP Server Threat Model And Redaction Posture (Roadmap Phase 5 D0)
 
-Status: ACCEPTED for the isolated D1 experiment on 2026-07-15. This acceptance
-does not promote an MCP server into the supported v1 surface. It authorizes only
-the local stdio experiment constrained by D1-D13 below and still requires the
-normal fresh-context review before MCP code lands.
+Status: OWNER-ACCEPTED D0 candidate as of 2026-07-15. D1 implementation is
+blocked unless this exact policy delta has an approved fresh-context review
+artifact. Satisfying that condition completes D0; it does not promote an MCP
+server into the supported v1 surface.
 
 This document extends [THREAT_MODEL.md](THREAT_MODEL.md) for the specific risk
 shift an MCP server introduces. The base model's guarantees (tenant-read-only,
@@ -30,69 +30,82 @@ threat classes follow:
    confused follow-up call can do.
 3. **Agent-mediated misuse.** A model may select the wrong tool, hallucinate
    arguments, repeat calls, or request results too large for useful review.
-   Mitigations are a closed tool allow-list, typed arguments, call and result
+   Mitigations are a closed tool registry, strict typed inputs, call and result
    budgets, one active operation, and tenant-read-only construction.
 4. **Host-controlled process and environment.** The stdio host spawns the
    server and owns its environment and lifetime. It can observe injected
    credentials and can substitute or wrap the binary. The experiment therefore
    uses the same release-integrity expectations as the CLI, and the official
-   MCP Go SDK is a new trusted-computing-base entry that receives an exact,
-   reviewed version pin in the nested experiment module.
+   MCP Go SDK is a new trusted-computing-base entry with an exact reviewed pin.
 
 Credentials do not cross the MCP tool protocol. The host still supplies them to
 the server process, as it does for agent CLI use. Projection and redaction occur
 inside the trusted Go engine before a tenant value reaches the MCP adapter.
 
-## Accepted decisions
+## Accepted policy decisions
 
 **D1 — MCP defaults to `share` redaction.** The adapter forces `share` even when
 the ordinary CLI, profile, or engine default would be `standard`. `standard` is
 available only through an explicit MCP-specific server-start setting;
 `paranoid` is also allowed. The model cannot select redaction mode per call, an
-invalid startup value fails startup, and no unredacted mode exists. This is a
-deliberate usability cost: a model provider is an authorized recipient outside
-the immediate admin context, which is exactly the audience `share` protects.
+invalid startup value fails startup, and no unredacted mode exists. A model
+provider is an authorized recipient outside the immediate admin context, which
+is exactly the audience `share` protects.
 
-**D2 — Raw tenant identifiers require explicit `standard` opt-in.** The adapter
-does not invent a second field-classification system. Existing per-mode catalog
-rules determine which identifiers survive, but the MCP-specific opt-in in D1 is
-required before `standard` can apply.
+**D2 — Sensitive identifiers require explicit `standard` opt-in.** Existing
+catalog classifications remain authoritative. Fields classified
+`sensitive_identifier` are available only when their catalog modes and D1 both
+permit `standard`. This does not remove operational record IDs that the catalog
+deliberately allows in `share` or `paranoid`; those IDs remain necessary to
+correlate otherwise-safe records.
 
-**D3 — Tool definitions contain public catalog metadata only.** Names,
-descriptions, and input schemas may contain release-static products, resource
-names, operations, and field names. Tenant values, effective configuration,
-paths, credential state, and runtime errors never enter tool definitions.
+**D3 — Tool definitions contain public adapter metadata only.** Names,
+descriptions, and input schemas may contain release-static products, resources,
+operations, and field names admitted by D4. Tenant values, effective
+configuration, paths, credential state, and runtime errors never enter tool
+definitions.
 
-**D4 — The initial tool surface is closed and operation-specific.** There is no
-generic `execute`, capability selector, arbitrary engine request, or shell/CLI
-passthrough. The D1 allow-list is:
+**D4 — A frozen MCP registry, not the engine catalog, defines exposure.** The
+nested experiment owns a versioned deny-by-default registry containing exact
+tool names and product/resource/operation pairs. It does not auto-expand when
+the engine catalog grows. At startup, every registry entry must still exist in
+the engine catalog, be tenant-read-only, and carry the expected effects; any
+drift fails startup. A committed fixture enumerates the complete registry and a
+test rejects additions, removals, duplicates, and unsupported operations.
 
-| MCP tool | Engine capability | Boundary |
+The initial tenant-bearing registry contains only the current catalog's 23
+singleton `show` pairs: 21 ZIA, one ZCC, and one ZTW. ZPA has no current `show`
+pair. Zidentity and every collection or ID lookup are excluded.
+`server_capabilities` and `catalog_schema` are generated from this MCP registry,
+not emitted as the raw engine manifest or full engine catalog, so excluded
+capabilities and resources are not advertised.
+
+The exact D1 tools are:
+
+| MCP tool | Engine source | Boundary |
 | --- | --- | --- |
-| `engine_manifest` | `engine.manifest` | Config-free public capability metadata |
-| `catalog_schema` | `catalog.schema` | Config-free public catalog metadata; no-argument output is a compact product/resource/operation index, while field detail is scoped |
+| `server_capabilities` | MCP registry verified against `engine.manifest` | Config-free public metadata for this server's tools and effects only |
+| `catalog_schema` | MCP registry joined to `catalog.schema` | Config-free metadata for the admitted `show` resources only; no-argument output is a compact index and field detail requires product/resource scope |
 | `doctor` | `status.inspect` (`doctor`) | Sanitized config-dependent local read; no provider resolution, process execution, or network access |
-| `auth_status` | `status.inspect` (`auth`) | Sanitized config-dependent local read; no provider resolution, process execution, or network access |
-| `config_status` | `status.inspect` (`config`) | Sanitized config-dependent local read; no provider resolution, process execution, or network access |
-| `resource_list` | `resources.read` (`list`) | Projected/redacted tenant values; config-dependent local read and possible network/provider effects |
-| `resource_get` | `resources.read` (`get`) | Projected/redacted tenant values; config-dependent local read and possible network/provider effects |
-| `resource_show` | `resources.read` (`show`) | Projected/redacted tenant values; config-dependent local read and possible network/provider effects |
+| `auth_status` | `status.inspect` (`auth_status`) | Sanitized config-dependent local read; no provider resolution, process execution, or network access |
+| `config_status` | `status.inspect` (`config_status`) | Sanitized config-dependent local read; no provider resolution, process execution, or network access |
+| `resource_show` | `resources.read` (`show`) | One projected/redacted singleton; config-dependent local read, network access, and fixed-provider helper effects remain possible |
 
-The status tools are separate so the model cannot dynamically select a status
-operation. Resource arguments may select only catalog-backed product/resource,
-ID where applicable, and existing narrowing fields such as `filter`, `search`,
-and `fields`. Every request is revalidated by the engine; the adapter never
+There is no generic `execute`, capability selector, arbitrary engine request,
+shell/CLI passthrough, `resource_list`, or `resource_get`. The adapter never
 constructs SDK clients or handles source records.
 
-**D5 — Logging is value-free.** Server logs may include product, resource,
-operation, safe error kind, counts, duration, and session-local request ID. They
-never include tenant values, IDs supplied to `get`, filters, search strings,
-paths, effective configuration values, provider output, credentials, or raw
-errors. The default destination is stderr and the default level is warn.
+**D5 — Logging is value-free.** Server logs may include tool name, admitted
+product/resource, safe error kind, counts, duration, and session-local request
+ID. They never include tenant values, fields requested by the model, paths,
+effective configuration values, provider output, credentials, raw protocol
+frames, or raw errors. MCP SDK debug/protocol logging and tracing are disabled
+unless an implementation proves their sink is value-free. The default
+destination is stderr and the default level is warn.
 
 **D6 — Tools only.** D1 exposes no MCP prompts, resources, roots, elicitation,
-or sampling. Each is a separate capability and requires a new decision and
-review before use.
+sampling, or server-originated logging messages. Each is a separate capability
+and requires a new decision and review before use.
 
 **D7 — The stdio host is the trust decision.** Stdio has no independently
 authenticatable peer: the process that starts the server is the host. A host
@@ -100,33 +113,68 @@ allow-list would not add a security boundary. Documentation must state that the
 server should run only under a host trusted with the selected redaction mode's
 tenant data.
 
-**D8 — Local stdio only.** The experiment has no TCP, HTTP, SSE, streamable-HTTP,
-Unix-socket, or other listener. Adding any listener requires a new D-series
-decision covering authentication, authorization, multi-client isolation, and
-transport security; it is not an implementation toggle.
+**D8 — Local stdio and reviewed protocol versions only.** The experiment has no
+TCP, HTTP, SSE, streamable-HTTP, Unix-socket, or other listener. Adding any
+listener requires a new D-series decision covering authentication,
+authorization, multi-client isolation, and transport security; it is not an
+implementation toggle.
 
-**D9 — MCP annotations are advisory, not enforcement.** Tools set accurate
-`readOnlyHint`, `destructiveHint`, and `openWorldHint` values, but clients may
-ignore them. Config-free discovery and local status tools use `readOnlyHint:
-true`, `destructiveHint: false`, and `openWorldHint: false`; live resource tools
-use the same read/destructive hints and `openWorldHint: true`.
+D1 pins a stable, non-prerelease MCP Go SDK release. The implementation records
+and tests every protocol version that pin can negotiate for the D1 feature set.
+An SDK bump or newly admitted protocol version requires review of tool schemas,
+result/error behavior, stdio framing, and security-sensitive transport changes
+before it is enabled.
 
-Tenant-bearing results use a declared output schema and `structuredContent`.
-When protocol compatibility requires it, the same JSON is also serialized in a
-separate text content block. A fixed server-authored tool description warns that
-tenant content is untrusted data. No tenant value is interpolated into that
-warning, no synthetic warning field is inserted into the machine result, and
-any namespaced metadata marker is only defense-in-depth. The hard controls are
-D1, D4, D10, D12, D13, and the engine's read-only/projection boundary.
+**D9 — MCP annotations are advisory; explicit DTOs carry results.** Tools set
+accurate `readOnlyHint`, `destructiveHint`, and `openWorldHint` values, but
+clients may ignore them. Config-free discovery and local status tools use
+`readOnlyHint: true`, `destructiveHint: false`, and `openWorldHint: false`.
+`resource_show` uses the same read/destructive hints and `openWorldHint: true`.
+D12's unconditional `cmd:` prohibition is required for the read-only claim.
+
+Every tool has a committed MCP-specific output schema. The adapter does not
+serialize internal engine result types directly. Successful
+`structuredContent` is always an object of this form:
+
+```json
+{"schema":"zscalerctl.mcp.<tool>.v1","ok":true,"result":{}}
+```
+
+The tool-specific `result` object is one of:
+
+- `server_capabilities`: `tools`, admitted `products`, and registry/effect
+  metadata;
+- `catalog_schema`: a `resources` array containing only admitted metadata;
+- each status tool: one sanitized `status` object for its fixed operation;
+- `resource_show`: `product`, `resource`, `operation`, and an exact one-element
+  `records` array.
+
+Tool execution failures use:
+
+```json
+{"schema":"zscalerctl.mcp.<tool>.v1","ok":false,"error":{"kind":"...","message":"..."}}
+```
+
+Their `CallToolResult` sets `isError: true`. Budget exhaustion, oversize output,
+semantic input rejection, cancellation, deadlines, and engine/business errors
+all use this value-free form. Only malformed/unsupported JSON-RPC, an unknown
+tool, or a failure before a registered tool can run is an MCP protocol error.
+
+For protocol compatibility, `TextContent.text` is the canonical compact JSON
+serialization of the exact `structuredContent` object. Fixtures validate both
+representations and every output schema. A fixed server-authored description
+warns that tenant content is untrusted data. No tenant value is interpolated
+into that warning, and any namespaced metadata marker is defense-in-depth only.
 
 **D10 — One active operation and a finite session call budget.** The adapter
 inherits the engine's synchronous operation and bounded retry behavior. It
-admits at most one operation at a time and defaults to 100 `tools/call` requests
-per MCP session, with a server-start range of 1-1000 and no unlimited value.
-Every decoded `tools/call` consumes one unit before tool or argument validation;
-errors, cancellation, and timeouts do not refund it. Starting a new process
-creates a new session budget. Exhaustion returns an MCP tool error and never
-reuses the machine `usage` error kind.
+admits at most one operation at a time and defaults to 100 registered tool calls
+per stdio session, with a server-start range of 1-1000 and no unlimited value.
+A call consumes one unit when its registered handler admits it; errors,
+cancellation, and timeouts do not refund it. Unknown tools and malformed
+protocol messages never reach an engine or tenant. Starting a new process
+creates a new session budget. Exhaustion uses the D9 tool-error envelope and
+does not reuse the machine `usage` error kind.
 
 **D11 — Host transcripts are sensitive data stores.** Documentation must tell
 operators to choose hosts whose transcript retention and cloud synchronization
@@ -134,59 +182,90 @@ they understand, protect transcript directories like sanitized dump output,
 and apply the model provider agreement appropriate for their tenant data.
 zscalerctl cannot enforce host or provider retention.
 
-**D12 — Security-sensitive authority is fixed at process start.** MCP tool
-arguments cannot choose a profile, config path, redaction mode, timeout, cache
-policy, provider command, output path, call budget, or result limit. Those are
-operator-controlled server-start settings. `cmd:` secret providers are disabled
-for MCP by default because an otherwise read-only model call could repeatedly
-trigger local process execution. Enabling them requires an explicit
-MCP-specific server-start opt-in; an existing global disallow setting wins on
-conflict. The model can never supply or alter provider argv.
+**D12 — Security-sensitive authority is fixed at process start, and `cmd:` is
+forbidden.** MCP tool arguments cannot choose a profile, config path, redaction
+mode, timeout, cache policy, provider, output path, call budget, or result
+limit. Those are operator-controlled server-start settings. The experiment
+unconditionally disables `cmd:` secret providers; there is no MCP override.
+Environment, owner-only file, and platform keyring sources remain subject to
+the base credential policy. The model can never supply or alter provider argv.
 
-**D13 — Results are bounded and atomic at the MCP boundary.** Before emitting
-any result content, the adapter serializes and checks the complete result.
-Tenant-bearing tools default to at most 100 records and 256 KiB of serialized
-JSON, whichever is reached first. `get` and `show` retain the same byte bound.
-Server-start settings may raise these defaults only up to hard maxima of 1000
-records and 2 MiB; tools have no per-call override. A result that exceeds either
-bound fails as a value-free MCP tool error with no partial records and advises
-the caller to narrow by product/resource, `filter`, `search`, or `fields`.
+**D13 — Complete MCP results are bounded and atomic.** Before emitting any
+result content, the adapter constructs and exactly encodes the complete
+`CallToolResult`, including structured content, duplicate text content, and
+metadata. The default maximum is 256 KiB and the hard server-start maximum is
+2 MiB. Tools have no per-call override. An oversize result returns only the
+small static D9 error envelope; no tenant-bearing partial content is emitted.
 
-Config-free discovery is bounded by the same 2 MiB hard byte ceiling. The
-default catalog response is the compact index described in D4 so discovery does
-not inject the entire field catalog into context; detailed field metadata
-requires product or resource scope. A future pagination or continuation design
-must be specified and reviewed before replacing fail-closed oversize behavior.
+`resource_show` returns exactly one record. A singleton that cannot fit within
+the configured complete-result ceiling is intentionally unavailable through D1
+MCP; the operator must use the CLI or another local engine consumer. This is a
+deliberate context-safety tradeoff evaluated again at D2, not silent
+truncation. Config-free discovery uses the same bounds, and its compact/scoped
+behavior keeps the current catalog practical.
+
+D13 bounds disclosure and adapter serialization. It does not claim to cap the
+size of the one upstream API response. Collection `list` and potentially
+list-backed `get` operations are excluded because the current engine can fully
+buffer those collections before an adapter can enforce a limit. They cannot be
+registered until an engine design bounds collection before source-record
+accumulation and provides reviewed pagination/continuation semantics.
+
+**D14 — Inputs are bounded before SDK decoding or engine work.** The stdio
+transport rejects any complete inbound JSON-RPC message over 64 KiB before the
+MCP SDK allocates an unbounded payload. It also rejects invalid UTF-8, duplicate
+JSON keys, nesting deeper than 32, and trailing data. If the pinned SDK cannot
+enforce those checks before ordinary decoding, D1 supplies a bounded transport
+wrapper; this is a launch gate.
+
+Registered tools reject unknown argument keys before engine construction.
+Config-free/status tools have no tenant-controlled string arguments.
+`catalog_schema` accepts only registry-backed product/resource enums.
+`resource_show` accepts one registry-backed pair plus at most 128 unique `fields`;
+each field must be an admitted catalog field and at most 128 UTF-8 bytes. No D1
+tool accepts a free-form ID, filter, search string, path, URL, provider, or
+operation. All argument rejection occurs before config/provider/network work
+and returns a static D9 tool error without echoing the rejected value.
 
 ## Explicitly out of scope for D1
 
+- `resource_list` and `resource_get`, until collection is bounded before source
+  accumulation and pagination/continuation semantics are reviewed.
+- Zidentity resources; adding any product/resource/operation requires a frozen
+  registry delta and security review rather than catalog auto-expansion.
 - `zia.url_lookup`: it sends model-supplied URL material to an external service
   and needs a separate caller-data disclosure decision.
 - `dump.write`: it performs long-running network reads and local
-  write/delete/publication effects, and the candidate stdio v1 protocol has no
-  wire-visible dump commit marker.
+  write/delete/publication effects, and candidate stdio v1 has no wire-visible
+  dump commit marker.
 - `diff.compare`: it lets a model select local filesystem paths and may produce
   large tenant-bearing reports.
 - Config initialization, arbitrary filesystem access, shell execution, any
-  tenant-mutating operation, and any generic engine/CLI passthrough.
-- Zidentity or ZDX catalog expansion and every network transport.
+  tenant-mutating operation, generic engine/CLI passthrough, and every network
+  transport.
 
-These exclusions are policy decisions, not missing-engine work. Each requires a
-new threat-model decision before entering an MCP tool allow-list.
+These exclusions are policy decisions, not merely missing adapter wiring. Each
+requires a new threat-model decision before entering the MCP registry.
 
-## D0 exit and D1 acceptance gates
+## D0 completion and D1 acceptance gates
 
-D0 is complete when this accepted addendum, the base threat model, architecture,
-and roadmap agree and the required fresh-context review artifact is approved.
-The D1 experiment brief and implementation must inherit D1-D13 verbatim and
-must additionally prove:
+The owner has accepted the policy direction. D0 completes only when this
+addendum, the base threat model, architecture, and roadmap agree and an approved
+fresh-context review artifact covers the exact source delta. The D1 experiment
+brief and implementation must inherit D1-D14 and additionally prove:
 
-- an exact reviewed MCP SDK version is pinned in the nested module;
-- forbidden-import tests keep the adapter above the trusted engine and out of
-  SDK, credential, source-record, CLI, and transport internals;
-- the tool allow-list is exact and no network listener is linked or started;
-- redaction, command-provider policy, budgets, output preflight, and no-partial
-  oversize failures have process-level tests;
-- malformed inputs and adapter errors cannot leak arguments or tenant values;
+- exact stable MCP SDK and negotiated protocol-version pins;
+- an exact frozen registry fixture and fail-closed startup reconciliation with
+  engine capabilities, catalog operations, effects, and field modes;
+- forbidden-import tests keeping the adapter above the trusted engine and out
+  of SDK, credential, source-record, CLI, and unrelated transport internals;
+- no linked or started network listener and no generic request passthrough;
+- process-level tests for `share` enforcement, unconditional `cmd:` denial,
+  one-operation admission, budgets, strict input framing, output preflight,
+  exact structured/text DTO equivalence, error semantics, and no partial data;
+- fakes that fail if a D1 tenant tool invokes `List` or `Get`, plus an exact
+  assertion that only the 23 reviewed `Show` pairs are admitted;
+- malformed inputs, dependency diagnostics, and adapter errors cannot leak
+  arguments or tenant values;
 - the experiment remains unreleased and unsupported until the separate D2 host
   workflow proof and promotion decision.

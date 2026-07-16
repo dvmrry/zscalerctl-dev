@@ -62,9 +62,10 @@ Primary trust boundaries:
 MCP changes the output trust boundary because tool results enter model context
 rather than a terminal or operator-controlled pipe. The model provider, host
 transcript store, and host-controlled process become additional trust
-boundaries. [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) records the accepted
-`share`-by-default posture and the closed, bounded local-stdio experiment. That
-addendum authorizes D1 experimentation only; it does not promote MCP into the
+boundaries. [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) records the owner-accepted
+`share`-by-default posture and the frozen, bounded local-stdio experiment. D1
+work remains blocked unless that exact policy delta has an approved
+fresh-context review artifact, and completing D0 does not promote MCP into the
 supported surface.
 
 The SDK is part of the trusted computing base. Wrapping it improves project
