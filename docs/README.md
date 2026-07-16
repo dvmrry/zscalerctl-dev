@@ -21,6 +21,12 @@ GitHub security policy.
   and human/UI presentation-layer boundaries.
 - [cli/core-boundary.md](cli/core-boundary.md) — CLI/core/UI dependency
   boundary for future UI-safe backend seams.
+- [ENGINE_API_DESIGN.md](ENGINE_API_DESIGN.md) — common local Go engine shared
+  by the CLI and future frontends.
+- [ENGINE_STDIO_PROTOCOL_V1.md](ENGINE_STDIO_PROTOCOL_V1.md) — candidate local
+  cross-language child-process protocol and host.
+- [ENGINE_STDIO_BENCHMARKS.md](ENGINE_STDIO_BENCHMARKS.md) — reproducible
+  candidate host/process performance baselines.
 - [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md) — supported,
   candidate, and experimental surface classes for dev and public promotion.
 - [THREAT_MODEL.md](THREAT_MODEL.md)
@@ -31,6 +37,17 @@ GitHub security policy.
 
 ## Maintenance
 
+- [adversarial-review.md](adversarial-review.md) — Codex-only post-build
+  adversarial review workflow for high-risk generated, machine-contract,
+  redaction/projection, and resource-surface changes.
+- [adversarial-reviews/](adversarial-reviews/) — committed review artifacts
+  required by the adversarial-review gate for high-risk changes.
+- [review-handoff-template.md](review-handoff-template.md) and
+  [adversarial-review-run-prompt.md](adversarial-review-run-prompt.md) —
+  builder handoff and fresh-context reviewer prompt for the
+  adversarial-review loop.
+- [adversarial-review-template.md](adversarial-review-template.md) — reviewer
+  report template for adversarial-review findings and verdicts.
 - [SDK_SURFACE_INVENTORY.md](SDK_SURFACE_INVENTORY.md)
 - [DEFERRED_RESOURCE_RECHECK.md](DEFERRED_RESOURCE_RECHECK.md) — pinned-SDK
   source review for resources removed after live-smoke failures.

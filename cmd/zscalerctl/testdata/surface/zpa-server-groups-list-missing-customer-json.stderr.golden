@@ -1,0 +1,12 @@
+{
+  "error": {
+    "kind": "missing_credentials",
+    "message": "missing zscaler API credentials: ZSCALERCTL_ZPA_CUSTOMER_ID required",
+    "missing": [
+      "ZSCALERCTL_ZPA_CUSTOMER_ID"
+    ],
+    "operation": "list",
+    "product": "zpa",
+    "resource": "server-groups"
+  }
+}

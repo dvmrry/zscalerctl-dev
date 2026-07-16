@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -12,14 +15,16 @@ import (
 )
 
 var (
-	ErrMutatingOperation   = errors.New("mutating operation is not available in read-only release")
-	ErrInvalidResourceSpec = errors.New("invalid resource spec")
-	ErrUnexpectedField     = errors.New("unexpected rendered field")
-	ErrUnknownField        = errors.New("unknown projected field")
-	ErrUnknownResource     = errors.New("unknown browser resource")
-	ErrMissingID           = errors.New("browser resource id is required")
-	ErrRecordNotFound      = errors.New("browser record not found")
-	ErrUnsupportedLoad     = errors.New("unsupported browser load operation")
+	ErrMutatingOperation     = errors.New("mutating operation is not available in read-only release")
+	ErrInvalidResourceSpec   = errors.New("invalid resource spec")
+	ErrInvalidProjectedValue = errors.New("invalid projected value")
+	ErrUnexpectedField       = errors.New("unexpected rendered field")
+	ErrUnknownField          = errors.New("unknown projected field")
+	ErrUnknownResource       = errors.New("unknown browser resource")
+	ErrMissingID             = errors.New("browser resource id is required")
+	ErrInvalidResourceID     = errors.New("invalid zscaler resource id")
+	ErrRecordNotFound        = errors.New("browser record not found")
+	ErrUnsupportedLoad       = errors.New("unsupported browser load operation")
 )
 
 type Product string
@@ -204,7 +209,7 @@ type SourceRecord struct {
 }
 
 func NewSourceRecord(fields map[string]any) SourceRecord {
-	return SourceRecord{fields: copyMap(fields)}
+	return SourceRecord{fields: copySourceMap(fields)}
 }
 
 type ProjectedRecord struct {
@@ -245,6 +250,9 @@ func (r ProjectedRecord) Select(keys []string) ProjectedRecord {
 
 type ProjectedRecords struct {
 	records []ProjectedRecord
+	// isolated means every record recursively owns normalized projected values,
+	// so package-private read paths do not need another defensive copy.
+	isolated bool
 }
 
 // UnknownFieldError reports a requested projected field that is not declared in
@@ -282,6 +290,14 @@ func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
 	return ProjectedRecords{records: out}
 }
 
+// newIsolatedProjectedRecords copies records that already own normalized
+// projected values and preserves that private-state invariant.
+func newIsolatedProjectedRecords(records []ProjectedRecord) ProjectedRecords {
+	out := make([]ProjectedRecord, len(records))
+	copy(out, records)
+	return ProjectedRecords{records: out, isolated: true}
+}
+
 // NewProjectedRecordsFromProjectedFields reconstructs ProjectedRecords from
 // trusted, already-projected, and already-redacted field maps. It does not
 // verify those maps against a catalog spec or redaction mode. Callers that
@@ -292,7 +308,7 @@ func NewProjectedRecordsFromProjectedFields(records []map[string]any) ProjectedR
 	for i, record := range records {
 		out[i] = ProjectedRecord{fields: copyMap(record)}
 	}
-	return ProjectedRecords{records: out}
+	return ProjectedRecords{records: out, isolated: true}
 }
 
 // NewVerifiedProjectedRecordsFromProjectedFields reconstructs ProjectedRecords
@@ -307,26 +323,45 @@ func NewVerifiedProjectedRecordsFromProjectedFields(
 	if err := spec.Validate(); err != nil {
 		return ProjectedRecords{}, err
 	}
+	validator := newRenderedSubsetValidator(spec, mode)
 	out := make([]ProjectedRecord, len(records))
 	for i, record := range records {
 		copied := copyMap(record)
-		if err := assertRenderedSubsetCore(spec, mode, copied); err != nil {
+		if err := validator.assert(copied); err != nil {
 			return ProjectedRecords{}, err
 		}
 		out[i] = ProjectedRecord{fields: copied}
 	}
-	return ProjectedRecords{records: out}, nil
+	return ProjectedRecords{records: out, isolated: true}, nil
+}
+
+// VerifyProjectedRecords checks that every projected record contains only
+// fields declared by spec and renderable in mode. ProjectedRecords are
+// immutable through their public API, so successful verification does not
+// require reconstructing them through maps.
+func VerifyProjectedRecords(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
+	return assertProjectedRecordsSubset(spec, mode, records)
 }
 
 func (ProjectedRecords) OutputSafe() {}
 
 func (rs ProjectedRecords) MarshalJSON() ([]byte, error) {
 	out := make([]map[string]any, len(rs.records))
-	for i, record := range rs.records {
-		out[i] = record.Fields()
+	if rs.isolated {
+		for i, record := range rs.records {
+			out[i] = record.fields
+		}
+	} else {
+		for i, record := range rs.records {
+			out[i] = record.Fields()
+		}
 	}
 	return json.Marshal(out)
 }
+
+// Len returns the number of projected records without exposing the backing
+// slice or any record fields.
+func (rs ProjectedRecords) Len() int { return len(rs.records) }
 
 // Select narrows every record to keys (see ProjectedRecord.Select).
 func (rs ProjectedRecords) Select(keys []string) ProjectedRecords {
@@ -334,7 +369,7 @@ func (rs ProjectedRecords) Select(keys []string) ProjectedRecords {
 	for i, record := range rs.records {
 		out[i] = record.Select(keys)
 	}
-	return ProjectedRecords{records: out}
+	return ProjectedRecords{records: out, isolated: true}
 }
 
 func (rs ProjectedRecords) Records() []ProjectedRecord {
@@ -408,12 +443,16 @@ func FilterProjectedRecords(
 		return records
 	}
 	kept := make([]ProjectedRecord, 0)
-	for _, record := range records.Records() {
-		if projectedRecordMatches(record.Fields(), filters, search) {
+	for _, record := range records.records {
+		fields := record.fields
+		if !records.isolated {
+			fields = record.Fields()
+		}
+		if projectedRecordMatches(fields, filters, search) {
 			kept = append(kept, record)
 		}
 	}
-	return NewProjectedRecords(kept)
+	return ProjectedRecords{records: kept, isolated: records.isolated}
 }
 
 func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
@@ -502,7 +541,7 @@ func ProjectRecords(spec ResourceSpec, mode redact.Mode, records []SourceRecord)
 		projected = append(projected, item)
 		reports = append(reports, report)
 	}
-	return NewProjectedRecords(projected), reports, nil
+	return newIsolatedProjectedRecords(projected), reports, nil
 }
 
 func ProjectRecordsAndVerify(spec ResourceSpec, mode redact.Mode, records []SourceRecord) (ProjectedRecords, []ProjectionReport, error) {
@@ -556,7 +595,7 @@ func ProjectRecordAndVerify(spec ResourceSpec, mode redact.Mode, record SourceRe
 	if err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
 	}
-	if err := AssertRenderedSubset(spec, mode, projected.Fields()); err != nil {
+	if err := AssertRenderedSubset(spec, mode, projected.fields); err != nil {
 		return ProjectedRecord{}, ProjectionReport{}, err
 	}
 	return projected, report, nil
@@ -569,13 +608,45 @@ func projectValue(
 	path string,
 	report *ProjectionReport,
 ) (any, bool, bool) {
+	if _, unsupported := value.(unsupportedProjectedValue); unsupported {
+		return unsupportedProjectedValue{}, false, true
+	}
 	if len(field.Fields) > 0 {
 		return projectNestedValue(mode, field, value, path, report)
+	}
+	if hasUnsupportedProjectedValue(value) {
+		return unsupportedProjectedValue{}, false, true
 	}
 	if hasStructuredValue(value) {
 		return nil, false, false
 	}
 	return sanitizeScalar(mode, field, value)
+}
+
+func hasUnsupportedProjectedValue(value any) bool {
+	switch v := value.(type) {
+	case unsupportedProjectedValue:
+		return true
+	case map[string]any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	case []map[string]any:
+		for _, item := range v {
+			if hasUnsupportedProjectedValue(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func projectNestedValue(
@@ -689,8 +760,103 @@ func sanitizeScalar(mode redact.Mode, field FieldSpec, value any) (any, bool, bo
 			}
 		}
 		return out, redacted, true
+	case json.Number:
+		return copyAny(v), false, true
 	default:
+		valueOf := reflect.ValueOf(value)
+		if valueOf.IsValid() && valueOf.Kind() == reflect.String {
+			out, report := scanStringValue(r, field, valueOf.String())
+			return out, !report.Empty(), true
+		}
+		if valueOf.IsValid() &&
+			(valueOf.Kind() == reflect.Slice || valueOf.Kind() == reflect.Array) &&
+			valueOf.Type().Elem().Kind() == reflect.String &&
+			valueOf.Type().Elem() != reflect.TypeOf(json.Number("")) {
+			out := make([]string, valueOf.Len())
+			redacted := false
+			for i := range valueOf.Len() {
+				sanitized, report := scanStringValue(r, field, valueOf.Index(i).String())
+				out[i] = sanitized
+				if !report.Empty() {
+					redacted = true
+				}
+			}
+			return out, redacted, true
+		}
+		if valueOf.IsValid() &&
+			(valueOf.Kind() == reflect.Slice || valueOf.Kind() == reflect.Array) &&
+			isCopyableSourceSequenceType(valueOf.Type()) &&
+			!isSupportedSequenceType(valueOf.Type()) {
+			out, ok := normalizeSourceScalarSequence(valueOf)
+			return out, false, ok
+		}
+		if valueOf.IsValid() &&
+			isCopyableSourceScalarType(valueOf.Type()) &&
+			!isSupportedScalarType(valueOf.Type()) {
+			out, ok := normalizeSourceScalar(valueOf)
+			return out, false, ok
+		}
 		return copyAny(value), false, true
+	}
+}
+
+func normalizeSourceScalar(value reflect.Value) (any, bool) {
+	builtin := builtinScalarType(value.Type())
+	if builtin == nil {
+		return nil, false
+	}
+	return value.Convert(builtin).Interface(), true
+}
+
+func normalizeSourceScalarSequence(value reflect.Value) (any, bool) {
+	builtin := builtinScalarType(value.Type().Elem())
+	if builtin == nil {
+		return nil, false
+	}
+	out := reflect.MakeSlice(reflect.SliceOf(builtin), value.Len(), value.Len())
+	for i := range value.Len() {
+		out.Index(i).Set(value.Index(i).Convert(builtin))
+	}
+	return out.Interface(), true
+}
+
+func builtinScalarType(valueType reflect.Type) reflect.Type {
+	if valueType == reflect.TypeOf(json.Number("")) {
+		return valueType
+	}
+	switch valueType.Kind() {
+	case reflect.Bool:
+		return reflect.TypeOf(false)
+	case reflect.Float32:
+		return reflect.TypeOf(float32(0))
+	case reflect.Float64:
+		return reflect.TypeOf(float64(0))
+	case reflect.Int:
+		return reflect.TypeOf(int(0))
+	case reflect.Int8:
+		return reflect.TypeOf(int8(0))
+	case reflect.Int16:
+		return reflect.TypeOf(int16(0))
+	case reflect.Int32:
+		return reflect.TypeOf(int32(0))
+	case reflect.Int64:
+		return reflect.TypeOf(int64(0))
+	case reflect.String:
+		return reflect.TypeOf("")
+	case reflect.Uint:
+		return reflect.TypeOf(uint(0))
+	case reflect.Uint8:
+		return reflect.TypeOf(uint8(0))
+	case reflect.Uint16:
+		return reflect.TypeOf(uint16(0))
+	case reflect.Uint32:
+		return reflect.TypeOf(uint32(0))
+	case reflect.Uint64:
+		return reflect.TypeOf(uint64(0))
+	case reflect.Uintptr:
+		return reflect.TypeOf(uintptr(0))
+	default:
+		return nil
 	}
 }
 
@@ -739,23 +905,40 @@ func AssertRenderedSubset(spec ResourceSpec, mode redact.Mode, rendered map[stri
 	if err := spec.Validate(); err != nil {
 		return err
 	}
-	return assertRenderedSubsetCore(spec, mode, rendered)
+	return newRenderedSubsetValidator(spec, mode).assert(rendered)
 }
 
-// assertRenderedSubsetCore checks subset membership without re-validating the
-// spec. Callers that loop over many records must validate once before calling.
-func assertRenderedSubsetCore(spec ResourceSpec, mode redact.Mode, rendered map[string]any) error {
-	allowed := spec.AllowedFields(mode)
-	for key := range rendered {
-		field, ok := allowed[key]
-		if !ok {
-			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, spec.Product, spec.Name, key)
-		}
-		if err := assertValueSubset(spec, mode, field, rendered[key], key); err != nil {
-			return err
-		}
+type renderedSubsetField struct {
+	spec     FieldSpec
+	children map[string]renderedSubsetField
+}
+
+type renderedSubsetValidator struct {
+	spec   ResourceSpec
+	fields map[string]renderedSubsetField
+}
+
+func newRenderedSubsetValidator(spec ResourceSpec, mode redact.Mode) renderedSubsetValidator {
+	return renderedSubsetValidator{
+		spec:   spec,
+		fields: newRenderedSubsetFields(spec.Fields, mode),
 	}
-	return nil
+}
+
+func newRenderedSubsetFields(fields []FieldSpec, mode redact.Mode) map[string]renderedSubsetField {
+	mode = redact.EffectiveMode(mode)
+	allowed := make(map[string]renderedSubsetField)
+	for _, field := range fields {
+		if !field.AllowedIn(mode) {
+			continue
+		}
+		compiled := renderedSubsetField{spec: field}
+		if len(field.Fields) > 0 {
+			compiled.children = newRenderedSubsetFields(field.Fields, mode)
+		}
+		allowed[field.JSONField()] = compiled
+	}
+	return allowed
 }
 
 func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records ProjectedRecords) error {
@@ -763,37 +946,48 @@ func assertProjectedRecordsSubset(spec ResourceSpec, mode redact.Mode, records P
 	if err := spec.Validate(); err != nil {
 		return err
 	}
-	for _, record := range records.Records() {
-		if err := assertRenderedSubsetCore(spec, mode, record.Fields()); err != nil {
+	validator := newRenderedSubsetValidator(spec, mode)
+	// ProjectedRecords and ProjectedRecord expose mutable slices and maps only
+	// through defensive-copy accessors. The verifier is in the owning package and
+	// reads their private immutable state directly, avoiding copies that provide no
+	// additional isolation at this internal boundary.
+	for _, record := range records.records {
+		if err := validator.assert(record.fields); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func assertValueSubset(spec ResourceSpec, mode redact.Mode, field FieldSpec, value any, path string) error {
+func (v renderedSubsetValidator) assert(rendered map[string]any) error {
+	return v.assertMap(v.fields, rendered, "")
+}
+
+func (v renderedSubsetValidator) assertValue(field renderedSubsetField, value any, path string) error {
+	if !isSupportedProjectedValue(reflect.ValueOf(value), make(map[copyVisit]bool)) {
+		return fmt.Errorf("%w: %s/%s field %s", ErrInvalidProjectedValue, v.spec.Product, v.spec.Name, path)
+	}
 	if !hasStructuredValue(value) {
 		return nil
 	}
-	if len(field.Fields) == 0 {
-		return fmt.Errorf("%w: %s/%s field %s has unmodeled nested data", ErrUnexpectedField, spec.Product, spec.Name, path)
+	if len(field.spec.Fields) == 0 {
+		return fmt.Errorf("%w: %s/%s field %s has unmodeled nested data", ErrUnexpectedField, v.spec.Product, v.spec.Name, path)
 	}
-	allowed := allowedFieldMap(field.Fields, mode)
-	switch v := value.(type) {
+	switch typed := value.(type) {
 	case map[string]any:
-		return assertMapSubset(spec, mode, allowed, v, path)
+		return v.assertMap(field.children, typed, path)
 	case []any:
-		for i, item := range v {
+		for i, item := range typed {
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := assertValueSubset(spec, mode, field, item, itemPath); err != nil {
+			if err := v.assertValue(field, item, itemPath); err != nil {
 				return err
 			}
 		}
 		return nil
 	case []map[string]any:
-		for i, item := range v {
+		for i, item := range typed {
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := assertMapSubset(spec, mode, allowed, item, itemPath); err != nil {
+			if err := v.assertMap(field.children, item, itemPath); err != nil {
 				return err
 			}
 		}
@@ -803,20 +997,21 @@ func assertValueSubset(spec ResourceSpec, mode redact.Mode, field FieldSpec, val
 	}
 }
 
-func assertMapSubset(
-	spec ResourceSpec,
-	mode redact.Mode,
-	allowed map[string]FieldSpec,
+func (v renderedSubsetValidator) assertMap(
+	allowed map[string]renderedSubsetField,
 	rendered map[string]any,
 	path string,
 ) error {
 	for key, value := range rendered {
 		field, ok := allowed[key]
-		nestedPath := path + "." + key
-		if !ok {
-			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, spec.Product, spec.Name, nestedPath)
+		nestedPath := key
+		if path != "" {
+			nestedPath = path + "." + key
 		}
-		if err := assertValueSubset(spec, mode, field, value, nestedPath); err != nil {
+		if !ok {
+			return fmt.Errorf("%w: %s/%s field %s", ErrUnexpectedField, v.spec.Product, v.spec.Name, nestedPath)
+		}
+		if err := v.assertValue(field, value, nestedPath); err != nil {
 			return err
 		}
 	}
@@ -1224,38 +1419,316 @@ func sortReport(report *ProjectionReport) {
 }
 
 func copyMap(in map[string]any) map[string]any {
+	return copyMapForDomain(in, projectedValueDomain)
+}
+
+func copySourceMap(in map[string]any) map[string]any {
+	return copyMapForDomain(in, sourceValueDomain)
+}
+
+func copyMapForDomain(in map[string]any, domain valueCopyDomain) map[string]any {
 	if in == nil {
 		return nil
 	}
 	out := make(map[string]any, len(in))
 	for key, value := range in {
-		out[key] = copyAny(value)
+		out[key] = copyAnyForDomain(value, domain)
 	}
 	return out
 }
 
 func copyAny(value any) any {
+	return copyAnyForDomain(value, projectedValueDomain)
+}
+
+func copyAnyForDomain(value any, domain valueCopyDomain) any {
+	if value == nil {
+		return nil
+	}
 	switch v := value.(type) {
-	case map[string]any:
-		return copyMap(v)
-	case []map[string]any:
-		out := make([]map[string]any, len(v))
-		for i, item := range v {
-			out[i] = copyMap(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(v))
-		for i, item := range v {
-			out[i] = copyAny(item)
-		}
-		return out
 	case []string:
-		out := make([]string, len(v))
-		copy(out, v)
-		return out
-	default:
+		return slices.Clone(v)
+	case []int:
+		return slices.Clone(v)
+	case json.Number:
+		if _, err := json.Marshal(v); err != nil {
+			return unsupportedProjectedValue{}
+		}
+		return v
+	}
+	valueOf := reflect.ValueOf(value)
+	switch valueOf.Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		if !scalarTypeAllowedForDomain(valueOf.Type(), domain) {
+			return unsupportedProjectedValue{}
+		}
 		return value
+	case reflect.Float32, reflect.Float64:
+		if !scalarTypeAllowedForDomain(valueOf.Type(), domain) ||
+			math.IsNaN(valueOf.Float()) || math.IsInf(valueOf.Float(), 0) {
+			return unsupportedProjectedValue{}
+		}
+		return value
+	}
+	cloned, ok := cloneCompositeValue(valueOf, make(map[copyVisit]bool), domain)
+	if !ok {
+		return unsupportedProjectedValue{}
+	}
+	return cloned.Interface()
+}
+
+type valueCopyDomain uint8
+
+const (
+	projectedValueDomain valueCopyDomain = iota
+	sourceValueDomain
+)
+
+type copyVisit struct {
+	typeOf   reflect.Type
+	pointer  uintptr
+	length   int
+	capacity int
+}
+
+// unsupportedProjectedValue fails closed when a projected value cannot be
+// copied without retaining caller-owned mutable state.
+type unsupportedProjectedValue struct{}
+
+func (unsupportedProjectedValue) MarshalJSON() ([]byte, error) {
+	return nil, ErrInvalidProjectedValue
+}
+
+// cloneCompositeValue recursively copies either the private source domain or
+// the narrower projected-output domain. Source-only named scalars remain
+// private until projection normalizes them; cyclic, unmodeled, or non-data
+// values are quarantined so copying cannot expose shared mutable state.
+func cloneCompositeValue(
+	value reflect.Value,
+	active map[copyVisit]bool,
+	domain valueCopyDomain,
+) (reflect.Value, bool) {
+	if !value.IsValid() {
+		return reflect.Value{}, true
+	}
+	if value.CanInterface() {
+		if number, ok := value.Interface().(json.Number); ok {
+			if _, err := json.Marshal(number); err != nil {
+				return reflect.Value{}, false
+			}
+			return value, true
+		}
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		if value.IsNil() {
+			return reflect.Zero(value.Type()), true
+		}
+		cloned, ok := cloneCompositeValue(value.Elem(), active, domain)
+		if !ok {
+			return reflect.Value{}, false
+		}
+		out := reflect.New(value.Type()).Elem()
+		out.Set(cloned)
+		return out, true
+	case reflect.Slice:
+		if !sequenceTypeAllowedForDomain(value.Type(), domain) {
+			return reflect.Value{}, false
+		}
+		if value.IsNil() {
+			return reflect.Zero(value.Type()), true
+		}
+		visit := copyVisit{
+			typeOf: value.Type(), pointer: value.Pointer(), length: value.Len(), capacity: value.Cap(),
+		}
+		if active[visit] {
+			return reflect.Value{}, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		out := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for i := range value.Len() {
+			cloned, ok := cloneCompositeValue(value.Index(i), active, domain)
+			if !ok {
+				return reflect.Value{}, false
+			}
+			out.Index(i).Set(cloned)
+		}
+		return out, true
+	case reflect.Map:
+		if value.Type() != reflect.TypeOf(map[string]any(nil)) {
+			return reflect.Value{}, false
+		}
+		if value.IsNil() {
+			return reflect.Zero(value.Type()), true
+		}
+		visit := copyVisit{typeOf: value.Type(), pointer: value.Pointer()}
+		if active[visit] {
+			return reflect.Value{}, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		out := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			cloned, ok := cloneCompositeValue(iter.Value(), active, domain)
+			if !ok {
+				cloned = reflect.New(value.Type().Elem()).Elem()
+				cloned.Set(reflect.ValueOf(unsupportedProjectedValue{}))
+			}
+			out.SetMapIndex(iter.Key(), cloned)
+		}
+		return out, true
+	case reflect.Array:
+		if !scalarTypeAllowedForDomain(value.Type().Elem(), domain) ||
+			(domain == projectedValueDomain && value.Type().PkgPath() != "") {
+			return reflect.Value{}, false
+		}
+		out := reflect.New(value.Type()).Elem()
+		for i := range value.Len() {
+			cloned, ok := cloneCompositeValue(value.Index(i), active, domain)
+			if !ok {
+				return reflect.Value{}, false
+			}
+			out.Index(i).Set(cloned)
+		}
+		return out, true
+	case reflect.Float32, reflect.Float64:
+		if !scalarTypeAllowedForDomain(value.Type(), domain) ||
+			math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
+			return reflect.Value{}, false
+		}
+		return value, true
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return value, scalarTypeAllowedForDomain(value.Type(), domain)
+	case reflect.Chan, reflect.Complex64, reflect.Complex128, reflect.Func,
+		reflect.Pointer, reflect.Struct, reflect.UnsafePointer:
+		return reflect.Value{}, false
+	default:
+		return reflect.Value{}, false
+	}
+}
+
+func isSupportedSequenceType(valueType reflect.Type) bool {
+	if valueType == reflect.TypeOf([]any(nil)) ||
+		valueType == reflect.TypeOf([]map[string]any(nil)) {
+		return true
+	}
+	return valueType.PkgPath() == "" && isSupportedScalarType(valueType.Elem())
+}
+
+func isCopyableSourceSequenceType(valueType reflect.Type) bool {
+	if valueType == reflect.TypeOf([]any(nil)) ||
+		valueType == reflect.TypeOf([]map[string]any(nil)) {
+		return true
+	}
+	return (valueType.Kind() == reflect.Slice || valueType.Kind() == reflect.Array) &&
+		isCopyableSourceScalarType(valueType.Elem())
+}
+
+func isSupportedScalarType(valueType reflect.Type) bool {
+	builtin := builtinScalarType(valueType)
+	return builtin != nil && valueType == builtin
+}
+
+func isCopyableSourceScalarType(valueType reflect.Type) bool {
+	return builtinScalarType(valueType) != nil
+}
+
+func scalarTypeAllowedForDomain(valueType reflect.Type, domain valueCopyDomain) bool {
+	if domain == sourceValueDomain {
+		return isCopyableSourceScalarType(valueType)
+	}
+	return isSupportedScalarType(valueType)
+}
+
+func sequenceTypeAllowedForDomain(valueType reflect.Type, domain valueCopyDomain) bool {
+	if domain == sourceValueDomain {
+		return isCopyableSourceSequenceType(valueType)
+	}
+	return isSupportedSequenceType(valueType)
+}
+
+func isSupportedProjectedValue(value reflect.Value, active map[copyVisit]bool) bool {
+	if !value.IsValid() {
+		return true
+	}
+	if value.CanInterface() {
+		if number, ok := value.Interface().(json.Number); ok {
+			_, err := json.Marshal(number)
+			return err == nil
+		}
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		return value.IsNil() || isSupportedProjectedValue(value.Elem(), active)
+	case reflect.Slice:
+		if !isSupportedSequenceType(value.Type()) {
+			return false
+		}
+		if value.IsNil() {
+			return true
+		}
+		visit := copyVisit{
+			typeOf: value.Type(), pointer: value.Pointer(), length: value.Len(), capacity: value.Cap(),
+		}
+		if active[visit] {
+			return false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		for i := range value.Len() {
+			if !isSupportedProjectedValue(value.Index(i), active) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if value.Type() != reflect.TypeOf(map[string]any(nil)) {
+			return false
+		}
+		if value.IsNil() {
+			return true
+		}
+		visit := copyVisit{typeOf: value.Type(), pointer: value.Pointer()}
+		if active[visit] {
+			return false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		iter := value.MapRange()
+		for iter.Next() {
+			if !isSupportedProjectedValue(iter.Value(), active) {
+				return false
+			}
+		}
+		return true
+	case reflect.Array:
+		if !isSupportedSequenceType(value.Type()) {
+			return false
+		}
+		for i := range value.Len() {
+			if !isSupportedProjectedValue(value.Index(i), active) {
+				return false
+			}
+		}
+		return true
+	case reflect.Float32, reflect.Float64:
+		return isSupportedScalarType(value.Type()) &&
+			!math.IsNaN(value.Float()) && !math.IsInf(value.Float(), 0)
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return isSupportedScalarType(value.Type())
+	default:
+		return false
 	}
 }
 

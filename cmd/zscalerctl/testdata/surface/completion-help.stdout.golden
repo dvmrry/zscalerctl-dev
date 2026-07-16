@@ -22,7 +22,7 @@ Global Flags:
       --log-level string     diagnostic logging to stderr: off, error, warn, info, debug (default "off")
       --no-cache             bypass API cache where supported
       --no-color             disable color output
-      --output string        output path
+      --output string        create or replace an output file (not valid with dump)
       --profile string       profile name
       --redaction string     redaction mode: standard, share, paranoid
       --search string        narrow list results to records whose rendered values contain term (case-insensitive)

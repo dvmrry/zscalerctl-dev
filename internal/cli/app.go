@@ -85,7 +85,7 @@ type ResourceReader interface {
 }
 
 type machineReadExecutor interface {
-	Execute(context.Context, machine.Request) (machine.Response, error)
+	Read(context.Context, machine.ResourceReadRequest) (machine.ResourceReadResult, error)
 }
 
 type machineRuntime interface {
@@ -753,7 +753,7 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	// that invoke runProduct directly (e.g. tests) and as protection against any
 	// future routing changes.
 	if product == resources.ProductZIA && resource == urlLookupCommandName {
-		return a.runURLLookup(ctx, cfg, opts, args[1:])
+		return a.runURLLookup(ctx, opts, args[1:])
 	}
 	// When the resource is recognized, prefer help that lists its actual
 	// operations and renderable fields over the generic per-product usage.
@@ -835,14 +835,11 @@ func (a *App) executeMachineRead(
 	rt machineRuntime,
 	opts globalOptions,
 ) (resources.ProjectedRecords, error) {
-	resp, err := rt.Execute(ctx, machineReadRequest(spec.Product, spec.Name, op, recordID, opts))
+	result, err := rt.Read(ctx, machineReadRequest(spec.Product, spec.Name, op, recordID, opts))
 	if err != nil {
 		return resources.ProjectedRecords{}, cliErrorFromMachineRead(err)
 	}
-	if resp.Error != nil {
-		return resources.ProjectedRecords{}, cliErrorFromMachineRead(resp.Error)
-	}
-	return projectedRecordsFromMachineResponse(spec, rt.Redaction(), resp)
+	return verifiedProjectedRecordsFromMachineResult(spec, rt.Redaction(), result)
 }
 
 func (a *App) machineRuntime(ctx context.Context, cfg config.Config, opts globalOptions) (machineRuntime, error) {
@@ -869,8 +866,8 @@ func machineReadRequest(
 	op string,
 	recordID string,
 	opts globalOptions,
-) machine.Request {
-	input := &machine.Input{
+) machine.ResourceReadRequest {
+	input := machine.ResourceReadInput{
 		Product:  string(product),
 		Resource: resource,
 		Fields:   opts.fields,
@@ -880,10 +877,9 @@ func machineReadRequest(
 	if op == string(machine.OperationGet) {
 		input.RecordID = recordID
 	}
-	return machine.Request{
-		Capability: machine.CapabilityResourcesRead,
-		Operation:  machine.Operation(op),
-		Input:      input,
+	return machine.ResourceReadRequest{
+		Operation: machine.Operation(op),
+		Input:     input,
 	}
 }
 
@@ -903,14 +899,14 @@ func machineFilters(filters []recordFilter) []machine.Filter {
 	return out
 }
 
-func projectedRecordsFromMachineResponse(
+func verifiedProjectedRecordsFromMachineResult(
 	spec resources.ResourceSpec,
 	mode redact.Mode,
-	resp machine.Response,
+	result machine.ResourceReadResult,
 ) (resources.ProjectedRecords, error) {
-	projected, err := resources.NewVerifiedProjectedRecordsFromProjectedFields(spec, mode, resp.Records)
-	if err != nil {
-		return resources.ProjectedRecords{}, fmt.Errorf("machine response verification failed for %s/%s: %w", spec.Product, spec.Name, err)
+	projected := result.Records()
+	if err := resources.VerifyProjectedRecords(spec, mode, projected); err != nil {
+		return resources.ProjectedRecords{}, fmt.Errorf("machine result verification failed for %s/%s: %w", spec.Product, spec.Name, err)
 	}
 	return projected, nil
 }

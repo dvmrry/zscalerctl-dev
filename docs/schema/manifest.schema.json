@@ -56,7 +56,7 @@
       "properties": {
         "product": { "type": "string", "description": "Product family, e.g. zia, zpa, ztw, zcc, zidentity." },
         "name": { "type": "string", "description": "Resource name within the product." },
-        "shape": { "type": "string", "description": "Resource shape (e.g. singleton); omitted for ordinary list resources." },
+        "shape": { "type": "string", "description": "Catalog resource shape; omitted for ordinary list resources and currently emitted only as singleton." },
         "status": { "type": "string", "enum": ["ok", "error"], "description": "Per-resource collection status." },
         "path": { "type": "string", "description": "Relative path to the resource's JSON file; omitted on error." },
         "records": { "type": "integer", "minimum": 0, "description": "Number of projected records written." },

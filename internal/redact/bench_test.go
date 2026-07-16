@@ -13,6 +13,7 @@ const dirtyField = "password=hunter2hunter2"
 
 // cleanBody is a ~100KB clean JSON-ish body built once at init; no date/rand.
 var cleanBody = strings.Repeat(`{"id":12345,"name":"Acme Corp HQ","enabled":true},`, 2048)
+var cleanJSONBody = `[` + strings.TrimSuffix(cleanBody, ",") + `]`
 
 func BenchmarkScanStringClean(b *testing.B) {
 	r := New(ModeStandard)
@@ -45,6 +46,17 @@ func BenchmarkBytesCleanBody(b *testing.B) {
 	r := New(ModeStandard)
 	body := []byte(cleanBody)
 	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.Bytes(body)
+	}
+}
+
+func BenchmarkBytesCleanJSONBody(b *testing.B) {
+	r := New(ModeStandard)
+	body := []byte(cleanJSONBody)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.Bytes(body)

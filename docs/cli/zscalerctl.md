@@ -17,7 +17,7 @@ These flags are accepted by every command:
 | `--log-level` | `string` | `off` | diagnostic logging to stderr: off, error, warn, info, debug |
 | `--no-cache` | `bool` | `false` | bypass API cache where supported |
 | `--no-color` | `bool` | `false` | disable color output |
-| `--output` | `string` | `—` | output path |
+| `--output` | `string` | `—` | create or replace an output file (not valid with dump) |
 | `--profile` | `string` | `—` | profile name |
 | `--redaction` | `string` | `—` | redaction mode: standard, share, paranoid |
 | `--search` | `string` | `—` | narrow list results to records whose rendered values contain term (case-insensitive) |

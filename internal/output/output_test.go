@@ -3,6 +3,8 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -158,17 +160,21 @@ func TestRendererWriteJSONUsesSecretSafeMarshalAndBackstopRedaction(t *testing.T
 	t.Parallel()
 
 	const raw = "client-secret-from-response"
+	const authorizationCanary = "output-authorization-canary"
 	var buf bytes.Buffer
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
 	err := renderer.WriteJSON(&buf, safeJSONFixture{
-		AuthHeader: "Authorization: Bearer raw-bearer-token",
+		AuthHeader: "set the Authorization: Bearer " + authorizationCanary + " header",
 		Secret:     secret.New(raw),
 	})
 	if err != nil {
 		t.Fatalf("Renderer.WriteJSON() error = %v, want nil", err)
 	}
 	got := buf.String()
-	for _, forbidden := range []string{raw, "raw-bearer-token"} {
+	if !json.Valid([]byte(got)) {
+		t.Errorf("Renderer.WriteJSON() = invalid JSON %q, want valid JSON", got)
+	}
+	for _, forbidden := range []string{raw, authorizationCanary} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("Renderer.WriteJSON() = %q, want no %q", got, forbidden)
 		}
@@ -212,14 +218,20 @@ func TestRendererWriteTextRedactsText(t *testing.T) {
 func TestRendererWriteNDJSONOneCompactRecordPerLineAndRedacts(t *testing.T) {
 	t.Parallel()
 
+	const firstAuthorizationCanary = "first-output-authorization-canary"
+	const secondAuthorizationCanary = "second-output-authorization-canary"
 	var buf bytes.Buffer
+	redactingWriter := redact.NewWriter(&buf, redact.ModeStandard)
 	renderer := output.NewRenderer(redact.New(redact.ModeStandard))
-	err := renderer.WriteNDJSON(&buf, []output.SafeJSON{
-		safeJSONFixture{AuthHeader: "first", Secret: secret.New("client-secret-from-response")},
-		safeJSONFixture{AuthHeader: "second", Secret: secret.New("another-client-secret")},
+	err := renderer.WriteNDJSON(redactingWriter, []output.SafeJSON{
+		safeJSONFixture{AuthHeader: "set the Authorization: Bearer " + firstAuthorizationCanary + " header", Secret: secret.New("client-secret-from-response")},
+		safeJSONFixture{AuthHeader: "set the Authorization: Bearer " + secondAuthorizationCanary + " header", Secret: secret.New("another-client-secret")},
 	})
 	if err != nil {
 		t.Fatalf("Renderer.WriteNDJSON() error = %v, want nil", err)
+	}
+	if err := redactingWriter.Close(); err != nil {
+		t.Fatalf("redactingWriter.Close() error = %v, want nil", err)
 	}
 	got := buf.String()
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
@@ -237,13 +249,97 @@ func TestRendererWriteNDJSONOneCompactRecordPerLineAndRedacts(t *testing.T) {
 		}
 	}
 	// secret.Secret marshals to <REDACTED:SECRET>, so the raw values never appear.
-	for _, forbidden := range []string{"client-secret-from-response", "another-client-secret"} {
+	for _, forbidden := range []string{"client-secret-from-response", "another-client-secret", firstAuthorizationCanary, secondAuthorizationCanary} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("WriteNDJSON() = %q, leaked %q", got, forbidden)
 		}
 	}
 	if !strings.Contains(got, "<REDACTED:SECRET>") {
 		t.Errorf("WriteNDJSON() = %q, want redaction marker present", got)
+	}
+}
+
+func TestRendererThroughRedactingWriterPreservesLongJSONNumbers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		write  func(output.Renderer, io.Writer) error
+		ndjson bool
+	}{
+		{
+			name: "json",
+			write: func(renderer output.Renderer, writer io.Writer) error {
+				return renderer.WriteJSON(writer, longNumberJSONFixture{})
+			},
+		},
+		{
+			name: "ndjson",
+			write: func(renderer output.Renderer, writer io.Writer) error {
+				return renderer.WriteNDJSON(writer, []output.SafeJSON{longNumberJSONFixture{}, longNumberJSONFixture{}})
+			},
+			ndjson: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var destination bytes.Buffer
+			outer := redact.NewWriter(&destination, redact.ModeStandard)
+			renderer := output.NewRenderer(redact.New(redact.ModeStandard))
+			if err := tt.write(renderer, outer); err != nil {
+				t.Fatalf("render through redacting writer error = %v", err)
+			}
+			if err := outer.Close(); err != nil {
+				t.Fatalf("redacting writer Close() error = %v", err)
+			}
+
+			if !tt.ndjson {
+				assertLongNumberJSONFixtureOutput(t, destination.Bytes())
+				return
+			}
+
+			lines := strings.Split(strings.TrimSuffix(destination.String(), "\n"), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("rendered NDJSON line count = %d, want 2: %q", len(lines), destination.String())
+			}
+			for i, line := range lines {
+				t.Run(fmt.Sprintf("record-%d", i+1), func(t *testing.T) {
+					assertLongNumberJSONFixtureOutput(t, []byte(line))
+				})
+			}
+		})
+	}
+}
+
+func assertLongNumberJSONFixtureOutput(t *testing.T, body []byte) {
+	t.Helper()
+
+	const number = "1234567890123456.789012345678901e+2"
+	if !json.Valid(body) {
+		t.Fatalf("rendered JSON is invalid: %q", string(body))
+	}
+	var decoded struct {
+		Credential        string      `json:"credential"`
+		EscapedCredential string      `json:"escaped_credential"`
+		Value             json.Number `json:"value"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(rendered JSON) error = %v; body = %q", err, string(body))
+	}
+	if decoded.Value.String() != number {
+		t.Errorf("rendered numeric value = %q, want %q", decoded.Value, number)
+	}
+	for field, value := range map[string]string{
+		"credential":         decoded.Credential,
+		"escaped_credential": decoded.EscapedCredential,
+	} {
+		if value != "<REDACTED:SECRET>" {
+			t.Errorf("rendered %s = %q, want secret marker", field, value)
+		}
 	}
 }
 
@@ -273,3 +369,11 @@ type safeIdentifierFixture struct {
 }
 
 func (safeIdentifierFixture) OutputSafe() {}
+
+type longNumberJSONFixture struct{}
+
+func (longNumberJSONFixture) OutputSafe() {}
+
+func (longNumberJSONFixture) MarshalJSON() ([]byte, error) {
+	return []byte(`{"message":"Authorization: Bearer numeric-authorization-canary","credential":"A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v","escaped_credential":"A7b9C2d\u0034E6f8G1h\u0033J5k7L9m\u0032N4p6Q8r\u0030S2t4U6v","value":1234567890123456.789012345678901e+2}`), nil
+}

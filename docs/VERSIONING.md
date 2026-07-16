@@ -33,6 +33,12 @@ carry versioned `schema` ids; drift tests keep them in sync with the emitting
 structs. Backward-compatible schema additions are minor releases; incompatible
 schema changes are breaking changes.
 
+Published schema URLs are immutable once a released payload embeds them. A new
+introspection contract therefore gets a new version-specific file and `$schema`
+URL (for example, `introspect-v2.schema.json`); the legacy
+`introspect.schema.json` path remains frozen for v1 validation. Never repoint an
+older embedded URL at an incompatible shape.
+
 The 1.0 supported surface is defined in
 [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md). In short, it covers
 the audited read-only CLI command/flag/output/error/dump/diff/schema surfaces,
@@ -47,11 +53,13 @@ Process exit codes are also part of the contract: `0` success, `1` internal,
 canceled, or unclassified error, `2` usage (including invalid CLI flags, an
 invalid resource id, an invalid `ZSCALERCTL_*` configuration value, and invalid
 proxy configuration), `3` missing or invalid credentials, `4` resource not found
-or unsupported (including a product/resource the tenant is not entitled to, or a
-get-by-ID whose ID does not exist), `5` live API access failure, and `6` partial
-dump. Machine `not_found` maps to `4`, `deadline_exceeded` maps to `5`, and
-`canceled` maps to `1`. Changing the meaning of an exit code is a breaking
-change. Exit code `7` means drift detected when `diff --fail-on-drift` is used.
+or unsupported (including an unsupported machine capability/operation, a
+product/resource the tenant is not entitled to, or a get-by-ID whose ID does not
+exist), `5` live API access failure, and `6` partial dump. Machine `not_found`,
+`unsupported_capability`, and `unsupported_operation` map to `4`,
+`deadline_exceeded` maps to `5`, and `canceled` maps to `1`. Changing the meaning
+of an exit code is a breaking change. Exit code `7` means drift detected when
+`diff --fail-on-drift` is used.
 
 ## After 1.0.0
 

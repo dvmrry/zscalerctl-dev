@@ -36,8 +36,9 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 	catalog := a.resourceCatalog()
 
 	cmd := &cobra.Command{
-		Use:   string(product),
-		Short: "read " + string(product) + " resources",
+		Use:         string(product),
+		Short:       "read " + string(product) + " resources",
+		Annotations: map[string]string{effectsAnnotation: credentialedReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
@@ -132,6 +133,7 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 			// url-lookup emits structured JSON; record the field order so
 			// buildSingleCommandDoc can populate OutputFields.
 			"introspect/output-fields": strings.Join(urlLookupFieldOrder, ","),
+			effectsAnnotation:          credentialedReadEffects,
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// DisableFlagParsing means --help arrives as a raw arg; handle it
@@ -141,15 +143,7 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 					return cmd.Help()
 				}
 			}
-			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
-				Profile:    opts.profile,
-				ConfigPath: opts.configPath,
-			})
-			if err != nil {
-				return err
-			}
-			applyOptions(&cfg, opts)
-			return a.runURLLookup(cmd.Context(), cfg, opts, args)
+			return a.runURLLookup(cmd.Context(), opts, args)
 		},
 	}
 }

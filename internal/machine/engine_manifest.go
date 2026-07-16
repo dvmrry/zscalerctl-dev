@@ -1,0 +1,279 @@
+package machine
+
+import "github.com/dvmrry/zscalerctl/internal/resources"
+
+const (
+	// EngineManifestVersion is the version of the candidate in-process engine
+	// capability model. It is independent from the supported machine.v1
+	// manifest and from any future wire-protocol version.
+	EngineManifestVersion = "engine.v1"
+
+	// CapabilityEngineManifest identifies config-free engine discovery.
+	CapabilityEngineManifest = "engine.manifest"
+
+	// CapabilityCatalogSchema identifies config-free projected catalog
+	// discovery.
+	CapabilityCatalogSchema = "catalog.schema"
+
+	// CapabilityStatusInspect identifies config-backed, SDK-free status views.
+	CapabilityStatusInspect = "status.inspect"
+
+	// CapabilityZIAURLLookup identifies the specialized ZIA URL classifier.
+	CapabilityZIAURLLookup = "zia.url_lookup"
+
+	// CapabilityDumpWrite identifies sanitized tenant collection plus local
+	// dump-artifact writing.
+	CapabilityDumpWrite = "dump.write"
+
+	// CapabilityDiffCompare identifies local comparison of two admitted dump
+	// artifacts.
+	CapabilityDiffCompare = "diff.compare"
+)
+
+// EngineInputKind identifies one closed family of typed engine inputs.
+type EngineInputKind string
+
+const (
+	EngineInputNone         EngineInputKind = "none"
+	EngineInputResourceRead EngineInputKind = "resource_read"
+	EngineInputStatus       EngineInputKind = "status"
+	EngineInputURLLookup    EngineInputKind = "url_lookup"
+	EngineInputDump         EngineInputKind = "dump"
+	EngineInputDiff         EngineInputKind = "diff"
+)
+
+// EngineResultKind identifies one closed family of safe engine results.
+type EngineResultKind string
+
+const (
+	EngineResultManifest           EngineResultKind = "engine_manifest"
+	EngineResultCatalog            EngineResultKind = "resource_catalog"
+	EngineResultStatus             EngineResultKind = "status"
+	EngineResultProjectedRecords   EngineResultKind = "projected_records"
+	EngineResultURLClassifications EngineResultKind = "url_classifications"
+	EngineResultDumpSummary        EngineResultKind = "dump_summary"
+	EngineResultDiffReport         EngineResultKind = "diff_report"
+)
+
+// EngineEffectKind identifies a possible observable engine effect.
+type EngineEffectKind string
+
+const (
+	EngineEffectLocalFilesystemRead   EngineEffectKind = "local_filesystem_read"
+	EngineEffectLocalFilesystemWrite  EngineEffectKind = "local_filesystem_write"
+	EngineEffectLocalFilesystemDelete EngineEffectKind = "local_filesystem_delete"
+	EngineEffectNetworkAccess         EngineEffectKind = "network_access"
+	EngineEffectProcessExecution      EngineEffectKind = "process_execution"
+)
+
+// EngineEffectCondition identifies when a possible effect may occur.
+type EngineEffectCondition string
+
+const (
+	EngineEffectAlways                 EngineEffectCondition = "always"
+	EngineEffectRequestDependent       EngineEffectCondition = "request_dependent"
+	EngineEffectConfigurationDependent EngineEffectCondition = "configuration_dependent"
+)
+
+// EngineEffect describes one conservative end-to-end capability effect.
+type EngineEffect struct {
+	Kind EngineEffectKind
+	When EngineEffectCondition
+}
+
+// EngineCapability describes one candidate in-process operation family.
+type EngineCapability struct {
+	Name           string
+	Operations     []Operation
+	Input          EngineInputKind
+	Result         EngineResultKind
+	TenantReadOnly bool
+	Effects        []EngineEffect
+}
+
+// EngineManifest describes typed capabilities implemented by the common local
+// engine. It is candidate Go API metadata, not the supported machine.v1
+// manifest and not a wire representation.
+type EngineManifest struct {
+	Version        string
+	TenantReadOnly bool
+	Capabilities   []EngineCapability
+}
+
+// MarshalJSON rejects direct EngineManifest serialization. Future transports
+// must define a separately versioned capability-manifest DTO.
+func (EngineManifest) MarshalJSON() ([]byte, error) {
+	return nil, errEngineTypeHasNoWireFormat
+}
+
+// UnmarshalJSON rejects direct EngineManifest deserialization.
+func (*EngineManifest) UnmarshalJSON([]byte) error {
+	return errEngineTypeHasNoWireFormat
+}
+
+// EngineManifestFromCatalog derives candidate engine discovery from the same
+// catalog that drives resource execution. It loads no config, resolves no
+// credentials, constructs no SDK client, and contacts no tenant.
+func EngineManifestFromCatalog(catalog resources.ResourceCatalog) EngineManifest {
+	capabilities := []EngineCapability{{
+		Name:           CapabilityEngineManifest,
+		Operations:     []Operation{OperationManifest},
+		Input:          EngineInputNone,
+		Result:         EngineResultManifest,
+		TenantReadOnly: true,
+		Effects:        []EngineEffect{},
+	}}
+
+	catalogReadOnly := resources.AssertReadOnly(catalog...) == nil
+	if catalogReadOnly {
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityCatalogSchema,
+			Operations:     []Operation{OperationList},
+			Input:          EngineInputNone,
+			Result:         EngineResultCatalog,
+			TenantReadOnly: true,
+			Effects:        []EngineEffect{},
+		})
+	}
+
+	capabilities = append(capabilities, EngineCapability{
+		Name: CapabilityStatusInspect,
+		Operations: []Operation{
+			OperationDoctor,
+			OperationAuthStatus,
+			OperationConfigStatus,
+		},
+		Input:          EngineInputStatus,
+		Result:         EngineResultStatus,
+		TenantReadOnly: true,
+		Effects: []EngineEffect{{
+			Kind: EngineEffectLocalFilesystemRead,
+			When: EngineEffectConfigurationDependent,
+		}},
+	})
+
+	capabilities = append(capabilities, EngineCapability{
+		Name:           CapabilityZIAURLLookup,
+		Operations:     []Operation{OperationLookup},
+		Input:          EngineInputURLLookup,
+		Result:         EngineResultURLClassifications,
+		TenantReadOnly: true,
+		Effects: []EngineEffect{
+			{
+				Kind: EngineEffectLocalFilesystemRead,
+				When: EngineEffectConfigurationDependent,
+			},
+			{
+				Kind: EngineEffectNetworkAccess,
+				When: EngineEffectAlways,
+			},
+			{
+				Kind: EngineEffectProcessExecution,
+				When: EngineEffectConfigurationDependent,
+			},
+		},
+	})
+
+	readOps := map[Operation]bool{}
+	if catalogReadOnly {
+		for _, spec := range catalog {
+			for _, op := range readOperationsFromSpec(spec) {
+				if IsResourceReadOperation(op) {
+					readOps[op] = true
+				}
+			}
+		}
+	}
+	if len(readOps) > 0 {
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityResourcesRead,
+			Operations:     sortedOperations(readOps),
+			Input:          EngineInputResourceRead,
+			Result:         EngineResultProjectedRecords,
+			TenantReadOnly: true,
+			Effects: []EngineEffect{
+				{
+					Kind: EngineEffectLocalFilesystemRead,
+					When: EngineEffectConfigurationDependent,
+				},
+				{
+					Kind: EngineEffectNetworkAccess,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectProcessExecution,
+					When: EngineEffectConfigurationDependent,
+				},
+			},
+		})
+	}
+
+	if catalogReadOnly && catalogSupportsDump(catalog) {
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityDumpWrite,
+			Operations:     []Operation{OperationDump},
+			Input:          EngineInputDump,
+			Result:         EngineResultDumpSummary,
+			TenantReadOnly: true,
+			Effects: []EngineEffect{
+				{
+					Kind: EngineEffectLocalFilesystemRead,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectLocalFilesystemWrite,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectLocalFilesystemDelete,
+					When: EngineEffectRequestDependent,
+				},
+				{
+					Kind: EngineEffectNetworkAccess,
+					When: EngineEffectAlways,
+				},
+				{
+					Kind: EngineEffectProcessExecution,
+					When: EngineEffectConfigurationDependent,
+				},
+			},
+		})
+
+		capabilities = append(capabilities, EngineCapability{
+			Name:           CapabilityDiffCompare,
+			Operations:     []Operation{OperationDiff},
+			Input:          EngineInputDiff,
+			Result:         EngineResultDiffReport,
+			TenantReadOnly: true,
+			Effects: []EngineEffect{{
+				Kind: EngineEffectLocalFilesystemRead,
+				When: EngineEffectAlways,
+			}},
+		})
+	}
+
+	return EngineManifest{
+		Version:        EngineManifestVersion,
+		TenantReadOnly: true,
+		Capabilities:   capabilities,
+	}
+}
+
+func catalogSupportsDump(catalog resources.ResourceCatalog) bool {
+	seen := make(map[string]bool, len(catalog))
+	hasDumpResource := false
+	for _, spec := range catalog {
+		if err := spec.Validate(); err != nil {
+			return false
+		}
+		key := string(spec.Product) + "/" + spec.Name
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		if spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show") {
+			hasDumpResource = true
+		}
+	}
+	return hasDumpResource
+}

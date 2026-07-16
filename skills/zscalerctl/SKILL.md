@@ -5,8 +5,12 @@ description: Use when asked about Zscaler tenant configuration, inventory, or au
 
 # zscalerctl
 
-Read-only CLI for Zscaler tenant configuration. Safe to explore: no command
-can modify tenant state.
+Tenant-read-only CLI for Zscaler configuration: no command can modify tenant
+state. Local and process effects are separate. Inspect `zscalerctl --format
+json introspect` `effects` before delegation. Config-loading commands may read
+local files; live reads may execute configured `cmd:` or keyring helpers;
+`config init`, `dump --out`, and global `--output` write locally, and
+force/overwrite modes can replace existing local data.
 
 ## Cold start
 
@@ -18,8 +22,8 @@ can modify tenant state.
    the `resources.read` product/resource pairs, supported `list`/`get`/`show`
    operations, projected-record schema refs, and read-only metadata without
    loading config, resolving credentials, constructing SDK clients, or
-   contacting Zscaler. Use `zscalerctl introspect` when you need the full CLI
-   command/flag surface, `zscalerctl --format json schema list` when you need
+   contacting Zscaler. Use `zscalerctl --format json introspect` when you need
+   the full CLI command/flag/effect surface, `zscalerctl --format json schema list` when you need
    catalog field metadata, and `zscalerctl <product> --help` only as a syntax
    fallback after discovery.
 3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
@@ -32,6 +36,8 @@ can modify tenant state.
    no shell and can be disabled with `ZSCALERCTL_DISALLOW_CMD=true`. If any are
    missing, ask the operator to set them — values and provider commands are
    environment-specific; do not invent them or hunt through shell config.
+   Treat `configuration_dependent` effects as possible unless the effective
+   config, environment, provider, and platform are reviewed and pinned.
 4. **Read:** `zscalerctl --format json <product> <resource> list | get <id> | show`,
    e.g. `zscalerctl --format json zia locations list`. Pass `--format json`
    explicitly rather than relying on piped auto-JSON; use `--format ndjson`
@@ -47,6 +53,9 @@ can modify tenant state.
 - `--fields a,b,c` narrows output; `zscalerctl dump --products zia --out DIR`
   writes a sanitized export. A long dump is silent by default; add
   `--log-level info` for start, per-resource, and completion progress on stderr.
+- Prefer stdout for agent reads. `--output PATH` creates or atomically replaces
+  a restricted regular file and should be used only with explicit local-write
+  authorization; it is not valid with `dump`.
 - `zscalerctl --format json diff OLD_DUMP_DIR NEW_DUMP_DIR` compares two
   existing dumps. It does not schedule collection or contact Zscaler; use cron,
   CI, or another scheduler to create dumps on a cadence.

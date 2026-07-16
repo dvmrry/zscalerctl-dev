@@ -21,8 +21,7 @@ func TestMachineContractRequestJSONRoundTrip(t *testing.T) {
 			Filters: []machine.Filter{
 				{Field: "status", Operator: "=", Value: "active"},
 			},
-			Search:  "hq",
-			Options: map[string]string{"encoding": "json"},
+			Search: "hq",
 		},
 		Meta: &machine.Meta{Version: "1", RequestID: "req-get-location"},
 	}

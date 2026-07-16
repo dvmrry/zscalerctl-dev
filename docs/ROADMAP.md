@@ -102,6 +102,17 @@ chosen, picks a validated baseline commit.
    policy (`format_policy.go`). Mechanical moves only; boundary and golden
    tests pass after each move; not interleaved with Phase 3 PRs.
    `semver:none`.
+5. **`refactor(resources,zscaler)`: split dominant catalog and adapter files by
+   reviewed resource family.** Move `catalog_zia.go` entries and the large
+   source-record conversion blocks in `reader.go` into cohesive family files
+   without changing catalog order, field classifications, source mappings, or
+   runtime registration. Land this as small mechanical PRs, each gated by field
+   coverage, SDK-shape, resource-reference, CLI-doc, introspection, and golden
+   checks. Generators may remove repetitive syntax only when their inputs are
+   reviewed declarations; they must never infer safe fields, redaction modes,
+   ignored SDK fields, or sensitivity classifications from SDK names. Add a
+   per-file size/ownership inventory before the first move and record unchanged
+   resource/field counts in every handoff. `semver:none`.
 
 ## Phase 3 — Human CLI polish (can run parallel to Phase 2 if PRs stay small)
 
@@ -123,8 +134,8 @@ throughout.
    truncation policy and no width-dependent field meaning; key-value cards for
    get/show; styled doctor/auth). Same projected/redacted records,
    presentation only. `semver:minor`.
-5. **`feat(cli)`: dump progress styling** over the existing
-   `DumpProgressFunc` (stderr, TTY-only). `semver:minor`.
+5. **`feat(cli)`: dump progress styling** over the shared operation event
+   stream (stderr, TTY-only). `semver:minor`.
 6. **(Optional) Bubble Tea experiment** — only under experiment rules, scoped
    as a human browse/explore adapter consuming safe seams; see promotion
    criteria table. Post-1.0 only.
@@ -147,6 +158,53 @@ throughout.
    `DumpProgressFunc` seam or adapting it on top).
 5. **Tests** for cancel/deadline/partial-error event sequences.
 `semver:minor` (candidate seam).
+
+## Phase 4.5 — Common local engine and cross-language protocol
+
+The accepted architecture is in
+[ENGINE_API_DESIGN.md](ENGINE_API_DESIGN.md). The official Go SDK remains the
+only Zscaler API implementation; the CLI and every frontend consume one
+zscalerctl operation engine above it.
+
+1. **Engine contract checkpoint.** Define domain-operation scope versus
+   adapter-only behavior, trusted-runtime boundaries, effect metadata,
+   candidate/support status, and the no-network-listener rule. `semver:none`.
+2. **Typed capability model.** Replace the loose candidate `Input.Options`
+   escape hatch before adding non-resource operations. Add capability-specific
+   inputs, safe result/item families, execution settings, and a separately
+   versioned engine capability manifest. Keep supported `machine.v1` byte
+   frozen. The typed resource-read family and in-process `engine.v1` discovery
+   are the initial foundation; remaining families land with their migrations.
+   `semver:minor` when exposed through a supported CLI command.
+3. **CLI dogfooding.** Move catalog/status/URL-lookup/dump/diff semantics behind
+   the engine in small PRs. Cobra remains an in-process parser/renderer and does
+   not spawn the stdio adapter. Existing CLI goldens, error envelopes, and exit
+   codes remain unchanged unless deliberately versioned.
+4. **Wire design before process code.** The candidate v1 checkpoint is
+   [ENGINE_STDIO_PROTOCOL_V1.md](ENGINE_STDIO_PROTOCOL_V1.md), with immutable
+   bootstrap and v1 schema identities plus byte hashes under `docs/schema/`.
+   It specifies strict bounded NDJSON, negotiation, process-monotonic IDs,
+   event sequences, preflighted fragmented items, atomic reads, cancellation,
+   one-operation backpressure, protocol errors, stdout/stderr separation, and
+   joined EOF/broken-pipe/signal behavior.
+   Internal `Event` values are explicitly converted, never serialized directly.
+5. **Strict Go codec foundation.** `internal/enginewire` covers all four
+   bootstrap and 31 v1 root frame branches with a standard-library-only,
+   bounded strict JSON/NDJSON implementation. A separate adapter maps trusted
+   engine values and deliberately strips local paths, raw error text, source
+   metadata, and unsupported credential names. Shared language-neutral codec
+   and framing fixtures are checked in. This checkpoint exposes no command.
+6. **Long-lived stdio experiment.** One coordinator owns process state and
+   output; one operation worker calls the synchronous engine; every goroutine
+   has cancellation and a wait path. No TCP, HTTP, SSE, or local web server.
+   The candidate Go host and `cmd/zscalerctl-engine` process adapter are
+   implemented; they are not release-packaged.
+7. **Reference clients and conformance.** Go codec plus TypeScript and Rust
+   clients run the same transcript fixtures. The Go codec/host and TypeScript
+   reference client checkpoints are implemented; Rust remains the second
+   independent promotion client. Promotion requires the CLI and at least two
+   independent consumers, cross-platform lifecycle tests, immutable protocol
+   schemas, and fresh-context compatibility/security review.
 
 ## Phase 5 — MCP experiment
 

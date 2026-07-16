@@ -40,9 +40,19 @@ func TestExitCodeForError(t *testing.T) {
 		{"resource_not_found", zscaler.ErrResourceNotFound, exitNotFound},
 		{"wrapped_resource_not_found", fmt.Errorf("zia get: %w", zscaler.ErrResourceNotFound), exitNotFound},
 		{"machine_not_found", &machine.MachineError{Kind: machine.ErrorKindNotFound}, exitNotFound},
+		{"machine_invalid_resource_id", &machine.MachineError{Kind: machine.ErrorKindInvalidResourceID}, exitUsageError},
 		{"machine_live_access_failed", &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}, exitLiveAccessFailure},
 		{"machine_deadline_exceeded", &machine.MachineError{Kind: machine.ErrorKindDeadlineExceeded}, exitLiveAccessFailure},
 		{"machine_canceled", &machine.MachineError{Kind: machine.ErrorKindCanceled}, exitInternalError},
+		{"machine_usage", &machine.MachineError{Kind: machine.ErrorKindUsage}, exitUsageError},
+		{"machine_unsupported_capability", &machine.MachineError{Kind: machine.ErrorKindUnsupportedCapability}, exitNotFound},
+		{"machine_unsupported_operation", &machine.MachineError{Kind: machine.ErrorKindUnsupportedOperation}, exitNotFound},
+		{"machine_invalid_config", &machine.MachineError{Kind: machine.ErrorKindInvalidConfig}, exitUsageError},
+		{"machine_invalid_proxy", &machine.MachineError{Kind: machine.ErrorKindInvalidProxyConfig}, exitUsageError},
+		{"machine_missing_credentials", &machine.MachineError{Kind: machine.ErrorKindMissingCredentials}, exitCredentialError},
+		{"machine_unknown_resource", &machine.MachineError{Kind: machine.ErrorKindUnknownResource}, exitNotFound},
+		{"machine_unsupported_resource", &machine.MachineError{Kind: machine.ErrorKindUnsupportedResource}, exitNotFound},
+		{"machine_internal", &machine.MachineError{Kind: machine.ErrorKindInternal}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
@@ -181,6 +191,89 @@ func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
 	}
 }
 
+func TestDumpOutputErrorsKeepActionableTextAndJSONMessages(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{
+			name: "unsafe force target",
+			err: fmt.Errorf(
+				"%w: --force target /tmp/not-a-dump is not a zscalerctl dump directory",
+				dump.ErrUnsafePath,
+			),
+			message: "unsafe dump path: --force target /tmp/not-a-dump is not a zscalerctl dump directory",
+		},
+		{
+			name:    "existing manifest",
+			err:     fmt.Errorf("%w: /tmp/dump/manifest.json", dump.ErrUnsafeOverwrite),
+			message: "refusing to overwrite existing dump file: /tmp/dump/manifest.json",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var textErr bytes.Buffer
+			writeError(&textErr, output.FormatTable, tc.err)
+			if got, want := textErr.String(), "zscalerctl: "+tc.message+"\n"; got != want {
+				t.Errorf("writeError(text) = %q, want %q", got, want)
+			}
+
+			var jsonErr bytes.Buffer
+			writeError(&jsonErr, output.FormatJSON, tc.err)
+			var envelope errorEnvelope
+			if err := json.Unmarshal(jsonErr.Bytes(), &envelope); err != nil {
+				t.Fatalf("json.Unmarshal(writeError JSON %q) error = %v", jsonErr.String(), err)
+			}
+			if envelope.Error.Message != tc.message {
+				t.Errorf("writeError(JSON).error.message = %q, want %q", envelope.Error.Message, tc.message)
+			}
+			if envelope.Error.Operation != "" || envelope.Error.Product != "" || envelope.Error.Resource != "" {
+				t.Errorf("writeError(JSON) context = %q/%q/%q, want empty legacy context",
+					envelope.Error.Operation, envelope.Error.Product, envelope.Error.Resource)
+			}
+		})
+	}
+}
+
+func TestRunInvalidResourceIDReturnsUsageWithoutNetwork(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeMainConfig(t, "profiles:\n  default: {}\n")
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"--config", configPath,
+		"--format", "json",
+		"zia", "locations", "get", "not-a-number",
+	}, &stdout, &stderr, []string{
+		config.EnvClientID + "=test-value",
+		config.EnvClientSecret + "=test-value",
+		config.EnvVanityDomain + "=example",
+		config.EnvCloud + "=PRODUCTION",
+	})
+	if code != exitUsageError {
+		t.Fatalf("run(invalid resource ID) exit code = %d, want %d; stderr = %q", code, exitUsageError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(invalid resource ID) stdout = %q, want empty", stdout.String())
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != machine.ErrorKindInvalidResourceID {
+		t.Errorf("run(invalid resource ID) kind = %q, want %q", got.Error.Kind, machine.ErrorKindInvalidResourceID)
+	}
+	if got.Error.Message != "invalid resource ID" {
+		t.Errorf("run(invalid resource ID) message = %q, want sanitized message", got.Error.Message)
+	}
+	if got.Error.Operation != "get" || got.Error.Product != "zia" || got.Error.Resource != "locations" {
+		t.Errorf("run(invalid resource ID) context = %q/%q/%q, want get/zia/locations", got.Error.Operation, got.Error.Product, got.Error.Resource)
+	}
+}
+
 func TestRunHelpReturnsSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -292,6 +385,32 @@ func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(got.Error.Message, "missing zscaler API credentials") {
 		t.Errorf("run(json missing credentials) message = %q, want missing credentials text", got.Error.Message)
+	}
+}
+
+func TestRunURLLookupCredentialErrorPreservesEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		context.Background(),
+		[]string{"--format", "json", "zia", "url-lookup", "example.com"},
+		&stdout,
+		&stderr,
+		[]string{"XDG_CONFIG_HOME=" + t.TempDir()},
+	)
+	if code != exitCredentialError {
+		t.Fatalf("run(URL lookup missing credentials) exit code = %d, want %d; stderr = %q", code, exitCredentialError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("run(URL lookup missing credentials) stdout = %q, want empty", stdout.String())
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != "missing_credentials" || len(got.Error.Missing) == 0 {
+		t.Fatalf("run(URL lookup missing credentials) envelope = %#v, want missing kind and names", got.Error)
+	}
+	if got.Error.Operation != "" || got.Error.Product != "" || got.Error.Resource != "" {
+		t.Fatalf("run(URL lookup missing credentials) context = %q/%q/%q, want legacy empty context", got.Error.Operation, got.Error.Product, got.Error.Resource)
 	}
 }
 
@@ -433,7 +552,7 @@ func writeDumpDirForMain(t *testing.T, product, resource, payload string) string
 		Warning:     "test fixture",
 		Status:      "complete",
 		Resources: []dump.ManifestResource{
-			{Product: product, Name: resource, Shape: "list", Status: "ok", Path: relPath, Records: 1},
+			{Product: product, Name: resource, Status: "ok", Path: relPath, Records: 1},
 		},
 	}
 	body, err := json.MarshalIndent(m, "", "  ")
@@ -442,6 +561,22 @@ func writeDumpDirForMain(t *testing.T, product, resource, payload string) string
 	}
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(manifest) error = %v", err)
+	}
+	reportBody, err := json.MarshalIndent(dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: "standard",
+		Resources: []dump.ResourceReport{{
+			Product: product,
+			Name:    resource,
+			Path:    relPath,
+			Records: 1,
+		}},
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(redaction report) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(redaction report) error = %v", err)
 	}
 	return dir
 }

@@ -1,6 +1,8 @@
-# Churn-history fingerprints — these commits exist in the PR history but are
-# superseded at HEAD. The allowlisted form is used in current HEAD.
+# Exact history fingerprints for superseded synthetic PEM fixtures. Current
+# HEAD constructs PEM-shaped test values at runtime and has no private-key
+# content/path allowlist; these entries cannot suppress a new finding.
 #
-# f7c579274d63e3421c646cab788836c65e8b3f1d: original dummyfake PEM fixture in
-# internal/redact/writer_test.go (replaced by key-material allowlisted form).
+# Each entry binds one immutable commit, path, rule, and detector fingerprint.
 f7c579274d63e3421c646cab788836c65e8b3f1d:internal/redact/writer_test.go:private-key:48
+b6e2569bfc53b61287cc6398055f44c363226627:internal/redact/redact_test.go:private-key:113
+11089fb0daf7a332ae0457f1e82216858d8ca32c:internal/redact/writer_test.go:private-key:59

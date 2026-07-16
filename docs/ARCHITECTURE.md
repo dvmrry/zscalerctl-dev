@@ -404,10 +404,26 @@ Dump writers should:
 
 - Use restrictive permissions.
 - Refuse unsafe overwrite by default.
-- Allow explicit `dump --force` only for empty directories or prior
-  zscalerctl dump directories, and clear the prior directory only after live
-  collection succeeds.
-- Write temporary files and rename atomically.
+- Build the complete artifact in a private sibling staging directory, reconcile
+  its manifest, redaction report, errors, resource paths, and file inventory,
+  then publish the directory atomically.
+- On POSIX, require the immediate output parent to be operator-owned and not
+  group- or world-writable. Any writable ancestor must be sticky and protect
+  the next operator-owned path component, keeping every pathname exchange in a
+  namespace another principal cannot rewrite. macOS ancestry checks are bound
+  to open handles and reject permit or unknown extended-ACL entries while
+  allowing deny-only ACLs.
+- Allow explicit `dump --force` only for empty directory trees or prior
+  structurally valid, complete zscalerctl dump directories with no foreign
+  files.
+- Use no-replace directory publication normally and atomic directory exchange
+  for replacement. If the filesystem/platform cannot exchange directories
+  atomically, fail closed instead of emulating replacement with a backup gap.
+- Never unlink public staging/quarantine pathnames after an identity check. Move
+  identity-matched roots into private quarantine first; empty 0700 quarantine
+  directory skeletons, including an empty `root/`, may remain because they
+  contain no tenant data and are safer than deleting through a possibly
+  substituted ancestor.
 - Avoid partial successful output looking complete.
 - Include enough manifest data to support review and diff workflows.
 
@@ -429,8 +445,12 @@ operation, and error kind. Credential/session creation failures remain fatal
 because they indicate that live read access itself is not trustworthy.
 
 Diff compares the already-projected dump files structurally, not as raw JSON
-text. Diffs require matching dump redaction modes and reject partial dumps unless
-the caller passes `--allow-partial`. Records are paired by three identity modes:
+text. Diffs require matching dump redaction modes and collection scopes for the
+resources selected for comparison, and
+reject partial dumps unless the caller passes `--allow-partial`. Manifest
+absence means not selected, while `status: error` means collection failed;
+neither state is interpreted as an empty successful resource. Records are paired
+by three identity modes:
 catalog `get_key` resources report added, removed, and changed records by key;
 singletons report changes to the single record; list-only resources without a
 stable key use a canonical content hash over non-operational fields and report

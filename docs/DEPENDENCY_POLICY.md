@@ -23,6 +23,8 @@ bash scripts/test-verify-ci-no-live-creds.sh
 bash scripts/verify-actions-pinned.sh
 bash scripts/test-verify-actions-pinned.sh
 make vuln
+make verify-go-toolchain
+make verify-typescript-client
 make verify-licenses
 go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
 gitleaks dir .
@@ -39,6 +41,14 @@ covered even though `tools/` is not vendored and does not define product
 packages. `govulncheck` must report no reachable vulnerabilities in either
 module. Non-reachable findings in required modules require a written review
 note before release.
+
+Every module's `go` directive is the strict patch-level compiler minimum, not
+just a language-family marker. It is currently `1.26.5`, the first patch used
+by this project that contains required standard-library security fixes.
+Redundant `toolchain` directives are forbidden because `go mod tidy` removes
+them when they equal the `go` directive. `make verify-go-toolchain` rejects a
+synchronized downgrade, an untracked nested module, a stale or missing
+`actions/setup-go` pin, and workflow pins that differ from the policy floor.
 
 ## SDK Upgrade Runbook
 
@@ -107,6 +117,22 @@ Promoting an experiment dependency into the root module requires the same
 dependency review as any supported dependency plus a surface-class decision for
 the feature that needs it.
 
+## TypeScript Reference Client
+
+The candidate client under `clients/typescript` uses Node 24.12 or newer's
+stable built-in erasable-TypeScript support and intentionally has no runtime,
+optional, or peer dependencies. It requires no package installation and runs no
+install scripts. `make verify-typescript-client` enforces that boundary and
+runs its shared-corpus and process-integration tests. CI provisions an exact
+Node release through a full-SHA-pinned `actions/setup-node` step with package
+caching disabled.
+
+Adding a package dependency, transpiler, runtime loader, lockfile, or package
+manager cache requires a deliberate dependency and threat review; it must not
+arrive as incidental frontend scaffolding. Type-only development tooling may be
+considered separately, but it remains outside the shipped runtime and must be
+pinned and integrity-locked before CI executes it.
+
 ## Machine Output Terminal Cleanliness
 
 Machine-readable output must stay free of terminal control sequences even when
@@ -120,7 +146,11 @@ changing terminal styling dependencies or startup paths.
 Renovate keeps Go dependencies and GitHub Actions current, but it does not
 automerge updates. GitHub Actions must remain pinned to full commit SHAs with an
 inline version comment so Renovate can update the digest while preserving a
-human-readable tag.
+human-readable tag. The pin gate parses workflow and local-action YAML instead
+of matching source lines, follows local reusable workflows and composite-action
+references, and scans every repository-local `action.yml` or `action.yaml` even
+when it is not currently referenced. Malformed, dynamic, aliased, duplicate-key,
+or repository-escaping executable structures fail closed.
 
 Release SBOM generation uses `cyclonedx-gomod` installed by `go install` from
 the committed `tools/go.mod` and `tools/go.sum` instead of a GitHub Action.
@@ -208,7 +238,17 @@ These thresholds are enforced by CI, not aspirational:
 Secret scanning is a merge blocker, not advisory: `make secret-scan` (part of
 `make check`) runs gitleaks over the working tree with the same `.gitleaks.toml`
 config as CI's `secret-scan` job, so an allowlist gap or a real leak is caught
-locally.
+locally. `make verify-gitleaks-allowlist` generates an ephemeral private key and
+proves the pinned scanner detects both the key alone and the historical
+composite-allowlist bypass shape. Private-key test fixtures are assembled only
+at runtime; there is no content/path private-key allowlist. Immutable historical
+fake fixtures use exact commit/path/rule/fingerprint entries in
+`.gitleaksignore`, specifically `commit:path:rule:line`. The history-policy
+gate rejects shallow clones, malformed or global fingerprints, and references
+to commits absent from local history before running the private-key history
+scan. CI therefore checks out full history for this verifier as well as for the
+main secret-scan job. Both workflows use the SHA-pinned Node-24 Gitleaks Action
+v3 runtime.
 
 Fuzzing uses the standard two-tier model, **not** a live-exploration blocking
 gate:

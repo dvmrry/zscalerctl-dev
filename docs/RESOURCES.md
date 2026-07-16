@@ -49,9 +49,35 @@ written. Use `--continue-on-error` only when a partial dump is acceptable; the
 manifest is marked `partial`, successful resources remain in `resources/`, and
 value-free per-resource failures are written to `errors.ndjson`.
 
-Dump refuses to overwrite by default. Use `--force` only to replace an existing
-zscalerctl dump directory from a previous run; it rejects populated directories
-that do not contain a zscalerctl dump manifest.
+Dump builds and validates a private sibling staging directory before publishing
+the complete directory. It refuses to overwrite files by default. An existing
+directory tree containing only empty directories remains usable only when the
+filesystem supports atomic directory exchange; otherwise the destination must
+not already exist. On POSIX, the output's immediate parent must be owned by the
+current user and must not be group- or world-writable; a writable ancestor is
+accepted only when sticky-directory rules protect the next user-owned path
+component. macOS rejects permit or unknown extended-ACL entries anywhere in
+that resolved ancestry; deny-only ACLs remain acceptable. Use `--force` only to
+replace a complete zscalerctl dump directory from a previous run. Replacement
+requires atomic directory exchange, an exact supported manifest schema,
+reconciled manifest, redaction-report, resource-shape/count and error metadata,
+and no foreign artifact files. Windows requires an operator-restricted parent
+DACL, can publish a new dump directory atomically, and fails closed when
+replacement of an existing directory would require a non-atomic backup
+sequence.
+
+Failed cleanup or successful forced replacement can leave an owner-only
+`.zscalerctl-discard-*` or `.zscalerctl-cleanup-*` directory beside the output,
+normally containing only an empty `root/` directory. These skeletons contain no
+dump data. Neither public pathname is unlinked: deleting through a public
+ancestor after an identity check would reintroduce a same-name substitution
+race.
+
+If an extraordinary concurrent mutation or I/O failure prevents both cleanup
+and whole-root restoration, a discard directory may instead retain `root/`.
+Treat any retained quarantine containing `root/` as confidential dump data;
+normal and all preflight-detectable failure paths either restore the staging
+root or leave only the empty quarantine skeleton.
 
 ## Dump Diffs
 
@@ -64,11 +90,15 @@ zscalerctl --format json diff ./old-dump ./new-dump --resources zia/locations
 zscalerctl diff ./old-dump ./new-dump --fail-on-drift
 ```
 
-Diff rejects redaction-mode mismatches and partial dumps by default
-(`--allow-partial` is explicit opt-in). Keyed resources report added, removed,
-and changed records; singleton resources report changes to their single record;
-list-only resources without a stable key use a canonical non-operational content
-hash and report added/removed records only.
+Diff rejects redaction-mode mismatches, different collection scopes among the
+resources selected for comparison, and partial dumps by default
+(`--allow-partial` is explicit opt-in). A resource absent from a manifest is
+“not selected,” not an empty successful collection. Under
+`--allow-partial`, failed resources are reported as not compared and never
+converted into fabricated additions or removals. Keyed resources report added,
+removed, and changed records; singleton resources report changes to their single
+record; list-only resources without a stable key use a canonical
+non-operational content hash and report added/removed records only.
 
 The diff flags are:
 

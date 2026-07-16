@@ -1,0 +1,133 @@
+{
+  "version": "zscalerctl.engine.stdio.codec-conformance.v1",
+  "cases": [
+    {
+      "name": "bootstrap initialize",
+      "codec": "bootstrap_client",
+      "input": "{\"type\":\"initialize\",\"protocol\":\"zscalerctl.engine.stdio\",\"version\":\"1\"}",
+      "frame_type": "initialize",
+      "output": "{\"type\":\"initialize\",\"protocol\":\"zscalerctl.engine.stdio\",\"version\":\"1\"}"
+    },
+    {
+      "name": "bootstrap reject",
+      "codec": "bootstrap_client",
+      "input": "{\"type\":\"reject\",\"protocol\":\"zscalerctl.engine.stdio\",\"reason\":\"unsupported_protocol\"}",
+      "frame_type": "reject",
+      "output": "{\"type\":\"reject\",\"protocol\":\"zscalerctl.engine.stdio\",\"reason\":\"unsupported_protocol\"}"
+    },
+    {
+      "name": "bootstrap hello",
+      "codec": "bootstrap_server",
+      "input": "{\"type\":\"hello\",\"protocol\":\"zscalerctl.engine.stdio\",\"versions\":[\"1\"],\"bootstrap\":{\"frame_bytes\":65536,\"json_depth\":8}}",
+      "frame_type": "hello",
+      "output": "{\"type\":\"hello\",\"protocol\":\"zscalerctl.engine.stdio\",\"versions\":[\"1\"],\"bootstrap\":{\"frame_bytes\":65536,\"json_depth\":8}}"
+    },
+    {
+      "name": "bootstrap protocol error",
+      "codec": "bootstrap_server",
+      "input": "{\"type\":\"protocol_error\",\"fatal\":true,\"error\":{\"kind\":\"unsupported_protocol\"}}",
+      "frame_type": "protocol_error",
+      "output": "{\"type\":\"protocol_error\",\"fatal\":true,\"error\":{\"kind\":\"unsupported_protocol\"}}"
+    },
+    {
+      "name": "client resource list",
+      "codec": "v1_client",
+      "input": "{\"type\":\"request\",\"id\":1,\"capability\":\"resources.read\",\"operation\":\"list\",\"input\":{\"product\":\"zia\",\"resource\":\"locations\",\"fields\":[],\"filters\":[],\"search\":\"\"}}",
+      "frame_type": "request",
+      "output": "{\"type\":\"request\",\"id\":1,\"capability\":\"resources.read\",\"operation\":\"list\",\"input\":{\"product\":\"zia\",\"resource\":\"locations\",\"fields\":[],\"filters\":[],\"search\":\"\"}}"
+    },
+    {
+      "name": "client mathematical integer ID",
+      "codec": "v1_client",
+      "input": "{\"type\":\"cancel\",\"id\":0.01e2}",
+      "frame_type": "cancel",
+      "output": "{\"type\":\"cancel\",\"id\":1}"
+    },
+    {
+      "name": "server projected lossless number",
+      "codec": "v1_server",
+      "input": "{\"type\":\"item\",\"id\":1,\"seq\":2,\"kind\":\"projected_record\",\"item\":{\"product\":\"zia\",\"resource\":\"locations\",\"record\":{\"number\":1.2300e+02,\"large\":9007199254740993}}}",
+      "frame_type": "item",
+      "output": "{\"type\":\"item\",\"id\":1,\"seq\":2,\"kind\":\"projected_record\",\"item\":{\"product\":\"zia\",\"resource\":\"locations\",\"record\":{\"large\":9007199254740993,\"number\":1.2300e+02}}}"
+    },
+    {
+      "name": "server canonical base64",
+      "codec": "v1_server",
+      "input": "{\"type\":\"item_chunk\",\"id\":1,\"seq\":2,\"item_id\":1,\"index\":0,\"data\":\"Zg==\"}",
+      "frame_type": "item_chunk",
+      "output": "{\"type\":\"item_chunk\",\"id\":1,\"seq\":2,\"item_id\":1,\"index\":0,\"data\":\"Zg==\"}"
+    },
+    {
+      "name": "invalid UTF-8",
+      "codec": "v1_client",
+      "input_base64": "eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjEsIngiOiL/In0=",
+      "error": "invalid_utf8"
+    },
+    {
+      "name": "decoded duplicate key",
+      "codec": "v1_client",
+      "input": "{\"type\":\"cancel\",\"id\":1,\"\\u0069d\":2}",
+      "error": "duplicate_key"
+    },
+    {
+      "name": "case variant field",
+      "codec": "v1_client",
+      "input": "{\"type\":\"cancel\",\"id\":1,\"ID\":2}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "unpaired surrogate",
+      "codec": "v1_client",
+      "input": "{\"type\":\"request\",\"id\":1,\"capability\":\"resources.read\",\"operation\":\"list\",\"input\":{\"product\":\"zia\",\"resource\":\"locations\",\"fields\":[],\"filters\":[],\"search\":\"\\ud800\"}}",
+      "error": "invalid_json"
+    },
+    {
+      "name": "top-level array",
+      "codec": "v1_client",
+      "input": "[]",
+      "error": "invalid_json"
+    },
+    {
+      "name": "trailing JSON",
+      "codec": "v1_client",
+      "input": "{\"type\":\"cancel\",\"id\":1} {}",
+      "error": "invalid_json"
+    },
+    {
+      "name": "huge structural exponent",
+      "codec": "v1_client",
+      "input": "{\"type\":\"cancel\",\"id\":1e999999999}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "invalid capability operation pair",
+      "codec": "v1_client",
+      "input": "{\"type\":\"request\",\"id\":1,\"capability\":\"engine.manifest\",\"operation\":\"diff\"}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "missing required false boolean",
+      "codec": "v1_client",
+      "input": "{\"type\":\"request\",\"id\":1,\"capability\":\"dump.write\",\"operation\":\"dump\",\"input\":{\"output_dir\":\"out\",\"products\":[],\"resources\":[],\"continue_on_error\":false}}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "noncanonical base64 trailing bits",
+      "codec": "v1_server",
+      "input": "{\"type\":\"item_chunk\",\"id\":1,\"seq\":2,\"item_id\":1,\"index\":0,\"data\":\"Zh==\"}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "diff key hash collision",
+      "codec": "v1_server",
+      "input": "{\"type\":\"item\",\"id\":1,\"seq\":2,\"kind\":\"diff_added\",\"item\":{\"product\":\"zia\",\"resource\":\"locations\",\"key\":\"1\",\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"record\":{}}}",
+      "error": "invalid_frame"
+    },
+    {
+      "name": "server frame in client direction",
+      "codec": "v1_client",
+      "input": "{\"type\":\"started\",\"id\":1,\"seq\":1,\"capability\":\"resources.read\",\"operation\":\"list\"}",
+      "error": "wrong_direction"
+    }
+  ]
+}

@@ -13,6 +13,10 @@ The in-process candidate contract types live in `internal/machine`. Adapters may
 translate Cobra argv, future stdio/JSON-RPC messages, or UI events into
 `machine.Request` values and receive `machine.Response` or `machine.MachineError`
 values. Those types are a typed internal boundary, not a 1.0 public API.
+Typed catalog discovery, sanitized doctor/auth/config status, ZIA URL lookup,
+dump, and local diff are separate candidate engine families; the existing CLI
+commands adapt their results back to unchanged supported render shapes and exit
+policies.
 Stdio-style adapters that need a small JSON transport convention can use
 `internal/machineio` to decode one bounded request, execute it, and encode the
 response without importing CLI rendering. `machineio.ExecuteJSON` rejects
@@ -40,6 +44,17 @@ is [machine-manifest.schema.json](../schema/machine-manifest.schema.json), and
 against it. Changing the supported manifest shape after 1.0 requires semver
 treatment.
 
+`zscalerctl introspect` is a separate supported CLI-surface contract, currently
+version `2`. Its top-level `read_only` field is tenant-scoped. Each command has
+structured `effects` with a `kind`, an `always` or `flag_set` condition, and an
+optional flag name, plus `configuration_dependent` effects enabled by effective
+config, environment, provider choice, or platform. Local reads and configured
+provider process execution are explicit. The legacy `mutating` boolean remains
+as a conservative derived summary so older consumers fail closed; new consumers
+should evaluate the effect conditions directly. This metadata belongs to the
+CLI adapter and does not change the transport-neutral `machine.v1`
+resource-read manifest.
+
 `machine.Request`, `machine.Response`, `MachineError`, the in-process executor
 shape, `internal/runtime`, and `internal/machineio` remain candidate/internal
 surfaces for 1.0. Request/response version fields are not required before 1.0
@@ -50,9 +65,9 @@ fixture, compatibility, and semver gates.
 The stderr CLI error envelope and exit-code mapping are supported. The machine
 error-kind taxonomy has representative fixtures for the current stable kinds:
 `usage`, `unsupported_capability`, `unsupported_operation`, `unknown_resource`,
-`not_found`, `live_access_failed`, `canceled`, `deadline_exceeded`, and
-`internal`. Further taxonomy changes need fixture coverage before any supported
-machine request/response promotion.
+`not_found`, `invalid_resource_id`, `live_access_failed`, `canceled`,
+`deadline_exceeded`, and `internal`. Further taxonomy changes need fixture
+coverage before any supported machine request/response promotion.
 
 ## Error Vocabulary Map
 
@@ -62,18 +77,19 @@ stable compatibility surface.
 
 | Scenario | Machine kind | Envelope kind | Exit code | Internal sentinel | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Usage error | `usage` | `usage` | `2` for `cli.ErrUsage`; `1` if an unadapted `MachineError{Kind: usage}` reaches `main.go` | `cli.ErrUsage`; `resources.ErrMissingID`; `resources.ErrUnknownField` | `machineErrorFromLoadError` maps missing IDs and unknown projected fields to machine usage. Command usage reaches `main.go` as `cli.ErrUsage`. |
-| Unknown/unsupported resource | `unknown_resource` | `unknown_resource` for machine errors; `unsupported_resource` for the Zscaler sentinel; `not_found` for CLI catalog misses | `4` for command-boundary unsupported/not-found errors; `1` if an unadapted `MachineError{Kind: unknown_resource}` reaches `main.go` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | The executor vocabulary is `unknown_resource`. `main.go` maps `zscaler.ErrUnsupportedResource` to `unsupported_resource`, and CLI catalog misses unwrap to `cli.ErrNotFound`. |
+| Usage error | `usage` | `usage` | `2` | `cli.ErrUsage`; `resources.ErrMissingID`; `resources.ErrUnknownField` | Both adapted command errors and bare stable machine usage kinds map to exit 2. |
+| Unsupported capability/operation | `unsupported_capability`; `unsupported_operation` | same as machine kind | `4` | stable machine kind | Capability and operation discovery failures share the permanent not-found exit class; malformed request syntax remains usage/2. |
+| Unknown/unsupported resource | `unknown_resource`; specialized engine capabilities may use `unsupported_resource` | `unknown_resource` for catalog machine errors; `unsupported_resource` for the Zscaler or typed URL sentinel; `not_found` for CLI catalog misses | `4` | `resources.ErrUnknownResource`; `zscaler.ErrUnsupportedResource`; `cli.ErrNotFound` | Both stable machine kinds map directly to exit 4; CLI catalog misses unwrap to `cli.ErrNotFound`. |
 | Record not found (get of nonexistent id) | `not_found` | `not_found` | `4` | `resources.ErrRecordNotFound`; `zscaler.ErrResourceNotFound`; `cli.ErrNotFound` | `main.go` special-cases `machine.ErrorKindNotFound` to the not-found exit code. |
-| Missing credentials | — | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | No executor machine kind; config/runtime construction reports the Zscaler sentinel. |
-| Invalid resource id | — | `invalid_resource_id` | `2` | `zscaler.ErrInvalidResourceID` | Command-boundary usage-class error; `machineErrorFromLoadError` has no separate invalid-ID kind. |
+| Missing credentials | `missing_credentials` | `missing_credentials` | `3` | `zscaler.ErrMissingCredentials` | Engine construction and product-scoped live requirements carry only allow-listed missing variable names and the safe sentinel. |
+| Invalid resource id | `invalid_resource_id` | `invalid_resource_id` | `2` | `resources.ErrInvalidResourceID`; `zscaler.ErrInvalidResourceID` | The reader aliases the shared sentinel; `machineErrorFromLoadError` emits a sanitized machine error whose unexported cause preserves only that sentinel, and `main.go` maps the kind to exit 2. |
 | Live access failure | `live_access_failed` | `live_access_failed` | `5` | `zscaler.ErrLiveAccessFailed` (non-machine paths); executor default branch | Kind-driven since PR #102: `exitCodeForError` maps `MachineError{Kind: live_access_failed}` to exit 5 directly; the Zscaler sentinel still covers non-machine paths such as dump collection. The executor default hides backend details. |
-| Deadline exceeded | `deadline_exceeded` | `deadline_exceeded` | `5` | `context.DeadlineExceeded` | `main.go` special-cases `machine.ErrorKindDeadlineExceeded` to the live-access failure exit code. |
+| Deadline exceeded | `deadline_exceeded` | `deadline_exceeded` | `5` | `context.DeadlineExceeded` | Caller deadlines and configured HTTP client timeouts preserve deadline identity instead of collapsing into `live_access_failed`. |
 | Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
 | Partial dump | — | `partial_dump` | `6` | `cli.ErrPartialDump` | For non-JSON formats, `run` returns the code without writing the JSON envelope. |
 | Drift detected | — | `drift_detected` | `7` | `cli.ErrDriftDetected` | Set by `diff --fail-on-drift`. |
-| Invalid config | — | `invalid_config` | `2` | `config.ErrInvalidConfig` | Config parsing/loading is outside `internal/machine`. |
-| Invalid proxy config | — | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Proxy validation is outside `internal/machine`. |
+| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. |
+| Invalid proxy config | `invalid_proxy_config` for typed status/URL setup | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Typed engine boundaries return static wording and preserve only the sentinel. |
 | Internal | `internal` | `internal` | `1` | `machine.ErrorKindInternal`; default branch | Executor wiring errors use machine `internal`; otherwise unmapped command errors fall through to internal. |
 
 ## Machine Contract
@@ -107,12 +123,18 @@ projected-record reconstruction guard together as the mechanical contract gate.
 
 ## Streaming And Progress Direction
 
-The current core read model is intentionally single-shot. A
+The supported CLI read model remains intentionally single-shot. A
 `machine.Executor.Execute` call returns one complete `machine.Response`, and the
 supported CLI `list`, `get`, and `show` flows render that response as JSON,
-NDJSON, table, or pretty output. Runtime dump collection reports progress
-through a trusted callback used by CLI logging/progress paths, while dump data
-is still written as dump files rather than as machine response envelopes.
+NDJSON, table, or pretty output. Under that adapter, candidate
+`ExecuteStream` emits synchronous in-process operation events and `Execute`
+reconstructs the existing response from them. Runtime dump collection uses the
+same candidate event lifecycle, while dump data remains a local artifact rather
+than a machine response envelope. Its typed engine operation emits `completed`
+only after the artifact writer returns successfully. Typed local diff uses the
+same lifecycle for deterministic resource progress, while its closed result
+contains only a recursively copied report admitted against the catalog and the
+input manifests' redaction mode.
 
 This remains valid for bounded resource reads and small operator workflows:
 the response is already projected, redacted, verified, and easy for scripts to
@@ -123,7 +145,7 @@ need structured progress without importing the CLI, while machine consumers
 need stable data streams that do not depend on spinners, table layout, or
 stderr prose.
 
-Future streaming or progress work should keep these boundaries:
+Streaming or progress work must keep these boundaries:
 
 - shared libraries may provide iterators, cursors, or event streams over
   already-owned operation semantics
@@ -136,8 +158,8 @@ Future streaming or progress work should keep these boundaries:
   duplicating config, credential, secret, SDK, or raw reader setup
 - safe seams must still avoid importing trusted runtime assembly
 
-One candidate model is an internal operation event stream. This is not a
-committed schema, but it gives future changes a vocabulary:
+The candidate model is an internal operation event stream. It is not a
+committed wire schema:
 
 - `started`: value-free operation metadata such as operation kind, product,
   resource, selected count when known, and redaction mode
@@ -153,20 +175,21 @@ committed schema, but it gives future changes a vocabulary:
 - `failed` or `canceled`: stable error kind and sanitized message, with context
   cancellation and deadline behavior mapped deliberately
 
-The compatibility strategy is additive. Existing `Execute` remains the stable
-one-shot adapter for current resource reads. A future event API can start as an
-internal runtime/core helper, and a one-shot `machine.Response` can be built
-from that stream later if the event model proves correct. No current CLI JSON,
-NDJSON, table, pretty, stderr error envelope, exit code, or dump behavior
-changes until a separate promotion explicitly changes the supported surface.
+The compatibility strategy is additive. Existing `Execute` remains the
+one-shot adapter for current resource reads and is reconstructed from the
+candidate stream. `machine.Event` deliberately rejects direct JSON
+serialization and deserialization; a future transport must define separate,
+versioned DTOs and schemas. No current CLI JSON, NDJSON, table, pretty, stderr
+error envelope, exit code, dump behavior, or diff behavior changes until a
+separate promotion explicitly changes the supported surface.
 
-Dump should remain a separate artifact model unless a later design deliberately
-promotes a dump event schema into the machine contract. Runtime dump collection
-can eventually consume structured progress or operation events, but dump file
-schemas, manifest files, and partial dump error records should not be folded
-into `machine.Response` accidentally. Partial dump errors must remain
-value-free, preserving the current safety property that failure metadata can be
-reported without leaking tenant record values.
+Dump remains a separate artifact model unless a later design deliberately
+promotes a dump event schema into the machine contract. Its candidate typed
+request/result and in-process events are not wire types; dump file schemas,
+manifest files, and partial dump error records are not folded into
+`machine.Response`. Partial dump errors remain value-free, preserving the
+current safety property that failure metadata can be reported without leaking
+tenant record values.
 
 Semver follows the surface being changed:
 
@@ -260,9 +283,11 @@ passing raw SDK/config/secret objects through the UI boundary.
 Machine request narrowing is owned by the machine/core boundary. `fields`,
 `filters`, and `search` are applied only after projection and redaction.
 Filters and search apply to list operations; fields can narrow list/get/show
-records. Non-empty machine `options` are rejected as usage errors until a
-specific option is deliberately added to the contract. Response metadata is
-server-generated; clients must not rely on request metadata being echoed.
+records. There is no generic machine `options` field; strict candidate
+`machineio` decoding rejects it as unknown. New controls require a deliberate
+capability-specific typed input (and a separately versioned transport field if
+later promoted). Response metadata is server-generated; clients must not rely
+on request metadata being echoed.
 
 If a future Wails or React desktop app exists, the React frontend must never
 receive credentials, secret refs, tokens, SDK clients, or raw source records.

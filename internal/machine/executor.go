@@ -30,6 +30,9 @@ const (
 	// exist.
 	ErrorKindNotFound = "not_found"
 
+	// ErrorKindInvalidResourceID reports an ID that cannot identify a resource.
+	ErrorKindInvalidResourceID = "invalid_resource_id"
+
 	// ErrorKindLiveAccessFailed reports a sanitized resource-loading failure.
 	ErrorKindLiveAccessFailed = "live_access_failed"
 
@@ -38,6 +41,18 @@ const (
 
 	// ErrorKindDeadlineExceeded reports a request that exceeded its deadline.
 	ErrorKindDeadlineExceeded = "deadline_exceeded"
+
+	// ErrorKindInvalidConfig reports invalid effective runtime configuration.
+	ErrorKindInvalidConfig = "invalid_config"
+
+	// ErrorKindInvalidProxyConfig reports conflicting or malformed proxy settings.
+	ErrorKindInvalidProxyConfig = "invalid_proxy_config"
+
+	// ErrorKindMissingCredentials reports incomplete live-access credentials.
+	ErrorKindMissingCredentials = "missing_credentials"
+
+	// ErrorKindUnsupportedResource reports an unavailable specialized reader.
+	ErrorKindUnsupportedResource = "unsupported_resource"
 
 	// ErrorKindInternal reports executor wiring errors.
 	ErrorKindInternal = "internal"
@@ -65,16 +80,44 @@ type Executor struct {
 	Redaction redact.Mode
 }
 
-// Execute validates and runs one supported read-only machine request.
+// Execute validates and runs one supported read-only machine request. The
+// response is reconstructed from ExecuteStream events so one-shot and streamed
+// execution cannot acquire separate operation semantics.
 func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 	resp := responseForRequest(req)
+	err := e.ExecuteStream(ctx, req, func(event Event) error {
+		return accumulateResponseEvent(&resp, event)
+	})
+	if resp.Error != nil {
+		return resp, resp.Error
+	}
+	if err != nil {
+		machineErr := machineErrorFromSinkError(err)
+		product, resource := inputResource(req)
+		machineErr = machineErrorWithContext(machineErr, req.Operation, product, resource)
+		resp.Error = &machineErr
+		return resp, resp.Error
+	}
+	return resp, nil
+}
+
+// ExecuteStream validates and runs one supported read-only machine request,
+// delivering ordered events synchronously on the caller's goroutine. It starts
+// no goroutines. The sink must be non-nil; a sink error or panic aborts the
+// operation and is converted to a machine-safe failure.
+func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink) error {
 	product, resource := inputResource(req)
+	stream, err := StartEventStream(sink, req.Operation, product, resource, 0)
+	if err != nil {
+		return err
+	}
+
 	if machineErr := validateRequestSemantics(req, product, resource); machineErr != nil {
-		return errorResponse(resp, *machineErr)
+		return failEventStream(stream, *machineErr)
 	}
 	if req.Operation == OperationManifest {
 		if req.Capability != "" && req.Capability != CapabilityResourcesRead {
-			return errorResponse(resp, MachineError{
+			return failEventStream(stream, MachineError{
 				Kind:      ErrorKindUnsupportedCapability,
 				Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 				Operation: req.Operation,
@@ -83,12 +126,14 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 			})
 		}
 		manifest := ManifestFromCatalog(e.catalog())
-		resp.Manifest = &manifest
-		resp.Meta.Count = len(manifest.Capabilities)
-		return resp, nil
+		return stream.Complete(Event{
+			Product:  product,
+			Resource: resource,
+			Manifest: &manifest,
+		})
 	}
 	if req.Capability != CapabilityResourcesRead {
-		return errorResponse(resp, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedCapability,
 			Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
 			Operation: req.Operation,
@@ -96,8 +141,8 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 			Resource:  resource,
 		})
 	}
-	if !isSupportedReadOperation(req.Operation) {
-		return errorResponse(resp, MachineError{
+	if !IsResourceReadOperation(req.Operation) {
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedOperation,
 			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
 			Operation: req.Operation,
@@ -108,7 +153,7 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 
 	product, resource, recordID, missing := requiredInput(req)
 	if len(missing) > 0 {
-		return errorResponse(resp, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   "missing required input: " + strings.Join(missing, ", "),
 			Missing:   missing,
@@ -117,11 +162,9 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 			Resource:  resource,
 		})
 	}
-	resp.Meta.Product = product
-	resp.Meta.Resource = resource
 
 	if e.Browser == nil {
-		return errorResponse(resp, MachineError{
+		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindInternal,
 			Message:   "browser loader is not configured",
 			Operation: req.Operation,
@@ -132,18 +175,45 @@ func (e Executor) Execute(ctx context.Context, req Request) (Response, error) {
 
 	projected, err := e.loadProjected(ctx, req.Operation, product, resource, recordID)
 	if err != nil {
-		return errorResponse(resp, machineErrorFromLoadError(err, req.Operation, product, resource))
+		return failEventStream(stream, machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
 	projected, err = e.narrowProjected(req, product, resource, projected)
 	if err != nil {
-		return errorResponse(resp, machineErrorFromLoadError(err, req.Operation, product, resource))
+		return failEventStream(stream, machineErrorFromLoadError(err, req.Operation, product, resource))
 	}
-	resp.Records = projectedRecordsToMaps(projected)
-	resp.Meta.Count = len(resp.Records)
-	return resp, nil
+
+	records := projected.Records()
+	for i := range records {
+		record := records[i]
+		if err := stream.Emit(Event{
+			Kind:     EventRecord,
+			Product:  product,
+			Resource: resource,
+			Record:   &record,
+		}); err != nil {
+			return err
+		}
+	}
+	result := NewResourceReadResult(projected)
+	return stream.Complete(Event{
+		Product:        product,
+		Resource:       resource,
+		Records:        len(records),
+		Resources:      1,
+		resourceResult: &result,
+	})
 }
 
-func isSupportedReadOperation(op Operation) bool {
+func failEventStream(stream *EventStream, machineErr MachineError) error {
+	if err := stream.Fail(machineErr); err != nil {
+		return err
+	}
+	return &machineErr
+}
+
+// IsResourceReadOperation reports whether op belongs to the closed typed
+// catalog-read operation family.
+func IsResourceReadOperation(op Operation) bool {
 	return op == OperationList || op == OperationGet || op == OperationShow
 }
 
@@ -223,34 +293,59 @@ func responseForRequest(req Request) Response {
 	}
 }
 
-func errorResponse(resp Response, machineErr MachineError) (Response, error) {
-	resp.Error = &machineErr
-	return resp, &machineErr
-}
-
-func projectedRecordsToMaps(records resources.ProjectedRecords) []map[string]any {
-	projected := records.Records()
-	out := make([]map[string]any, len(projected))
-	for i, record := range projected {
-		out[i] = record.Fields()
+func accumulateResponseEvent(resp *Response, event Event) error {
+	switch event.Kind {
+	case EventRecord:
+		if event.Record == nil {
+			return &MachineError{
+				Kind:      ErrorKindInternal,
+				Message:   "record event has no record",
+				Operation: resp.Operation,
+				Product:   event.Product,
+				Resource:  event.Resource,
+			}
+		}
+		resp.Records = append(resp.Records, event.Record.Fields())
+	case EventCompleted:
+		if event.Manifest != nil {
+			manifest := *event.Manifest
+			resp.Manifest = &manifest
+			resp.Meta.Count = len(manifest.Capabilities)
+			return nil
+		}
+		if resp.Records == nil {
+			resp.Records = make([]map[string]any, 0)
+		}
+		resp.Meta.Count = len(resp.Records)
+	case EventWarning:
+		return &MachineError{
+			Kind:      ErrorKindInternal,
+			Message:   "one-shot response cannot represent warning event",
+			Operation: resp.Operation,
+			Product:   event.Product,
+			Resource:  event.Resource,
+		}
+	case EventFailed, EventCanceled:
+		if event.Err == nil {
+			return &MachineError{
+				Kind:      ErrorKindInternal,
+				Message:   "terminal event has no machine error",
+				Operation: resp.Operation,
+				Product:   event.Product,
+				Resource:  event.Resource,
+			}
+		}
+		machineErr := copyMachineError(*event.Err)
+		resp.Error = &machineErr
 	}
-	return out
+	return nil
 }
 
 func validateRequestSemantics(req Request, product, resource string) *MachineError {
 	if req.Input == nil {
 		return nil
 	}
-	if len(req.Input.Options) > 0 {
-		return &MachineError{
-			Kind:      ErrorKindUsage,
-			Message:   "input.options is not supported",
-			Operation: req.Operation,
-			Product:   product,
-			Resource:  resource,
-		}
-	}
-	if len(req.Input.Fields) > 0 && !isSupportedReadOperation(req.Operation) {
+	if len(req.Input.Fields) > 0 && !IsResourceReadOperation(req.Operation) {
 		return &MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   "input.fields applies to resource read operations only",
@@ -353,11 +448,9 @@ func filtersFromInput(filters []Filter) ([]resources.ProjectedFilter, error) {
 
 func (e Executor) catalog() resources.ResourceCatalog {
 	if e.Catalog == nil {
-		return resources.Catalog()
+		return cloneEngineCatalog(resources.Catalog())
 	}
-	out := make(resources.ResourceCatalog, len(e.Catalog))
-	copy(out, e.Catalog)
-	return out
+	return cloneEngineCatalog(e.Catalog)
 }
 
 func machineErrorFromLoadError(err error, op Operation, product, resource string) MachineError {
@@ -397,6 +490,15 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
+		}
+	case errors.Is(err, resources.ErrInvalidResourceID):
+		return MachineError{
+			Kind:      ErrorKindInvalidResourceID,
+			Message:   "invalid resource ID",
+			Operation: op,
+			Product:   product,
+			Resource:  resource,
+			cause:     resources.ErrInvalidResourceID,
 		}
 	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField):
 		return MachineError{

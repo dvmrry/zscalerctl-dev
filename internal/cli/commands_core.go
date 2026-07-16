@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	machineruntime "github.com/dvmrry/zscalerctl/internal/runtime"
@@ -33,15 +34,22 @@ func (a *App) newVersionCmd(opts globalOptions) *cobra.Command {
 // the same UsageError message as before, preserving the surface.
 func (a *App) newDoctorCmd(opts globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "doctor",
-		Short: "check configuration, credentials, and connectivity",
+		Use:         "doctor",
+		Short:       "check configuration, credentials, and connectivity",
+		Annotations: map[string]string{effectsAnnotation: configReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireNoArgs("doctor", args); err != nil {
+				return err
+			}
+			if err := cmd.Context().Err(); err != nil {
+				return machineruntime.StatusConfigError(machine.OperationDoctor, err)
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,
 			})
 			if err != nil {
-				return err
+				return machineruntime.StatusConfigError(machine.OperationDoctor, err)
 			}
 			applyOptions(&cfg, opts)
 			return a.runDoctor(cmd.Context(), cfg, opts, args)
@@ -75,16 +83,13 @@ func (a *App) runDoctor(ctx context.Context, cfg config.Config, opts globalOptio
 	if err := requireNoArgs("doctor", args); err != nil {
 		return err
 	}
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("doctor cancelled: %w", ctx.Err())
-	default:
-	}
-	status, err := machineruntime.NewDoctorStatus(cfg, machineruntime.StatusOptions{
-		Timeout: opts.timeout,
-	})
+	result, err := inspectRuntimeStatus(ctx, cfg, opts, machine.OperationDoctor)
 	if err != nil {
 		return err
+	}
+	status, ok := result.Doctor()
+	if !ok {
+		return fmt.Errorf("doctor status operation returned %q result", result.Operation())
 	}
 	if opts.format == output.FormatJSON {
 		return a.renderer(cfg, opts).WriteJSON(a.out, status)

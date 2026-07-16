@@ -4,8 +4,8 @@ package cli
 //
 // Architecture:
 //   - globalFlagDefs is the canonical list of all 13 global flags (name, kind,
-//     default, usage). It is the ONLY place where a global flag is defined; every
-//     other registration derives from it.
+//     default, usage, effects). It is the ONLY place where a global flag is
+//     defined; every other registration derives from it.
 //   - defineGlobalFlags registers all 13 on a stdlib *flag.FlagSet (using
 //     repeatableFlag for filter) and returns typed pointers so parseGlobal can
 //     read parsed values without duplicating defaults or usage strings.
@@ -33,13 +33,16 @@ import (
 // on both stdlib flag and pflag. Adding or removing an entry here propagates
 // to registerGlobalPersistentFlags and the drift check simultaneously.
 //
-// kind values: "string" | "bool" | "duration" | "stringArray"
-// defaultVal: canonical string representation (pflag stores defaults as strings).
+// kind values: "string" | "bool" | "duration" | "stringArray".
+// defaultVal is the canonical string representation (pflag stores defaults as
+// strings). effectKinds lists effects that occur when a non-default flag value
+// is supplied; introspection derives flag-conditioned command effects from it.
 type globalFlagDef struct {
-	name       string
-	kind       string
-	defaultVal string // as registered (pflag stores defaults as strings)
-	usage      string
+	name        string
+	kind        string
+	defaultVal  string // as registered (pflag stores defaults as strings)
+	usage       string
+	effectKinds []string
 }
 
 // globalFlagDefs is the canonical definition of all 13 global flags.
@@ -99,10 +102,11 @@ var globalFlagDefs = []globalFlagDef{
 		usage:      "disable color output",
 	},
 	{
-		name:       "output",
-		kind:       "string",
-		defaultVal: "",
-		usage:      "output path",
+		name:        "output",
+		kind:        "string",
+		defaultVal:  "",
+		usage:       "create or replace an output file (not valid with dump)",
+		effectKinds: []string{effectKindLocalFilesystemWrite},
 	},
 	{
 		name:       "profile",

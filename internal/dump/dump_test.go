@@ -1,8 +1,10 @@
 package dump
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,323 @@ import (
 )
 
 const dumpCanary = "dump-canary-secret"
+
+type cancelWhenTempContext struct {
+	dir      string
+	done     chan struct{}
+	canceled bool
+}
+
+func (c *cancelWhenTempContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (c *cancelWhenTempContext) Done() <-chan struct{} { return c.done }
+
+func (c *cancelWhenTempContext) Err() error {
+	if c.canceled {
+		return context.Canceled
+	}
+	entries, err := os.ReadDir(c.dir)
+	if err == nil {
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".tmp-") {
+				c.canceled = true
+				close(c.done)
+				return context.Canceled
+			}
+		}
+	}
+	return nil
+}
+
+func (c *cancelWhenTempContext) Value(any) any { return nil }
+
+type cancelWhenStagedPathExistsContext struct {
+	parent   string
+	name     string
+	done     chan struct{}
+	canceled bool
+}
+
+func (c *cancelWhenStagedPathExistsContext) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *cancelWhenStagedPathExistsContext) Done() <-chan struct{} { return c.done }
+func (c *cancelWhenStagedPathExistsContext) Value(any) any         { return nil }
+
+func (c *cancelWhenStagedPathExistsContext) Err() error {
+	if c.canceled {
+		return context.Canceled
+	}
+	matches, err := filepath.Glob(filepath.Join(c.parent, ".zscalerctl-staging-*", c.name))
+	if err == nil && len(matches) > 0 {
+		c.canceled = true
+		close(c.done)
+		return context.Canceled
+	}
+	return nil
+}
+
+type authorizationJSONFixture struct {
+	Message string `json:"message"`
+	Count   int    `json:"count"`
+}
+
+func (authorizationJSONFixture) OutputSafe() {}
+
+func TestWriteContextPreCanceledCreatesNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		make func() (context.Context, context.CancelFunc)
+		want error
+	}{
+		{
+			name: "canceled",
+			make: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, func() {}
+			},
+			want: context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			make: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			want: context.DeadlineExceeded,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := tt.make()
+			defer cancel()
+			dir := filepath.Join(t.TempDir(), "dump")
+			err := WriteContext(ctx, dir, redact.ModeStandard, Result{})
+			if err != tt.want {
+				t.Fatalf("WriteContext(%q) error = %v, want identity %v", dir, err, tt.want)
+			}
+			if _, statErr := os.Stat(dir); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", dir, statErr)
+			}
+		})
+	}
+}
+
+func TestPublishContextCleansDestinationBeforeSelectingParent(t *testing.T) {
+	t.Parallel()
+
+	separator := string(os.PathSeparator)
+	tests := []struct {
+		name string
+		raw  func(string) string
+	}{
+		{
+			name: "trailing separator",
+			raw:  func(root string) string { return filepath.Join(root, "export") + separator },
+		},
+		{
+			name: "final dot",
+			raw:  func(root string) string { return filepath.Join(root, "export") + separator + "." },
+		},
+		{
+			name: "final dot dot",
+			raw: func(root string) string {
+				return filepath.Join(root, "export", "child") + separator + ".."
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := tt.raw(t.TempDir())
+			cleaned := filepath.Clean(raw)
+			if err := PublishContext(context.Background(), raw, redact.ModeStandard, Result{}, false); err != nil {
+				t.Fatalf("PublishContext(%q) error = %v, want nil", raw, err)
+			}
+			if _, err := os.Stat(filepath.Join(cleaned, "manifest.json")); err != nil {
+				t.Errorf("os.Stat(cleaned destination manifest) error = %v, want nil", err)
+			}
+			duplicated := filepath.Join(cleaned, filepath.Base(cleaned), "manifest.json")
+			if _, err := os.Stat(duplicated); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("os.Stat(duplicated destination %q) error = %v, want os.ErrNotExist", duplicated, err)
+			}
+		})
+	}
+}
+
+func TestWriteContextCancellationBeforeFinalizationCleansTempAndFinal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	ctx := &cancelWhenTempContext{dir: dir, done: make(chan struct{})}
+	err := writeFileExclusiveContext(ctx, path, []byte("payload"))
+	if err != context.Canceled {
+		t.Fatalf("writeFileExclusiveContext(%q) error = %v, want identity %v", path, err, context.Canceled)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", path, statErr)
+	}
+	leftovers, globErr := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+	if globErr != nil {
+		t.Fatalf("glob temp files error = %v", globErr)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("temp files left after canceled finalization = %v, want none", leftovers)
+	}
+}
+
+func TestWriteContextCancellationLeavesDestinationUntouched(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "dump")
+	ctx := &cancelWhenStagedPathExistsContext{
+		parent: parent,
+		name:   "redaction_report.json",
+		done:   make(chan struct{}),
+	}
+	err := WriteContext(ctx, dir, redact.ModeStandard, Result{})
+	if err != context.Canceled {
+		t.Fatalf("WriteContext(cancel after report) error = %v, want context.Canceled", err)
+	}
+	if _, statErr := os.Stat(dir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("os.Stat(destination) error = %v, want os.ErrNotExist", statErr)
+	}
+	leftovers, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-staging-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(staging) error = %v, want nil", globErr)
+	}
+	if len(leftovers) != 0 {
+		t.Errorf("staging directories after canceled WriteContext = %v, want none", leftovers)
+	}
+}
+
+func TestPublishContextFailureDoesNotDeleteSubstitutedStagingPath(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	destination := filepath.Join(parent, "dump")
+	if err := Write(destination, redact.ModeStandard, Result{}); err != nil {
+		t.Fatalf("Write(%q, existing destination) error = %v, want nil", destination, err)
+	}
+	const sentinel = "foreign staging replacement must survive\n"
+	var hookErr error
+	var originalStaging string
+	err := publishContextWithHooks(
+		context.Background(),
+		destination,
+		redact.ModeShare,
+		Result{},
+		false,
+		publishContextHooks{
+			beforeStagingCleanupRelocate: func(stagingPath string) {
+				originalStaging = stagingPath + "-original"
+				if renameErr := os.Rename(stagingPath, originalStaging); renameErr != nil {
+					hookErr = renameErr
+					return
+				}
+				hookErr = os.WriteFile(stagingPath, []byte(sentinel), filePerm)
+			},
+		},
+	)
+	if hookErr != nil {
+		t.Fatalf("staging substitution hook error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafeOverwrite) {
+		t.Fatalf("publishContextWithHooks(existing destination) error = %v, want ErrUnsafeOverwrite", err)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-staging-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(staging) error = %v, want nil", globErr)
+	}
+	if len(matches) == 0 {
+		t.Fatal("staging substitution paths = none, want preserved sentinel and original staging")
+	}
+	foundSentinel := false
+	for _, path := range matches {
+		body, readErr := os.ReadFile(path)
+		if readErr == nil && string(body) == sentinel {
+			foundSentinel = true
+		}
+	}
+	if !foundSentinel {
+		t.Errorf("staging paths %v contain no preserved sentinel", matches)
+	}
+	if info, statErr := os.Stat(originalStaging); statErr != nil || !info.IsDir() {
+		t.Errorf("original process staging after substitution = (%v, %v), want preserved directory", info, statErr)
+	}
+}
+
+func TestPublishContextFailureDoesNotDeleteSubstitutedDiscardPath(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	destination := filepath.Join(parent, "dump")
+	if err := Write(destination, redact.ModeStandard, Result{}); err != nil {
+		t.Fatalf("Write(%q, existing destination) error = %v, want nil", destination, err)
+	}
+	const sentinel = "foreign discard replacement must survive\n"
+	var hookErr error
+	var originalDiscard string
+	var stagingPath string
+	err := publishContextWithHooks(
+		context.Background(),
+		destination,
+		redact.ModeShare,
+		Result{},
+		false,
+		publishContextHooks{
+			beforeStagingCleanupRelocate: func(path string) {
+				stagingPath = path
+				matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-discard-*"))
+				if globErr != nil || len(matches) != 1 {
+					hookErr = fmt.Errorf("discard glob = %v, %v; want one path", matches, globErr)
+					return
+				}
+				discardPath := matches[0]
+				originalDiscard = discardPath + "-original"
+				if renameErr := os.Rename(discardPath, originalDiscard); renameErr != nil {
+					hookErr = renameErr
+					return
+				}
+				hookErr = os.WriteFile(discardPath, []byte(sentinel), filePerm)
+			},
+		},
+	)
+	if hookErr != nil {
+		t.Fatalf("discard substitution hook error = %v, want nil", hookErr)
+	}
+	if !errors.Is(err, ErrUnsafeOverwrite) {
+		t.Fatalf("publishContextWithHooks(existing destination) error = %v, want ErrUnsafeOverwrite", err)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(parent, ".zscalerctl-discard-*"))
+	if globErr != nil {
+		t.Fatalf("filepath.Glob(discard) error = %v, want nil", globErr)
+	}
+	foundSentinel := false
+	for _, path := range matches {
+		body, readErr := os.ReadFile(path)
+		if readErr == nil && string(body) == sentinel {
+			foundSentinel = true
+		}
+	}
+	if !foundSentinel {
+		t.Errorf("discard paths %v contain no preserved sentinel", matches)
+	}
+	if info, statErr := os.Stat(originalDiscard); statErr != nil || !info.IsDir() {
+		t.Errorf("original discard after substitution = (%v, %v), want preserved directory", info, statErr)
+	}
+	if info, statErr := os.Stat(stagingPath); statErr != nil || !info.IsDir() {
+		t.Errorf("process staging after discard substitution = (%v, %v), want preserved directory", info, statErr)
+	}
+}
 
 func TestEnsureDirRejectsSymlink(t *testing.T) {
 	t.Parallel()
@@ -79,6 +398,55 @@ func TestWriteFileExclusiveRefusesExistingPath(t *testing.T) {
 	}
 	if string(got) != "existing" {
 		t.Errorf("existing file content = %q, want unchanged", got)
+	}
+}
+
+func TestRenameNoReplaceRefusesExistingDirectory(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	source := filepath.Join(parent, "source")
+	destination := filepath.Join(parent, "destination")
+	if err := os.Mkdir(source, dirPerm); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", source, err)
+	}
+	if err := os.Mkdir(destination, dirPerm); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", destination, err)
+	}
+
+	err := renameNoReplace(source, destination)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("renameNoReplace(existing destination) error = %v, want os.ErrExist", err)
+	}
+	for _, path := range []string{source, destination} {
+		if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+			t.Errorf("os.Stat(%q) = (%v, %v), want existing directory", path, info, statErr)
+		}
+	}
+}
+
+func TestWriteJSONFilePreservesValidJSONForAuthorizationText(t *testing.T) {
+	t.Parallel()
+
+	const authorizationCanary = "dump-authorization-canary"
+	path := filepath.Join(t.TempDir(), "resource.json")
+	err := writeJSONFile(path, redact.ModeStandard, authorizationJSONFixture{
+		Message: "set the Authorization: Bearer " + authorizationCanary + " header",
+		Count:   42,
+	})
+	if err != nil {
+		t.Fatalf("writeJSONFile(%q) error = %v, want nil", path, err)
+	}
+
+	body := readFile(t, path)
+	if !json.Valid([]byte(body)) {
+		t.Errorf("writeJSONFile(%q) = invalid JSON %q, want valid JSON", path, body)
+	}
+	if strings.Contains(body, authorizationCanary) {
+		t.Errorf("writeJSONFile(%q) = %q, want no %q", path, body, authorizationCanary)
+	}
+	if !strings.Contains(body, "<REDACTED:SECRET>") {
+		t.Errorf("writeJSONFile(%q) = %q, want secret marker", path, body)
 	}
 }
 
@@ -431,18 +799,6 @@ func readJSON(t *testing.T, path string, out any) {
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v, want nil; body=%s", path, err, string(body))
-	}
-}
-
-func assertMode(t *testing.T, path string, want os.FileMode) {
-	t.Helper()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("os.Stat(%q) error = %v, want nil", path, err)
-	}
-	if got := info.Mode().Perm(); got != want {
-		t.Errorf("os.Stat(%q).Mode().Perm() = %#o, want %#o", path, got, want)
 	}
 }
 
