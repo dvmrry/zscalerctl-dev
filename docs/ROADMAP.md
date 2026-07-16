@@ -18,11 +18,13 @@ labels, and surface rules in
 - **Lip Gloss v2** (stable) is the 1.x styling foundation; its manual color
   model matches the pinned-profile discipline `internal/output` already
   enforces.
-- **Local MCP server** is planned as an experiment (posture change from the
-  earlier "not planned" note in ARCHITECTURE.md). Justification: the official
-  `modelcontextprotocol/go-sdk` is v1.0.0 with a formal compatibility
-  guarantee, and MCP-only hosts that cannot shell out are a concrete
-  integration need. A threat-model gate (D0) precedes any MCP code.
+- **Local MCP adapter** is approved for an isolated experiment (posture change
+  from the earlier "not planned" note in ARCHITECTURE.md). MCP-only hosts that
+  cannot shell out remain the concrete integration need. The accepted D0 threat
+  model constrains the experiment to local stdio, `share`-by-default bounded
+  results, an explicit tool allow-list, and the common Go engine. The official
+  `modelcontextprotocol/go-sdk` receives an exact reviewed v1 pin in the nested
+  module; its version is not coupled to the root module.
 - **Wails v3 is alpha.** GUI work starts as an isolated experiment on v3;
   stability is re-checked at its promotion checkpoint; Wails v2 is the
   documented fallback. Alpha dependencies never enter the root module.
@@ -208,25 +210,22 @@ zscalerctl operation engine above it.
 
 ## Phase 5 — MCP experiment
 
-- **D0 `docs(security)`: MCP threat model + redaction posture — gates all MCP
-  code.** Must decide: default redaction mode for MCP (tenant data enters
-  model context — evaluate defaulting to `share` rather than `standard`);
-  whether raw tenant identifiers are allowed in tool results; what tool
-  descriptions may expose (resource names/fields from the catalog are public
-  project data; tenant values are not); tool-confusion/overbreadth prevention
-  (narrow per-operation tools, no generic "query" tool); logging policy
-  (value-free, mirroring dump errors); tools-only vs prompts/resources
-  (start tools-only); host allowlist stance; local-stdio-only forever or
-  initially. THREAT_MODEL.md addendum. `semver:none`.
+- **D0 `docs(security)`: MCP threat model + redaction posture — accepted.**
+  [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) fixes `share` as the MCP default,
+  makes security-sensitive choices server-start-only, disables `cmd:` providers
+  by default, bounds calls and atomic results, defines the exact initial tool
+  allow-list, and limits transport to local stdio. `semver:none`.
 - **D1 `experiment(mcp)`: nested module `experiments/mcp-server`.** Official
-  `modelcontextprotocol/go-sdk` v1.x; **stdio transport only, no network
-  listener**; tools map 1:1 onto the machine contract (`manifest`,
-  `schema_list`, `resource_list`, `resource_get`, `resource_show`) with
-  read-only annotations; args translate to `machine.Request`; consumes
-  `internal/runtime` + `internal/machine` + `internal/machineio` only;
-  forbidden-import tests; `ZSCALERCTL_*` env credentials; SDK dependency
-  stays in the nested module. Dump over MCP is out of scope until Phase 4
-  events exist.
+  `modelcontextprotocol/go-sdk` at an exact reviewed v1 pin; **stdio transport
+  only, no network listener**. The closed tool set is `engine_manifest`,
+  `catalog_schema`, `doctor`, `auth_status`, `config_status`, `resource_list`,
+  `resource_get`, and `resource_show`. The adapter consumes typed common-engine
+  operations only; it has no generic request passthrough and cannot import the
+  Zscaler SDK, credential resolvers, source records, or CLI internals.
+  Forbidden-import and process tests enforce the D0 redaction, provider, budget,
+  output-preflight, and value-free error rules. The MCP SDK stays in the nested
+  module. URL lookup, dump, and diff are policy-excluded from D1 even though the
+  engine now implements them.
 - **D2: host workflow proof + go/no-go.** Promotion requires beating
   skill+CLI for a real workflow in a concrete MCP-only host — "it works" is
   not promotion criteria. Record the decision either way.
@@ -289,7 +288,7 @@ window ending in a recorded go/no-go.
 | Dependency | Status (2026-07) | Risk | Policy |
 | --- | --- | --- | --- |
 | Lip Gloss v2 | Stable | Styling behavior drift | Root dep allowed only after Phase 3 golden baseline exists |
-| MCP Go SDK | v1.0.0, compat guarantee | Tenant data in model context; evolving spec around streamable servers | Nested module until D3; stdio only |
+| MCP Go SDK | Stable v1 line; exact version selected at D1 implementation | Tenant data in model context; SDK/spec behavior can evolve within supported transports | Exact reviewed pin in nested module until D3; stdio only; re-review security-sensitive decoder/transport changes on every bump |
 | Wails v3 | Alpha | API churn, packaging churn | Nested module only; stability re-check before promotion; v2 fallback |
 | Bubble Tea | Mature | TUI test complexity | Optional post-1.0 experiment only |
 | zscaler-sdk-go | Vendored, renovate-gated | Upstream discovery/logging drift | Existing sdk-boundary runbook per bump |
@@ -300,7 +299,8 @@ window ending in a recorded go/no-go.
 2. **Phase 2.2:** error-currency cleanup lands only with the paired exit-5
    mapping (hand-trace above is the evidence).
 3. **Phase 4.1:** event-stream design checkpoint sign-off before code.
-4. **Phase 5 D0/D2:** MCP threat model accepted; go/no-go with host evidence.
+4. **Phase 5 D0/D2:** D0 threat model accepted 2026-07-15; D2 remains the
+   go/no-go checkpoint requiring concrete host evidence.
 5. **Phase 6.1/6.6:** Wails v3 vs v2; public-vs-dev-tool.
 6. **Pagination** (`Input.Options` extension): design note only when MCP host
    or GUI demonstrates need — not before.

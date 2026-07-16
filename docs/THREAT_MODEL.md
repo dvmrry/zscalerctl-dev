@@ -59,11 +59,13 @@ Primary trust boundaries:
 - Files written by dump/export commands.
 - CI logs and test artifacts.
 
-Future MCP work changes the output trust boundary because tool results enter
-model context rather than a terminal or operator-controlled pipe. The specific
-MCP risk shift, default redaction posture, and experiment constraints are
-documented in [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md); that addendum must be
-accepted before any MCP server code starts.
+MCP changes the output trust boundary because tool results enter model context
+rather than a terminal or operator-controlled pipe. The model provider, host
+transcript store, and host-controlled process become additional trust
+boundaries. [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) records the accepted
+`share`-by-default posture and the closed, bounded local-stdio experiment. That
+addendum authorizes D1 experimentation only; it does not promote MCP into the
+supported surface.
 
 The SDK is part of the trusted computing base. Wrapping it improves project
 structure, but does not remove the need to audit SDK credential loading,

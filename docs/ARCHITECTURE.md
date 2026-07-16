@@ -75,13 +75,19 @@ deliberate: it keeps the production surface to one audited read-only binary,
 while agents start from `machine manifest`, use `schema list` for field
 metadata, parse deterministic JSON or NDJSON, and branch on stable exit codes.
 
-An MCP sidecar is not part of the v1 supported surface. The forward roadmap now
-allows a local, stdio-only MCP experiment after the Phase 5 threat-model gate in
-[MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) is accepted. Until and unless that
-experiment is deliberately promoted, the supported agent interface remains the
-CLI contract plus skill guidance. Any MCP implementation must consume the
-existing runtime/machine seams and must not add a network listener without a new
-threat-model decision.
+An MCP adapter is not part of the v1 supported surface. The accepted Phase 5
+threat model in [MCP_THREAT_MODEL.md](MCP_THREAT_MODEL.md) authorizes an isolated,
+local-stdio experiment over the common Go engine. Until and unless that
+experiment passes its host-workflow proof and is deliberately promoted, the
+supported agent interface remains the CLI contract plus skill guidance.
+
+The experiment receives only an explicit allow-list of typed engine operations:
+config-free engine/catalog discovery, sanitized status inspection, and
+catalog-backed resource `list`/`get`/`show`. It cannot expose generic execution,
+SDK clients, source records, credentials, per-call redaction/config authority,
+filesystem operations, URL lookup, dump/diff, or a network listener. MCP-specific
+`share` redaction, call/result budgets, and command-provider policy live in the
+adapter and do not weaken or fork the engine contract.
 
 ## Initial Package Shape
 
