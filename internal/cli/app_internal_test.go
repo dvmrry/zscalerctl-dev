@@ -117,7 +117,7 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 	tests := []struct {
 		name         string
 		args         []string
-		response     machine.Response
+		records      []map[string]any
 		wantOp       machine.Operation
 		wantProduct  string
 		wantResource string
@@ -125,33 +125,27 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 		wantArray    bool
 	}{
 		{
-			name: "list",
-			args: []string{"--format", "json", "zia", "locations", "list"},
-			response: machine.Response{
-				Records: []map[string]any{{"id": "1", "name": "From machine list"}},
-			},
+			name:         "list",
+			args:         []string{"--format", "json", "zia", "locations", "list"},
+			records:      []map[string]any{{"id": "1", "name": "From machine list"}},
 			wantOp:       machine.OperationList,
 			wantProduct:  "zia",
 			wantResource: "locations",
 			wantArray:    true,
 		},
 		{
-			name: "show",
-			args: []string{"--format", "json", "zia", "advanced-settings", "show"},
-			response: machine.Response{
-				Records: []map[string]any{{"id": "settings", "name": "From machine show"}},
-			},
+			name:         "show",
+			args:         []string{"--format", "json", "zia", "advanced-settings", "show"},
+			records:      []map[string]any{{"id": "settings", "name": "From machine show"}},
 			wantOp:       machine.OperationShow,
 			wantProduct:  "zia",
 			wantResource: "advanced-settings",
 			wantArray:    false,
 		},
 		{
-			name: "get",
-			args: []string{"--format", "json", "zia", "locations", "get", "42"},
-			response: machine.Response{
-				Records: []map[string]any{{"id": "42", "name": "From machine get"}},
-			},
+			name:         "get",
+			args:         []string{"--format", "json", "zia", "locations", "get", "42"},
+			records:      []map[string]any{{"id": "42", "name": "From machine get"}},
 			wantOp:       machine.OperationGet,
 			wantProduct:  "zia",
 			wantResource: "locations",
@@ -167,7 +161,7 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				Reader:  &machineRouteReader{},
 				Catalog: machineRouteCatalog(),
 			})
-			rt := &recordingMachineRuntime{response: tt.response, redaction: redact.ModeStandard}
+			rt := &recordingMachineRuntime{records: tt.records, redaction: redact.ModeStandard}
 			runtimeFactoryCalled := false
 			app.machineRuntimeFactory = func(
 				_ context.Context,
@@ -194,9 +188,7 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
 			}
 			req := rt.calls[0]
-			if req.Capability != machine.CapabilityResourcesRead ||
-				req.Operation != tt.wantOp ||
-				req.Input == nil ||
+			if req.Operation != tt.wantOp ||
 				req.Input.Product != tt.wantProduct ||
 				req.Input.Resource != tt.wantResource ||
 				req.Input.RecordID != tt.wantRecordID {
@@ -211,8 +203,8 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
 					t.Fatalf("json.Unmarshal(list output) error = %v; output = %q", err, out.String())
 				}
-				if len(decoded) != 1 || decoded[0]["name"] != tt.response.Records[0]["name"] {
-					t.Fatalf("list output = %#v, want machine response record", decoded)
+				if len(decoded) != 1 || decoded[0]["name"] != tt.records[0]["name"] {
+					t.Fatalf("list output = %#v, want typed machine result record", decoded)
 				}
 				return
 			}
@@ -220,8 +212,8 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
 				t.Fatalf("json.Unmarshal(%s output) error = %v; output = %q", tt.name, err, out.String())
 			}
-			if decoded["name"] != tt.response.Records[0]["name"] {
-				t.Fatalf("%s output = %#v, want machine response record", tt.name, decoded)
+			if decoded["name"] != tt.records[0]["name"] {
+				t.Fatalf("%s output = %#v, want typed machine result record", tt.name, decoded)
 			}
 		})
 	}
@@ -234,9 +226,7 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 		Catalog: machineRouteCatalog(),
 	})
 	rt := &recordingMachineRuntime{
-		response: machine.Response{
-			Records: []map[string]any{{"name": "Branch West"}},
-		},
+		records:   []map[string]any{{"name": "Branch West"}},
 		redaction: redact.ModeStandard,
 	}
 	app.machineRuntimeFactory = func(
@@ -261,9 +251,6 @@ func TestRunProductPassesNarrowingToMachineExecutor(t *testing.T) {
 		t.Fatalf("machine runtime calls = %d, want 1", len(rt.calls))
 	}
 	req := rt.calls[0]
-	if req.Input == nil {
-		t.Fatalf("machine request = %#v, want input", req)
-	}
 	wantFilters := []machine.Filter{{Field: "country", Operator: "=", Value: "DE"}}
 	if !reflect.DeepEqual(req.Input.Fields, []string{"name"}) ||
 		!reflect.DeepEqual(req.Input.Filters, wantFilters) ||
@@ -287,13 +274,11 @@ func TestRunProductDoesNotReapplyNarrowingAfterMachineExecution(t *testing.T) {
 	}}
 	app := NewWithOptions(&out, &errOut, nil, Options{Catalog: catalog})
 	rt := &recordingMachineRuntime{
-		response: machine.Response{
-			Records: []map[string]any{{
-				"id":      "1",
-				"name":    "HQ",
-				"country": "US",
-			}},
-		},
+		records: []map[string]any{{
+			"id":      "1",
+			"name":    "HQ",
+			"country": "US",
+		}},
 		redaction: redact.ModeStandard,
 	}
 	app.machineRuntimeFactory = func(
@@ -319,8 +304,7 @@ func TestRunProductDoesNotReapplyNarrowingAfterMachineExecution(t *testing.T) {
 	}
 	req := rt.calls[0]
 	wantFilters := []machine.Filter{{Field: "country", Operator: "=", Value: "DE"}}
-	if req.Input == nil ||
-		!reflect.DeepEqual(req.Input.Fields, []string{"name"}) ||
+	if !reflect.DeepEqual(req.Input.Fields, []string{"name"}) ||
 		!reflect.DeepEqual(req.Input.Filters, wantFilters) ||
 		req.Input.Search != "branch" {
 		t.Fatalf("machine request input = %#v, want fields/filter/search", req.Input)
@@ -333,15 +317,15 @@ func TestRunProductDoesNotReapplyNarrowingAfterMachineExecution(t *testing.T) {
 		t.Fatalf("json.Unmarshal(list output) error = %v; output = %q", err, out.String())
 	}
 	if len(decoded) != 1 {
-		t.Fatalf("list output = %#v, want one machine response record", decoded)
+		t.Fatalf("list output = %#v, want one typed machine result record", decoded)
 	}
 	got := decoded[0]
 	if got["id"] != "1" || got["name"] != "HQ" || got["country"] != "US" || len(got) != 3 {
-		t.Fatalf("list output record = %#v, want verified machine response without CLI renarrowing", got)
+		t.Fatalf("list output record = %#v, want verified machine result without CLI renarrowing", got)
 	}
 }
 
-func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
+func TestRunProductRejectsUnverifiedMachineResult(t *testing.T) {
 	formats := []string{"json", "ndjson", "table", "pretty"}
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
@@ -356,13 +340,11 @@ func TestRunProductRejectsUnverifiedMachineResponse(t *testing.T) {
 				globalOptions,
 			) (machineRuntime, error) {
 				return &recordingMachineRuntime{
-					response: machine.Response{
-						Records: []map[string]any{{
-							"id":            "1",
-							"name":          "From machine",
-							"new_sdk_field": "SECRET_VALUE_SHOULD_NOT_RENDER",
-						}},
-					},
+					records: []map[string]any{{
+						"id":            "1",
+						"name":          "From machine",
+						"new_sdk_field": "SECRET_VALUE_SHOULD_NOT_RENDER",
+					}},
 					redaction: redact.ModeStandard,
 				}, nil
 			}
@@ -400,7 +382,6 @@ func TestRunProductMachineLoaderErrorPreservesOriginalError(t *testing.T) {
 	})
 	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
 		return &recordingMachineRuntime{
-			response:  machine.Response{Error: &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}},
 			err:       sentinel,
 			redaction: redact.ModeStandard,
 		}, nil
@@ -430,7 +411,6 @@ func TestRunProductMachineGetLoaderErrorPreservesOriginalError(t *testing.T) {
 	})
 	app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
 		return &recordingMachineRuntime{
-			response:  machine.Response{Error: &machine.MachineError{Kind: machine.ErrorKindLiveAccessFailed}},
 			err:       sentinel,
 			redaction: redact.ModeStandard,
 		}, nil
@@ -466,7 +446,6 @@ func TestRunProductMachineGetNotFoundPreservesMachineError(t *testing.T) {
 			Resource:  "locations",
 		}
 		return &recordingMachineRuntime{
-			response:  machine.Response{Error: machineErr},
 			err:       machineErr,
 			redaction: redact.ModeStandard,
 		}, nil
@@ -532,9 +511,7 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 		Catalog: machineRouteCatalog(),
 	})
 	rt := &recordingMachineRuntime{
-		response: machine.Response{
-			Records: []map[string]any{{"id": "42", "name": "Machine get"}},
-		},
+		records:   []map[string]any{{"id": "42", "name": "Machine get"}},
 		redaction: redact.ModeStandard,
 	}
 	app.machineRuntimeFactory = func(
@@ -560,7 +537,6 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 	}
 	req := rt.calls[0]
 	if req.Operation != machine.OperationGet ||
-		req.Input == nil ||
 		req.Input.Product != "zia" ||
 		req.Input.Resource != "locations" ||
 		req.Input.RecordID != "42" {
@@ -571,7 +547,7 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 		t.Fatalf("json.Unmarshal(get output) error = %v; output = %q", err, out.String())
 	}
 	if decoded["name"] != "Machine get" {
-		t.Fatalf("get output = %#v, want machine response record", decoded)
+		t.Fatalf("get output = %#v, want typed machine result record", decoded)
 	}
 	if errOut.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", errOut.String())
@@ -602,18 +578,24 @@ func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
 }
 
 type recordingMachineRuntime struct {
-	response  machine.Response
+	records   []map[string]any
 	err       error
 	redaction redact.Mode
-	calls     []machine.Request
+	calls     []machine.ResourceReadRequest
 }
 
-func (r *recordingMachineRuntime) Execute(_ context.Context, req machine.Request) (machine.Response, error) {
+func (r *recordingMachineRuntime) Read(
+	_ context.Context,
+	req machine.ResourceReadRequest,
+) (machine.ResourceReadResult, error) {
 	r.calls = append(r.calls, req)
+	result := machine.NewResourceReadResult(
+		resources.NewProjectedRecordsFromProjectedFields(r.records),
+	)
 	if r.err != nil {
-		return r.response, r.err
+		return result, r.err
 	}
-	return r.response, nil
+	return result, nil
 }
 
 func (r *recordingMachineRuntime) Redaction() redact.Mode {

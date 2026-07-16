@@ -27,7 +27,7 @@ func validate(path string) error {
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %03o", ErrInsecurePermissions, path, info.Mode().Perm())
 	}
-	return nil
+	return validateOwnerOnlyACLPath(path)
 }
 
 func validateOpenFile(file *os.File) error {
@@ -44,7 +44,7 @@ func validateOpenFile(file *os.File) error {
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %03o", ErrInsecurePermissions, file.Name(), info.Mode().Perm())
 	}
-	return nil
+	return validateOwnerOnlyACLFile(file)
 }
 
 func writeOwnerOnly(path string, data []byte) error {

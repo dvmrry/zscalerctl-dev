@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,8 +20,8 @@ func TestIntrospectTree(t *testing.T) {
 	doc := cli.IntrospectTree(a)
 
 	// Contract version
-	if doc.IntrospectVersion != "1" {
-		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "1")
+	if doc.IntrospectVersion != "2" {
+		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "2")
 	}
 
 	// CLI-wide read-only guarantee
@@ -32,12 +34,10 @@ func TestIntrospectTree(t *testing.T) {
 		t.Errorf("CLIVersion = %q, want empty (set by command, not introspectTree)", doc.CLIVersion)
 	}
 
-	// Per-command `mutating` is the de-tautologized contract:
-	//   - config init writes a LOCAL config file → Mutating must be true.
-	//   - read-only commands (version, a product read like zia locations list)
-	//     → Mutating must be false.
-	// The CLI-wide read_only guarantee is tenant-scoped; `mutating` flags
-	// local side effects, not tenant mutation.
+	// The CLI-wide read_only guarantee is tenant-scoped. Per-command effects
+	// describe local writes/deletes and network access, including side effects
+	// that occur only when a flag is set. Mutating remains a conservative summary
+	// for older consumers: any possible local or tenant mutation makes it true.
 	findByPath := func(path string) *cli.CommandDoc {
 		for i := range doc.Commands {
 			if doc.Commands[i].Path == path {
@@ -47,22 +47,86 @@ func TestIntrospectTree(t *testing.T) {
 		return nil
 	}
 
-	configInit := findByPath("config init")
-	if configInit == nil {
-		t.Fatal("command \"config init\" not found in doc.Commands")
+	effectCases := []struct {
+		path string
+		want []cli.EffectDoc
+	}{
+		{
+			path: "config init",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_delete", When: "flag_set", Flag: "force"},
+				{Kind: "local_filesystem_write", When: "always"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
+		{
+			path: "dump",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_delete", When: "flag_set", Flag: "force"},
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_read", When: "flag_set", Flag: "force"},
+				{Kind: "local_filesystem_write", When: "always"},
+				{Kind: "network_access", When: "always"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
+		{
+			path: "version",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+			},
+		},
+		{
+			path: "machine manifest",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+			},
+		},
+		{
+			path: "diff",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "always"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+			},
+		},
+		{
+			path: "doctor",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+			},
+		},
+		{
+			path: "zia locations list",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+				{Kind: "network_access", When: "always"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
+		{
+			path: "zia url-lookup",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+				{Kind: "network_access", When: "always"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
 	}
-	if !configInit.Mutating {
-		t.Errorf("config init: Mutating = false, want true (writes a local config file)")
-	}
-
-	for _, path := range []string{"version", "zia locations list"} {
-		c := findByPath(path)
-		if c == nil {
-			t.Errorf("command %q not found in doc.Commands", path)
+	for _, tc := range effectCases {
+		got := findByPath(tc.path)
+		if got == nil {
+			t.Errorf("command %q not found in doc.Commands", tc.path)
 			continue
 		}
-		if c.Mutating {
-			t.Errorf("command %q: Mutating = true, want false (read-only)", path)
+		if !slices.Equal(got.Effects, tc.want) {
+			t.Errorf("command %q effects = %#v, want %#v", tc.path, got.Effects, tc.want)
+		}
+		if !got.Mutating {
+			t.Errorf("command %q mutating = false, want true for possible local filesystem effects", tc.path)
 		}
 	}
 
@@ -138,6 +202,189 @@ func TestIntrospectTree(t *testing.T) {
 	}
 	if len(doc.Catalog.Resources) == 0 {
 		t.Error("Catalog.Resources is empty")
+	}
+}
+
+func TestIntrospectEffectsAreValid(t *testing.T) {
+	t.Parallel()
+
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	validKinds := map[string]bool{
+		"tenant_mutation":         true,
+		"local_filesystem_read":   true,
+		"local_filesystem_write":  true,
+		"local_filesystem_delete": true,
+		"network_access":          true,
+		"process_execution":       true,
+	}
+
+	for _, command := range doc.Commands {
+		availableFlags := make(map[string]bool, len(command.Flags)+len(command.InheritedFlags))
+		for _, flag := range command.Flags {
+			availableFlags[flag.Name] = true
+		}
+		for _, flag := range command.InheritedFlags {
+			availableFlags[flag] = true
+		}
+
+		seen := make(map[cli.EffectDoc]bool, len(command.Effects))
+		mutating := false
+		hasNetworkAccess := false
+		hasConfiguredLocalRead := false
+		hasConfiguredProcessExecution := false
+		for _, effect := range command.Effects {
+			if !validKinds[effect.Kind] {
+				t.Errorf("command %q effect kind = %q, want a published effect kind", command.Path, effect.Kind)
+			}
+			if seen[effect] {
+				t.Errorf("command %q effects contain duplicate %#v", command.Path, effect)
+			}
+			seen[effect] = true
+
+			switch effect.When {
+			case "always":
+				if effect.Flag != "" {
+					t.Errorf("command %q unconditional effect %#v has a flag, want none", command.Path, effect)
+				}
+			case "flag_set":
+				if !availableFlags[effect.Flag] {
+					t.Errorf("command %q effect %#v references unavailable flag; local=%v inherited=%v", command.Path, effect, command.Flags, command.InheritedFlags)
+				}
+			case "configuration_dependent":
+				if effect.Flag != "" {
+					t.Errorf("command %q configuration-dependent effect %#v has a flag, want none", command.Path, effect)
+				}
+			default:
+				t.Errorf("command %q effect when = %q, want always, flag_set, or configuration_dependent", command.Path, effect.When)
+			}
+
+			switch effect.Kind {
+			case "tenant_mutation":
+				mutating = true
+				if doc.ReadOnly {
+					t.Errorf("command %q has tenant_mutation effect while document read_only = true", command.Path)
+				}
+			case "local_filesystem_write", "local_filesystem_delete":
+				mutating = true
+			case "network_access":
+				hasNetworkAccess = true
+			case "local_filesystem_read":
+				hasConfiguredLocalRead = hasConfiguredLocalRead || effect.When == "configuration_dependent"
+			case "process_execution":
+				mutating = true
+				hasConfiguredProcessExecution = effect.When == "configuration_dependent"
+			}
+		}
+
+		if !slices.IsSortedFunc(command.Effects, func(a, b cli.EffectDoc) int {
+			switch {
+			case a.Kind < b.Kind:
+				return -1
+			case a.Kind > b.Kind:
+				return 1
+			case a.When < b.When:
+				return -1
+			case a.When > b.When:
+				return 1
+			case a.Flag < b.Flag:
+				return -1
+			case a.Flag > b.Flag:
+				return 1
+			default:
+				return 0
+			}
+		}) {
+			t.Errorf("command %q effects = %#v, want stable sorted order", command.Path, command.Effects)
+		}
+		if command.Mutating != mutating {
+			t.Errorf("command %q mutating = %t, want derived value %t from effects %#v", command.Path, command.Mutating, mutating, command.Effects)
+		}
+		if len(command.OutputFields) > 0 && !hasNetworkAccess {
+			t.Errorf("command %q exposes live output fields without a network_access effect", command.Path)
+		}
+		if len(command.OutputFields) > 0 && !hasConfiguredLocalRead {
+			t.Errorf("command %q exposes live output fields without a configuration-dependent local_filesystem_read effect", command.Path)
+		}
+		if len(command.OutputFields) > 0 && !hasConfiguredProcessExecution {
+			t.Errorf("command %q exposes live output fields without a configuration-dependent process_execution effect", command.Path)
+		}
+	}
+}
+
+func TestIntrospectCatalogEffectsAreComplete(t *testing.T) {
+	t.Parallel()
+
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	byPath := make(map[string]cli.CommandDoc, len(doc.Commands))
+	for _, command := range doc.Commands {
+		byPath[command.Path] = command
+	}
+
+	want := []cli.EffectDoc{
+		{Kind: "local_filesystem_read", When: "configuration_dependent"},
+		{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+		{Kind: "network_access", When: "always"},
+		{Kind: "process_execution", When: "configuration_dependent"},
+	}
+	checked := 0
+	for _, resource := range doc.Catalog.Resources {
+		for _, op := range resource.Ops {
+			path := resource.Product + " " + resource.Name + " " + op
+			command, ok := byPath[path]
+			if !ok {
+				t.Errorf("catalog command %q missing from introspection", path)
+				continue
+			}
+			if !slices.Equal(command.Effects, want) {
+				t.Errorf("catalog command %q effects = %#v, want %#v", path, command.Effects, want)
+			}
+			checked++
+		}
+	}
+	if checked != 271 {
+		t.Errorf("checked catalog operations = %d, want 271", checked)
+	}
+}
+
+func TestIntrospectEffectCounts(t *testing.T) {
+	t.Parallel()
+
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	byKind := make(map[string]int)
+	byWhen := make(map[string]int)
+	commandsWithRead := 0
+	for _, command := range doc.Commands {
+		hasRead := false
+		for _, effect := range command.Effects {
+			byKind[effect.Kind]++
+			byWhen[effect.When]++
+			hasRead = hasRead || effect.Kind == "local_filesystem_read"
+		}
+		if hasRead {
+			commandsWithRead++
+		}
+	}
+
+	wantKinds := map[string]int{
+		"local_filesystem_delete": 2,
+		"local_filesystem_read":   279,
+		"local_filesystem_write":  293,
+		"network_access":          273,
+		"process_execution":       274,
+	}
+	wantWhen := map[string]int{
+		"always":                  276,
+		"configuration_dependent": 551,
+		"flag_set":                294,
+	}
+	if !maps.Equal(byKind, wantKinds) {
+		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)
+	}
+	if !maps.Equal(byWhen, wantWhen) {
+		t.Errorf("effect condition counts = %v, want %v", byWhen, wantWhen)
+	}
+	if commandsWithRead != 278 {
+		t.Errorf("commands with local reads = %d, want 278", commandsWithRead)
 	}
 }
 
@@ -237,6 +484,17 @@ func TestIntrospectTableFormat(t *testing.T) {
 			for _, landmark := range []string{"Global flags (", "Commands (", "Catalog:", "Exit codes ("} {
 				if !strings.Contains(got, landmark) {
 					t.Errorf("--format %s: output missing landmark %q; got:\n%s", format, landmark, got)
+				}
+			}
+			for _, effectLandmark := range []string{
+				"introspect-version: 2",
+				"Effect conditions:",
+				"local_filesystem_read",
+				"local_filesystem_write (when --output is set)",
+				"process_execution (configuration-dependent)",
+			} {
+				if !strings.Contains(got, effectLandmark) {
+					t.Errorf("--format %s: output missing effect landmark %q", format, effectLandmark)
 				}
 			}
 		})

@@ -1,8 +1,14 @@
 # Agent Guide
 
-`zscalerctl` is a read-only CLI for querying Zscaler tenant configuration.
-It is safe to explore: there are no write commands, so no invocation can
-change tenant state. Worst case is a usage error with a helpful message.
+`zscalerctl` is a tenant-read-only CLI for querying Zscaler configuration: no
+command can change tenant state. Some commands and flags do have explicit local
+and process effects. Commands that load configuration may read config or secret
+files. Live reads may execute an operator-configured `cmd:` provider or platform
+keyring helper before contacting Zscaler. `config init` writes a config file,
+`dump --out` writes a directory (and `--force` can replace a prior validated
+dump), and global `--output` creates or atomically replaces a regular file.
+Inspect the structured `effects` in `zscalerctl --format json introspect` before
+delegating commands to an agent.
 
 ## Skill locations
 
@@ -117,6 +123,10 @@ set is in the [README](README.md#authentication)
 environment-specific: if doctor reports variables missing, ask your operator
 to set them rather than inventing values or hunting through shell config.**
 
+Introspection marks provider-backed process execution as
+`configuration_dependent`. Treat it as possible unless the effective config,
+environment, provider choice, and platform are reviewed and pinned.
+
 ## Parse output, not prose
 
 - Piped/redirected output is always deterministic JSON (`--format auto` is
@@ -132,6 +142,9 @@ to set them rather than inventing values or hunting through shell config.**
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
   `7` drift detected when `diff --fail-on-drift` is used.
 - Narrow output with `--fields a,b,c` (can only narrow, never widen).
+- Prefer stdout for agent reads. `--output PATH` is a local filesystem write
+  that creates or atomically replaces a restricted regular file; use it only
+  when that side effect is explicitly intended. It is not valid with `dump`.
 - Bound each call with `--timeout 30s` — it caps each HTTP request (not the
   whole run), so a slow or unreachable tenant can't hang you indefinitely.
 

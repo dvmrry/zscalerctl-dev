@@ -1,5 +1,5 @@
-// Package machine defines transport-neutral request, response, manifest, and
-// executor types for the machine/core capability API.
+// Package machine defines transport-neutral request, response, manifest,
+// operation-event, and executor types for the machine/core capability API.
 //
 // Cobra, stdio, JSON-RPC, TUI, Wails, or other adapters can translate their own
 // inputs into these structs. Execution is limited to narrow interfaces supplied
@@ -11,10 +11,16 @@ package machine
 type Operation string
 
 const (
-	OperationList     Operation = "list"
-	OperationGet      Operation = "get"
-	OperationShow     Operation = "show"
-	OperationManifest Operation = "manifest"
+	OperationList         Operation = "list"
+	OperationGet          Operation = "get"
+	OperationShow         Operation = "show"
+	OperationManifest     Operation = "manifest"
+	OperationDoctor       Operation = "doctor"
+	OperationAuthStatus   Operation = "auth_status"
+	OperationConfigStatus Operation = "config_status"
+	OperationLookup       Operation = "lookup"
+	OperationDump         Operation = "dump"
+	OperationDiff         Operation = "diff"
 )
 
 // Request is the typed in-process input envelope for a future machine
@@ -54,6 +60,7 @@ type MachineError struct {
 	Operation Operation `json:"operation,omitempty"`
 	Product   string    `json:"product,omitempty"`
 	Resource  string    `json:"resource,omitempty"`
+	cause     error
 }
 
 // Error returns a stable human fallback for callers that handle MachineError as
@@ -66,6 +73,22 @@ func (e MachineError) Error() string {
 		return e.Kind
 	}
 	return "machine error"
+}
+
+// Unwrap preserves a sanitized sentinel classification for in-process callers
+// without exposing backend details or adding fields to the JSON contract.
+func (e MachineError) Unwrap() error { return e.cause }
+
+// ErrorWithCause returns an independent machine error that preserves one safe
+// sentinel for errors.Is classification without adding it to the JSON contract.
+func ErrorWithCause(machineErr *MachineError, cause error) error {
+	if machineErr == nil {
+		return cause
+	}
+	out := *machineErr
+	out.Missing = append([]string(nil), machineErr.Missing...)
+	out.cause = cause
+	return &out
 }
 
 // OutputSafe marks MachineError as eligible for the existing safe JSON
@@ -84,17 +107,10 @@ type Capability struct {
 	Meta        *Meta       `json:"meta,omitempty"`
 }
 
-// Input describes capability inputs without tying them to Cobra flags or a
-// specific transport encoding.
-type Input struct {
-	Product  string            `json:"product,omitempty"`
-	Resource string            `json:"resource,omitempty"`
-	RecordID string            `json:"record_id,omitempty"`
-	Fields   []string          `json:"fields,omitempty"`
-	Filters  []Filter          `json:"filters,omitempty"`
-	Search   string            `json:"search,omitempty"`
-	Options  map[string]string `json:"options,omitempty"`
-}
+// Input preserves the candidate request/manifest JSON shape while the engine
+// moves to capability-specific Go inputs. New in-process callers should use
+// ResourceReadInput through ResourceReadRequest.
+type Input = ResourceReadInput
 
 // Filter describes one projected-data filter requested by a caller.
 type Filter struct {

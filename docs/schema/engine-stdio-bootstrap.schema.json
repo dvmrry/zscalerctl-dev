@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:zscalerctl:engine-stdio:bootstrap:1",
+  "title": "zscalerctl local stdio immutable bootstrap frames",
+  "description": "Version-independent bootstrap frames for negotiating a local engine stdio protocol version. This shape is immutable when new engine protocol versions are offered.",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/initialize" },
+    { "$ref": "#/$defs/reject" },
+    { "$ref": "#/$defs/protocolError" }
+  ],
+  "$defs": {
+    "versionToken": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
+    },
+    "hello": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "versions", "bootstrap"],
+      "properties": {
+        "type": { "const": "hello" },
+        "protocol": { "const": "zscalerctl.engine.stdio" },
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/versionToken" }
+        },
+        "bootstrap": { "$ref": "#/$defs/bootstrapLimits" }
+      }
+    },
+    "bootstrapLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_bytes", "json_depth"],
+      "properties": {
+        "frame_bytes": { "const": 65536 },
+        "json_depth": { "const": 8 }
+      }
+    },
+    "initialize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "version"],
+      "properties": {
+        "type": { "const": "initialize" },
+        "protocol": { "const": "zscalerctl.engine.stdio" },
+        "version": { "$ref": "#/$defs/versionToken" }
+      }
+    },
+    "reject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "reason"],
+      "properties": {
+        "type": { "const": "reject" },
+        "protocol": { "const": "zscalerctl.engine.stdio" },
+        "reason": { "const": "unsupported_protocol" }
+      }
+    },
+    "protocolError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fatal", "error"],
+      "properties": {
+        "type": { "const": "protocol_error" },
+        "fatal": { "const": true },
+        "error": { "$ref": "#/$defs/bootstrapError" }
+      }
+    },
+    "bootstrapError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "protocol_violation",
+            "unsupported_protocol",
+            "frame_too_large",
+            "internal"
+          ]
+        }
+      }
+    }
+  }
+}

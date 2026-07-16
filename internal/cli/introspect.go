@@ -29,18 +29,37 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// schemaURL is the canonical JSON Schema URL for IntrospectDoc. The file
-// docs/schema/introspect.schema.json is published separately and the URL
-// intentionally floats on main; the introspect_version field carries the real
-// contract version.
-const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json"
+// schemaURL is the immutable version-specific JSON Schema URL for the current
+// IntrospectDoc contract. The released v1 URL remains at
+// docs/schema/introspect.schema.json; future versions must publish a new path.
+const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json"
+
+const (
+	effectsAnnotation                   = "introspect/effects"
+	suppressGlobalFlagEffectsAnnotation = "introspect/suppress-global-flag-effects"
+
+	effectKindTenantMutation        = "tenant_mutation"
+	effectKindLocalFilesystemRead   = "local_filesystem_read"
+	effectKindLocalFilesystemWrite  = "local_filesystem_write"
+	effectKindLocalFilesystemDelete = "local_filesystem_delete"
+	effectKindNetworkAccess         = "network_access"
+	effectKindProcessExecution      = "process_execution"
+
+	effectWhenAlways                 = "always"
+	effectWhenFlagSet                = "flag_set"
+	effectWhenConfigurationDependent = "configuration_dependent"
+
+	configReadEffects       = effectKindLocalFilesystemRead + "@" + effectWhenConfigurationDependent
+	credentialedReadEffects = configReadEffects + "," + effectKindNetworkAccess + "," +
+		effectKindProcessExecution + "@" + effectWhenConfigurationDependent
+)
 
 // IntrospectDoc is the top-level document returned by IntrospectTree.
 //
-// ReadOnly is tenant-scoped: `read_only: true` means the CLI never mutates
-// the Zscaler TENANT (read-only API); individual commands may still have
-// LOCAL side effects (e.g. `config init` writes a local config file — see
-// per-command `mutating`).
+// ReadOnly is tenant-scoped: `read_only: true` means the CLI never mutates the
+// Zscaler tenant. Individual commands may still have local or network effects;
+// Effects is authoritative and Mutating is a conservative compatibility
+// summary.
 type IntrospectDoc struct {
 	Schema            string        `json:"$schema"`
 	IntrospectVersion string        `json:"introspect_version"`
@@ -63,17 +82,33 @@ func (IntrospectDoc) OutputSafe() {}
 
 // CommandDoc describes a single CLI command for agent consumption.
 type CommandDoc struct {
-	Path           string    `json:"path"`
-	Short          string    `json:"short"`
-	Long           string    `json:"long,omitempty"`
-	Aliases        []string  `json:"aliases"`
-	Hidden         bool      `json:"hidden"`
-	Deprecated     string    `json:"deprecated,omitempty"`
-	Mutating       bool      `json:"mutating"`
-	Args           ArgsDoc   `json:"args"`
-	Flags          []FlagDoc `json:"flags"`
-	InheritedFlags []string  `json:"inherited_flags"`
-	OutputFields   []string  `json:"output_fields,omitempty"`
+	Path       string   `json:"path"`
+	Short      string   `json:"short"`
+	Long       string   `json:"long,omitempty"`
+	Aliases    []string `json:"aliases"`
+	Hidden     bool     `json:"hidden"`
+	Deprecated string   `json:"deprecated,omitempty"`
+	// Mutating is derived from Effects and remains for older consumers. It is
+	// true for possible local/tenant mutation or configured process execution,
+	// including conditional effects.
+	Mutating       bool        `json:"mutating"`
+	Effects        []EffectDoc `json:"effects"`
+	Args           ArgsDoc     `json:"args"`
+	Flags          []FlagDoc   `json:"flags"`
+	InheritedFlags []string    `json:"inherited_flags"`
+	OutputFields   []string    `json:"output_fields,omitempty"`
+}
+
+// EffectDoc describes one observable command effect and when it occurs.
+// Flag is present only when When is "flag_set" and never includes the leading
+// "--". Configuration-dependent effects are possible when effective config,
+// environment, provider choice, or platform enables them. Effects describe
+// possible observable behavior during normal command execution; help rendering
+// is not treated as execution of the underlying command.
+type EffectDoc struct {
+	Kind string `json:"kind"`
+	When string `json:"when"`
+	Flag string `json:"flag,omitempty"`
 }
 
 // FlagDoc describes a single flag (global or local).
@@ -151,11 +186,10 @@ func IntrospectTree(a *App) IntrospectDoc {
 	catalog := a.resourceCatalog()
 	doc := IntrospectDoc{
 		Schema:            schemaURL,
-		IntrospectVersion: "1",
+		IntrospectVersion: "2",
 		CLIVersion:        "",
-		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant
-		// (read-only API). Local side effects (e.g. config init writing a
-		// local file) are flagged per-command via `mutating`.
+		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant.
+		// Per-command effects describe local writes and read-only network access.
 		ReadOnly:           true,
 		GlobalFlags:        buildGlobalFlags(),
 		Catalog:            buildCatalog(catalog),
@@ -291,6 +325,8 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 		outputFields = strings.Split(ann, ",")
 	}
 
+	inheritedFlags := buildInheritedFlagNames(cmd)
+	effects := buildCommandEffects(cmd, inheritedFlags)
 	doc := CommandDoc{
 		Path:           path,
 		Short:          cmd.Short,
@@ -298,10 +334,11 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 		Aliases:        cmd.Aliases,
 		Hidden:         cmd.Hidden,
 		Deprecated:     cmd.Deprecated,
-		Mutating:       cmd.Annotations["introspect/mutating"] == "true",
+		Mutating:       effectsMutate(effects),
+		Effects:        effects,
 		Args:           buildArgsDoc(cmd),
 		Flags:          buildLocalFlagDocs(cmd),
-		InheritedFlags: buildInheritedFlagNames(cmd),
+		InheritedFlags: inheritedFlags,
 		OutputFields:   outputFields,
 	}
 	if doc.Aliases == nil {
@@ -340,6 +377,7 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 			default: // list
 				argsPolicy = ArgsDoc{Policy: "none"}
 			}
+			effects := buildCommandEffects(productCmd, inheritedNames)
 			doc := CommandDoc{
 				Path:           path,
 				Short:          op.Name + " " + string(product) + " " + spec.Name,
@@ -347,7 +385,8 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 				Aliases:        []string{},
 				Hidden:         false,
 				Deprecated:     "",
-				Mutating:       false,
+				Mutating:       effectsMutate(effects),
+				Effects:        effects,
 				Args:           argsPolicy,
 				Flags:          []FlagDoc{},
 				InheritedFlags: inheritedNames,
@@ -357,6 +396,192 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 		}
 	}
 	return docs
+}
+
+// buildCommandEffects combines intrinsic command annotations with effects
+// inherited from global flags. Annotation tokens use "kind" for an
+// unconditional effect, "kind@flag" for a flag-conditioned effect, and
+// "kind@configuration_dependent" when effective configuration, environment,
+// provider choice, or platform may enable the effect.
+func buildCommandEffects(cmd *cobra.Command, inheritedFlags []string) []EffectDoc {
+	effects := parseEffectAnnotation(cmd)
+	suppressed := parseSuppressedGlobalFlagEffects(cmd)
+	inherited := make(map[string]bool, len(inheritedFlags))
+	for _, name := range inheritedFlags {
+		inherited[name] = true
+	}
+	for name := range suppressed {
+		if !inherited[name] {
+			panic(fmt.Sprintf("command %q suppresses effect for global flag %q that it does not inherit", cmd.CommandPath(), name))
+		}
+	}
+	effects = append(effects, buildGlobalFlagEffects(inheritedFlags, suppressed)...)
+	effects = normalizeEffects(effects)
+	for _, effect := range effects {
+		validateEffectFlag(cmd, effect)
+	}
+	return effects
+}
+
+func parseEffectAnnotation(cmd *cobra.Command) []EffectDoc {
+	value := strings.TrimSpace(cmd.Annotations[effectsAnnotation])
+	if value == "" {
+		return nil
+	}
+
+	var effects []EffectDoc
+	for _, raw := range strings.Split(value, ",") {
+		token := strings.TrimSpace(raw)
+		if token == "" {
+			panic(fmt.Sprintf("command %q has an empty %s token", cmd.CommandPath(), effectsAnnotation))
+		}
+		parts := strings.Split(token, "@")
+		if len(parts) > 2 || strings.TrimSpace(parts[0]) == "" {
+			panic(fmt.Sprintf("command %q has invalid %s token %q", cmd.CommandPath(), effectsAnnotation, token))
+		}
+		kind := strings.TrimSpace(parts[0])
+		if !validEffectKind(kind) {
+			panic(fmt.Sprintf("command %q has unknown effect kind %q", cmd.CommandPath(), kind))
+		}
+		effect := EffectDoc{Kind: kind, When: effectWhenAlways}
+		if len(parts) == 2 {
+			condition := strings.TrimSpace(parts[1])
+			if condition == effectWhenConfigurationDependent {
+				effect.When = effectWhenConfigurationDependent
+				effects = append(effects, effect)
+				continue
+			}
+			flag := strings.TrimSpace(strings.TrimPrefix(condition, "--"))
+			if flag == "" {
+				panic(fmt.Sprintf("command %q has effect %q with an empty flag", cmd.CommandPath(), token))
+			}
+			effect.When = effectWhenFlagSet
+			effect.Flag = flag
+		}
+		effects = append(effects, effect)
+	}
+	return effects
+}
+
+func parseSuppressedGlobalFlagEffects(cmd *cobra.Command) map[string]bool {
+	value := strings.TrimSpace(cmd.Annotations[suppressGlobalFlagEffectsAnnotation])
+	if value == "" {
+		return nil
+	}
+
+	suppressed := make(map[string]bool)
+	for _, raw := range strings.Split(value, ",") {
+		name := strings.TrimSpace(strings.TrimPrefix(raw, "--"))
+		if name == "" || !globalFlagNameSet[name] {
+			panic(fmt.Sprintf("command %q suppresses unknown global flag effect %q", cmd.CommandPath(), raw))
+		}
+		if !globalFlagHasEffects(name) {
+			panic(fmt.Sprintf("command %q suppresses global flag %q, which has no declared effects", cmd.CommandPath(), name))
+		}
+		suppressed[name] = true
+	}
+	return suppressed
+}
+
+func globalFlagHasEffects(name string) bool {
+	for _, def := range globalFlagDefs {
+		if def.name == name {
+			return len(def.effectKinds) > 0
+		}
+	}
+	return false
+}
+
+func buildGlobalFlagEffects(inheritedFlags []string, suppressed map[string]bool) []EffectDoc {
+	inherited := make(map[string]bool, len(inheritedFlags))
+	for _, name := range inheritedFlags {
+		inherited[name] = true
+	}
+
+	var effects []EffectDoc
+	for _, def := range globalFlagDefs {
+		if !inherited[def.name] || suppressed[def.name] {
+			continue
+		}
+		for _, kind := range def.effectKinds {
+			if !validEffectKind(kind) {
+				panic(fmt.Sprintf("global flag %q has unknown effect kind %q", def.name, kind))
+			}
+			effects = append(effects, EffectDoc{
+				Kind: kind,
+				When: effectWhenFlagSet,
+				Flag: def.name,
+			})
+		}
+	}
+	return effects
+}
+
+func validateEffectFlag(cmd *cobra.Command, effect EffectDoc) {
+	if effect.When == effectWhenAlways {
+		if effect.Flag != "" {
+			panic(fmt.Sprintf("command %q has unconditional effect %q with flag %q", cmd.CommandPath(), effect.Kind, effect.Flag))
+		}
+		return
+	}
+	if effect.When == effectWhenConfigurationDependent {
+		if effect.Flag != "" {
+			panic(fmt.Sprintf("command %q has configuration-dependent effect %q with flag %q", cmd.CommandPath(), effect.Kind, effect.Flag))
+		}
+		return
+	}
+	if effect.When != effectWhenFlagSet || effect.Flag == "" {
+		panic(fmt.Sprintf("command %q has invalid effect condition %#v", cmd.CommandPath(), effect))
+	}
+	if cmd.Flags().Lookup(effect.Flag) == nil && cmd.InheritedFlags().Lookup(effect.Flag) == nil {
+		panic(fmt.Sprintf("command %q effect %q references unavailable flag %q", cmd.CommandPath(), effect.Kind, effect.Flag))
+	}
+}
+
+func validEffectKind(kind string) bool {
+	switch kind {
+	case effectKindTenantMutation,
+		effectKindLocalFilesystemRead,
+		effectKindLocalFilesystemWrite,
+		effectKindLocalFilesystemDelete,
+		effectKindNetworkAccess,
+		effectKindProcessExecution:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeEffects(effects []EffectDoc) []EffectDoc {
+	seen := make(map[EffectDoc]bool, len(effects))
+	out := make([]EffectDoc, 0, len(effects))
+	for _, effect := range effects {
+		if seen[effect] {
+			continue
+		}
+		seen[effect] = true
+		out = append(out, effect)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		if out[i].When != out[j].When {
+			return out[i].When < out[j].When
+		}
+		return out[i].Flag < out[j].Flag
+	})
+	return out
+}
+
+func effectsMutate(effects []EffectDoc) bool {
+	for _, effect := range effects {
+		switch effect.Kind {
+		case effectKindTenantMutation, effectKindLocalFilesystemWrite, effectKindLocalFilesystemDelete, effectKindProcessExecution:
+			return true
+		}
+	}
+	return false
 }
 
 // buildArgsDoc derives an ArgsDoc from the command's ValidArgs, the
@@ -515,6 +740,7 @@ func introspectTreeText(doc IntrospectDoc) string {
 
 	fmt.Fprintf(&b, "zscalerctl CLI surface map\n")
 	fmt.Fprintf(&b, "  version:   %s\n", doc.CLIVersion)
+	fmt.Fprintf(&b, "  introspect-version: %s\n", doc.IntrospectVersion)
 	fmt.Fprintf(&b, "  read-only: %v\n", doc.ReadOnly)
 	fmt.Fprintf(&b, "  schema:    %s\n\n", doc.Schema)
 
@@ -530,6 +756,8 @@ func introspectTreeText(doc IntrospectDoc) string {
 	b.WriteString("\n")
 
 	// Commands.
+	b.WriteString("Effect conditions: unqualified = always; --flag = flag-conditioned;\n")
+	b.WriteString("  configuration-dependent = effective config/provider/platform may enable it.\n\n")
 	fmt.Fprintf(&b, "Commands (%d):\n", len(doc.Commands))
 	for _, cmd := range doc.Commands {
 		hidden := ""
@@ -537,6 +765,18 @@ func introspectTreeText(doc IntrospectDoc) string {
 			hidden = " [hidden]"
 		}
 		fmt.Fprintf(&b, "  %-40s  %s%s\n", cmd.Path, cmd.Short, hidden)
+		effectLabels := make([]string, 0, len(cmd.Effects))
+		for _, effect := range cmd.Effects {
+			label := effect.Kind
+			switch effect.When {
+			case effectWhenFlagSet:
+				label += " (when --" + effect.Flag + " is set)"
+			case effectWhenConfigurationDependent:
+				label += " (configuration-dependent)"
+			}
+			effectLabels = append(effectLabels, label)
+		}
+		fmt.Fprintf(&b, "      effects: %s\n", strings.Join(effectLabels, ", "))
 		for _, f := range cmd.Flags {
 			if f.Default != "" {
 				fmt.Fprintf(&b, "      --%s (%s, default %q)\n", f.Name, f.Type, f.Default)

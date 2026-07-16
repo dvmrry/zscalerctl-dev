@@ -53,8 +53,16 @@ func diffTestSpec() resources.ResourceSpec {
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "id", Classification: resources.ClassOperational},
-			{Name: "name", Classification: resources.ClassTenantConfig},
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
 		},
 	}
 }
@@ -90,7 +98,7 @@ func writeDiffDump(t *testing.T, fixture diffTestFixture) string {
 			{
 				Product: string(fixture.spec.Product),
 				Name:    fixture.spec.Name,
-				Shape:   string(fixture.spec.EffectiveShape()),
+				Shape:   dump.ManifestResourceShape(fixture.spec),
 				Status:  "ok",
 				Path:    relPath,
 				Records: 1,
@@ -103,6 +111,57 @@ func writeDiffDump(t *testing.T, fixture diffTestFixture) string {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(manifest) error = %v", err)
+	}
+	report := dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: string(redact.ModeStandard),
+		Resources: []dump.ResourceReport{{
+			Product: string(fixture.spec.Product),
+			Name:    fixture.spec.Name,
+			Path:    relPath,
+			Records: 1,
+		}},
+	}
+	reportBody, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(redaction report) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(redaction report) error = %v", err)
+	}
+	return dir
+}
+
+func writeEmptyDiffDump(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	manifest := dump.Manifest{
+		Schema:      dump.ManifestSchemaID,
+		CollectedAt: "2026-01-01T00:00:00Z",
+		ToolVersion: "test",
+		Redaction:   string(redact.ModeStandard),
+		Warning:     "test fixture",
+		Status:      "complete",
+		Resources:   []dump.ManifestResource{},
+	}
+	body, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(empty manifest) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(empty manifest) error = %v", err)
+	}
+	reportBody, err := json.MarshalIndent(dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: string(redact.ModeStandard),
+		Resources: []dump.ResourceReport{},
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(empty redaction report) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(empty redaction report) error = %v", err)
 	}
 	return dir
 }
@@ -140,6 +199,26 @@ func TestCobraDiff_NoDrift(t *testing.T) {
 	}
 	if report.Summary.RecordsChanged != 0 {
 		t.Errorf("records_changed = %d, want 0 (no drift)", report.Summary.RecordsChanged)
+	}
+}
+
+func TestCobraDiff_EmptyReportPreservesNullResources(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{diffTestSpec()}
+	oldDir := writeEmptyDiffDump(t)
+	newDir := writeEmptyDiffDump(t)
+	app, out, errBuf := newDiffApp(t, catalog, nil)
+
+	err := app.Run(context.Background(), []string{"--format", "json", "diff", oldDir, newDir})
+	if err != nil {
+		t.Fatalf("App.Run(diff, empty) error = %v, want nil", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("App.Run(diff, empty) stderr = %q, want empty", errBuf.String())
+	}
+	if !strings.Contains(out.String(), `"resources": null`) {
+		t.Fatalf("App.Run(diff, empty) output = %s, want resources:null for v1 compatibility", out.String())
 	}
 }
 
@@ -278,34 +357,26 @@ func TestCobraDiff_AllowPartial(t *testing.T) {
 	catalog := resources.ResourceCatalog{spec}
 
 	// Write a partial dump (status "partial" rather than "complete").
-	writePartialDump := func(t *testing.T, payload string) string {
+	writePartialDump := func(t *testing.T, _ string) string {
 		t.Helper()
 		dir := t.TempDir()
-		relPath := filepath.ToSlash(
-			filepath.Join("resources", string(spec.Product), spec.Name+".json"),
-		)
-		path := filepath.Join(dir, filepath.FromSlash(relPath))
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatalf("os.MkdirAll error = %v", err)
-		}
-		if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
-			t.Fatalf("os.WriteFile error = %v", err)
-		}
 		manifest := dump.Manifest{
 			Schema:      dump.ManifestSchemaID,
 			CollectedAt: "2026-01-01T00:00:00Z",
 			ToolVersion: "test",
 			Redaction:   string(redact.ModeStandard),
 			Warning:     "partial test",
-			Status:      "partial", // <-- partial, not complete
+			Status:      "partial",
+			Errors:      1,
+			ErrorsPath:  "errors.ndjson",
 			Resources: []dump.ManifestResource{
 				{
-					Product: string(spec.Product),
-					Name:    spec.Name,
-					Shape:   string(spec.EffectiveShape()),
-					Status:  "ok",
-					Path:    relPath,
-					Records: 1,
+					Product:   string(spec.Product),
+					Name:      spec.Name,
+					Status:    "error",
+					Records:   0,
+					Operation: "list",
+					ErrorKind: "live_access_failed",
 				},
 			},
 		}
@@ -315,6 +386,29 @@ func TestCobraDiff_AllowPartial(t *testing.T) {
 		}
 		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 			t.Fatalf("os.WriteFile(manifest) error = %v", err)
+		}
+		reportBody, err := json.MarshalIndent(dump.RedactionReport{
+			Schema:    dump.RedactionReportSchemaID,
+			Redaction: string(redact.ModeStandard),
+			Resources: []dump.ResourceReport{},
+		}, "", "  ")
+		if err != nil {
+			t.Fatalf("json.MarshalIndent(redaction report) error = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+			t.Fatalf("os.WriteFile(redaction report) error = %v", err)
+		}
+		errorBody, err := json.Marshal(dump.NewResourceError(
+			spec.Product,
+			spec.Name,
+			"list",
+			"live_access_failed",
+		))
+		if err != nil {
+			t.Fatalf("json.Marshal(errors.ndjson) error = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "errors.ndjson"), append(errorBody, '\n'), 0o600); err != nil {
+			t.Fatalf("os.WriteFile(errors.ndjson) error = %v", err)
 		}
 		return dir
 	}

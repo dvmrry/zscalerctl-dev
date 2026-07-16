@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/secret"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -137,6 +139,703 @@ func TestNewMachineFromConfigAssemblesReaderConfig(t *testing.T) {
 	}
 }
 
+func TestReaderConfigFromConfigResolvesOnlyOneAPISecret(t *testing.T) {
+	t.Parallel()
+
+	clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
+	legacyPassword := &runtimeRecordingSecretSource{err: errors.New("inactive legacy password resolved")}
+	legacyAPIKey := &runtimeRecordingSecretSource{err: errors.New("inactive legacy API key resolved")}
+	cfg := config.Config{
+		AuthMode: config.AuthModeOneAPI,
+		Credentials: config.Credentials{
+			ClientSecret: clientSecret,
+		},
+		ZIALegacy: config.ZIALegacyCredentials{
+			Username: secret.New("inactive-legacy-user"),
+			Password: legacyPassword,
+			APIKey:   legacyAPIKey,
+			Cloud:    "inactive-legacy-cloud",
+		},
+	}
+
+	got, err := readerConfigFromConfig(context.Background(), cfg, Options{})
+	if err != nil {
+		t.Fatalf("readerConfigFromConfig(oneapi) error = %v, want nil", err)
+	}
+	if clientSecret.calls != 1 || legacyPassword.calls != 0 || legacyAPIKey.calls != 0 {
+		t.Fatalf(
+			"readerConfigFromConfig(oneapi) secret resolution calls = client:%d password:%d api_key:%d, want 1, 0, 0",
+			clientSecret.calls,
+			legacyPassword.calls,
+			legacyAPIKey.calls,
+		)
+	}
+	if got.ClientSecret.Reveal() != "client-secret" {
+		t.Errorf("readerConfigFromConfig(oneapi).ClientSecret = %q, want client-secret", got.ClientSecret.Reveal())
+	}
+	if got.ZIALegacy.Username.IsSet() || got.ZIALegacy.Password.IsSet() ||
+		got.ZIALegacy.APIKey.IsSet() || got.ZIALegacy.Cloud != "" {
+		t.Errorf("readerConfigFromConfig(oneapi).ZIALegacy = %#v, want empty", got.ZIALegacy)
+	}
+}
+
+func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
+	t.Parallel()
+
+	clientSecret := &runtimeRecordingSecretSource{err: errors.New("inactive client secret resolved")}
+	legacyPassword := &runtimeRecordingSecretSource{value: "legacy-password"}
+	legacyAPIKey := &runtimeRecordingSecretSource{value: "legacy-api-key"}
+	cfg := config.Config{
+		AuthMode:     config.AuthModeZIALegacy,
+		VanityDomain: "inactive-vanity",
+		Cloud:        "inactive-cloud",
+		Credentials: config.Credentials{
+			ClientID:     secret.New("inactive-client-id"),
+			ClientSecret: clientSecret,
+		},
+		ZPA: config.ZPAConfig{
+			CustomerID:    "inactive-customer-id",
+			MicrotenantID: "inactive-microtenant-id",
+		},
+		ZIALegacy: config.ZIALegacyCredentials{
+			Password: legacyPassword,
+			APIKey:   legacyAPIKey,
+		},
+	}
+
+	got, err := readerConfigFromConfig(context.Background(), cfg, Options{})
+	if err != nil {
+		t.Fatalf("readerConfigFromConfig(zia-legacy) error = %v, want nil", err)
+	}
+	if clientSecret.calls != 0 || legacyPassword.calls != 1 || legacyAPIKey.calls != 1 {
+		t.Fatalf(
+			"readerConfigFromConfig(zia-legacy) secret resolution calls = client:%d password:%d api_key:%d, want 0, 1, 1",
+			clientSecret.calls,
+			legacyPassword.calls,
+			legacyAPIKey.calls,
+		)
+	}
+	if got.ClientID.IsSet() || got.ClientSecret.IsSet() || got.VanityDomain != "" ||
+		got.Cloud != "" || got.ZPACustomerID != "" || got.ZPAMicrotenantID != "" {
+		t.Errorf("readerConfigFromConfig(zia-legacy) OneAPI fields = %#v, want empty", got)
+	}
+	if got.ZIALegacy.Password.Reveal() != "legacy-password" {
+		t.Errorf(
+			"readerConfigFromConfig(zia-legacy).ZIALegacy.Password = %q, want legacy-password",
+			got.ZIALegacy.Password.Reveal(),
+		)
+	}
+	if got.ZIALegacy.APIKey.Reveal() != "legacy-api-key" {
+		t.Errorf(
+			"readerConfigFromConfig(zia-legacy).ZIALegacy.APIKey = %q, want legacy-api-key",
+			got.ZIALegacy.APIKey.Reveal(),
+		)
+	}
+}
+
+func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T) {
+	t.Parallel()
+
+	t.Run("oneapi with typed-nil legacy sources", func(t *testing.T) {
+		t.Parallel()
+
+		var typedNil *runtimeRecordingSecretSource
+		clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
+		got, err := readerConfigFromConfig(context.Background(), config.Config{
+			Credentials: config.Credentials{ClientSecret: clientSecret},
+			ZIALegacy: config.ZIALegacyCredentials{
+				Password: typedNil,
+				APIKey:   typedNil,
+			},
+		}, Options{})
+		if err != nil {
+			t.Fatalf("readerConfigFromConfig(inferred oneapi) error = %v, want nil", err)
+		}
+		if got.AuthMode != zscaler.AuthModeOneAPI || clientSecret.calls != 1 {
+			t.Fatalf(
+				"readerConfigFromConfig(inferred oneapi) mode/calls = %q/%d, want %q/1",
+				got.AuthMode,
+				clientSecret.calls,
+				zscaler.AuthModeOneAPI,
+			)
+		}
+	})
+
+	t.Run("zia legacy with typed-nil oneapi source", func(t *testing.T) {
+		t.Parallel()
+
+		var typedNil *runtimeRecordingSecretSource
+		password := &runtimeRecordingSecretSource{value: "legacy-password"}
+		apiKey := &runtimeRecordingSecretSource{value: "legacy-api-key"}
+		got, err := readerConfigFromConfig(context.Background(), config.Config{
+			Credentials: config.Credentials{ClientSecret: typedNil},
+			ZIALegacy: config.ZIALegacyCredentials{
+				Username: secret.New("legacy-user"),
+				Password: password,
+				APIKey:   apiKey,
+				Cloud:    "legacy-cloud",
+			},
+		}, Options{})
+		if err != nil {
+			t.Fatalf("readerConfigFromConfig(inferred zia-legacy) error = %v, want nil", err)
+		}
+		if got.AuthMode != zscaler.AuthModeZIALegacy || password.calls != 1 || apiKey.calls != 1 {
+			t.Fatalf(
+				"readerConfigFromConfig(inferred zia-legacy) mode/calls = %q/%d/%d, want %q/1/1",
+				got.AuthMode,
+				password.calls,
+				apiKey.calls,
+				zscaler.AuthModeZIALegacy,
+			)
+		}
+	})
+}
+
+func TestNewReaderFromConfigRejectsNilActiveSecretSources(t *testing.T) {
+	t.Parallel()
+
+	var typedNil *runtimeRecordingSecretSource
+	tests := []struct {
+		name string
+		cfg  config.Config
+	}{
+		{
+			name: "explicit oneapi nil",
+			cfg: config.Config{
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
+				Credentials:  config.Credentials{ClientID: secret.New("client-id")},
+			},
+		},
+		{
+			name: "explicit oneapi typed nil",
+			cfg: config.Config{
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
+				Credentials: config.Credentials{
+					ClientID: secret.New("client-id"), ClientSecret: typedNil,
+				},
+			},
+		},
+		{
+			name: "inferred oneapi nil",
+			cfg: config.Config{
+				VanityDomain: "example",
+				Credentials:  config.Credentials{ClientID: secret.New("client-id")},
+			},
+		},
+		{
+			name: "explicit zia legacy nil",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+		{
+			name: "explicit zia legacy typed nil",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					Password: typedNil,
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+		{
+			name: "inferred zia legacy nil",
+			cfg: config.Config{
+				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("legacy-user"),
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "legacy-cloud",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewReaderFromConfig(context.Background(), tt.cfg, Options{})
+			if !errors.Is(err, zscaler.ErrMissingCredentials) {
+				t.Fatalf("NewReaderFromConfig(%s) error = %v, want ErrMissingCredentials", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr error
+	}{
+		{
+			name: "oneapi canceled",
+			cfg: config.Config{
+				AuthMode: config.AuthModeOneAPI,
+				Credentials: config.Credentials{
+					ClientSecret: &runtimeRecordingSecretSource{err: context.Canceled},
+				},
+			},
+			wantErr: context.Canceled,
+		},
+		{
+			name: "zia legacy deadline",
+			cfg: config.Config{
+				AuthMode: config.AuthModeZIALegacy,
+				ZIALegacy: config.ZIALegacyCredentials{
+					Password: &runtimeRecordingSecretSource{err: context.DeadlineExceeded},
+					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+				},
+			},
+			wantErr: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := readerConfigFromConfig(context.Background(), tt.cfg, Options{})
+			if !errors.Is(err, zscaler.ErrMissingCredentials) || !errors.Is(err, tt.wantErr) {
+				t.Fatalf(
+					"readerConfigFromConfig(%s) error = %v, want ErrMissingCredentials and %v",
+					tt.name,
+					err,
+					tt.wantErr,
+				)
+			}
+		})
+	}
+}
+
+func TestNewReaderFromConfigRejectsInvalidDirectAuthMode(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewReaderFromConfig(context.Background(), config.Config{
+		AuthMode: config.AuthMode("invalid"),
+	}, Options{})
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
+func TestOptionsFromExecutionSettingsMapsOnlyRuntimePolicy(t *testing.T) {
+	t.Parallel()
+
+	settings := machine.ExecutionSettings{
+		Profile:      "work",
+		ConfigPath:   "/tmp/zscalerctl.yaml",
+		Timeout:      17 * time.Second,
+		Redaction:    redact.ModeShare,
+		RedactionSet: true,
+		NoCache:      true,
+	}
+	got := OptionsFromExecutionSettings(settings)
+	if got.Profile != settings.Profile ||
+		got.ConfigPath != settings.ConfigPath ||
+		got.Timeout != settings.Timeout ||
+		got.Redaction != settings.Redaction ||
+		got.RedactionSet != settings.RedactionSet ||
+		got.NoCache != settings.NoCache {
+		t.Fatalf("OptionsFromExecutionSettings(%#v) = %#v, want mapped runtime policy", settings, got)
+	}
+	if got.Env != nil || got.Catalog != nil || got.DiagLogger != nil ||
+		got.loadConfig != nil || got.newReader != nil {
+		t.Fatalf("OptionsFromExecutionSettings(%#v) host-owned fields = %#v, want zero", settings, got)
+	}
+}
+
+func TestMachineReadForwardsTypedResourceRequest(t *testing.T) {
+	t.Parallel()
+
+	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE", "raw": "dropped",
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	result, err := rt.Read(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-runtime-read",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations", Fields: []string{"name"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Machine.Read(list locations) error = %v, want nil", err)
+	}
+	records := result.Records().Records()
+	if len(records) != 1 || !reflect.DeepEqual(records[0].Fields(), map[string]any{"name": "HQ"}) {
+		t.Fatalf("Machine.Read(list locations) records = %#v, want projected name only", records)
+	}
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Machine.Read(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestMachineReadStreamForwardsTypedResourceRequest(t *testing.T) {
+	t.Parallel()
+
+	catalog := runtimeTestCatalog(t, resources.ProductZIA, "locations")
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE", "raw": "dropped",
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	var events []machine.Event
+	err := rt.ReadStream(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-runtime-stream",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations", Fields: []string{"name"},
+		},
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Machine.ReadStream(list locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted, machine.EventRecord, machine.EventCompleted,
+	})
+	if got := events[1].Record.Fields(); !reflect.DeepEqual(got, map[string]any{"name": "HQ"}) {
+		t.Fatalf("Machine.ReadStream(list locations) record = %#v, want projected name only", got)
+	}
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Machine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestEngineReadStreamConstructsRuntimeAndForwardsEvents(t *testing.T) {
+	t.Parallel()
+
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id": "loc-1", "name": "HQ", "status": "ACTIVE",
+				}),
+			},
+		},
+	}
+	engine, err := NewEngine(Options{
+		Env: []string{
+			config.EnvClientID + "=client-id",
+			config.EnvClientSecret + "=client-secret",
+			config.EnvVanityDomain + "=example",
+		},
+		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		newReader: func(zscaler.ReaderConfig) (browser.RecordReader, error) {
+			return reader, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(read stream) error = %v, want nil", err)
+	}
+	var events []machine.Event
+	err = engine.ReadStream(context.Background(), machine.ResourceReadRequest{
+		RequestID: "typed-engine-stream",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Engine.ReadStream(list locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted, machine.EventRecord, machine.EventCompleted,
+	})
+	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
+		t.Fatalf("Engine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
+	}
+}
+
+func TestEngineTypedReadsRejectNonReadBeforeRuntimeConstruction(t *testing.T) {
+	t.Parallel()
+
+	configLoads := 0
+	readerConstructions := 0
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			configLoads++
+			return config.Config{}, errors.New("config must not load")
+		},
+		newReader: func(zscaler.ReaderConfig) (browser.RecordReader, error) {
+			readerConstructions++
+			return &runtimeFakeReader{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(non-read preflight) error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationManifest,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	if _, err := engine.Read(context.Background(), request); !runtimeMachineErrorKind(
+		err,
+		machine.ErrorKindUnsupportedOperation,
+	) {
+		t.Fatalf("Engine.Read(manifest) error = %T %v, want unsupported_operation", err, err)
+	}
+	var events []machine.Event
+	err = engine.ReadStream(context.Background(), request, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if !runtimeMachineErrorKind(err, machine.ErrorKindUnsupportedOperation) {
+		t.Fatalf("Engine.ReadStream(manifest) error = %T %v, want unsupported_operation", err, err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{machine.EventStarted, machine.EventFailed})
+	if configLoads != 0 || readerConstructions != 0 {
+		t.Fatalf(
+			"Engine typed manifest runtime effects = config:%d reader:%d, want 0/0",
+			configLoads,
+			readerConstructions,
+		)
+	}
+}
+
+func TestEngineReadStreamPreservesReadConstructionError(t *testing.T) {
+	t.Parallel()
+
+	loadErr := errors.New("load sentinel")
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return config.Config{}, loadErr
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(construction error parity) error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	_, readErr := engine.Read(context.Background(), request)
+	sinkCalls := 0
+	streamErr := engine.ReadStream(context.Background(), request, func(machine.Event) error {
+		sinkCalls++
+		return nil
+	})
+	if readErr != loadErr || streamErr != loadErr {
+		t.Fatalf(
+			"Engine typed read construction errors = read:%T %v stream:%T %v, want original sentinel",
+			readErr,
+			readErr,
+			streamErr,
+			streamErr,
+		)
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("Engine.ReadStream(construction error) sink calls = %d, want 0", sinkCalls)
+	}
+}
+
+func TestEngineTypedReadsClassifyMissingCredentialConstructionError(t *testing.T) {
+	t.Parallel()
+
+	raw := &zscaler.MissingCredentialsError{Missing: []string{
+		config.EnvClientID,
+		"forbidden-canary",
+		config.EnvClientID,
+		config.EnvZPACustomerID,
+	}}
+	engine, err := NewEngine(Options{
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			return config.Config{}, raw
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	_, readErr := engine.Read(context.Background(), request)
+	sinkCalls := 0
+	streamErr := engine.ReadStream(context.Background(), request, func(machine.Event) error {
+		sinkCalls++
+		return nil
+	})
+	for name, got := range map[string]error{"read": readErr, "stream": streamErr} {
+		var machineErr *machine.MachineError
+		if !errors.As(got, &machineErr) || machineErr.Kind != machine.ErrorKindMissingCredentials {
+			t.Errorf("Engine.%s error = %T %v, want missing-credentials MachineError", name, got, got)
+			continue
+		}
+		if want := []string{config.EnvClientID, config.EnvZPACustomerID}; !reflect.DeepEqual(machineErr.Missing, want) {
+			t.Errorf("Engine.%s missing = %#v, want %#v", name, machineErr.Missing, want)
+		}
+		if strings.Contains(got.Error(), "forbidden-canary") {
+			t.Errorf("Engine.%s error leaked rejected missing-credential name: %v", name, got)
+		}
+		if !errors.Is(got, zscaler.ErrMissingCredentials) {
+			t.Errorf("Engine.%s error = %v, want ErrMissingCredentials identity", name, got)
+		}
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("Engine.ReadStream(construction error) sink calls = %d, want 0", sinkCalls)
+	}
+}
+
+func TestMachineTypedReadClassifiesProductMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	missing := &zscaler.MissingCredentialsError{
+		Missing: []string{config.EnvZPACustomerID},
+	}
+	machineRuntime := NewMachineFromReader(
+		&runtimeFakeReader{listErr: missing},
+		runtimeTestCatalog(t, resources.ProductZPA, "server-groups"),
+		redact.ModeStandard,
+	)
+	_, err := machineRuntime.Read(context.Background(), machine.ResourceReadRequest{
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product:  string(resources.ProductZPA),
+			Resource: "server-groups",
+		},
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("Machine.Read(product missing credentials) error = %T %v, want MachineError", err, err)
+	}
+	if machineErr.Kind != machine.ErrorKindMissingCredentials {
+		t.Errorf("Machine.Read(product missing credentials) kind = %q, want %q", machineErr.Kind, machine.ErrorKindMissingCredentials)
+	}
+	if want := []string{config.EnvZPACustomerID}; !reflect.DeepEqual(machineErr.Missing, want) {
+		t.Errorf("Machine.Read(product missing credentials) missing = %#v, want %#v", machineErr.Missing, want)
+	}
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Errorf("Machine.Read(product missing credentials) error = %v, want ErrMissingCredentials identity", err)
+	}
+}
+
+func TestEngineManifestIsConfigFreeFreshAndExecutable(t *testing.T) {
+	t.Parallel()
+
+	statusConfig, err := config.LoadConfig(nil, config.LoadOptions{})
+	if err != nil {
+		t.Fatalf("config.LoadConfig(status fixture) error = %v, want nil", err)
+	}
+	configLoads := 0
+	engine, err := NewEngine(Options{
+		Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+			configLoads++
+			return statusConfig, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	first := engine.EngineManifest()
+	if len(first.Capabilities) != 7 || first.Capabilities[3].Name != machine.CapabilityZIAURLLookup ||
+		first.Capabilities[4].Name != machine.CapabilityResourcesRead ||
+		first.Capabilities[5].Name != machine.CapabilityDumpWrite ||
+		first.Capabilities[6].Name != machine.CapabilityDiffCompare {
+		t.Fatalf("Engine.EngineManifest() = %#v, want discovery, catalog, status, URL lookup, resource-read, dump, and diff capabilities", first)
+	}
+	if configLoads != 0 {
+		t.Fatalf("Engine.EngineManifest() config loads = %d, want 0", configLoads)
+	}
+	first.Capabilities[4].Operations[0] = machine.Operation("mutated")
+	second := engine.EngineManifest()
+	if second.Capabilities[4].Operations[0] != machine.OperationList {
+		t.Fatalf("Engine.EngineManifest() after caller mutation = %#v, want fresh manifest", second)
+	}
+	if _, err := engine.DiscoverCatalog(context.Background(), machine.CatalogRequest{}); err != nil {
+		t.Fatalf("Engine.DiscoverCatalog(advertised capability) error = %v, want nil", err)
+	}
+	if configLoads != 0 {
+		t.Fatalf("Engine.DiscoverCatalog() config loads = %d, want 0", configLoads)
+	}
+	statusResult, err := engine.InspectStatus(context.Background(), machine.StatusRequest{
+		Operation: machine.OperationAuthStatus,
+	})
+	if err != nil {
+		t.Fatalf("Engine.InspectStatus(advertised capability) error = %v, want nil", err)
+	}
+	if _, ok := statusResult.Auth(); !ok {
+		t.Fatalf("Engine.InspectStatus(auth) result = %#v, want auth view", statusResult)
+	}
+	if configLoads != 1 {
+		t.Fatalf("Engine.InspectStatus() config loads = %d, want 1", configLoads)
+	}
+
+	var nilEngine *Engine
+	nilManifest := nilEngine.EngineManifest()
+	if len(nilManifest.Capabilities) != 1 ||
+		nilManifest.Capabilities[0].Name != machine.CapabilityEngineManifest {
+		t.Fatalf("nil Engine.EngineManifest() = %#v, want only executable manifest discovery", nilManifest)
+	}
+	if _, err := nilEngine.Read(context.Background(), machine.ResourceReadRequest{}); err == nil {
+		t.Fatal("nil Engine.Read() error = nil, want nil-runtime error")
+	}
+	sinkCalls := 0
+	if err := nilEngine.ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{},
+		func(machine.Event) error {
+			sinkCalls++
+			return nil
+		},
+	); err == nil {
+		t.Fatal("nil Engine.ReadStream() error = nil, want nil-runtime error")
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("nil Engine.ReadStream() sink calls = %d, want 0", sinkCalls)
+	}
+	var nilMachine *Machine
+	if err := nilMachine.ReadStream(
+		context.Background(),
+		machine.ResourceReadRequest{},
+		func(machine.Event) error {
+			sinkCalls++
+			return nil
+		},
+	); err == nil {
+		t.Fatal("nil Machine.ReadStream() error = nil, want nil-runtime error")
+	}
+	if sinkCalls != 0 {
+		t.Fatalf("nil Machine.ReadStream() sink calls = %d, want 0", sinkCalls)
+	}
+}
+
 func TestNewDumpCollectorAssemblesReaderConfigAndCollects(t *testing.T) {
 	t.Parallel()
 
@@ -203,6 +902,344 @@ func TestNewDumpCollectorAssemblesReaderConfigAndCollects(t *testing.T) {
 	}
 	if gotCalls := reader.calls; !reflect.DeepEqual(gotCalls, []string{"list:zia/locations"}) {
 		t.Fatalf("DumpCollector.Collect(locations) reader calls = %#v, want list call", gotCalls)
+	}
+}
+
+func TestDumpCollectorCollectStreamEmitsProjectedLifecycle(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"id":       "loc-1",
+					"name":     "HQ",
+					"rawNoise": "must-not-cross-event-boundary",
+				}),
+				resources.NewSourceRecord(map[string]any{"id": "loc-2", "name": "Branch"}),
+			},
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(locations) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	if events[0].Total != 1 {
+		t.Errorf("CollectStream started total = %d, want 1", events[0].Total)
+	}
+	if events[1].Done != 1 || events[1].Total != 1 || events[1].Product != "zia" || events[1].Resource != "locations" {
+		t.Errorf("CollectStream progress = %#v, want 1/1 zia/locations", events[1])
+	}
+	for i, event := range events[2:4] {
+		if event.Record == nil {
+			t.Fatalf("CollectStream record event %d has nil record", i)
+		}
+		if _, ok := event.Record.Value("rawNoise"); ok {
+			t.Errorf("CollectStream record event %d exposes dropped rawNoise field", i)
+		}
+	}
+	completed := events[len(events)-1]
+	if completed.Records != 2 || completed.Resources != 1 || completed.Warnings != 0 {
+		t.Errorf("CollectStream completed counts = records:%d resources:%d warnings:%d, want 2/1/0",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Entries), 1; got != want {
+		t.Errorf("CollectStream result entries = %d, want %d", got, want)
+	}
+}
+
+func TestDumpCollectorCollectStreamCountsShowResource(t *testing.T) {
+	t.Parallel()
+
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "advanced-settings",
+		Operations: resources.ShowOperation(),
+		Fields: []resources.FieldSpec{
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+		},
+	}
+	catalog := resources.ResourceCatalog{spec}
+	reader := &runtimeFakeReader{
+		show: map[runtimeResourceKey]resources.SourceRecord{
+			{product: spec.Product, resource: spec.Name}: resources.NewSourceRecord(map[string]any{
+				"id":   "settings-1",
+				"name": "Tenant settings",
+			}),
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(show) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventCompleted,
+	})
+	completed := events[len(events)-1]
+	if completed.Records != 1 || completed.Resources != 1 || completed.Warnings != 0 {
+		t.Errorf("CollectStream(show) completed counts = records:%d resources:%d warnings:%d, want 1/1/0",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Entries), 1; got != want || result.Entries[0].Record == nil {
+		t.Errorf("CollectStream(show) result = %#v, want one show entry", result)
+	}
+}
+
+func TestDumpCollectorCollectStreamEmitsValueFreeWarning(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+		runtimeDumpListSpec(resources.ProductZIA, "rule-labels"),
+	}
+	const rawBackendError = "client_secret=must-not-cross-event-boundary"
+	reader := &runtimeDumpReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{"id": "loc-1", "name": "HQ"}),
+			},
+		},
+		failures: map[runtimeResourceKey]error{
+			{product: resources.ProductZIA, resource: "rule-labels"}: errors.New(rawBackendError),
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	result, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{
+		ContinueOnError: true,
+	}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DumpCollector.CollectStream(continue on error) error = %v, want nil", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventRecord,
+		machine.EventProgress,
+		machine.EventWarning,
+		machine.EventCompleted,
+	})
+	warning := events[4]
+	if warning.Err == nil {
+		t.Fatal("CollectStream warning error = nil, want value-free MachineError")
+	}
+	if warning.Product != "zia" || warning.Resource != "rule-labels" ||
+		warning.Err.Kind != "list_failed" || warning.Err.Operation != machine.OperationList ||
+		warning.Err.Product != "zia" || warning.Err.Resource != "rule-labels" {
+		t.Errorf("CollectStream warning = %#v, want list_failed metadata for zia/rule-labels", warning)
+	}
+	if strings.Contains(warning.Err.Message, rawBackendError) || strings.Contains(warning.Err.Error(), rawBackendError) {
+		t.Errorf("CollectStream warning error = %q, want no backend error value", warning.Err.Message)
+	}
+	completed := events[len(events)-1]
+	if completed.Records != 1 || completed.Resources != 1 || completed.Warnings != 1 {
+		t.Errorf("CollectStream completed counts = records:%d resources:%d warnings:%d, want 1/1/1",
+			completed.Records, completed.Resources, completed.Warnings)
+	}
+	if got, want := len(result.Errors), 1; got != want {
+		t.Fatalf("CollectStream result errors = %d, want %d", got, want)
+	}
+	resourceErr := result.Errors[0]
+	if resourceErr.Product != warning.Err.Product || resourceErr.Name != warning.Err.Resource ||
+		resourceErr.Operation != string(warning.Err.Operation) || resourceErr.Kind != warning.Err.Kind {
+		t.Errorf("CollectStream warning metadata = %#v, want errors.ndjson metadata %#v", warning.Err, resourceErr)
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesContextErrorWithTerminalEvent(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	collector := NewDumpCollectorFromReader(&runtimeDumpReader{}, catalog, redact.ModeStandard)
+	tests := []struct {
+		name         string
+		ctx          context.Context
+		wantErr      error
+		wantKind     string
+		wantTerminal machine.EventKind
+	}{
+		{
+			name:         "canceled",
+			ctx:          canceledRuntimeContext(),
+			wantErr:      context.Canceled,
+			wantKind:     machine.ErrorKindCanceled,
+			wantTerminal: machine.EventCanceled,
+		},
+		{
+			name:         "deadline",
+			ctx:          expiredRuntimeContext(),
+			wantErr:      context.DeadlineExceeded,
+			wantKind:     machine.ErrorKindDeadlineExceeded,
+			wantTerminal: machine.EventFailed,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var events []machine.Event
+			_, err := collector.CollectStream(tt.ctx, catalog, DumpCollectOptions{}, func(event machine.Event) error {
+				events = append(events, event)
+				return nil
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CollectStream(%s) error = %v, want errors.Is(%v)", tt.name, err, tt.wantErr)
+			}
+			assertRuntimeEventKinds(t, events, []machine.EventKind{machine.EventStarted, tt.wantTerminal})
+			terminal := events[1]
+			if terminal.Err == nil || terminal.Err.Kind != tt.wantKind {
+				t.Errorf("CollectStream(%s) terminal error = %#v, want kind %q", tt.name, terminal.Err, tt.wantKind)
+			}
+		})
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesFatalErrorIdentityAndSanitizesEvent(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	const rawBackendError = "client_secret=trusted-in-process-cause"
+	sentinel := errors.New(rawBackendError)
+	reader := &runtimeDumpReader{
+		failures: map[runtimeResourceKey]error{
+			{product: resources.ProductZIA, resource: "locations"}: sentinel,
+		},
+	}
+	collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+	var events []machine.Event
+	_, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("CollectStream(fatal read) error = %v, want original sentinel identity", err)
+	}
+	assertRuntimeEventKinds(t, events, []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventFailed,
+	})
+	terminal := events[len(events)-1]
+	if terminal.Err == nil || terminal.Err.Kind != machine.ErrorKindLiveAccessFailed ||
+		terminal.Err.Operation != machine.OperationList || terminal.Err.Product != "zia" || terminal.Err.Resource != "locations" {
+		t.Fatalf("CollectStream(fatal read) terminal error = %#v, want sanitized list failure", terminal.Err)
+	}
+	if strings.Contains(terminal.Err.Message, rawBackendError) || strings.Contains(terminal.Err.Error(), rawBackendError) {
+		t.Errorf("CollectStream(fatal read) terminal error = %q, want no backend value", terminal.Err.Message)
+	}
+}
+
+func TestDumpCollectorCollectStreamPreservesFatalErrorWhenTerminalDeliveryFails(t *testing.T) {
+	t.Parallel()
+
+	catalog := resources.ResourceCatalog{
+		runtimeDumpListSpec(resources.ProductZIA, "locations"),
+	}
+	tests := []struct {
+		name            string
+		failTerminal    func() error
+		rawDelivery     string
+		wantDeliveryMsg string
+	}{
+		{
+			name:        "sink error",
+			rawDelivery: "consumer error containing raw value",
+			failTerminal: func() error {
+				return errors.New("consumer error containing raw value")
+			},
+			wantDeliveryMsg: "event sink failed",
+		},
+		{
+			name:        "sink panic",
+			rawDelivery: "consumer panic containing raw value",
+			failTerminal: func() error {
+				panic("consumer panic containing raw value")
+			},
+			wantDeliveryMsg: "event sink panicked",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sentinel := errors.New("trusted backend sentinel")
+			session := &runtimeDumpSession{err: sentinel}
+			reader := &runtimeDumpSessionProvider{session: session}
+			collector := NewDumpCollectorFromReader(reader, catalog, redact.ModeStandard)
+
+			var events []machine.Event
+			_, err := collector.CollectStream(context.Background(), catalog, DumpCollectOptions{}, func(event machine.Event) error {
+				events = append(events, event)
+				if event.Kind == machine.EventFailed {
+					return tt.failTerminal()
+				}
+				return nil
+			})
+			if !errors.Is(err, sentinel) {
+				t.Fatalf("CollectStream(%s) error = %v, want original sentinel identity", tt.name, err)
+			}
+			var deliveryErr *machine.MachineError
+			if !errors.As(err, &deliveryErr) {
+				t.Fatalf("CollectStream(%s) error = %T %v, want joined *machine.MachineError", tt.name, err, err)
+			}
+			if deliveryErr.Kind != machine.ErrorKindInternal || deliveryErr.Message != tt.wantDeliveryMsg {
+				t.Errorf("CollectStream(%s) delivery error = %#v, want internal/%q", tt.name, deliveryErr, tt.wantDeliveryMsg)
+			}
+			if strings.Contains(err.Error(), tt.rawDelivery) {
+				t.Errorf("CollectStream(%s) joined error = %q, want no raw sink failure value", tt.name, err)
+			}
+			assertRuntimeEventKinds(t, events, []machine.EventKind{
+				machine.EventStarted,
+				machine.EventProgress,
+				machine.EventFailed,
+			})
+			terminal := events[len(events)-1]
+			if terminal.Err == nil || terminal.Err.Kind != machine.ErrorKindLiveAccessFailed || terminal.Err.Message != "resource read failed" {
+				t.Errorf("CollectStream(%s) terminal event error = %#v, want sanitized live-access failure", tt.name, terminal.Err)
+			}
+			if session.closeCalls != 1 {
+				t.Errorf("CollectStream(%s) session close calls = %d, want 1", tt.name, session.closeCalls)
+			}
+		})
 	}
 }
 
@@ -417,6 +1454,53 @@ func TestMachineExecuteReturnsMachineNotFoundError(t *testing.T) {
 	}
 }
 
+func TestMachineExecuteStreamForwardsProjectedEvents(t *testing.T) {
+	catalog := runtimeDeepCopyCatalog()
+	reader := &runtimeFakeReader{
+		list: map[runtimeResourceKey][]resources.SourceRecord{
+			{product: resources.ProductZIA, resource: "locations"}: {
+				resources.NewSourceRecord(map[string]any{
+					"outer": map[string]any{"inner": "value"},
+				}),
+			},
+		},
+	}
+	rt := NewMachineFromReader(reader, catalog, redact.ModeStandard)
+	req := machine.Request{
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input:      &machine.Input{Product: "zia", Resource: "locations"},
+	}
+
+	var events []machine.Event
+	err := rt.ExecuteStream(context.Background(), req, func(event machine.Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Machine.ExecuteStream(list request) error = %v, want nil", err)
+	}
+	wantKinds := []machine.EventKind{
+		machine.EventStarted,
+		machine.EventRecord,
+		machine.EventCompleted,
+	}
+	gotKinds := make([]machine.EventKind, len(events))
+	for i, event := range events {
+		gotKinds[i] = event.Kind
+	}
+	if !reflect.DeepEqual(gotKinds, wantKinds) {
+		t.Fatalf("Machine.ExecuteStream(list request) event kinds = %#v, want %#v", gotKinds, wantKinds)
+	}
+	if events[1].Record == nil {
+		t.Fatal("Machine.ExecuteStream(list request) record event = nil, want projected record")
+	}
+	wantRecord := map[string]any{"outer": map[string]any{"inner": "value"}}
+	if got := events[1].Record.Fields(); !reflect.DeepEqual(got, wantRecord) {
+		t.Errorf("Machine.ExecuteStream(list request) record = %#v, want %#v", got, wantRecord)
+	}
+}
+
 func TestMachineManifestAndCatalogAreDefensiveCopies(t *testing.T) {
 	t.Parallel()
 
@@ -519,6 +1603,24 @@ type runtimeFakeReader struct {
 	calls   []string
 }
 
+type runtimeRecordingSecretSource struct {
+	value string
+	err   error
+	calls int
+}
+
+func (*runtimeRecordingSecretSource) Scheme() string { return "test" }
+
+func (s *runtimeRecordingSecretSource) IsConfigured() bool { return s.value != "" || s.err != nil }
+
+func (s *runtimeRecordingSecretSource) Resolve(context.Context) (secret.Secret, error) {
+	s.calls++
+	if s.err != nil {
+		return secret.Secret{}, s.err
+	}
+	return secret.New(s.value), nil
+}
+
 func (r *runtimeFakeReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
 	r.calls = append(r.calls, "list:"+string(product)+"/"+resource)
 	if r.listErr != nil {
@@ -570,6 +1672,35 @@ func runtimeWriteConfig(t *testing.T, body string) string {
 		t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
 	}
 	return path
+}
+
+func canceledRuntimeContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
+func expiredRuntimeContext() context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+	cancel()
+	return ctx
+}
+
+func assertRuntimeEventKinds(t *testing.T, events []machine.Event, want []machine.EventKind) {
+	t.Helper()
+	if len(events) != len(want) {
+		t.Fatalf("event count = %d, want %d (events = %#v)", len(events), len(want), events)
+	}
+	for i, kind := range want {
+		if events[i].Kind != kind {
+			t.Fatalf("event[%d].Kind = %q, want %q (events = %#v)", i, events[i].Kind, kind, events)
+		}
+	}
+}
+
+func runtimeMachineErrorKind(err error, want string) bool {
+	var machineErr *machine.MachineError
+	return errors.As(err, &machineErr) && machineErr != nil && machineErr.Kind == want
 }
 
 func runtimeDumpListSpec(product resources.Product, resource string) resources.ResourceSpec {
@@ -643,12 +1774,16 @@ func (r *runtimeDumpSessionProvider) Show(_ context.Context, _ resources.Product
 
 type runtimeDumpSession struct {
 	list       []resources.SourceRecord
+	err        error
 	listCalls  int
 	closeCalls int
 }
 
 func (s *runtimeDumpSession) List(_ context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
 	s.listCalls++
+	if s.err != nil {
+		return nil, s.err
+	}
 	return s.list, nil
 }
 

@@ -1,25 +1,18 @@
 package cli
 
-// dump_progress_test.go — White-box tests for the collectDump progress callback
-// introduced in Task 2.2. These tests exercise the callback plumbing without
+// dump_progress_test.go — White-box tests for the typed dump adapter's event plumbing.
+// These exercise the same event stream that drives TTY progress without
 // needing a TTY (the spinner is inactive in tests → zero stderr bytes).
 
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"testing"
 
-	"github.com/dvmrry/zscalerctl/internal/config"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
-
-// progressCall records one invocation of the progress callback.
-type progressCall struct {
-	done     int
-	total    int
-	product  resources.Product
-	resource string
-}
 
 // progressFakeReader is a minimal ResourceReader that always returns nil/empty
 // for List and errors for Get/Show (those must not be called in a list-only catalog).
@@ -37,15 +30,13 @@ func (r progressFakeReader) Show(_ context.Context, _ resources.Product, _ strin
 	panic("progressFakeReader.Show must not be called in dump progress tests")
 }
 
-// TestCollectDumpProgressCallback verifies that collectDump fires the progress
-// callback exactly once per selected resource, in catalog order, with a
-// 1-based done counter, a constant total equal to selectedCount, and the
-// catalog-derived product/resource identifiers — never record data.
-func TestCollectDumpProgressCallback(t *testing.T) {
+// TestCollectDumpProgressEvents verifies the full lifecycle and one value-free
+// progress event per selected resource in catalog order.
+func TestCollectDumpProgressEvents(t *testing.T) {
 	t.Parallel()
 
 	// Build a small 3-resource, 2-product catalog.  ListOperations() gives list+get
-	// (both read-only); none has a "show" op, so collectDump calls reader.List.
+	// (both read-only); none has a "show" op, so the engine calls reader.List.
 	productA := resources.Product("testa")
 	productB := resources.Product("testb")
 	catalog := resources.ResourceCatalog{
@@ -59,51 +50,58 @@ func TestCollectDumpProgressCallback(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{
-		productA: true,
-		productB: true,
-	}
-	// Select all three resources.
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-		{product: productA, name: "beta"}:  true,
-		{product: productB, name: "gamma"}: true,
-	}
-
-	var calls []progressCall
-	_, err := a.collectDump(
+	var events []machine.Event
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false, // continueOnError
-		func(done, total int, product resources.Product, resource string) {
-			calls = append(calls, progressCall{
-				done:     done,
-				total:    total,
-				product:  product,
-				resource: resource,
-			})
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA), string(productB)},
+			Resources: []machine.DumpResourceSelector{
+				{Product: string(productA), Resource: "alpha"},
+				{Product: string(productA), Resource: "beta"},
+				{Product: string(productB), Resource: "gamma"},
+			},
+		},
+		func(event machine.Event) error {
+			events = append(events, event)
+			return nil
 		},
 	)
 	if err != nil {
-		t.Fatalf("collectDump() error = %v, want nil", err)
+		t.Fatalf("executeDump() error = %v, want nil", err)
+	}
+
+	wantKinds := []machine.EventKind{
+		machine.EventStarted,
+		machine.EventProgress,
+		machine.EventProgress,
+		machine.EventProgress,
+		machine.EventCompleted,
+	}
+	if len(events) != len(wantKinds) {
+		t.Fatalf("executeDump() events = %d, want %d", len(events), len(wantKinds))
+	}
+	for i, want := range wantKinds {
+		if events[i].Kind != want {
+			t.Fatalf("executeDump() event[%d].Kind = %q, want %q", i, events[i].Kind, want)
+		}
 	}
 
 	const wantTotal = 3
-	if len(calls) != wantTotal {
-		t.Fatalf("progress callback fired %d times, want %d", len(calls), wantTotal)
+	if events[0].Total != wantTotal {
+		t.Errorf("started.Total = %d, want %d", events[0].Total, wantTotal)
 	}
 
 	// done must be 1-based and increment each call; total must always equal N.
-	for i, c := range calls {
+	progressEvents := events[1:4]
+	for i, event := range progressEvents {
 		wantDone := i + 1
-		if c.done != wantDone {
-			t.Errorf("calls[%d].done = %d, want %d", i, c.done, wantDone)
+		if event.Done != wantDone {
+			t.Errorf("progress[%d].Done = %d, want %d", i, event.Done, wantDone)
 		}
-		if c.total != wantTotal {
-			t.Errorf("calls[%d].total = %d, want %d", i, c.total, wantTotal)
+		if event.Total != wantTotal {
+			t.Errorf("progress[%d].Total = %d, want %d", i, event.Total, wantTotal)
 		}
 	}
 
@@ -113,9 +111,9 @@ func TestCollectDumpProgressCallback(t *testing.T) {
 		p resources.Product
 		r string
 	}
-	seen := make(map[key]bool, len(calls))
-	for _, c := range calls {
-		seen[key{c.product, c.resource}] = true
+	seen := make(map[key]bool, len(progressEvents))
+	for _, event := range progressEvents {
+		seen[key{resources.Product(event.Product), event.Resource}] = true
 	}
 	for _, want := range []key{
 		{productA, "alpha"},
@@ -126,11 +124,16 @@ func TestCollectDumpProgressCallback(t *testing.T) {
 			t.Errorf("progress callback never fired for %s/%s", want.p, want.r)
 		}
 	}
+	completed := events[len(events)-1]
+	if completed.Records != 0 || completed.Resources != wantTotal || completed.Warnings != 0 {
+		t.Errorf("completed counts = records:%d resources:%d warnings:%d, want 0/%d/0",
+			completed.Records, completed.Resources, completed.Warnings, wantTotal)
+	}
 }
 
-// TestCollectDumpProgressCallbackNil verifies that a nil progress callback is
-// safe — collectDump must not panic when progress is nil.
-func TestCollectDumpProgressCallbackNil(t *testing.T) {
+// TestCollectDumpEventSinkNil verifies that a nil observer is safe. The CLI
+// adapter still supplies its internal logging sink to the engine.
+func TestCollectDumpEventSinkNil(t *testing.T) {
 	t.Parallel()
 
 	productA := resources.Product("testa")
@@ -143,29 +146,24 @@ func TestCollectDumpProgressCallbackNil(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{productA: true}
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-	}
-
-	_, err := a.collectDump(
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false,
-		nil, // nil progress must not panic
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA)},
+			Resources: []machine.DumpResourceSelector{{Product: string(productA), Resource: "alpha"}},
+		},
+		nil, // nil observer must not panic
 	)
 	if err != nil {
-		t.Fatalf("collectDump(nil progress) error = %v, want nil", err)
+		t.Fatalf("executeDump(nil observer) error = %v, want nil", err)
 	}
 }
 
-// TestCollectDumpProgressSubset verifies that when only a subset of the
-// catalog is selected, the callback fires exactly selectedCount times and
-// total reflects the selection, not the full catalog size.
-func TestCollectDumpProgressSubset(t *testing.T) {
+// TestCollectDumpProgressEventSubset verifies that totals describe the selected
+// subset, not the full catalog.
+func TestCollectDumpProgressEventSubset(t *testing.T) {
 	t.Parallel()
 
 	productA := resources.Product("testa")
@@ -180,36 +178,36 @@ func TestCollectDumpProgressSubset(t *testing.T) {
 		Catalog: catalog,
 	})
 
-	products := map[resources.Product]bool{productA: true}
-	// Only select 2 of the 3 resources.
-	selectedResources := map[dumpResourceKey]bool{
-		{product: productA, name: "alpha"}: true,
-		{product: productA, name: "gamma"}: true,
-	}
-
-	var calls []progressCall
-	_, err := a.collectDump(
+	var progressEvents []machine.Event
+	_, err := a.executeDump(
 		context.Background(),
-		config.Config{},
 		globalOptions{},
-		products,
-		selectedResources,
-		false,
-		func(done, total int, product resources.Product, resource string) {
-			calls = append(calls, progressCall{done: done, total: total, product: product, resource: resource})
+		machine.DumpRequest{
+			OutputDir: filepath.Join(t.TempDir(), "dump"),
+			Products:  []string{string(productA)},
+			Resources: []machine.DumpResourceSelector{
+				{Product: string(productA), Resource: "alpha"},
+				{Product: string(productA), Resource: "gamma"},
+			},
+		},
+		func(event machine.Event) error {
+			if event.Kind == machine.EventProgress {
+				progressEvents = append(progressEvents, event)
+			}
+			return nil
 		},
 	)
 	if err != nil {
-		t.Fatalf("collectDump() error = %v, want nil", err)
+		t.Fatalf("executeDump() error = %v, want nil", err)
 	}
 
 	const wantTotal = 2 // only 2 of 3 selected
-	if len(calls) != wantTotal {
-		t.Fatalf("progress callback fired %d times, want %d (subset selected)", len(calls), wantTotal)
+	if len(progressEvents) != wantTotal {
+		t.Fatalf("progress events = %d, want %d (subset selected)", len(progressEvents), wantTotal)
 	}
-	for i, c := range calls {
-		if c.total != wantTotal {
-			t.Errorf("calls[%d].total = %d, want %d (selectedCount)", i, c.total, wantTotal)
+	for i, event := range progressEvents {
+		if event.Total != wantTotal {
+			t.Errorf("progress[%d].Total = %d, want %d (selectedCount)", i, event.Total, wantTotal)
 		}
 	}
 }

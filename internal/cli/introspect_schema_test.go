@@ -5,7 +5,7 @@ package cli_test
 //
 // TestIntrospectSchemaMatchesStructs: field-name sync between IntrospectDoc /
 // CommandDoc / FlagDoc / ArgsDoc / CatalogDoc / ResourceDoc / ExitCodeDoc and
-// docs/schema/introspect.schema.json. Mirrors the pattern in
+// docs/schema/introspect-v2.schema.json. Mirrors the pattern in
 // internal/dump/published_schema_test.go.
 //
 // TestIntrospectAndDocsAgree: proves that the real Cobra commands (WalkCobraTree)
@@ -14,6 +14,7 @@ package cli_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +35,7 @@ import (
 
 // TestIntrospectSchemaMatchesStructs asserts that every JSON-tagged field on
 // each IntrospectDoc sub-type appears in the corresponding $defs section of
-// docs/schema/introspect.schema.json, and vice versa.
+// docs/schema/introspect-v2.schema.json, and vice versa.
 func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +46,7 @@ func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 	}{
 		{"IntrospectDoc", reflect.TypeOf(cli.IntrospectDoc{}), []string{"properties"}},
 		{"CommandDoc", reflect.TypeOf(cli.CommandDoc{}), []string{"$defs", "commandDoc", "properties"}},
+		{"EffectDoc", reflect.TypeOf(cli.EffectDoc{}), []string{"$defs", "effectDoc", "properties"}},
 		{"FlagDoc", reflect.TypeOf(cli.FlagDoc{}), []string{"$defs", "flagDoc", "properties"}},
 		{"ArgsDoc", reflect.TypeOf(cli.ArgsDoc{}), []string{"$defs", "argsDoc", "properties"}},
 		{"CatalogDoc", reflect.TypeOf(cli.CatalogDoc{}), []string{"$defs", "catalogDoc", "properties"}},
@@ -52,10 +54,10 @@ func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 		{"ExitCodeDoc", reflect.TypeOf(cli.ExitCodeDoc{}), []string{"$defs", "exitCodeDoc", "properties"}},
 	}
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect.schema.json: %v", err)
+		t.Fatalf("read introspect-v2.schema.json: %v", err)
 	}
 
 	for _, tc := range cases {
@@ -86,26 +88,26 @@ func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 func TestIntrospectSchemaRequiredPresentInOutput(t *testing.T) {
 	t.Parallel()
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect.schema.json: %v", err)
+		t.Fatalf("read introspect-v2.schema.json: %v", err)
 	}
 
 	// Walk to top-level "required".
 	var schemaDoc map[string]any
 	if err := json.Unmarshal(body, &schemaDoc); err != nil {
-		t.Fatalf("parse introspect.schema.json: %v", err)
+		t.Fatalf("parse introspect-v2.schema.json: %v", err)
 	}
 	rawReq, ok := schemaDoc["required"].([]any)
 	if !ok {
-		t.Fatal("introspect.schema.json: top-level \"required\" is missing or not an array")
+		t.Fatal("introspect-v2.schema.json: top-level \"required\" is missing or not an array")
 	}
 	requiredKeys := make([]string, 0, len(rawReq))
 	for _, v := range rawReq {
 		s, ok := v.(string)
 		if !ok {
-			t.Fatalf("introspect.schema.json: non-string entry in required: %v", v)
+			t.Fatalf("introspect-v2.schema.json: non-string entry in required: %v", v)
 		}
 		requiredKeys = append(requiredKeys, s)
 	}
@@ -143,6 +145,7 @@ func TestIntrospectSchemaRequiredDepth(t *testing.T) {
 	}{
 		{"IntrospectDoc", reflect.TypeOf(cli.IntrospectDoc{}), []string{}},
 		{"commandDoc", reflect.TypeOf(cli.CommandDoc{}), []string{"$defs", "commandDoc"}},
+		{"effectDoc", reflect.TypeOf(cli.EffectDoc{}), []string{"$defs", "effectDoc"}},
 		{"flagDoc", reflect.TypeOf(cli.FlagDoc{}), []string{"$defs", "flagDoc"}},
 		{"argsDoc", reflect.TypeOf(cli.ArgsDoc{}), []string{"$defs", "argsDoc"}},
 		{"catalogDoc", reflect.TypeOf(cli.CatalogDoc{}), []string{"$defs", "catalogDoc"}},
@@ -150,14 +153,14 @@ func TestIntrospectSchemaRequiredDepth(t *testing.T) {
 		{"exitCodeDoc", reflect.TypeOf(cli.ExitCodeDoc{}), []string{"$defs", "exitCodeDoc"}},
 	}
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect.schema.json: %v", err)
+		t.Fatalf("read introspect-v2.schema.json: %v", err)
 	}
 	var schemaDoc map[string]any
 	if err := json.Unmarshal(body, &schemaDoc); err != nil {
-		t.Fatalf("parse introspect.schema.json: %v", err)
+		t.Fatalf("parse introspect-v2.schema.json: %v", err)
 	}
 
 	for _, tc := range cases {
@@ -206,6 +209,71 @@ func TestIntrospectSchemaRequiredDepth(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLegacyIntrospectV1SchemaIsImmutable(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("..", "..", "docs", "schema", "introspect.schema.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read legacy introspect schema: %v", err)
+	}
+	got := fmt.Sprintf("%x", sha256.Sum256(body))
+	const want = "029a8b56b478d4b2af4ef69188d4b727e1ebbc63cf2de693a5c3d73754f83b23"
+	if got != want {
+		t.Fatalf("legacy v1 introspect schema hash = %s, want %s; published schemas are immutable, so add a new versioned schema instead of changing introspect.schema.json", got, want)
+	}
+}
+
+func TestIntrospectV2SchemaIdentity(t *testing.T) {
+	t.Parallel()
+
+	const wantURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json"
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	if doc.IntrospectVersion != "2" {
+		t.Fatalf("introspect version = %q, want 2", doc.IntrospectVersion)
+	}
+	if doc.Schema != wantURL {
+		t.Fatalf("introspect schema URL = %q, want %q", doc.Schema, wantURL)
+	}
+
+	path := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read v2 introspect schema: %v", err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(body, &schema); err != nil {
+		t.Fatalf("parse v2 introspect schema: %v", err)
+	}
+	if got, _ := schema["$id"].(string); got != wantURL {
+		t.Errorf("v2 schema $id = %q, want %q", got, wantURL)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	schemaProperty, _ := properties["$schema"].(map[string]any)
+	if got, _ := schemaProperty["const"].(string); got != wantURL {
+		t.Errorf("v2 schema $schema const = %q, want %q", got, wantURL)
+	}
+
+	defs, _ := schema["$defs"].(map[string]any)
+	effectDoc, _ := defs["effectDoc"].(map[string]any)
+	effectProperties, _ := effectDoc["properties"].(map[string]any)
+	for field, want := range map[string][]string{
+		"kind": {"tenant_mutation", "local_filesystem_read", "local_filesystem_write", "local_filesystem_delete", "network_access", "process_execution"},
+		"when": {"always", "flag_set", "configuration_dependent"},
+	} {
+		property, _ := effectProperties[field].(map[string]any)
+		rawEnum, _ := property["enum"].([]any)
+		got := make([]string, 0, len(rawEnum))
+		for _, value := range rawEnum {
+			entry, _ := value.(string)
+			got = append(got, entry)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("v2 effect %s enum = %v, want %v", field, got, want)
+		}
 	}
 }
 

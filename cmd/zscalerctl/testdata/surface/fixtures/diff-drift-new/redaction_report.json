@@ -1,0 +1,12 @@
+{
+  "schema": "zscalerctl.redaction_report.v1",
+  "redaction": "standard",
+  "resources": [
+    {
+      "product": "zia",
+      "name": "locations",
+      "path": "resources/zia/locations.json",
+      "records": 1
+    }
+  ]
+}

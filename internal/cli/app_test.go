@@ -14,9 +14,12 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
+	"unicode"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
+	dumpdiff "github.com/dvmrry/zscalerctl/internal/diff"
 	"github.com/dvmrry/zscalerctl/internal/dump"
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -148,6 +151,48 @@ profiles:
 	}
 }
 
+func TestCredentialedReadAdvertisesConfiguredProviderExecution(t *testing.T) {
+	t.Parallel()
+
+	sentinel := filepath.Join(t.TempDir(), "provider-ran")
+	configPath := writeCLIConfig(t, fmt.Sprintf(`
+profiles:
+  default:
+    client_id: client-id
+    client_secret_ref:
+      cmd:
+        argv: [%q, "-test.run=^TestCLIConfigCmdHelperProcess$", "--", "touch", %q]
+`, os.Args[0], sentinel))
+
+	app := cli.New(io.Discard, io.Discard, nil)
+	err := app.Run(context.Background(), []string{"--config", configPath, "zia", "locations", "list"})
+	if err == nil {
+		t.Fatal("credentialed resource read error = nil, want provider-output error")
+	}
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Fatalf("credentialed resource read did not execute configured provider; stat %q: %v", sentinel, statErr)
+	}
+
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	for _, command := range doc.Commands {
+		if command.Path != "zia locations list" {
+			continue
+		}
+		want := map[cli.EffectDoc]bool{
+			{Kind: "local_filesystem_read", When: "configuration_dependent"}: true,
+			{Kind: "process_execution", When: "configuration_dependent"}:     true,
+		}
+		for _, effect := range command.Effects {
+			delete(want, effect)
+		}
+		if len(want) != 0 {
+			t.Fatalf("zia locations list effects omit observed provider boundary: missing %#v", want)
+		}
+		return
+	}
+	t.Fatal("zia locations list missing from introspection")
+}
+
 func TestStatusCommandJSONShapesRemainStable(t *testing.T) {
 	t.Parallel()
 
@@ -222,6 +267,150 @@ func TestStatusCommandJSONShapesRemainStable(t *testing.T) {
 	}
 }
 
+func TestStatusCommandsNormalizeInjectedTerminalControls(t *testing.T) {
+	t.Parallel()
+
+	const injected = "safe\nFORGED\x1b[31m\u0085\u202e"
+	env := []string{
+		"XDG_CONFIG_HOME=" + t.TempDir(),
+		config.EnvProfile + "=profile:" + injected,
+		config.EnvCloud + "=cloud:" + injected,
+	}
+	commands := []struct {
+		name string
+		args []string
+	}{
+		{name: "config show", args: []string{"config", "show"}},
+		{name: "doctor", args: []string{"doctor"}},
+		{name: "auth status", args: []string{"auth", "status"}},
+	}
+	for _, command := range commands {
+		for _, format := range []string{"json", "table", "pretty"} {
+			t.Run(command.name+"/"+format, func(t *testing.T) {
+				var out, errOut bytes.Buffer
+				app := cli.New(&out, &errOut, env)
+				args := append([]string{"--format", format}, command.args...)
+				if err := app.Run(context.Background(), args); err != nil {
+					t.Fatalf("App.Run(%s %s) error = %v, want nil", command.name, format, err)
+				}
+				if errOut.Len() != 0 {
+					t.Fatalf("App.Run(%s %s) stderr = %q, want empty", command.name, format, errOut.String())
+				}
+				if format == "json" {
+					var decoded any
+					if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+						t.Fatalf("json.Unmarshal(%s) error = %v; body = %q", command.name, err, out.String())
+					}
+					assertNoUnsafeDecodedStrings(t, decoded)
+					return
+				}
+				got := out.String()
+				for _, forbidden := range []string{"\x1b", "\u0085", "\u202e", "\nFORGED"} {
+					if strings.Contains(got, forbidden) {
+						t.Fatalf("App.Run(%s %s) output = %q, want no injected control %q", command.name, format, got, forbidden)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestStatusCommandsSanitizeConfigLoadErrors(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private-status-config-canary.yaml")
+	tests := []struct {
+		name      string
+		args      []string
+		operation machine.Operation
+	}{
+		{name: "config show", args: []string{"config", "show"}, operation: machine.OperationConfigStatus},
+		{name: "doctor", args: []string{"doctor"}, operation: machine.OperationDoctor},
+		{name: "auth status", args: []string{"auth", "status"}, operation: machine.OperationAuthStatus},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := cli.New(io.Discard, io.Discard, nil)
+			args := append([]string{"--config", path}, tt.args...)
+			err := app.Run(context.Background(), args)
+			if !errors.Is(err, config.ErrInvalidConfig) {
+				t.Fatalf("App.Run(%s invalid config) error = %v, want ErrInvalidConfig", tt.name, err)
+			}
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindInvalidConfig {
+				t.Fatalf("App.Run(%s invalid config) error = %v, want invalid-config MachineError", tt.name, err)
+			}
+			if machineErr.Operation != tt.operation {
+				t.Fatalf("App.Run(%s invalid config) operation = %q, want %q", tt.name, machineErr.Operation, tt.operation)
+			}
+			if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "canary") {
+				t.Fatalf("App.Run(%s invalid config) error = %q, want no path details", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestStatusCommandsRejectFinishedContextBeforeConfigLoad(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "finished-context-config-canary.yaml")
+	commands := []struct {
+		name      string
+		args      []string
+		operation machine.Operation
+	}{
+		{name: "config show", args: []string{"config", "show"}, operation: machine.OperationConfigStatus},
+		{name: "doctor", args: []string{"doctor"}, operation: machine.OperationDoctor},
+		{name: "auth status", args: []string{"auth", "status"}, operation: machine.OperationAuthStatus},
+	}
+	contexts := []struct {
+		name     string
+		new      func() (context.Context, context.CancelFunc)
+		kind     string
+		sentinel error
+	}{
+		{
+			name: "canceled",
+			new: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, func() {}
+			},
+			kind:     machine.ErrorKindCanceled,
+			sentinel: context.Canceled,
+		},
+		{
+			name: "deadline",
+			new: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			kind:     machine.ErrorKindDeadlineExceeded,
+			sentinel: context.DeadlineExceeded,
+		},
+	}
+	for _, command := range commands {
+		for _, contextCase := range contexts {
+			t.Run(command.name+"/"+contextCase.name, func(t *testing.T) {
+				ctx, cancel := contextCase.new()
+				defer cancel()
+				app := cli.New(io.Discard, io.Discard, nil)
+				args := append([]string{"--config", path}, command.args...)
+				err := app.Run(ctx, args)
+				var machineErr *machine.MachineError
+				if !errors.As(err, &machineErr) || machineErr.Kind != contextCase.kind {
+					t.Fatalf("App.Run(%s %s) error = %v, want MachineError kind %q", command.name, contextCase.name, err, contextCase.kind)
+				}
+				if machineErr.Operation != command.operation || !errors.Is(err, contextCase.sentinel) {
+					t.Fatalf("App.Run(%s %s) error = %#v, want operation %q and sentinel %v", command.name, contextCase.name, machineErr, command.operation, contextCase.sentinel)
+				}
+				if errors.Is(err, config.ErrInvalidConfig) || strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "canary") {
+					t.Fatalf("App.Run(%s %s) error = %q, config load superseded finished context", command.name, contextCase.name, err)
+				}
+			})
+		}
+	}
+}
+
 func assertJSONTopLevelKeys(t *testing.T, name string, body []byte, want []string) {
 	t.Helper()
 
@@ -237,6 +426,31 @@ func assertJSONTopLevelKeys(t *testing.T, name string, body []byte, want []strin
 			t.Fatalf("App.Run(%s) JSON keys = %#v, want key %q", name, mapKeys(got), key)
 		}
 	}
+}
+
+func assertNoUnsafeDecodedStrings(t *testing.T, value any) {
+	t.Helper()
+
+	var visit func(any)
+	visit = func(current any) {
+		switch current := current.(type) {
+		case string:
+			for _, ch := range current {
+				if unicode.IsControl(ch) || unicode.Is(unicode.Cf, ch) {
+					t.Fatalf("decoded status value %q contains unsafe rune U+%04X", current, ch)
+				}
+			}
+		case []any:
+			for _, item := range current {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range current {
+				visit(item)
+			}
+		}
+	}
+	visit(value)
 }
 
 func mapKeys(values map[string]json.RawMessage) []string {
@@ -2651,6 +2865,60 @@ func TestDumpContinueOnErrorTreatsContextCancellationAsFatal(t *testing.T) {
 	}
 }
 
+func TestDumpOutputPhasePreservesContextMachineClassification(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		kind     string
+		sentinel error
+	}{
+		{
+			name:     "canceled",
+			kind:     machine.ErrorKindCanceled,
+			sentinel: context.Canceled,
+		},
+		{
+			name:     "deadline",
+			kind:     machine.ErrorKindDeadlineExceeded,
+			sentinel: context.DeadlineExceeded,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := newFinishedOnDemandContext(tc.sentinel)
+			reader := finishingContextResourceReader{finish: func(context.Context) { ctx.finish() }}
+			var out, errOut bytes.Buffer
+			outDir := filepath.Join(t.TempDir(), "dump")
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+			err := app.Run(ctx, []string{
+				"dump",
+				"--products", "zia",
+				"--resources", "locations",
+				"--out", outDir,
+			})
+			var machineErr *machine.MachineError
+			if !errors.As(err, &machineErr) || machineErr.Kind != tc.kind ||
+				machineErr.Operation != machine.OperationDump {
+				t.Fatalf("App.Run(dump output-phase %s) error = %#v, want %s/dump", tc.name, machineErr, tc.kind)
+			}
+			if !errors.Is(err, tc.sentinel) {
+				t.Fatalf("App.Run(dump output-phase %s) error = %v, want sentinel %v", tc.name, err, tc.sentinel)
+			}
+			if _, statErr := os.Stat(outDir); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("os.Stat(%q) after output-phase %s = %v, want os.ErrNotExist", outDir, tc.name, statErr)
+			}
+			if out.Len() != 0 || errOut.Len() != 0 {
+				t.Errorf("App.Run(dump output-phase %s) output = %q / %q, want empty", tc.name, out.String(), errOut.String())
+			}
+		})
+	}
+}
+
 func TestDumpContinueOnErrorTreatsSessionFailureAsFatal(t *testing.T) {
 	t.Parallel()
 
@@ -2789,6 +3057,15 @@ func TestDumpRefusesOverwriteBeforeWritingNewFiles(t *testing.T) {
 	if !errors.Is(err, dump.ErrUnsafeOverwrite) {
 		t.Fatalf("App.Run(dump overwrite) error = %v, want ErrUnsafeOverwrite", err)
 	}
+	var machineErr *machine.MachineError
+	if errors.As(err, &machineErr) {
+		t.Fatalf("App.Run(dump overwrite) error = %#v, want legacy local-output envelope without machine operation context", machineErr)
+	}
+	wantMessage := fmt.Sprintf("%s: %s", dump.ErrUnsafeOverwrite, filepath.Join(outDir, "manifest.json"))
+	wantMessage, _ = redact.New(redact.ModeStandard).ScanRenderedString(wantMessage)
+	if err.Error() != wantMessage {
+		t.Errorf("App.Run(dump overwrite) error = %q, want base-compatible rendered %q", err, wantMessage)
+	}
 	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
 	if _, err := os.Stat(resourcePath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("os.Stat(%q) error = %v, want os.ErrNotExist", resourcePath, err)
@@ -2820,19 +3097,26 @@ func TestDumpForceReplacesExistingDumpDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("App.Run(initial dump) error = %v, want nil", err)
 	}
-	stalePath := filepath.Join(outDir, "stale.txt")
-	if err := os.WriteFile(stalePath, []byte("stale"), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(stale) error = %v, want nil", err)
-	}
+	manifestPath := filepath.Join(outDir, "manifest.json")
+	manifestBefore := readFile(t, manifestPath)
 	out.Reset()
 	errOut.Reset()
 
 	err = app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
+	if runtime.GOOS == "windows" {
+		if !errors.Is(err, dump.ErrAtomicReplaceUnsupported) {
+			t.Fatalf("App.Run(dump --force on Windows) error = %v, want ErrAtomicReplaceUnsupported", err)
+		}
+		if manifestAfter := readFile(t, manifestPath); manifestAfter != manifestBefore {
+			t.Errorf("manifest after unsupported Windows force changed\n got: %s\nwant: %s", manifestAfter, manifestBefore)
+		}
+		if out.Len() != 0 {
+			t.Errorf("App.Run(dump --force on Windows) stdout = %q, want empty", out.String())
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("App.Run(dump --force) error = %v, want nil", err)
-	}
-	if _, err := os.Stat(stalePath); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("os.Stat(stale) error = %v, want os.ErrNotExist", err)
 	}
 	resourcePath := filepath.Join(outDir, "resources", "zia", "locations.json")
 	if _, err := os.Stat(resourcePath); err != nil {
@@ -2869,6 +3153,19 @@ func TestDumpForceRejectsNonDumpDirectory(t *testing.T) {
 	err := app.Run(context.Background(), []string{"dump", "--out", outDir, "--resources", "zia/locations", "--force"})
 	if !errors.Is(err, dump.ErrUnsafePath) {
 		t.Fatalf("App.Run(dump --force non-dump) error = %v, want ErrUnsafePath", err)
+	}
+	renderedOutDir := outDir
+	if resolved, resolveErr := filepath.EvalSymlinks(outDir); resolveErr == nil {
+		renderedOutDir = resolved
+	}
+	wantMessage := fmt.Sprintf(
+		"%s: --force target %s is not a zscalerctl dump directory",
+		dump.ErrUnsafePath,
+		renderedOutDir,
+	)
+	wantMessage, _ = redact.New(redact.ModeStandard).ScanRenderedString(wantMessage)
+	if err.Error() != wantMessage {
+		t.Errorf("App.Run(dump --force non-dump) error = %q, want base-compatible rendered %q", err, wantMessage)
 	}
 	if readFile(t, notesPath) != "not a dump" {
 		t.Errorf("notes file changed after rejected --force")
@@ -3034,6 +3331,55 @@ func (f cancelingResourceReader) Get(context.Context, resources.Product, string,
 }
 
 func (f cancelingResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("show must not be called")
+}
+
+type finishingContextResourceReader struct {
+	finish func(context.Context)
+}
+
+type finishedOnDemandContext struct {
+	context.Context
+	done chan struct{}
+	err  error
+}
+
+func newFinishedOnDemandContext(err error) *finishedOnDemandContext {
+	return &finishedOnDemandContext{
+		Context: context.Background(),
+		done:    make(chan struct{}),
+		err:     err,
+	}
+}
+
+func (c *finishedOnDemandContext) Done() <-chan struct{} { return c.done }
+
+func (c *finishedOnDemandContext) Err() error {
+	select {
+	case <-c.done:
+		return c.err
+	default:
+		return nil
+	}
+}
+
+func (c *finishedOnDemandContext) finish() { close(c.done) }
+
+func (f finishingContextResourceReader) List(ctx context.Context, _ resources.Product, _ string) ([]resources.SourceRecord, error) {
+	if f.finish != nil {
+		f.finish(ctx)
+	}
+	return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+		"id":   "123",
+		"name": "HQ",
+	})}, nil
+}
+
+func (f finishingContextResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	return resources.SourceRecord{}, errors.New("get must not be called")
+}
+
+func (f finishingContextResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
 	return resources.SourceRecord{}, errors.New("show must not be called")
 }
 
@@ -3330,6 +3676,160 @@ func TestDiffComparesLocalDumpsWithoutCredentials(t *testing.T) {
 	}
 }
 
+func TestDiffRejectsUnadmittedDumpFieldsWithoutLeakingValues(t *testing.T) {
+	t.Parallel()
+
+	const canary = "diff-unadmitted-client-secret-7f92c4a8e1d6"
+	catalog := resources.ResourceCatalog{cliDiffSpec()}
+	oldDir := writeCLIDiffDump(t, dumpFixtureForCLI{
+		spec:    cliDiffSpec(),
+		payload: `[{"id":"1","name":"old"}]`,
+	})
+	newDir := writeCLIDiffDump(t, dumpFixtureForCLI{
+		spec: cliDiffSpec(),
+		payload: `[{"id":"1","name":"new","clientSecret":"` +
+			canary + `"}]`,
+	})
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+
+	err := app.Run(context.Background(), []string{"--format", "json", "diff", oldDir, newDir})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(diff unadmitted field) error = %v, want ErrUsage", err)
+	}
+	for label, value := range map[string]string{
+		"error":  err.Error(),
+		"stdout": out.String(),
+		"stderr": errOut.String(),
+	} {
+		if strings.Contains(value, canary) || strings.Contains(value, "clientSecret") {
+			t.Errorf("App.Run(diff unadmitted field) %s = %q, want no untrusted field/value", label, value)
+		}
+	}
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Errorf("App.Run(diff unadmitted field) output = %q / %q, want empty", out.String(), errOut.String())
+	}
+}
+
+func TestDiffScopesAdmissionToSelectedResources(t *testing.T) {
+	t.Parallel()
+
+	const canary = "diff-unselected-client-secret-canary"
+	selectedSpec := cliDiffSpec()
+	unselectedSpec := cliDiffUnselectedSpec()
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	oldDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"old"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	})
+	newDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+		{spec: selectedSpec, payload: `[{"id":"1","name":"new"}]`},
+		{spec: unselectedSpec, payload: `[{"label":"safe","clientSecret":"` + canary + `"}]`},
+	})
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+
+	err := app.Run(context.Background(), []string{
+		"--format", "json", "diff", oldDir, newDir,
+		"--resources", "zia/locations",
+	})
+	if err != nil {
+		t.Fatalf("App.Run(scoped diff) error = %v, want nil", err)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(scoped diff) stderr = %q, want empty", errOut.String())
+	}
+	if strings.Contains(out.String(), canary) || strings.Contains(out.String(), unselectedSpec.Name) {
+		t.Fatalf("App.Run(scoped diff) output = %s, want no unselected resource data", out.String())
+	}
+	var report dumpdiff.Report
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("json.Unmarshal(scoped diff) error = %v; output=%q", err, out.String())
+	}
+	if len(report.Resources) != 1 || report.Resources[0].Resource != selectedSpec.Name ||
+		len(report.Resources[0].Changed) != 1 {
+		t.Fatalf("App.Run(scoped diff) report = %#v, want one locations change", report)
+	}
+}
+
+func TestDiffPreservesUnselectedMalformedJSONDiagnostics(t *testing.T) {
+	selectedSpec := cliDiffSpec()
+	unselectedSpec := cliDiffUnselectedSpec()
+	catalog := resources.ResourceCatalog{selectedSpec, unselectedSpec}
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name:    "unexpected end",
+			payload: `[{"label":`,
+			want:    "invalid dump: parse resource zia/rule-labels: unexpected end of JSON input",
+		},
+		{
+			name:    "trailing value",
+			payload: `[{"label":"safe"}] {}`,
+			want:    "invalid dump: parse resource zia/rule-labels: invalid character '{' after top-level value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+				{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+				{spec: unselectedSpec, payload: `[{"label":"safe"}]`},
+			})
+			newDir := writeCLIDiffDumpSet(t, []dumpFixtureForCLI{
+				{spec: selectedSpec, payload: `[{"id":"1","name":"same"}]`},
+				{spec: unselectedSpec, payload: `[{"label":"safe"}]`},
+			})
+			path := filepath.Join(oldDir, "resources", string(unselectedSpec.Product), unselectedSpec.Name+".json")
+			if err := os.WriteFile(path, []byte(tt.payload), 0o600); err != nil {
+				t.Fatalf("os.WriteFile(%q) error = %v, want nil", path, err)
+			}
+
+			var out, errOut bytes.Buffer
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Catalog: catalog})
+			err := app.Run(context.Background(), []string{
+				"--format", "json", "diff", oldDir, newDir,
+				"--resources", "zia/locations",
+			})
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Fatalf("App.Run(scoped malformed diff) error = %v, want ErrUsage", err)
+			}
+			if err.Error() != tt.want {
+				t.Fatalf("App.Run(scoped malformed diff) error = %q, want %q", err, tt.want)
+			}
+			if out.Len() != 0 || errOut.Len() != 0 {
+				t.Fatalf("App.Run(scoped malformed diff) output = %q / %q, want empty", out.String(), errOut.String())
+			}
+		})
+	}
+}
+
+func TestDiffFinishedContextWinsBeforeFilesystemAccess(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
+		Catalog: resources.ResourceCatalog{cliDiffSpec()},
+	})
+	err := app.Run(ctx, []string{
+		"--format", "json", "diff",
+		"/private/diff-cli-context-canary-old",
+		"/private/diff-cli-context-canary-new",
+	})
+	var machineErr *machine.MachineError
+	if !errors.As(err, &machineErr) || machineErr.Kind != machine.ErrorKindCanceled ||
+		machineErr.Operation != machine.OperationDiff || !errors.Is(err, context.Canceled) {
+		t.Fatalf("App.Run(diff pre-canceled) error = %#v, want canceled/diff", err)
+	}
+	if strings.Contains(err.Error(), "canary") || out.Len() != 0 || errOut.Len() != 0 {
+		t.Errorf("App.Run(diff pre-canceled) error/output = %q / %q / %q, want static and empty", err, out.String(), errOut.String())
+	}
+}
+
 func TestDiffFailOnDriftReturnsSentinelAndStillWritesOutputFile(t *testing.T) {
 	t.Parallel()
 
@@ -3490,15 +3990,12 @@ func writeCLIConfig(t *testing.T, body string) string {
 
 func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 	t.Helper()
+	return writeCLIDiffDumpSet(t, []dumpFixtureForCLI{fixture})
+}
+
+func writeCLIDiffDumpSet(t *testing.T, fixtures []dumpFixtureForCLI) string {
+	t.Helper()
 	dir := t.TempDir()
-	relPath := filepath.ToSlash(filepath.Join("resources", string(fixture.spec.Product), fixture.spec.Name+".json"))
-	path := filepath.Join(dir, relPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatalf("os.MkdirAll(%s) error = %v, want nil", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(fixture.payload), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%s) error = %v, want nil", path, err)
-	}
 	manifest := dump.Manifest{
 		Schema:      dump.ManifestSchemaID,
 		CollectedAt: "2026-01-01T00:00:00Z",
@@ -3506,16 +4003,36 @@ func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 		Redaction:   string(redact.ModeStandard),
 		Warning:     "test fixture",
 		Status:      "complete",
-		Resources: []dump.ManifestResource{
-			{
-				Product: string(fixture.spec.Product),
-				Name:    fixture.spec.Name,
-				Shape:   string(fixture.spec.EffectiveShape()),
-				Status:  "ok",
-				Path:    relPath,
-				Records: 1,
-			},
-		},
+		Resources:   []dump.ManifestResource{},
+	}
+	report := dump.RedactionReport{
+		Schema:    dump.RedactionReportSchemaID,
+		Redaction: string(redact.ModeStandard),
+		Resources: []dump.ResourceReport{},
+	}
+	for _, fixture := range fixtures {
+		relPath := filepath.ToSlash(filepath.Join("resources", string(fixture.spec.Product), fixture.spec.Name+".json"))
+		path := filepath.Join(dir, relPath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("os.MkdirAll(%s) error = %v, want nil", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(fixture.payload), 0o600); err != nil {
+			t.Fatalf("os.WriteFile(%s) error = %v, want nil", path, err)
+		}
+		manifest.Resources = append(manifest.Resources, dump.ManifestResource{
+			Product: string(fixture.spec.Product),
+			Name:    fixture.spec.Name,
+			Shape:   dump.ManifestResourceShape(fixture.spec),
+			Status:  "ok",
+			Path:    relPath,
+			Records: cliDiffRecordCount(t, fixture.payload),
+		})
+		report.Resources = append(report.Resources, dump.ResourceReport{
+			Product: string(fixture.spec.Product),
+			Name:    fixture.spec.Name,
+			Path:    relPath,
+			Records: cliDiffRecordCount(t, fixture.payload),
+		})
 	}
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -3524,7 +4041,32 @@ func writeCLIDiffDump(t *testing.T, fixture dumpFixtureForCLI) string {
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(manifest) error = %v, want nil", err)
 	}
+	reportBody, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent(redaction report) error = %v, want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "redaction_report.json"), reportBody, 0o600); err != nil {
+		t.Fatalf("os.WriteFile(redaction report) error = %v, want nil", err)
+	}
 	return dir
+}
+
+func cliDiffRecordCount(t *testing.T, payload string) int {
+	t.Helper()
+
+	var raw any
+	if err := json.Unmarshal([]byte(payload), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(diff fixture) error = %v", err)
+	}
+	switch value := raw.(type) {
+	case []any:
+		return len(value)
+	case map[string]any:
+		return 1
+	default:
+		t.Fatalf("diff fixture payload = %T, want object or array", raw)
+		return 0
+	}
 }
 
 func cliDiffSpec() resources.ResourceSpec {
@@ -3533,9 +4075,30 @@ func cliDiffSpec() resources.ResourceSpec {
 		Name:       "locations",
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
-			{Name: "id", Classification: resources.ClassOperational},
-			{Name: "name", Classification: resources.ClassTenantConfig},
+			{
+				Name:           "id",
+				Classification: resources.ClassOperational,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
+			{
+				Name:           "name",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard},
+			},
 		},
+	}
+}
+
+func cliDiffUnselectedSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "rule-labels",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{{
+			Name:           "label",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   []redact.Mode{redact.ModeStandard},
+		}},
 	}
 }
 

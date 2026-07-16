@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
@@ -157,6 +158,21 @@ func TestMachineContractGoldenErrorKindFixtures(t *testing.T) {
 			},
 		},
 		{
+			name:    "invalid_resource_id",
+			fixture: "machine-error-invalid-resource-id.json",
+			executor: machine.Executor{
+				Browser:   &fakeBrowserLoader{getErr: resources.ErrInvalidResourceID},
+				Catalog:   contractCatalog(),
+				Redaction: redact.ModeStandard,
+			},
+			request: machine.Request{
+				RequestID:  "contract-invalid-resource-id",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationGet,
+				Input:      &machine.Input{Product: "zia", Resource: "locations", RecordID: "invalid-id"},
+			},
+		},
+		{
 			name:    "live_access_failed",
 			fixture: "machine-error-live-access-failed.json",
 			executor: machine.Executor{
@@ -223,6 +239,40 @@ func TestMachineContractGoldenErrorKindFixtures(t *testing.T) {
 			}
 			assertGoldenJSON(t, tt.fixture, *machineErr)
 		})
+	}
+}
+
+func TestMachineContractDocsListStableErrorKinds(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "docs", "cli", "machine-contract.md"))
+	if err != nil {
+		t.Fatalf("read machine-contract.md: %v", err)
+	}
+	doc := string(body)
+	start := strings.Index(doc, "representative fixtures for the current stable kinds:")
+	end := strings.Index(doc, "Further taxonomy changes")
+	if start < 0 || end <= start {
+		t.Fatalf("machine-contract.md stable-kind paragraph not found")
+	}
+	taxonomy := doc[start:end]
+	for _, kind := range []string{
+		machine.ErrorKindUsage,
+		machine.ErrorKindUnsupportedCapability,
+		machine.ErrorKindUnsupportedOperation,
+		machine.ErrorKindUnknownResource,
+		machine.ErrorKindNotFound,
+		machine.ErrorKindInvalidResourceID,
+		machine.ErrorKindLiveAccessFailed,
+		machine.ErrorKindCanceled,
+		machine.ErrorKindDeadlineExceeded,
+		machine.ErrorKindInternal,
+	} {
+		if !strings.Contains(taxonomy, "`"+kind+"`") {
+			t.Errorf("machine-contract.md stable-kind paragraph omits %q", kind)
+		}
+	}
+	const invalidIDRow = "| Invalid resource id | `invalid_resource_id` | `invalid_resource_id` | `2` | `resources.ErrInvalidResourceID`; `zscaler.ErrInvalidResourceID` |"
+	if !strings.Contains(doc, invalidIDRow) {
+		t.Errorf("machine-contract.md invalid-resource-ID row does not match the implemented machine/envelope/sentinel vocabulary")
 	}
 }
 

@@ -21,6 +21,12 @@ GitHub security policy.
   and human/UI presentation-layer boundaries.
 - [cli/core-boundary.md](cli/core-boundary.md) — CLI/core/UI dependency
   boundary for future UI-safe backend seams.
+- [ENGINE_API_DESIGN.md](ENGINE_API_DESIGN.md) — common local Go engine shared
+  by the CLI and future frontends.
+- [ENGINE_STDIO_PROTOCOL_V1.md](ENGINE_STDIO_PROTOCOL_V1.md) — candidate local
+  cross-language child-process protocol and host.
+- [ENGINE_STDIO_BENCHMARKS.md](ENGINE_STDIO_BENCHMARKS.md) — reproducible
+  candidate host/process performance baselines.
 - [DEV_PUBLIC_SURFACE_MODEL.md](DEV_PUBLIC_SURFACE_MODEL.md) — supported,
   candidate, and experimental surface classes for dev and public promotion.
 - [THREAT_MODEL.md](THREAT_MODEL.md)

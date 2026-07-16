@@ -9,18 +9,32 @@ operator's shell.
 Release artifacts are published for macOS and Linux on amd64 and arm64, and for
 Windows on amd64.
 
-File-backed secrets are supported when the secret file is owner-only. On macOS
-and Linux, that means no group/world access. On Windows, `zscalerctl` validates
-the file DACL and accepts access for the current user, the file owner, `SYSTEM`,
-and `Administrators`; broad principals such as `Everyone`, `Users`,
-`Authenticated Users`, and `Domain Users` are rejected.
+File-backed secrets are supported when the secret file is owner-only. On Linux,
+that means no group/world access. On macOS, the file must also have no extended
+ACL: mode `0600` is rejected when an ACL grants or otherwise defines additional
+access. On Windows, `zscalerctl` validates the file DACL and accepts access for
+the current user, the file owner, `SYSTEM`, and `Administrators`; broad
+principals such as `Everyone`, `Users`, `Authenticated Users`, and
+`Domain Users` are rejected.
 
 Relatedly, `dump` creates its output directory and files with owner-only
-permissions on macOS and Linux, but that enforcement does not apply on Windows:
-the underlying `os.Chmod` has no ACL effect there, so the mode bits are not
-honored. On Windows, write dumps into a directory that is already restricted to
-your account (for example under your user profile), since the dump's own
-permission tightening is a no-op.
+permissions on macOS and Linux. Its immediate output parent must already be
+owned by the current user and must not be group- or world-writable; writable
+ancestors are accepted only when sticky-directory rules protect the next
+user-owned component. This keeps atomic publication and cleanup inside a
+namespace another local principal cannot rewrite. On macOS, permit or unknown
+extended-ACL entries on the resolved ancestry are rejected; deny-only ACLs are
+accepted because they do not widen access.
+
+That enforcement does not apply on Windows: the underlying `os.Chmod` has no
+ACL effect there, so the mode bits are not honored. On Windows, write dumps into
+a directory that is already restricted to your account (for example under your
+user profile), since the dump's own permission tightening is a no-op.
+
+Windows can atomically publish a dump when the requested destination does not
+exist. Replacing an existing directory (including `dump --force`) fails closed:
+Windows does not provide the directory-exchange primitive needed to avoid a
+crash window in which the canonical destination is absent.
 
 ## Verify Release Artifacts
 
@@ -59,6 +73,10 @@ gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz \
 ```
 
 ## Build From A Checkout
+
+Source builds require Go 1.26.5 or newer; the module rejects older patch
+releases so the shipped binary cannot be built with a standard library that is
+missing required security fixes.
 
 ```sh
 go install ./cmd/zscalerctl

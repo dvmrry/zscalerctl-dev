@@ -32,7 +32,9 @@ streaming/pipeline consumers; it applies to resource \fBlist\fR/\fBget\fR/\fBsho
 output only and is rejected by other commands.
 .TP
 .BI \-\-output " path"
-Write command output to a file instead of stdout (not valid with dump).
+Create or atomically replace a restricted regular file with command output
+instead of writing to stdout (not valid with dump). This is a local filesystem
+side effect; agents should use it only when that write is explicitly intended.
 .TP
 .BI \-\-timeout " duration"
 Per-request timeout (e.g. 30s). Must be positive. This bounds each HTTP request
@@ -151,7 +153,10 @@ Print a shell completion script.
 .TP
 .B introspect
 Print a machine-readable JSON map of all commands, flags, resources, and exit
-codes. Config-free and network-free; safe to run without credentials. Use
+codes. Version 2 includes structured command effects for local filesystem,
+network, and configuration-dependent provider process activity; the
+compatibility \fBmutating\fR field is a conservative summary. Config-free and
+network-free; safe to run without credentials. Use
 \fB\-\-format pretty\fR for a human-readable indented tree.
 .TP
 .B version

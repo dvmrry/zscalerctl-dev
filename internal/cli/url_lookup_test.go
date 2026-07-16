@@ -173,6 +173,36 @@ func TestURLLookupStripsUserinfoCredentials(t *testing.T) {
 	}
 }
 
+func TestURLLookupSanitizesSDKReturnedURLAgain(t *testing.T) {
+	t.Parallel()
+
+	const (
+		userinfoCanary = "sdk-response-userinfo-canary"
+		queryCanary    = "sdk-response-query-canary"
+	)
+	reader := &fakeURLLookupReader{
+		results: []zscaler.URLClassification{{
+			URL: "https://user:" + userinfoCanary + "@response.example/app?token=" + queryCanary + "#fragment",
+		}},
+	}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+	if err := app.Run(context.Background(), []string{"--format", "json", "zia", "url-lookup", "example.com"}); err != nil {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) error = %v, want nil", err)
+	}
+	for _, forbidden := range []string{userinfoCanary, queryCanary, "user:", "?token=", "#fragment"} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Fatalf("App.Run(zia url-lookup malicious echo) output = %q, want no %q", out.String(), forbidden)
+		}
+	}
+	if !strings.Contains(out.String(), `"url": "https://response.example/app"`) {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) output = %q, want sanitized URL", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("App.Run(zia url-lookup malicious echo) stderr = %q, want empty", errOut.String())
+	}
+}
+
 func TestURLLookupRejectsUnparseableURLWithoutForwardingValue(t *testing.T) {
 	t.Parallel()
 
@@ -303,5 +333,43 @@ func TestURLLookupRendersTableFormat(t *testing.T) {
 		"example.com\tNEWS_AND_MEDIA,TECHNOLOGY\tMALWARE_SITE\tEXAMPLE_APP\n"
 	if got := out.String(); got != want {
 		t.Errorf("App.Run(zia url-lookup --format table) stdout = %q, want %q", got, want)
+	}
+}
+
+func TestURLLookupRendersPrettyFormat(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeURLLookupReader{results: []zscaler.URLClassification{{
+		URL:                          "example.com",
+		Classifications:              []string{"NEWS_AND_MEDIA", "TECHNOLOGY"},
+		SecurityAlertClassifications: []string{"MALWARE_SITE"},
+		Application:                  "EXAMPLE_APP",
+	}}}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+
+	err := app.Run(context.Background(), []string{
+		"--format", "pretty", "--color", "never", "zia", "url-lookup", "example.com",
+	})
+	if err != nil {
+		t.Fatalf("App.Run(zia url-lookup --format pretty) error = %v, want nil", err)
+	}
+	got := out.String()
+	if !hasBoxDrawing(got) {
+		t.Fatalf("App.Run(zia url-lookup --format pretty) stdout = %q, want bordered output", got)
+	}
+	for _, want := range []string{
+		"url", "classifications", "security_alert_classifications", "application",
+		"example.com", "NEWS_AND_MEDIA,TECHNOLOGY", "MALWARE_SITE", "EXAMPLE_APP",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("App.Run(zia url-lookup --format pretty) stdout = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Errorf("App.Run(zia url-lookup --format pretty) stdout = %q, want no ANSI with --color never", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("App.Run(zia url-lookup --format pretty) stderr = %q, want empty", errOut.String())
 	}
 }

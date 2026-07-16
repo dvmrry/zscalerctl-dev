@@ -3,6 +3,7 @@ package resources_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -64,6 +65,49 @@ func FuzzProjectRecordSubsetAndCanaryRedaction(f *testing.F) {
 					t.Fatalf("ProjectRecord(%s/%s, mode %s) JSON = %s, want no canary", spec.Product, spec.Name, mode, string(body))
 				}
 			}
+		}
+	})
+}
+
+func FuzzProjectedRecordsMarshalJSONMatchesDefensiveCopy(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte(`[]`),
+		[]byte(`[{"id":1,"name":"HQ"}]`),
+		[]byte(`[{"metadata":{"region":"us-east","labels":["branch","managed"]},"enabled":true}]`),
+		[]byte(`[{"number":12345678901234567890,"nullable":null,"items":[1,"two",false]}]`),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 64*1024 {
+			return
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		var rows []map[string]any
+		if err := decoder.Decode(&rows); err != nil || len(rows) > 1_000 {
+			return
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			return
+		}
+
+		projected := resources.NewProjectedRecordsFromProjectedFields(rows)
+		got, gotErr := json.Marshal(projected)
+		legacyRows := make([]map[string]any, 0, len(rows))
+		for _, record := range projected.Records() {
+			legacyRows = append(legacyRows, record.Fields())
+		}
+		want, wantErr := json.Marshal(legacyRows)
+		if (gotErr == nil) != (wantErr == nil) {
+			t.Fatalf("json.Marshal(ProjectedRecords) error = %v, legacy defensive-copy error = %v", gotErr, wantErr)
+		}
+		if gotErr != nil {
+			return
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("json.Marshal(ProjectedRecords) = %s, legacy defensive-copy JSON = %s", got, want)
 		}
 	})
 }

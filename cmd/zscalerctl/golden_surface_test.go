@@ -32,6 +32,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/zscaler"
 	"github.com/spf13/cobra"
 )
 
@@ -42,8 +43,10 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 var goldenBinary string
 
 const (
-	goldenSurfaceFixtureEnv  = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
-	goldenSurfaceReadFixture = "resource-read"
+	goldenSurfaceFixtureEnv        = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture       = "resource-read"
+	goldenSurfaceInvalidIDFixture  = "invalid-resource-id"
+	goldenSurfaceMissingZPAFixture = "missing-zpa-customer-id"
 )
 
 // TestMain builds the binary once for all golden tests.
@@ -119,7 +122,7 @@ func scrub(s, homeDir, binPath string) string {
 
 	// Pseudo-version: v0.68.1-0.20260620073434-79678e7c1f63
 	s = rePseudoVersion.ReplaceAllString(s, "<VERSION>")
-	// Go runtime version: go1.22.3 — must run BEFORE reSemver so "go1.26.4" is
+	// Go runtime version: go1.22.3 — must run BEFORE reSemver so "go1.26.5" is
 	// consumed as a unit (→ go<GOVERSION>) and reSemver does not strip the digits
 	// first (which would yield the wrong "go<VERSION>" placeholder).
 	s = reGoVersion.ReplaceAllString(s, "go<GOVERSION>")
@@ -296,6 +299,13 @@ type goldenSurfaceReader struct {
 }
 
 func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, resource string) ([]resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceMissingZPAFixture &&
+		product == resources.ProductZPA &&
+		resource == "server-groups" {
+		return nil, &zscaler.MissingCredentialsError{
+			Missing: []string{"ZSCALERCTL_ZPA_CUSTOMER_ID"},
+		}
+	}
 	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" {
 		return []resources.SourceRecord{
 			resources.NewSourceRecord(map[string]any{
@@ -325,6 +335,9 @@ func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, 
 }
 
 func (r goldenSurfaceReader) Get(_ context.Context, product resources.Product, resource string, id string) (resources.SourceRecord, error) {
+	if r.fixture == goldenSurfaceInvalidIDFixture && product == resources.ProductZIA && resource == "locations" {
+		return resources.SourceRecord{}, fmt.Errorf("%w: %q", resources.ErrInvalidResourceID, id)
+	}
 	if r.fixture == goldenSurfaceReadFixture && product == resources.ProductZIA && resource == "locations" && id == "42" {
 		return resources.NewSourceRecord(map[string]any{
 			"id":             "42",
@@ -545,6 +558,13 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "pretty-resource-get-shape",
 		},
+		{
+			name:     "zia-locations-get-invalid-id-json",
+			args:     []string{"--format", "json", "zia", "locations", "get", "not-a-number"},
+			fixture:  goldenSurfaceInvalidIDFixture,
+			wantCode: 2,
+			note:     "invalid-resource-id-contract",
+		},
 		// ── singleton show (offline fixture → pretty success) ───────────────────
 		{
 			name:     "zia-advanced-settings-show-pretty",
@@ -566,6 +586,13 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"--format", "json", "zia", "locations", "list"},
 			wantCode: 3,
 			note:     "json-error-envelope",
+		},
+		{
+			name:     "zpa-server-groups-list-missing-customer-json",
+			args:     []string{"--format", "json", "zpa", "server-groups", "list"},
+			fixture:  goldenSurfaceMissingZPAFixture,
+			wantCode: 3,
+			note:     "product-missing-credentials-contract",
 		},
 		// ── schema list ───────────────────────────────────────────────────────────
 		{

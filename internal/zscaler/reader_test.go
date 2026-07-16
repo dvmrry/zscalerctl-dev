@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"reflect"
@@ -458,6 +459,34 @@ func TestZPAReaderRequiresCustomerIDBeforeNetwork(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ZSCALERCTL_ZPA_CUSTOMER_ID") {
 		t.Errorf("SDKReader.List(zpa, server-groups without customer id) error = %v, want ZSCALERCTL_ZPA_CUSTOMER_ID guidance", err)
+	}
+}
+
+func TestNormalizeLiveErrorPreservesHTTPClientTimeout(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Timeout: 10 * time.Millisecond}
+	_, rawErr := client.Get(server.URL)
+	if !errors.Is(rawErr, context.DeadlineExceeded) {
+		t.Fatalf("http.Client.Get(timeout) error = %v, want context.DeadlineExceeded", rawErr)
+	}
+	err := normalizeLiveError(
+		context.Background(),
+		"list",
+		resources.ProductZIA,
+		"locations",
+		rawErr,
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("normalizeLiveError(http timeout) error = %v, want context.DeadlineExceeded", err)
+	}
+	if errors.Is(err, ErrLiveAccessFailed) {
+		t.Errorf("normalizeLiveError(http timeout) error = %v, want no ErrLiveAccessFailed identity", err)
 	}
 }
 
@@ -4527,6 +4556,9 @@ func TestReaderGetLocationRejectsNonNumericID(t *testing.T) {
 	_, err := reader.Get(context.Background(), resources.ProductZIA, "locations", "not-a-number")
 	if !errors.Is(err, ErrInvalidResourceID) {
 		t.Fatalf("SDKReader.Get(non-numeric id) error = %v, want ErrInvalidResourceID", err)
+	}
+	if !errors.Is(err, resources.ErrInvalidResourceID) {
+		t.Fatalf("SDKReader.Get(non-numeric id) error = %v, want resources.ErrInvalidResourceID bridge", err)
 	}
 }
 

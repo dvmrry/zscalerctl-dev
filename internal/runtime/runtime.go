@@ -18,6 +18,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
+	"github.com/dvmrry/zscalerctl/internal/secret"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -41,6 +42,20 @@ type Options struct {
 
 	loadConfig configLoader
 	newReader  readerFactory
+}
+
+// OptionsFromExecutionSettings maps secret-free engine settings into runtime
+// construction options. The host still supplies environment entries, catalog,
+// diagnostics, and any trusted test seams separately.
+func OptionsFromExecutionSettings(settings machine.ExecutionSettings) Options {
+	return Options{
+		Profile:      settings.Profile,
+		ConfigPath:   settings.ConfigPath,
+		Timeout:      settings.Timeout,
+		Redaction:    settings.Redaction,
+		RedactionSet: settings.RedactionSet,
+		NoCache:      settings.NoCache,
+	}
 }
 
 // Machine is the trusted read-only machine execution facade.
@@ -114,13 +129,50 @@ func (m *Machine) Execute(ctx context.Context, req machine.Request) (machine.Res
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	loader := &machineBrowserLoader{service: m.service}
-	executor := machine.Executor{
-		Browser:   loader,
-		Catalog:   m.catalog,
-		Redaction: m.redaction,
+	return m.executor().Execute(ctx, req)
+}
+
+// Read runs one typed resource-read request through the assembled read-only
+// stack.
+func (m *Machine) Read(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+) (machine.ResourceReadResult, error) {
+	if m == nil {
+		return machine.ResourceReadResult{}, errors.New("machine runtime is nil")
 	}
-	return executor.Execute(ctx, req)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().Read(ctx, req)
+}
+
+// ReadStream runs one typed resource-read request and delivers ordered events
+// synchronously to sink.
+func (m *Machine) ReadStream(
+	ctx context.Context,
+	req machine.ResourceReadRequest,
+	sink machine.EventSink,
+) error {
+	if m == nil {
+		return errors.New("machine runtime is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().ReadStream(ctx, req, sink)
+}
+
+// ExecuteStream runs one machine request through the assembled read-only stack
+// and delivers ordered events synchronously to sink.
+func (m *Machine) ExecuteStream(ctx context.Context, req machine.Request, sink machine.EventSink) error {
+	if m == nil {
+		return errors.New("machine runtime is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return m.executor().ExecuteStream(ctx, req, sink)
 }
 
 // Manifest returns the capability manifest for the runtime catalog.
@@ -147,6 +199,15 @@ func (m *Machine) Redaction() redact.Mode {
 	return redact.EffectiveMode(m.redaction)
 }
 
+func (m *Machine) executor() machine.Executor {
+	loader := &machineBrowserLoader{service: m.service}
+	return machine.Executor{
+		Browser:   loader,
+		Catalog:   m.catalog,
+		Redaction: m.redaction,
+	}
+}
+
 func applyOptions(cfg *config.Config, opts Options) error {
 	if opts.RedactionSet {
 		mode, err := redact.ParseMode(string(opts.Redaction))
@@ -169,40 +230,54 @@ func readerConfigFromConfig(
 	cfg config.Config,
 	opts Options,
 ) (zscaler.ReaderConfig, error) {
-	clientSecret, err := cfg.Credentials.ClientSecret.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
+	cfg = normalizeConfigSecretSources(cfg)
+	authMode := cfg.EffectiveAuthMode()
+	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
+	switch authMode {
+	case config.AuthModeOneAPI:
+		var err error
+		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
+		}
+	case config.AuthModeZIALegacy:
+		var err error
+		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy password)", zscaler.ErrMissingCredentials, err)
+		}
+		ziaAPIKey, err = cfg.ZIALegacy.APIKey.Resolve(ctx)
+		if err != nil {
+			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
+		}
 	}
-	ziaPassword, err := cfg.ZIALegacy.Password.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy password)", zscaler.ErrMissingCredentials, err)
-	}
-	ziaAPIKey, err := cfg.ZIALegacy.APIKey.Resolve(ctx)
-	if err != nil {
-		return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the ZIA legacy API key)", zscaler.ErrMissingCredentials, err)
-	}
-	return zscaler.ReaderConfig{
-		ClientID:         cfg.Credentials.ClientID,
-		ClientSecret:     clientSecret,
-		VanityDomain:     cfg.VanityDomain,
-		Cloud:            cfg.Cloud,
-		ZPACustomerID:    cfg.ZPA.CustomerID,
-		ZPAMicrotenantID: cfg.ZPA.MicrotenantID,
-		AuthMode:         zscaler.AuthMode(cfg.EffectiveAuthMode()),
-		ZIALegacy: zscaler.ZIALegacyConfig{
-			Username: cfg.ZIALegacy.Username,
-			Password: ziaPassword,
-			APIKey:   ziaAPIKey,
-			Cloud:    cfg.ZIALegacy.Cloud,
-		},
-		Timeout: opts.Timeout,
-		NoCache: cfg.Defaults.NoCache,
+	readerConfig := zscaler.ReaderConfig{
+		AuthMode: zscaler.AuthMode(authMode),
+		Timeout:  opts.Timeout,
+		NoCache:  cfg.Defaults.NoCache,
 		Proxy: zscaler.ProxyConfig{
 			URL:             cfg.Proxy.URL,
 			FromEnvironment: cfg.Proxy.FromEnvironment,
 		},
 		DiagLogger: opts.DiagLogger,
-	}, nil
+	}
+	switch authMode {
+	case config.AuthModeOneAPI:
+		readerConfig.ClientID = cfg.Credentials.ClientID
+		readerConfig.ClientSecret = clientSecret
+		readerConfig.VanityDomain = cfg.VanityDomain
+		readerConfig.Cloud = cfg.Cloud
+		readerConfig.ZPACustomerID = cfg.ZPA.CustomerID
+		readerConfig.ZPAMicrotenantID = cfg.ZPA.MicrotenantID
+	case config.AuthModeZIALegacy:
+		readerConfig.ZIALegacy = zscaler.ZIALegacyConfig{
+			Username: cfg.ZIALegacy.Username,
+			Password: ziaPassword,
+			APIKey:   ziaAPIKey,
+			Cloud:    cfg.ZIALegacy.Cloud,
+		}
+	}
+	return readerConfig, nil
 }
 
 func newReaderFromConfig(
@@ -254,7 +329,17 @@ func (l *machineBrowserLoader) ListProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.ListProjected(ctx, product, resource)
+	records, err := l.service.ListProjected(ctx, product, resource)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationList,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+			},
+		})
+	}
+	return records, nil
 }
 
 func (l *machineBrowserLoader) ShowProjected(
@@ -262,7 +347,17 @@ func (l *machineBrowserLoader) ShowProjected(
 	product string,
 	resource string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.ShowProjected(ctx, product, resource)
+	records, err := l.service.ShowProjected(ctx, product, resource)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationShow,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+			},
+		})
+	}
+	return records, nil
 }
 
 func (l *machineBrowserLoader) GetProjectedByID(
@@ -271,7 +366,18 @@ func (l *machineBrowserLoader) GetProjectedByID(
 	resource string,
 	id string,
 ) (resources.ProjectedRecords, error) {
-	return l.service.GetProjectedByID(ctx, product, resource, id)
+	records, err := l.service.GetProjectedByID(ctx, product, resource, id)
+	if err != nil {
+		return resources.ProjectedRecords{}, resourceReadRuntimeBoundaryError(err, machine.ResourceReadRequest{
+			Operation: machine.OperationGet,
+			Input: machine.ResourceReadInput{
+				Product:  product,
+				Resource: resource,
+				RecordID: id,
+			},
+		})
+	}
+	return records, nil
 }
 
 func catalogFromOptions(catalog resources.ResourceCatalog) resources.ResourceCatalog {

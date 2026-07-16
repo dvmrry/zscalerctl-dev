@@ -8,6 +8,8 @@ coverage.out
 *.test
 /zscalerctl
 /zscalerctl-pty-check
+/clients/typescript/node_modules/
+/clients/typescript/*.tsbuildinfo
 
 # Live smoke artifacts contain sanitized but confidential tenant data.
 /dump/

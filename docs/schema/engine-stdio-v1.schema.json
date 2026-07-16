@@ -1,0 +1,1484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:zscalerctl:engine-stdio:protocol:1",
+  "title": "zscalerctl local stdio engine protocol v1 frames",
+  "description": "Strict client and server frame union after successful bootstrap negotiation of local stdio engine protocol version 1.",
+  "oneOf": [
+    { "$ref": "#/$defs/ready" },
+    { "$ref": "#/$defs/manifestRequest" },
+    { "$ref": "#/$defs/catalogRequest" },
+    { "$ref": "#/$defs/doctorRequest" },
+    { "$ref": "#/$defs/authStatusRequest" },
+    { "$ref": "#/$defs/configStatusRequest" },
+    { "$ref": "#/$defs/urlLookupRequest" },
+    { "$ref": "#/$defs/resourceListRequest" },
+    { "$ref": "#/$defs/resourceGetRequest" },
+    { "$ref": "#/$defs/resourceShowRequest" },
+    { "$ref": "#/$defs/dumpRequest" },
+    { "$ref": "#/$defs/diffRequest" },
+    { "$ref": "#/$defs/cancel" },
+    { "$ref": "#/$defs/requestRejected" },
+    { "$ref": "#/$defs/started" },
+    { "$ref": "#/$defs/catalogItem" },
+    { "$ref": "#/$defs/urlClassificationItem" },
+    { "$ref": "#/$defs/projectedRecordItem" },
+    { "$ref": "#/$defs/diffResourceItem" },
+    { "$ref": "#/$defs/diffAddedItem" },
+    { "$ref": "#/$defs/diffRemovedItem" },
+    { "$ref": "#/$defs/diffFieldChangeItem" },
+    { "$ref": "#/$defs/itemBegin" },
+    { "$ref": "#/$defs/itemChunk" },
+    { "$ref": "#/$defs/itemEnd" },
+    { "$ref": "#/$defs/progress" },
+    { "$ref": "#/$defs/warning" },
+    { "$ref": "#/$defs/completed" },
+    { "$ref": "#/$defs/failed" },
+    { "$ref": "#/$defs/canceled" },
+    { "$ref": "#/$defs/protocolError" }
+  ],
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "requestID": { "$ref": "#/$defs/positiveSafeInteger" },
+    "sequence": { "$ref": "#/$defs/positiveSafeInteger" },
+    "product": {
+      "type": "string",
+      "enum": ["zia", "zpa", "ztw", "zcc", "zidentity"]
+    },
+    "resourceName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "fieldName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "controlString": {
+      "type": "string",
+      "maxLength": 8192
+    },
+    "pathInput": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32768
+    },
+    "redaction": {
+      "type": "string",
+      "enum": ["standard", "share", "paranoid"]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_frame_bytes",
+        "server_frame_bytes",
+        "json_depth",
+        "aggregate_item_bytes",
+        "fragment_chunk_bytes",
+        "url_count",
+        "read_field_count",
+        "read_filter_count",
+        "product_selector_count",
+        "resource_selector_count",
+        "path_bytes",
+        "control_string_bytes"
+      ],
+      "properties": {
+        "client_frame_bytes": { "const": 1048576 },
+        "server_frame_bytes": { "const": 1048576 },
+        "json_depth": { "const": 64 },
+        "aggregate_item_bytes": { "const": 67108864 },
+        "fragment_chunk_bytes": { "const": 524288 },
+        "url_count": { "const": 1024 },
+        "read_field_count": { "const": 1024 },
+        "read_filter_count": { "const": 1024 },
+        "product_selector_count": { "const": 16 },
+        "resource_selector_count": { "const": 4096 },
+        "path_bytes": { "const": 32768 },
+        "control_string_bytes": { "const": 8192 }
+      }
+    },
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "version", "schema", "server", "limits", "engine"],
+      "properties": {
+        "type": { "const": "ready" },
+        "protocol": { "const": "zscalerctl.engine.stdio" },
+        "version": { "const": "1" },
+        "schema": { "$ref": "#/$defs/schemaIdentity" },
+        "server": { "$ref": "#/$defs/serverBuild" },
+        "limits": { "$ref": "#/$defs/limits" },
+        "engine": { "$ref": "#/$defs/engineManifest" }
+      }
+    },
+    "schemaIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "const": "urn:zscalerctl:engine-stdio:protocol:1" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "serverBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "zscalerctl-engine" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "engineManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "tenant_read_only", "capabilities"],
+      "properties": {
+        "version": { "const": "engine.v1" },
+        "tenant_read_only": { "const": true },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/engineCapability" }
+        }
+      }
+    },
+    "engineCapability": {
+      "oneOf": [
+        { "$ref": "#/$defs/manifestCapability" },
+        { "$ref": "#/$defs/catalogCapability" },
+        { "$ref": "#/$defs/statusCapability" },
+        { "$ref": "#/$defs/urlLookupCapability" },
+        { "$ref": "#/$defs/resourceReadCapability" },
+        { "$ref": "#/$defs/dumpCapability" },
+        { "$ref": "#/$defs/diffCapability" }
+      ]
+    },
+    "manifestCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "engine.manifest" },
+        "operations": { "const": ["manifest"] },
+        "input": { "const": "none" },
+        "result": { "const": "engine_manifest" },
+        "tenant_read_only": { "const": true },
+        "effects": { "const": [] }
+      }
+    },
+    "catalogCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "catalog.schema" },
+        "operations": { "const": ["list"] },
+        "input": { "const": "none" },
+        "result": { "const": "resource_catalog" },
+        "tenant_read_only": { "const": true },
+        "effects": { "const": [] }
+      }
+    },
+    "statusCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "status.inspect" },
+        "operations": { "const": ["doctor", "auth_status", "config_status"] },
+        "input": { "const": "status" },
+        "result": { "const": "status" },
+        "tenant_read_only": { "const": true },
+        "effects": {
+          "const": [
+            { "kind": "local_filesystem_read", "when": "configuration_dependent" }
+          ]
+        }
+      }
+    },
+    "urlLookupCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "zia.url_lookup" },
+        "operations": { "const": ["lookup"] },
+        "input": { "const": "url_lookup" },
+        "result": { "const": "url_classifications" },
+        "tenant_read_only": { "const": true },
+        "effects": {
+          "const": [
+            { "kind": "local_filesystem_read", "when": "configuration_dependent" },
+            { "kind": "network_access", "when": "always" },
+            { "kind": "process_execution", "when": "configuration_dependent" }
+          ]
+        }
+      }
+    },
+    "resourceReadCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "resources.read" },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["list", "get", "show"] }
+        },
+        "input": { "const": "resource_read" },
+        "result": { "const": "projected_records" },
+        "tenant_read_only": { "const": true },
+        "effects": {
+          "const": [
+            { "kind": "local_filesystem_read", "when": "configuration_dependent" },
+            { "kind": "network_access", "when": "always" },
+            { "kind": "process_execution", "when": "configuration_dependent" }
+          ]
+        }
+      }
+    },
+    "dumpCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "dump.write" },
+        "operations": { "const": ["dump"] },
+        "input": { "const": "dump" },
+        "result": { "const": "dump_summary" },
+        "tenant_read_only": { "const": true },
+        "effects": {
+          "const": [
+            { "kind": "local_filesystem_read", "when": "always" },
+            { "kind": "local_filesystem_write", "when": "always" },
+            { "kind": "local_filesystem_delete", "when": "request_dependent" },
+            { "kind": "network_access", "when": "always" },
+            { "kind": "process_execution", "when": "configuration_dependent" }
+          ]
+        }
+      }
+    },
+    "diffCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "operations", "input", "result", "tenant_read_only", "effects"],
+      "properties": {
+        "name": { "const": "diff.compare" },
+        "operations": { "const": ["diff"] },
+        "input": { "const": "diff" },
+        "result": { "const": "diff_report" },
+        "tenant_read_only": { "const": true },
+        "effects": {
+          "const": [
+            { "kind": "local_filesystem_read", "when": "always" }
+          ]
+        }
+      }
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "manifest",
+        "list",
+        "get",
+        "show",
+        "doctor",
+        "auth_status",
+        "config_status",
+        "lookup",
+        "dump",
+        "diff"
+      ]
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "when"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local_filesystem_read",
+            "local_filesystem_write",
+            "local_filesystem_delete",
+            "network_access",
+            "process_execution"
+          ]
+        },
+        "when": {
+          "type": "string",
+          "enum": ["always", "request_dependent", "configuration_dependent"]
+        }
+      }
+    },
+    "manifestRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "engine.manifest" },
+        "operation": { "const": "manifest" }
+      }
+    },
+    "catalogRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "catalog.schema" },
+        "operation": { "const": "list" }
+      }
+    },
+    "doctorRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "status.inspect" },
+        "operation": { "const": "doctor" }
+      }
+    },
+    "authStatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "status.inspect" },
+        "operation": { "const": "auth_status" }
+      }
+    },
+    "configStatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "status.inspect" },
+        "operation": { "const": "config_status" }
+      }
+    },
+    "urlLookupRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "zia.url_lookup" },
+        "operation": { "const": "lookup" },
+        "input": { "$ref": "#/$defs/urlLookupInput" }
+      }
+    },
+    "urlLookupInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urls"],
+      "properties": {
+        "urls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": { "type": "string", "minLength": 1, "maxLength": 8192 }
+        }
+      }
+    },
+    "resourceListRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "resources.read" },
+        "operation": { "const": "list" },
+        "input": { "$ref": "#/$defs/resourceListInput" }
+      }
+    },
+    "resourceListInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "fields", "filters", "search"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "fields": { "$ref": "#/$defs/fieldSelection" },
+        "filters": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/filter" }
+        },
+        "search": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "resourceGetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "resources.read" },
+        "operation": { "const": "get" },
+        "input": { "$ref": "#/$defs/resourceGetInput" }
+      }
+    },
+    "resourceGetInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "record_id", "fields"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "record_id": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "fields": { "$ref": "#/$defs/fieldSelection" }
+      }
+    },
+    "resourceShowRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "resources.read" },
+        "operation": { "const": "show" },
+        "input": { "$ref": "#/$defs/resourceShowInput" }
+      }
+    },
+    "resourceShowInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "fields"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "fields": { "$ref": "#/$defs/fieldSelection" }
+      }
+    },
+    "fieldSelection": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/fieldName" }
+    },
+    "filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": { "$ref": "#/$defs/fieldName" },
+        "operator": { "type": "string", "enum": ["exact", "contains"] },
+        "value": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "dumpRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "dump.write" },
+        "operation": { "const": "dump" },
+        "input": { "$ref": "#/$defs/dumpInput" }
+      }
+    },
+    "dumpInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output_dir", "products", "resources", "continue_on_error", "force"],
+      "properties": {
+        "output_dir": { "$ref": "#/$defs/pathInput" },
+        "products": { "$ref": "#/$defs/productSelection" },
+        "resources": { "$ref": "#/$defs/resourceSelection" },
+        "continue_on_error": { "type": "boolean" },
+        "force": { "type": "boolean" }
+      }
+    },
+    "diffRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "capability", "operation", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "capability": { "const": "diff.compare" },
+        "operation": { "const": "diff" },
+        "input": { "$ref": "#/$defs/diffInput" }
+      }
+    },
+    "diffInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["old_dir", "new_dir", "products", "resources", "ignore_operational", "allow_partial"],
+      "properties": {
+        "old_dir": { "$ref": "#/$defs/pathInput" },
+        "new_dir": { "$ref": "#/$defs/pathInput" },
+        "products": { "$ref": "#/$defs/productSelection" },
+        "resources": { "$ref": "#/$defs/resourceSelection" },
+        "ignore_operational": { "type": "boolean" },
+        "allow_partial": { "type": "boolean" }
+      }
+    },
+    "productSelection": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/product" }
+    },
+    "resourceSelection": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/resourceSelector" }
+    },
+    "resourceSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" }
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "const": "cancel" },
+        "id": { "$ref": "#/$defs/requestID" }
+      }
+    },
+    "requestRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "reason"],
+      "properties": {
+        "type": { "const": "request_rejected" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "reason": { "const": "busy" }
+      }
+    },
+    "started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "capability", "operation"],
+      "properties": {
+        "type": { "const": "started" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "capability": {
+          "type": "string",
+          "enum": [
+            "engine.manifest",
+            "catalog.schema",
+            "status.inspect",
+            "zia.url_lookup",
+            "resources.read",
+            "dump.write",
+            "diff.compare"
+          ]
+        },
+        "operation": { "$ref": "#/$defs/operation" }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "capability": { "const": "engine.manifest" },
+                "operation": { "const": "manifest" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "catalog.schema" },
+                "operation": { "const": "list" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "status.inspect" },
+                "operation": { "const": "doctor" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "status.inspect" },
+                "operation": { "const": "auth_status" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "status.inspect" },
+                "operation": { "const": "config_status" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "zia.url_lookup" },
+                "operation": { "const": "lookup" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "resources.read" },
+                "operation": { "const": "list" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "resources.read" },
+                "operation": { "const": "get" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "resources.read" },
+                "operation": { "const": "show" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "dump.write" },
+                "operation": { "const": "dump" }
+              }
+            },
+            {
+              "properties": {
+                "capability": { "const": "diff.compare" },
+                "operation": { "const": "diff" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "itemKind": {
+      "type": "string",
+      "enum": [
+        "catalog_resource",
+        "url_classification",
+        "projected_record",
+        "diff_resource",
+        "diff_added",
+        "diff_removed",
+        "diff_field_change"
+      ]
+    },
+    "catalogItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "catalog_resource" },
+        "item": { "$ref": "#/$defs/catalogResource" }
+      }
+    },
+    "urlClassificationItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "url_classification" },
+        "item": { "$ref": "#/$defs/urlClassification" }
+      }
+    },
+    "projectedRecordItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "projected_record" },
+        "item": { "$ref": "#/$defs/projectedRecord" }
+      }
+    },
+    "diffResourceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "diff_resource" },
+        "item": { "$ref": "#/$defs/diffResource" }
+      }
+    },
+    "diffAddedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "diff_added" },
+        "item": { "$ref": "#/$defs/diffRecordRef" }
+      }
+    },
+    "diffRemovedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "diff_removed" },
+        "item": { "$ref": "#/$defs/diffRecordRef" }
+      }
+    },
+    "diffFieldChangeItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "kind", "item"],
+      "properties": {
+        "type": { "const": "item" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "kind": { "const": "diff_field_change" },
+        "item": { "$ref": "#/$defs/diffFieldChange" }
+      }
+    },
+    "catalogResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "name", "shape", "operations", "fields"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "name": { "$ref": "#/$defs/resourceName" },
+        "shape": { "type": "string", "enum": ["list", "singleton"] },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["list", "get", "show"] }
+        },
+        "get_key": { "$ref": "#/$defs/fieldName" },
+        "fields": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/catalogField" }
+        }
+      }
+    },
+    "catalogField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "classification", "allowed_modes", "fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/fieldName" },
+        "json_name": { "$ref": "#/$defs/fieldName" },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "public_project_data",
+            "operational_metadata",
+            "tenant_configuration",
+            "sensitive_identifier",
+            "free_text",
+            "secret"
+          ]
+        },
+        "allowed_modes": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/redaction" }
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/catalogField" }
+        }
+      }
+    },
+    "urlClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "classifications", "security_alert_classifications", "application"],
+      "properties": {
+        "url": { "$ref": "#/$defs/controlString" },
+        "classifications": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/controlString" }
+        },
+        "security_alert_classifications": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/controlString" }
+        },
+        "application": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "projectedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "record"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "record": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/wireValue" }
+        }
+      }
+    },
+    "wireValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "string" },
+        { "type": "number" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/wireValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/wireValue" }
+        }
+      ]
+    },
+    "diffResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "identity", "added", "removed", "changed_fields"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "identity": { "$ref": "#/$defs/diffIdentity" },
+        "added": { "$ref": "#/$defs/safeInteger" },
+        "removed": { "$ref": "#/$defs/safeInteger" },
+        "changed_fields": { "$ref": "#/$defs/safeInteger" },
+        "note": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "diffIdentity": {
+      "oneOf": [
+        { "$ref": "#/$defs/diffGetKeyIdentity" },
+        { "$ref": "#/$defs/diffSingletonIdentity" },
+        { "$ref": "#/$defs/diffContentHashIdentity" }
+      ]
+    },
+    "diffGetKeyIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "field"],
+      "properties": {
+        "mode": { "const": "get_key" },
+        "field": { "$ref": "#/$defs/fieldName" }
+      }
+    },
+    "diffSingletonIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "singleton" }
+      }
+    },
+    "diffContentHashIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "content_hash" }
+      }
+    },
+    "diffRecordRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/diffKeyRecordRef" },
+        { "$ref": "#/$defs/diffHashRecordRef" }
+      ]
+    },
+    "diffKeyRecordRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "key", "record"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "key": { "$ref": "#/$defs/controlString" },
+        "record": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/wireValue" }
+        }
+      }
+    },
+    "diffHashRecordRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "hash", "record"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "record": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/wireValue" }
+        }
+      }
+    },
+    "diffFieldChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "key", "field", "old", "new"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "key": { "$ref": "#/$defs/controlString" },
+        "field": { "$ref": "#/$defs/fieldName" },
+        "old": { "$ref": "#/$defs/wireValue" },
+        "new": { "$ref": "#/$defs/wireValue" }
+      }
+    },
+    "itemBegin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "item_id", "kind", "encoding", "bytes"],
+      "properties": {
+        "type": { "const": "item_begin" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "item_id": { "$ref": "#/$defs/positiveSafeInteger" },
+        "kind": { "$ref": "#/$defs/itemKind" },
+        "encoding": { "const": "json" },
+        "bytes": { "type": "integer", "minimum": 2, "maximum": 67108864 }
+      }
+    },
+    "itemChunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "item_id", "index", "data"],
+      "properties": {
+        "type": { "const": "item_chunk" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "item_id": { "$ref": "#/$defs/positiveSafeInteger" },
+        "index": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "data": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 699048,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})+$"
+            },
+            {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 699052,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$"
+            }
+          ]
+        }
+      }
+    },
+    "itemEnd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "item_id", "chunks", "sha256"],
+      "properties": {
+        "type": { "const": "item_end" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "item_id": { "$ref": "#/$defs/positiveSafeInteger" },
+        "chunks": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "phase", "current", "total", "product", "resource"],
+      "properties": {
+        "type": { "const": "progress" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "phase": { "const": "resource_started" },
+        "current": { "$ref": "#/$defs/positiveSafeInteger" },
+        "total": { "$ref": "#/$defs/positiveSafeInteger" },
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "warning"],
+      "properties": {
+        "type": { "const": "warning" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "warning": { "$ref": "#/$defs/dumpFailure" }
+      }
+    },
+    "dumpFailure": {
+      "oneOf": [
+        { "$ref": "#/$defs/dumpListFailure" },
+        { "$ref": "#/$defs/dumpShowFailure" },
+        { "$ref": "#/$defs/dumpProjectFailure" },
+        { "$ref": "#/$defs/dumpValidateFailure" }
+      ]
+    },
+    "dumpListFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "phase", "kind"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "phase": { "const": "list" },
+        "kind": { "const": "list_failed" }
+      }
+    },
+    "dumpShowFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "phase", "kind"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "phase": { "const": "show" },
+        "kind": { "const": "show_failed" }
+      }
+    },
+    "dumpProjectFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "phase", "kind"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "phase": { "const": "project" },
+        "kind": { "const": "projection_failed" }
+      }
+    },
+    "dumpValidateFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource", "phase", "kind"],
+      "properties": {
+        "product": { "$ref": "#/$defs/product" },
+        "resource": { "$ref": "#/$defs/resourceName" },
+        "phase": { "const": "validate" },
+        "kind": { "const": "subset_failed" }
+      }
+    },
+    "completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "result"],
+      "properties": {
+        "type": { "const": "completed" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "result": {
+          "oneOf": [
+            { "$ref": "#/$defs/engineManifestResult" },
+            { "$ref": "#/$defs/catalogSummary" },
+            { "$ref": "#/$defs/doctorStatusResult" },
+            { "$ref": "#/$defs/authStatusResult" },
+            { "$ref": "#/$defs/configStatusResult" },
+            { "$ref": "#/$defs/urlLookupSummary" },
+            { "$ref": "#/$defs/resourceReadSummary" },
+            { "$ref": "#/$defs/dumpSummary" },
+            { "$ref": "#/$defs/diffSummary" }
+          ]
+        }
+      }
+    },
+    "engineManifestResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "manifest"],
+      "properties": {
+        "kind": { "const": "engine_manifest" },
+        "manifest": { "$ref": "#/$defs/engineManifest" }
+      }
+    },
+    "catalogSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resources", "stream_items_emitted"],
+      "properties": {
+        "kind": { "const": "catalog_summary" },
+        "resources": { "$ref": "#/$defs/safeInteger" },
+        "stream_items_emitted": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "doctorStatusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status"],
+      "properties": {
+        "kind": { "const": "doctor_status" },
+        "status": { "$ref": "#/$defs/doctorStatus" }
+      }
+    },
+    "authStatusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status"],
+      "properties": {
+        "kind": { "const": "auth_status" },
+        "status": { "$ref": "#/$defs/authStatus" }
+      }
+    },
+    "configStatusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status"],
+      "properties": {
+        "kind": { "const": "config_status" },
+        "status": { "$ref": "#/$defs/configStatus" }
+      }
+    },
+    "urlLookupSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "classifications", "stream_items_emitted"],
+      "properties": {
+        "kind": { "const": "url_lookup_summary" },
+        "classifications": { "$ref": "#/$defs/safeInteger" },
+        "stream_items_emitted": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "resourceReadSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "records", "stream_items_emitted"],
+      "properties": {
+        "kind": { "const": "resource_read_summary" },
+        "records": { "$ref": "#/$defs/safeInteger" },
+        "stream_items_emitted": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "dumpSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "records_written",
+        "resources_written",
+        "warning_count",
+        "partial",
+        "redaction",
+        "failures",
+        "stream_items_emitted"
+      ],
+      "properties": {
+        "kind": { "const": "dump_summary" },
+        "records_written": { "$ref": "#/$defs/safeInteger" },
+        "resources_written": { "$ref": "#/$defs/safeInteger" },
+        "warning_count": { "$ref": "#/$defs/safeInteger" },
+        "partial": { "type": "boolean" },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "failures": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/dumpFailure" }
+        },
+        "stream_items_emitted": { "const": 0 }
+      }
+    },
+    "diffSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema", "old", "new", "summary", "has_drift", "stream_items_emitted"],
+      "properties": {
+        "kind": { "const": "diff_summary" },
+        "schema": { "const": "zscalerctl.diff.v1" },
+        "old": { "$ref": "#/$defs/oldDumpRef" },
+        "new": { "$ref": "#/$defs/newDumpRef" },
+        "summary": { "$ref": "#/$defs/diffCounts" },
+        "has_drift": { "type": "boolean" },
+        "stream_items_emitted": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "oldDumpRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "manifest_schema", "redaction", "status", "partial"],
+      "properties": {
+        "side": { "const": "old" },
+        "manifest_schema": { "$ref": "#/$defs/controlString" },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "status": { "type": "string", "enum": ["complete", "partial"] },
+        "partial": { "type": "boolean" }
+      }
+    },
+    "newDumpRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "manifest_schema", "redaction", "status", "partial"],
+      "properties": {
+        "side": { "const": "new" },
+        "manifest_schema": { "$ref": "#/$defs/controlString" },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "status": { "type": "string", "enum": ["complete", "partial"] },
+        "partial": { "type": "boolean" }
+      }
+    },
+    "diffCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resources_compared",
+        "resources_with_drift",
+        "records_added",
+        "records_removed",
+        "records_changed"
+      ],
+      "properties": {
+        "resources_compared": { "$ref": "#/$defs/safeInteger" },
+        "resources_with_drift": { "$ref": "#/$defs/safeInteger" },
+        "records_added": { "$ref": "#/$defs/safeInteger" },
+        "records_removed": { "$ref": "#/$defs/safeInteger" },
+        "records_changed": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "doctorStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "mode", "profile", "config", "auth_mode", "redaction", "timeout", "cache", "proxy", "credentials", "live_api"],
+      "properties": {
+        "status": { "$ref": "#/$defs/controlString" },
+        "mode": { "$ref": "#/$defs/controlString" },
+        "profile": { "$ref": "#/$defs/controlString" },
+        "config": { "$ref": "#/$defs/controlString" },
+        "auth_mode": { "type": "string", "enum": ["oneapi", "zia-legacy"] },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "timeout": { "$ref": "#/$defs/controlString" },
+        "cache": { "$ref": "#/$defs/controlString" },
+        "proxy": { "$ref": "#/$defs/controlString" },
+        "credentials": { "$ref": "#/$defs/controlString" },
+        "live_api": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "authStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credentials", "credential_exchange", "live_api"],
+      "properties": {
+        "credentials": { "$ref": "#/$defs/controlString" },
+        "credential_exchange": { "$ref": "#/$defs/controlString" },
+        "live_api": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "configStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "config_file_set", "profile", "auth_mode", "vanity_domain_set", "credentials", "zpa", "zia_legacy", "proxy", "defaults"],
+      "properties": {
+        "source": { "$ref": "#/$defs/controlString" },
+        "config_file_set": { "type": "boolean" },
+        "profile": { "$ref": "#/$defs/controlString" },
+        "auth_mode": { "type": "string", "enum": ["oneapi", "zia-legacy"] },
+        "vanity_domain_set": { "type": "boolean" },
+        "cloud": { "$ref": "#/$defs/controlString" },
+        "credentials": { "$ref": "#/$defs/configCredentials" },
+        "zpa": { "$ref": "#/$defs/configZPA" },
+        "zia_legacy": { "$ref": "#/$defs/configZIALegacy" },
+        "proxy": { "$ref": "#/$defs/configProxy" },
+        "defaults": { "$ref": "#/$defs/configDefaults" }
+      }
+    },
+    "configCredentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_id_set", "client_secret_set", "client_secret_file_set"],
+      "properties": {
+        "client_id_set": { "type": "boolean" },
+        "client_secret_set": { "type": "boolean" },
+        "client_secret_file_set": { "type": "boolean" },
+        "client_secret_scheme": { "$ref": "#/$defs/controlString" }
+      }
+    },
+    "configZPA": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["customer_id_set", "microtenant_id_set"],
+      "properties": {
+        "customer_id_set": { "type": "boolean" },
+        "microtenant_id_set": { "type": "boolean" }
+      }
+    },
+    "configZIALegacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["username_set", "password_set", "password_file_set", "api_key_set", "api_key_file_set", "cloud_set"],
+      "properties": {
+        "username_set": { "type": "boolean" },
+        "password_set": { "type": "boolean" },
+        "password_file_set": { "type": "boolean" },
+        "password_scheme": { "$ref": "#/$defs/controlString" },
+        "api_key_set": { "type": "boolean" },
+        "api_key_file_set": { "type": "boolean" },
+        "api_key_scheme": { "$ref": "#/$defs/controlString" },
+        "cloud_set": { "type": "boolean" }
+      }
+    },
+    "configProxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url_set", "from_environment"],
+      "properties": {
+        "url_set": { "type": "boolean" },
+        "from_environment": { "type": "boolean" }
+      }
+    },
+    "configDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redaction", "no_cache"],
+      "properties": {
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "no_cache": { "type": "boolean" }
+      }
+    },
+    "failed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "error"],
+      "properties": {
+        "type": { "const": "failed" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "error": { "$ref": "#/$defs/operationFailure" }
+      }
+    },
+    "operationFailure": {
+      "oneOf": [
+        { "$ref": "#/$defs/missingCredentialsFailure" },
+        { "$ref": "#/$defs/nonCredentialFailure" }
+      ]
+    },
+    "missingCredentialsFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "missing_credentials" },
+        "missing": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "ZSCALERCTL_CLIENT_ID",
+              "ZSCALERCTL_CLIENT_SECRET",
+              "ZSCALERCTL_VANITY_DOMAIN",
+              "ZSCALERCTL_ZPA_CUSTOMER_ID",
+              "ZSCALERCTL_ZIA_USERNAME",
+              "ZSCALERCTL_ZIA_PASSWORD",
+              "ZSCALERCTL_ZIA_API_KEY",
+              "ZSCALERCTL_ZIA_CLOUD"
+            ]
+          }
+        }
+      }
+    },
+    "nonCredentialFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "usage",
+            "unsupported_capability",
+            "unsupported_operation",
+            "unknown_resource",
+            "not_found",
+            "invalid_resource_id",
+            "live_access_failed",
+            "deadline_exceeded",
+            "invalid_config",
+            "invalid_proxy_config",
+            "unsupported_resource",
+            "response_too_large",
+            "internal"
+          ]
+        }
+      }
+    },
+    "canceled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "seq", "error"],
+      "properties": {
+        "type": { "const": "canceled" },
+        "id": { "$ref": "#/$defs/requestID" },
+        "seq": { "$ref": "#/$defs/sequence" },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "canceled" } }
+        }
+      }
+    },
+    "protocolError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fatal", "error"],
+      "properties": {
+        "type": { "const": "protocol_error" },
+        "fatal": { "const": true },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["protocol_violation", "unsupported_protocol", "frame_too_large", "internal"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

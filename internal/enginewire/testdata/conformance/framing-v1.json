@@ -1,0 +1,35 @@
+{
+  "version": "zscalerctl.engine.stdio.framing-conformance.v1",
+  "cases": [
+    {
+      "name": "LF",
+      "maximum_bytes": 1048576,
+      "chunks_base64": ["eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjF9Cg=="],
+      "frames_base64": ["eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjF9"]
+    },
+    {
+      "name": "CRLF",
+      "maximum_bytes": 1048576,
+      "chunks_base64": ["eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjF9DQo="],
+      "frames_base64": ["eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjF9"]
+    },
+    {
+      "name": "split UTF-8 rune",
+      "maximum_bytes": 1048576,
+      "chunks_base64": ["eyJ4Ijoi4g==", "mA==", "gyJ9Cg=="],
+      "frames_base64": ["eyJ4Ijoi4piDIn0="]
+    },
+    {
+      "name": "bare CR",
+      "maximum_bytes": 1048576,
+      "chunks_base64": ["ew19Cg=="],
+      "error": "bare_carriage_return"
+    },
+    {
+      "name": "unterminated EOF",
+      "maximum_bytes": 1048576,
+      "chunks_base64": ["eyJ0eXBlIjoiY2FuY2VsIiwiaWQiOjF9"],
+      "error": "unterminated_frame"
+    }
+  ]
+}

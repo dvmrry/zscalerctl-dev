@@ -129,7 +129,7 @@ func (e *MissingCredentialsError) Error() string {
 func (e *MissingCredentialsError) Unwrap() error { return ErrMissingCredentials }
 
 var (
-	ErrInvalidResourceID  = errors.New("invalid zscaler resource id")
+	ErrInvalidResourceID  = resources.ErrInvalidResourceID
 	ErrResourceNotFound   = errors.New("zscaler resource not found")
 	ErrLiveAccessFailed   = errors.New("zscaler API request failed")
 	ErrInvalidProxyConfig = errors.New("invalid zscaler proxy config")
@@ -4609,6 +4609,24 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("zscaler %s %s/%s cancelled: %w", operation, product, resource, err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf(
+			"zscaler %s %s/%s timed out: %w",
+			operation,
+			product,
+			resource,
+			context.DeadlineExceeded,
+		)
+	}
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf(
+			"zscaler %s %s/%s cancelled: %w",
+			operation,
+			product,
+			resource,
+			context.Canceled,
+		)
 	}
 	statusCode := sdkStatusCode(err)
 	// A get-by-ID that 404s means the ID does not exist — a distinct, scriptable

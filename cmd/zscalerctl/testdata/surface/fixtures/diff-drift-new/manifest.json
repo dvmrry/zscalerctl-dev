@@ -9,7 +9,6 @@
     {
       "product": "zia",
       "name": "locations",
-      "shape": "list",
       "status": "ok",
       "path": "resources/zia/locations.json",
       "records": 1

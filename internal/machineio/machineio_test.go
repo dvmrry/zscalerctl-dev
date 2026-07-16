@@ -244,6 +244,15 @@ func TestDecodeRequestStrictRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestStrictRejectsRemovedInputOptions(t *testing.T) {
+	_, err := machineio.DecodeRequestStrict(strings.NewReader(
+		`{"capability":"resources.read","operation":"list","input":{"product":"zia","resource":"locations","options":{"raw":"true"}}}`,
+	))
+	if err == nil {
+		t.Fatal("machineio.DecodeRequestStrict(input.options) error = nil, want unknown-field decode error")
+	}
+}
+
 func TestDecodeRequestWithOptionsRejectsOversizedInput(t *testing.T) {
 	req := machine.Request{
 		RequestID: "req-too-large",

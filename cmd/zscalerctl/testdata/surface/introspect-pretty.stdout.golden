@@ -1,7 +1,8 @@
 zscalerctl CLI surface map
   version:   <VERSION>
+  introspect-version: 2
   read-only: true
-  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect.schema.json
+  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json
 
 Global flags (13):
   --color (string, default "auto")  color output: auto, always, never
@@ -12,29 +13,43 @@ Global flags (13):
   --log-level (string, default "off")  diagnostic logging to stderr: off, error, warn, info, debug
   --no-cache (bool, default "false")  bypass API cache where supported
   --no-color (bool, default "false")  disable color output
-  --output (string)  output path
+  --output (string)  create or replace an output file (not valid with dump)
   --profile (string)  profile name
   --redaction (string)  redaction mode: standard, share, paranoid
   --search (string)  narrow list results to records whose rendered values contain term (case-insensitive)
   --timeout (duration, default "30s")  request timeout
 
+Effect conditions: unqualified = always; --flag = flag-conditioned;
+  configuration-dependent = effective config/provider/platform may enable it.
+
 Commands (292):
   auth                                      inspect authentication configuration
+      effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
   completion                                Generate the autocompletion script for the specified shell
+      effects: local_filesystem_write (when --output is set)
   completion bash                           Generate the autocompletion script for bash
+      effects: local_filesystem_write (when --output is set)
       --no-descriptions (bool, default "false")
   completion fish                           Generate the autocompletion script for fish
+      effects: local_filesystem_write (when --output is set)
       --no-descriptions (bool, default "false")
   completion powershell                     Generate the autocompletion script for powershell
+      effects: local_filesystem_write (when --output is set)
       --no-descriptions (bool, default "false")
   completion zsh                            Generate the autocompletion script for zsh
+      effects: local_filesystem_write (when --output is set)
       --no-descriptions (bool, default "false")
   config                                    manage zscalerctl configuration
+      effects: local_filesystem_write (when --output is set)
   config init                               write a starter config file with owner-only permissions
+      effects: local_filesystem_delete (when --force is set), local_filesystem_write, local_filesystem_write (when --output is set), process_execution (configuration-dependent)
       --force (bool, default "false")
   config show                               show the active configuration (redacted)
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
   diff                                      compare two dump directories and report configuration drift
+      effects: local_filesystem_read, local_filesystem_write (when --output is set)
       --allow-partial (bool, default "false")
       --detail (bool, default "false")
       --fail-on-drift (bool, default "false")
@@ -42,291 +57,572 @@ Commands (292):
       --products (string)
       --resources (string)
   doctor                                    check configuration, credentials, and connectivity
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
   dump                                      write a full or filtered resource dump to a directory
+      effects: local_filesystem_delete (when --force is set), local_filesystem_read (configuration-dependent), local_filesystem_read (when --force is set), local_filesystem_write, network_access, process_execution (configuration-dependent)
       --continue-on-error (bool, default "false")
       --force (bool, default "false")
       --out (string)
       --products (string)
       --resources (string)
   help                                      Help about any command
+      effects: local_filesystem_write (when --output is set)
   introspect                                print a machine-readable map of all commands, flags, and resources (JSON)
+      effects: local_filesystem_write (when --output is set)
   machine                                   inspect machine-readable capability contracts
+      effects: local_filesystem_write (when --output is set)
   machine manifest                          print the machine capability manifest
+      effects: local_filesystem_write (when --output is set)
   schema                                    inspect the resource catalog schema
+      effects: local_filesystem_write (when --output is set)
   schema list                               list all catalog resources and their supported operations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
   version                                   print version, commit, build date, and runtime info
+      effects: local_filesystem_write (when --output is set)
   zcc fail-open-policy list                 list zcc fail-open-policy
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc forwarding-profiles list              list zcc forwarding-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc trusted-networks list                 list zcc trusted-networks
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc web-app-services list                 list zcc web-app-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc application-profiles list             list zcc application-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc custom-ip-apps list                   list zcc custom-ip-apps
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc predefined-ip-apps list               list zcc predefined-ip-apps
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc process-based-apps list               list zcc process-based-apps
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc devices list                          list zcc devices
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc admin-roles list                      list zcc admin-roles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zcc company-info show                     show zcc company-info
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia locations list                        list zia locations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia locations get                         get zia locations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia location-groups list                  list zia location-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia location-groups get                   get zia location-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia rule-labels list                      list zia rule-labels
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia rule-labels get                       get zia rule-labels
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia auth-settings list                    list zia auth-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia static-ips list                       list zia static-ips
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia static-ips get                        get zia static-ips
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia gre-tunnels list                      list zia gre-tunnels
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia gre-tunnels get                       get zia gre-tunnels
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sublocations list                     list zia sublocations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sublocations get                      get zia sublocations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ssl-inspection-rules list             list zia ssl-inspection-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ssl-inspection-rules get              get zia ssl-inspection-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-categories list                   list zia url-categories
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-categories get                    get zia url-categories
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-filtering-rules list              list zia url-filtering-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-filtering-rules get               get zia url-filtering-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia firewall-filtering-rules list         list zia firewall-filtering-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia firewall-filtering-rules get          get zia firewall-filtering-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ips-signature-rules list              list zia ips-signature-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ips-signature-rules get               get zia ips-signature-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ips-policies list                     list zia ips-policies
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ips-policies get                      get zia ips-policies
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia forwarding-rules list                 list zia forwarding-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia forwarding-rules get                  get zia forwarding-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ip-source-groups list                 list zia ip-source-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ip-source-groups get                  get zia ip-source-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ip-destination-groups list            list zia ip-destination-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ip-destination-groups get             get zia ip-destination-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-services list                 list zia network-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-services get                  get zia network-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-service-groups list           list zia network-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-service-groups get            get zia network-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-applications list             list zia network-applications
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-applications get              get zia network-applications
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia application-services list             list zia application-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia application-services get              get zia application-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia application-service-groups list       list zia application-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia application-service-groups get        get zia application-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-application-groups list       list zia network-application-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia network-application-groups get        get zia network-application-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia time-windows list                     list zia time-windows
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia time-windows get                      get zia time-windows
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia proxies list                          list zia proxies
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia proxies get                           get zia proxies
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia proxy-gateways list                   list zia proxy-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia proxy-gateways get                    get zia proxy-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dedicated-ip-gateways list            list zia dedicated-ip-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dedicated-ip-gateways get             get zia dedicated-ip-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia time-intervals list                   list zia time-intervals
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia time-intervals get                    get zia time-intervals
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia bandwidth-classes list                list zia bandwidth-classes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia bandwidth-classes get                 get zia bandwidth-classes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia bandwidth-control-rules list          list zia bandwidth-control-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia bandwidth-control-rules get           get zia bandwidth-control-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dns-gateways list                     list zia dns-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dns-gateways get                      get zia dns-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nat-control-rules list                list zia nat-control-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nat-control-rules get                 get zia nat-control-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia groups list                           list zia groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia groups get                            get zia groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia departments list                      list zia departments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia departments get                       get zia departments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia users list                            list zia users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia users get                             get zia users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia device-groups list                    list zia device-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia device-groups get                     get zia device-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia devices list                          list zia devices
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia devices get                           get zia devices
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia workload-groups list                  list zia workload-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia workload-groups get                   get zia workload-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia alert-subscriptions list              list zia alert-subscriptions
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia alert-subscriptions get               get zia alert-subscriptions
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia activation-status show                show zia activation-status
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia eusa-status show                      show zia eusa-status
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia auth-exempted-urls show               show zia auth-exempted-urls
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia intermediate-ca-certificates list     list zia intermediate-ca-certificates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia intermediate-ca-certificates get      get zia intermediate-ca-certificates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia cloud-app-instances list              list zia cloud-app-instances
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia cloud-app-instances get               get zia cloud-app-instances
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia tenancy-restriction-profiles list     list zia tenancy-restriction-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia tenancy-restriction-profiles get      get zia tenancy-restriction-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia vzen-clusters list                    list zia vzen-clusters
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia vzen-clusters get                     get zia vzen-clusters
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia vzen-nodes list                       list zia vzen-nodes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia vzen-nodes get                        get zia vzen-nodes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-engines list                      list zia dlp-engines
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-engines get                       get zia dlp-engines
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-dictionaries list                 list zia dlp-dictionaries
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-dictionaries get                  get zia dlp-dictionaries
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-edm-schemas list                  list zia dlp-edm-schemas
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-edm-schemas get                   get zia dlp-edm-schemas
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-idm-profile-lite list             list zia dlp-idm-profile-lite
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-idm-profile-lite get              get zia dlp-idm-profile-lite
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-idm-profiles list                 list zia dlp-idm-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-idm-profiles get                  get zia dlp-idm-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-web-rules list                    list zia dlp-web-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-web-rules get                     get zia dlp-web-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-icap-servers list                 list zia dlp-icap-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-icap-servers get                  get zia dlp-icap-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-incident-receiver-servers list    list zia dlp-incident-receiver-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-incident-receiver-servers get     get zia dlp-incident-receiver-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-notification-templates list       list zia dlp-notification-templates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-notification-templates get        get zia dlp-notification-templates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia c2c-incident-receivers list           list zia c2c-incident-receivers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia c2c-incident-receivers get            get zia c2c-incident-receivers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia risk-profiles list                    list zia risk-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia risk-profiles get                     get zia risk-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nss-servers list                      list zia nss-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nss-servers get                       get zia nss-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nss-feeds list                        list zia nss-feeds
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia nss-feeds get                         get zia nss-feeds
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia file-type-rules list                  list zia file-type-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia file-type-rules get                   get zia file-type-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sandbox-rules list                    list zia sandbox-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sandbox-rules get                     get zia sandbox-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia firewall-dns-rules list               list zia firewall-dns-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia firewall-dns-rules get                get zia firewall-dns-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia custom-file-types list                list zia custom-file-types
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia custom-file-types get                 get zia custom-file-types
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia zpa-gateways list                     list zia zpa-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia zpa-gateways get                      get zia zpa-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia browser-isolation-profiles list       list zia browser-isolation-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-edm-schemas-lite list             list zia dlp-edm-schemas-lite
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dc-exclusions list                    list zia dc-exclusions
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sub-clouds list                       list zia sub-clouds
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ipv6-config show                      show zia ipv6-config
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ipv6-dns64-prefixes list              list zia ipv6-dns64-prefixes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ipv6-nat64-prefixes list              list zia ipv6-nat64-prefixes
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia pac-files list                        list zia pac-files
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia cloud-app-control list                list zia cloud-app-control
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia cloud-application-policy list         list zia cloud-application-policy
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia cloud-application-ssl-policy list     list zia cloud-application-ssl-policy
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia domain-profiles list                  list zia domain-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia casb-tombstone-templates list         list zia casb-tombstone-templates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia casb-email-labels list                list zia casb-email-labels
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia casb-tenants list                     list zia casb-tenants
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia casb-dlp-rules list                   list zia casb-dlp-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia casb-malware-rules list               list zia casb-malware-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia browser-control-settings show         show zia browser-control-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia supported-browser-versions list       list zia supported-browser-versions
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia ftp-control-policy show               show zia ftp-control-policy
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia remote-assistance show                show zia remote-assistance
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia admin-users list                      list zia admin-users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia admin-users get                       get zia admin-users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia admin-roles list                      list zia admin-roles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia admin-roles get                       get zia admin-roles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia email-profiles list                   list zia email-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia email-profiles get                    get zia email-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia advanced-settings show                show zia advanced-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia advanced-threat-settings show         show zia advanced-threat-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia mobile-threat-settings show           show zia mobile-threat-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia sandbox-settings show                 show zia sandbox-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia end-user-notification-settings show   show zia end-user-notification-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia org-information show                  show zia org-information
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia atp-malware-policy show               show zia atp-malware-policy
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia atp-malware-settings show             show zia atp-malware-settings
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia atp-malware-inspection show           show zia atp-malware-inspection
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia atp-malware-protocols show            show zia atp-malware-protocols
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia malicious-urls show                   show zia malicious-urls
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia security-exceptions show              show zia security-exceptions
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-allow-list show                   show zia url-allow-list
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-deny-list show                    show zia url-deny-list
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-lookup                            look up URL categories for one or more URLs
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity groups list                     list zidentity groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity groups get                      get zidentity groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity users list                      list zidentity users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity users get                       get zidentity users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity resource-servers list           list zidentity resource-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity resource-servers get            get zidentity resource-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa microtenants list                     list zpa microtenants
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa microtenants get                      get zpa microtenants
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa version-profiles list                 list zpa version-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa client-types list                     list zpa client-types
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa platforms list                        list zpa platforms
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa isolation-profiles list               list zpa isolation-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa branch-connectors list                list zpa branch-connectors
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portals list                     list zpa user-portals
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portals get                      get zpa user-portals
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portal-aups list                 list zpa user-portal-aups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portal-aups get                  get zpa user-portal-aups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portal-links list                list zpa user-portal-links
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa user-portal-links get                 get zpa user-portal-links
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa browser-access list                   list zpa browser-access
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa browser-access get                    get zpa browser-access
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa inspection-app-segments list          list zpa inspection-app-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa inspection-app-segments get           get zpa inspection-app-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa pra-app-segments list                 list zpa pra-app-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa pra-app-segments get                  get zpa pra-app-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa server-groups list                    list zpa server-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa server-groups get                     get zpa server-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa segment-groups list                   list zpa segment-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa segment-groups get                    get zpa segment-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa application-segments list             list zpa application-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa application-segments get              get zpa application-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-connectors list                   list zpa app-connectors
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-connectors get                    get zpa app-connectors
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-connector-groups list             list zpa app-connector-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-connector-groups get              get zpa app-connector-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-servers list                      list zpa app-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa app-servers get                       get zpa app-servers
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa machine-groups list                   list zpa machine-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa machine-groups get                    get zpa machine-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa trusted-networks list                 list zpa trusted-networks
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa trusted-networks get                  get zpa trusted-networks
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa service-edge-groups list              list zpa service-edge-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa service-edge-groups get               get zpa service-edge-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa service-edges list                    list zpa service-edges
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa service-edges get                     get zpa service-edges
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa cloud-connector-groups list           list zpa cloud-connector-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa cloud-connector-groups get            get zpa cloud-connector-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa cloud-connectors list                 list zpa cloud-connectors
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa posture-profiles list                 list zpa posture-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa posture-profiles get                  get zpa posture-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa cbi-zpa-profiles list                 list zpa cbi-zpa-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa cbi-zpa-profiles get                  get zpa cbi-zpa-profiles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa c2c-ip-ranges list                    list zpa c2c-ip-ranges
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa c2c-ip-ranges get                     get zpa c2c-ip-ranges
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zpa config-overrides list                 list zpa config-overrides
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw activation-status show                show ztw activation-status
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw workload-groups list                  list ztw workload-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw workload-groups get                   get ztw workload-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw public-cloud-accounts list            list ztw public-cloud-accounts
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw public-cloud-accounts get             get ztw public-cloud-accounts
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw dns-gateways list                     list ztw dns-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw dns-gateways get                      get ztw dns-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw forwarding-gateways list              list ztw forwarding-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw forwarding-gateways get               get ztw forwarding-gateways
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ec-groups list                        list ztw ec-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ec-groups get                         get ztw ec-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-source-groups list                 list ztw ip-source-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-source-groups get                  get ztw ip-source-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-destination-groups list            list ztw ip-destination-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-destination-groups get             get ztw ip-destination-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-groups list                        list ztw ip-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw ip-groups get                         get ztw ip-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw network-services list                 list ztw network-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw network-services get                  get ztw network-services
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw network-service-groups list           list ztw network-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw network-service-groups get            get ztw network-service-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw admin-users list                      list ztw admin-users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw admin-users get                       get ztw admin-users
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw admin-roles list                      list ztw admin-roles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw admin-roles get                       get ztw admin-roles
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw locations list                        list ztw locations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw locations get                         get ztw locations
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw location-templates list               list ztw location-templates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw location-templates get                get ztw location-templates
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw account-groups list                   list ztw account-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw account-groups get                    get ztw account-groups
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw public-cloud-info list                list ztw public-cloud-info
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw public-cloud-info get                 get ztw public-cloud-info
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw zpa-application-segments list         list ztw zpa-application-segments
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw forwarding-rules list                 list ztw forwarding-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw forwarding-rules get                  get ztw forwarding-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw traffic-dns-rules list                list ztw traffic-dns-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw traffic-dns-rules get                 get ztw traffic-dns-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw traffic-log-rules list                list ztw traffic-log-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   ztw traffic-log-rules get                 get ztw traffic-log-rules
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
 
 Catalog: 5 products, 165 resources
   zia: 102 resource(s)

@@ -177,7 +177,7 @@ func renderRecordsPretty(
 	records resources.ProjectedRecords,
 	style output.Style,
 ) output.SafeText {
-	rows := make([][]string, 0, len(records.Records()))
+	rows := make([][]string, 0, records.Len())
 	for _, record := range records.Records() {
 		values := record.Fields()
 		row := make([]string, len(fields))
