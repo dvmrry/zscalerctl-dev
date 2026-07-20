@@ -202,3 +202,141 @@ func TestSSLInspectionRuleAccessControlModes(t *testing.T) {
 	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeParanoid, records)
 	assertFieldsAbsent(t, "ssl-inspection-rules (paranoid)", paranoid, "accessControl")
 }
+
+func TestSSLInspectionRuleActionDetailsProjectAcrossModes(t *testing.T) {
+	t.Parallel()
+
+	const certName = "Fleet rollout cert 2026"
+	rule := sslinspection.SSLInspectionRules{
+		ID:    8842,
+		Name:  "ssl action detail rule",
+		State: "ENABLED",
+		Action: sslinspection.Action{
+			Type:                       "DECRYPT",
+			ShowEUN:                    true,
+			ShowEUNATP:                 true,
+			OverrideDefaultCertificate: true,
+			SSLInterceptionCert: &sslinspection.SSLInterceptionCert{
+				ID:                 77,
+				Name:               certName,
+				DefaultCertificate: true,
+			},
+			DecryptSubActions: &sslinspection.DecryptSubActions{
+				ServerCertificates:              "PASS_THRU",
+				OcspCheck:                       true,
+				BlockSslTrafficWithNoSniEnabled: true,
+				MinClientTLSVersion:             "TLS_1_2",
+				MinServerTLSVersion:             "TLS_1_3",
+				BlockUndecrypt:                  true,
+				HTTP2Enabled:                    true,
+			},
+			DoNotDecryptSubActions: &sslinspection.DoNotDecryptSubActions{
+				BypassOtherPolicies:             true,
+				ServerCertificates:              "BLOCK",
+				OcspCheck:                       true,
+				BlockSslTrafficWithNoSniEnabled: true,
+				MinTLSVersion:                   "TLS_1_2",
+			},
+		},
+	}
+	records := []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)}
+
+	standard := projectOneRecord(t, resources.ProductZIA, resourceSSLRules, records)
+	assertSSLInspectionActionDetails(t, "standard", standard, certName)
+
+	share := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeShare, records)
+	assertSSLInspectionActionDetails(t, "share", share, certName)
+
+	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceSSLRules, redact.ModeParanoid, records)
+	action := sslInspectionRuleAction(t, "paranoid", paranoid)
+	if action["type"] != "DECRYPT" {
+		t.Errorf("projected ssl-inspection-rules paranoid action.type = %v, want DECRYPT", action["type"])
+	}
+	assertFieldsAbsent(t, "ssl-inspection-rules paranoid action", action,
+		"showEUN",
+		"showEUNATP",
+		"overrideDefaultCertificate",
+		"sslInterceptionCert",
+		"decryptSubActions",
+		"doNotDecryptSubActions",
+	)
+}
+
+func assertSSLInspectionActionDetails(
+	t *testing.T,
+	mode string,
+	record map[string]any,
+	wantCertName string,
+) {
+	t.Helper()
+
+	action := sslInspectionRuleAction(t, mode, record)
+	if action["type"] != "DECRYPT" {
+		t.Errorf("projected ssl-inspection-rules %s action.type = %v, want DECRYPT", mode, action["type"])
+	}
+	for _, field := range []string{"showEUN", "showEUNATP", "overrideDefaultCertificate"} {
+		if action[field] != true {
+			t.Errorf("projected ssl-inspection-rules %s action.%s = %v, want true", mode, field, action[field])
+		}
+	}
+
+	cert, ok := action["sslInterceptionCert"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules %s action.sslInterceptionCert = %T, want map[string]any", mode, action["sslInterceptionCert"])
+	}
+	if cert["name"] != wantCertName {
+		t.Errorf("projected ssl-inspection-rules %s action.sslInterceptionCert.name = %v, want %s", mode, cert["name"], wantCertName)
+	}
+	if cert["id"] != 77 {
+		t.Errorf("projected ssl-inspection-rules %s action.sslInterceptionCert.id = %v, want 77", mode, cert["id"])
+	}
+	if cert["defaultCertificate"] != true {
+		t.Errorf("projected ssl-inspection-rules %s action.sslInterceptionCert.defaultCertificate = %v, want true", mode, cert["defaultCertificate"])
+	}
+
+	decryptSubActions, ok := action["decryptSubActions"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules %s action.decryptSubActions = %T, want map[string]any", mode, action["decryptSubActions"])
+	}
+	wantDecrypt := map[string]any{
+		"serverCertificates":              "PASS_THRU",
+		"ocspCheck":                       true,
+		"blockSslTrafficWithNoSniEnabled": true,
+		"minClientTLSVersion":             "TLS_1_2",
+		"minServerTLSVersion":             "TLS_1_3",
+		"blockUndecrypt":                  true,
+		"http2Enabled":                    true,
+	}
+	for field, want := range wantDecrypt {
+		if decryptSubActions[field] != want {
+			t.Errorf("projected ssl-inspection-rules %s action.decryptSubActions.%s = %v, want %v", mode, field, decryptSubActions[field], want)
+		}
+	}
+
+	doNotDecryptSubActions, ok := action["doNotDecryptSubActions"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules %s action.doNotDecryptSubActions = %T, want map[string]any", mode, action["doNotDecryptSubActions"])
+	}
+	wantDoNotDecrypt := map[string]any{
+		"bypassOtherPolicies":             true,
+		"serverCertificates":              "BLOCK",
+		"ocspCheck":                       true,
+		"blockSslTrafficWithNoSniEnabled": true,
+		"minTLSVersion":                   "TLS_1_2",
+	}
+	for field, want := range wantDoNotDecrypt {
+		if doNotDecryptSubActions[field] != want {
+			t.Errorf("projected ssl-inspection-rules %s action.doNotDecryptSubActions.%s = %v, want %v", mode, field, doNotDecryptSubActions[field], want)
+		}
+	}
+}
+
+func sslInspectionRuleAction(t *testing.T, mode string, record map[string]any) map[string]any {
+	t.Helper()
+
+	action, ok := record["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules %s action = %T, want map[string]any", mode, record["action"])
+	}
+	return action
+}

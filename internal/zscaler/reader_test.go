@@ -1280,10 +1280,23 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 							Name:        "Decrypt psk=" + canary,
 							Description: "temporary psk=" + canary + " " + bareFreeTextToken,
 							Action: sslinspection.Action{
-								Type: "DECRYPT",
+								Type:                       "DECRYPT",
+								ShowEUN:                    true,
+								ShowEUNATP:                 true,
+								OverrideDefaultCertificate: true,
 								SSLInterceptionCert: &sslinspection.SSLInterceptionCert{
-									ID:   44,
-									Name: certCanary,
+									ID:                 44,
+									Name:               certCanary,
+									DefaultCertificate: true,
+								},
+								DecryptSubActions: &sslinspection.DecryptSubActions{
+									ServerCertificates:              "PASS_THRU",
+									OcspCheck:                       true,
+									BlockSslTrafficWithNoSniEnabled: true,
+									MinClientTLSVersion:             "TLS_1_2",
+									MinServerTLSVersion:             "TLS_1_3",
+									BlockUndecrypt:                  true,
+									HTTP2Enabled:                    true,
 								},
 							},
 							State:             "ENABLED",
@@ -1343,15 +1356,35 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 	if action["type"] != "DECRYPT" {
 		t.Errorf("projected ssl-inspection-rules action.type = %v, want DECRYPT", action["type"])
 	}
-	for _, field := range []string{"sslInterceptionCert", "lastModifiedBy"} {
+	if action["showEUN"] != true {
+		t.Errorf("projected ssl-inspection-rules action.showEUN = %v, want true", action["showEUN"])
+	}
+	cert, ok := action["sslInterceptionCert"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules action.sslInterceptionCert = %T, want map[string]any", action["sslInterceptionCert"])
+	}
+	if cert["name"] != certCanary {
+		t.Errorf("projected ssl-inspection-rules action.sslInterceptionCert.name = %v, want %s", cert["name"], certCanary)
+	}
+	if cert["id"] != 44 {
+		t.Errorf("projected ssl-inspection-rules action.sslInterceptionCert.id = %v, want 44", cert["id"])
+	}
+	if cert["defaultCertificate"] != true {
+		t.Errorf("projected ssl-inspection-rules action.sslInterceptionCert.defaultCertificate = %v, want true", cert["defaultCertificate"])
+	}
+	decryptSubActions, ok := action["decryptSubActions"].(map[string]any)
+	if !ok {
+		t.Fatalf("projected ssl-inspection-rules action.decryptSubActions = %T, want map[string]any", action["decryptSubActions"])
+	}
+	if decryptSubActions["minServerTLSVersion"] != "TLS_1_3" {
+		t.Errorf("projected ssl-inspection-rules action.decryptSubActions.minServerTLSVersion = %v, want TLS_1_3", decryptSubActions["minServerTLSVersion"])
+	}
+	for _, field := range []string{"lastModifiedBy"} {
 		if _, ok := got[field]; ok {
 			t.Errorf("projected ssl-inspection-rules = %#v, want no %s", got, field)
 		}
 	}
-	if _, ok := action["sslInterceptionCert"]; ok {
-		t.Errorf("projected ssl-inspection-rules action = %#v, want no sslInterceptionCert", action)
-	}
-	for _, forbidden := range []string{canary, adminCanary, certCanary} {
+	for _, forbidden := range []string{canary, adminCanary} {
 		if strings.Contains(fmt.Sprint(got), forbidden) {
 			t.Errorf("projected ssl-inspection-rules = %#v, want no %q", got, forbidden)
 		}
