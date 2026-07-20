@@ -576,32 +576,36 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 		{
 			name: "sslinspection.Action",
 			typ:  reflect.TypeOf(sslinspection.Action{}),
-			ignoredFields: ignoredBecause(
-				"deliberate: nested action fields are mapped so the parent action object can render its reviewed type while unmodeled sub-actions and certificate references drop",
-				"type",
-				"showEUN",
-				"showEUNATP",
-				"overrideDefaultCertificate",
-				"sslInterceptionCert",
-				"decryptSubActions",
-				"doNotDecryptSubActions",
+			ignoredFields: mergeIgnoredFields(
+				ignoredBecause(
+					"deliberate: covered by zia/ssl-inspection-rules action nested catalog fields",
+					"type",
+					"showEUN",
+					"showEUNATP",
+					"overrideDefaultCertificate",
+					"sslInterceptionCert",
+					"decryptSubActions",
+					"doNotDecryptSubActions",
+				),
 			),
 		},
 		{
 			name: "sslinspection.SSLInterceptionCert",
 			typ:  reflect.TypeOf(sslinspection.SSLInterceptionCert{}),
-			ignoredFields: ignoredBecause(
-				"deliberate: covered by dropped action.sslInterceptionCert parent",
-				"id",
-				"name",
-				"defaultCertificate",
+			ignoredFields: mergeIgnoredFields(
+				ignoredBecause(
+					"deliberate: covered by zia/ssl-inspection-rules action.sslInterceptionCert nested catalog fields",
+					"id",
+					"name",
+					"defaultCertificate",
+				),
 			),
 		},
 		{
 			name: "sslinspection.DecryptSubActions",
 			typ:  reflect.TypeOf(sslinspection.DecryptSubActions{}),
 			ignoredFields: ignoredBecause(
-				"deliberate: covered by dropped action.decryptSubActions parent",
+				"deliberate: covered by zia/ssl-inspection-rules action.decryptSubActions nested catalog fields",
 				"serverCertificates",
 				"ocspCheck",
 				"blockSslTrafficWithNoSniEnabled",
@@ -615,7 +619,7 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			name: "sslinspection.DoNotDecryptSubActions",
 			typ:  reflect.TypeOf(sslinspection.DoNotDecryptSubActions{}),
 			ignoredFields: ignoredBecause(
-				"deliberate: covered by dropped action.doNotDecryptSubActions parent",
+				"deliberate: covered by zia/ssl-inspection-rules action.doNotDecryptSubActions nested catalog fields",
 				"bypassOtherPolicies",
 				"serverCertificates",
 				"ocspCheck",
