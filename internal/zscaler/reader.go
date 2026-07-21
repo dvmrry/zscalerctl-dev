@@ -1246,13 +1246,9 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 		Timeout:   timeout,
 		Transport: transport,
 	}
-	authHTTPClient := &http.Client{
-		Timeout:   timeout,
-		Transport: oneAPIIdentityTransport(transport, cfg.VanityDomain, cfg.Cloud),
-	}
 	sdkCfg := &zsdk.Configuration{
 		Logger:        newSDKLogger(cfg.DiagLogger),
-		HTTPClient:    authHTTPClient,
+		HTTPClient:    httpClient,
 		ZIAHTTPClient: httpClient,
 		ZPAHTTPClient: httpClient,
 		ZTWHTTPClient: httpClient,
@@ -1266,7 +1262,7 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.ClientID = cfg.ClientID.Reveal()
 	sdkCfg.Zscaler.Client.ClientSecret = cfg.ClientSecret.Reveal()
 	sdkCfg.Zscaler.Client.VanityDomain = cfg.VanityDomain
-	sdkCfg.Zscaler.Client.Cloud = cfg.Cloud
+	sdkCfg.Zscaler.Client.Cloud = oneAPICloud(cfg.Cloud)
 	sdkCfg.Zscaler.Client.CustomerID = strings.TrimSpace(cfg.ZPACustomerID)
 	sdkCfg.Zscaler.Client.MicrotenantID = strings.TrimSpace(cfg.ZPAMicrotenantID)
 	sdkCfg.Zscaler.Client.RequestTimeout = timeout
@@ -1345,55 +1341,16 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
-type zpaTwoIdentityTransport struct {
-	base             http.RoundTripper
-	invalidOAuthHost string
-	validOAuthHost   string
-	invalidAdminHost string
-	validAdminHost   string
-}
-
-// oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
-// identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
-// OneAPI token and ZIdentity admin endpoints remain on zslogin.net.
-func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
-	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
-		return base
+// oneAPICloud maps legacy product-cloud names that operators may already have
+// in zscalerctl configuration onto the OneAPI cloud namespace understood by
+// zscaler-sdk-go. ZPATWO identifies a legacy ZPA service cloud, not a OneAPI
+// hostname suffix; its OneAPI traffic uses the production endpoints.
+func oneAPICloud(cloud string) string {
+	cloud = strings.TrimSpace(cloud)
+	if strings.EqualFold(cloud, "ZPATWO") {
+		return "PRODUCTION"
 	}
-	vanityDomain = strings.TrimSpace(vanityDomain)
-	return &zpaTwoIdentityTransport{
-		base:             base,
-		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
-		validOAuthHost:   vanityDomain + ".zslogin.net",
-		invalidAdminHost: vanityDomain + "-admin.zsloginzpatwo.net",
-		validAdminHost:   vanityDomain + "-admin.zslogin.net",
-	}
-}
-
-// RoundTrip rewrites only invalid identity endpoints emitted by the SDK. All
-// product API requests and every other host or path pass through unchanged.
-func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request.URL.Scheme != "https" {
-		return t.base.RoundTrip(request)
-	}
-	validHost := ""
-	switch {
-	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
-		validHost = t.validOAuthHost
-	case strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
-		validHost = t.validAdminHost
-	default:
-		return t.base.RoundTrip(request)
-	}
-	cloned := request.Clone(request.Context())
-	clonedURL := *request.URL
-	cloned.URL = &clonedURL
-	cloned.URL.Host = validHost
-	return t.base.RoundTrip(cloned)
-}
-
-func isZidentityAdminPath(path string) bool {
-	return path == "/admin/api/v1" || strings.HasPrefix(path, "/admin/api/v1/")
+	return cloud
 }
 
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
