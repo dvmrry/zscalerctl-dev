@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -372,6 +373,193 @@ func TestNewSDKConfigurationDoesNotUseSDKDiscoveryOrLogging(t *testing.T) {
 	}
 	if transport.Proxy != nil {
 		t.Errorf("newSDKConfiguration().HTTPClient.Transport.Proxy is non-nil, want nil")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestNewSDKConfigurationZPATWOUsesProductionOAuthHost(t *testing.T) {
+	cfg := validReaderConfig()
+	cfg.Cloud = "ZPATWO"
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
+	if !ok {
+		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
+	}
+	var gotURL string
+	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		gotURL = request.URL.String()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"access_token":"test-token","expires_in":3600}`)),
+			Request:    request,
+		}, nil
+	})
+
+	if _, err := zsdk.Authenticate(context.Background(), sdkCfg, sdkCfg.Logger); err != nil {
+		t.Fatalf("Authenticate(ZPATWO) error = %v, want nil", err)
+	}
+	if want := "https://zscalerctl-vanity.zslogin.net/oauth2/v1/token"; gotURL != want {
+		t.Errorf("Authenticate(ZPATWO) URL = %q, want %q", gotURL, want)
+	}
+	if got := sdkCfg.Zscaler.Client.Cloud; got != "ZPATWO" {
+		t.Errorf("newSDKConfiguration(ZPATWO).Cloud = %q, want ZPATWO", got)
+	}
+	if _, ok := sdkCfg.ZPAHTTPClient.Transport.(*http.Transport); !ok {
+		t.Errorf("newSDKConfiguration(ZPATWO).ZPAHTTPClient.Transport = %T, want *http.Transport", sdkCfg.ZPAHTTPClient.Transport)
+	}
+}
+
+func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantURL string
+	}{
+		{
+			name:    "sdk token endpoint",
+			url:     "https://acme.zsloginzpatwo.net/oauth2/v1/token",
+			wantURL: "https://acme.zslogin.net/oauth2/v1/token",
+		},
+		{
+			name:    "zidentity admin endpoint",
+			url:     "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
+			wantURL: "https://acme-admin.zslogin.net/admin/api/v1/users",
+		},
+		{
+			name:    "non zidentity admin path",
+			url:     "https://acme-admin.zsloginzpatwo.net/other/users",
+			wantURL: "https://acme-admin.zsloginzpatwo.net/other/users",
+		},
+		{
+			name:    "different host",
+			url:     "https://other.zsloginzpatwo.net/oauth2/v1/token",
+			wantURL: "https://other.zsloginzpatwo.net/oauth2/v1/token",
+		},
+		{
+			name:    "non TLS",
+			url:     "http://acme.zsloginzpatwo.net/oauth2/v1/token",
+			wantURL: "http://acme.zsloginzpatwo.net/oauth2/v1/token",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var gotURL string
+			base := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				gotURL = request.URL.String()
+				return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: request}, nil
+			})
+			transport := oneAPIIdentityTransport(base, "acme", "ZPATWO")
+			request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, test.url, nil)
+			if err != nil {
+				t.Fatalf("http.NewRequestWithContext(%q) error = %v, want nil", test.url, err)
+			}
+			if _, err := transport.RoundTrip(request); err != nil {
+				t.Fatalf("RoundTrip(%q) error = %v, want nil", test.url, err)
+			}
+			if got := request.URL.String(); got != test.url {
+				t.Errorf("RoundTrip(%q) mutated original request URL to %q", test.url, got)
+			}
+			if gotURL != test.wantURL {
+				t.Errorf("RoundTrip(%q) URL = %q, want %q", test.url, gotURL, test.wantURL)
+			}
+		})
+	}
+}
+
+func TestNewSDKConfigurationZPATWORoutesZidentityToProductionHost(t *testing.T) {
+	cfg := validReaderConfig()
+	cfg.Cloud = "ZPATWO"
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
+	if !ok {
+		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
+	}
+	var gotURLs []string
+	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		gotURLs = append(gotURLs, request.URL.String())
+		body := `{"id":"user-1"}`
+		if request.URL.Path == "/oauth2/v1/token" {
+			// Keep expiry within the SDK's one-minute renewal window so this
+			// routing test does not start its background renewal goroutine.
+			body = `{"access_token":"test-token","expires_in":60}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient(ZPATWO) error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+	if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
+		t.Fatalf("zidusers.GetUser(ZPATWO) error = %v, want nil", err)
+	}
+	wantURLs := []string{
+		"https://zscalerctl-vanity.zslogin.net/oauth2/v1/token",
+		"https://zscalerctl-vanity-admin.zslogin.net/admin/api/v1/users/user-1",
+	}
+	if !reflect.DeepEqual(gotURLs, wantURLs) {
+		t.Errorf("ZPATWO identity request URLs = %v, want %v", gotURLs, wantURLs)
+	}
+}
+
+func TestNewReaderRejectsInvalidVanityDomain(t *testing.T) {
+	tests := []string{
+		"attacker.example/anything",
+		"https://acme",
+		"acme@example",
+		"acme?query",
+		"acme:443",
+		"acme.example",
+		"-acme",
+		"acme-",
+		strings.Repeat("a", 64),
+		"한글",
+	}
+	for _, vanityDomain := range tests {
+		t.Run(vanityDomain, func(t *testing.T) {
+			cfg := validReaderConfig()
+			cfg.VanityDomain = vanityDomain
+			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(VanityDomain=%q) error = %v, want ErrMissingCredentials", vanityDomain, err)
+			}
+		})
+	}
+}
+
+func TestNewReaderRejectsInvalidCloud(t *testing.T) {
+	tests := []string{
+		"attacker.example/anything",
+		"https://zpatwo",
+		"zpatwo@example",
+		"zpatwo?query",
+		"zpatwo:443",
+		"zpa.two",
+		"-zpatwo",
+		"zpatwo-",
+		strings.Repeat("a", 64),
+		"한글",
+	}
+	for _, cloud := range tests {
+		t.Run(cloud, func(t *testing.T) {
+			cfg := validReaderConfig()
+			cfg.Cloud = cloud
+			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(Cloud=%q) error = %v, want ErrMissingCredentials", cloud, err)
+			}
+		})
 	}
 }
 
