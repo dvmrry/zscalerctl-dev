@@ -1241,13 +1241,18 @@ func jsonSourceRecord[T any](item T) resources.SourceRecord {
 func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configuration {
 	neutralizeForeignSDKEnv()
 	timeout := effectiveTimeout(cfg.Timeout)
+	transport := directTransport(cfg.Proxy)
 	httpClient := &http.Client{
 		Timeout:   timeout,
-		Transport: directTransport(cfg.Proxy),
+		Transport: transport,
+	}
+	authHTTPClient := &http.Client{
+		Timeout:   timeout,
+		Transport: oneAPIIdentityTransport(transport, cfg.VanityDomain, cfg.Cloud),
 	}
 	sdkCfg := &zsdk.Configuration{
 		Logger:        newSDKLogger(cfg.DiagLogger),
-		HTTPClient:    httpClient,
+		HTTPClient:    authHTTPClient,
 		ZIAHTTPClient: httpClient,
 		ZPAHTTPClient: httpClient,
 		ZTWHTTPClient: httpClient,
@@ -1340,6 +1345,57 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
+type zpaTwoIdentityTransport struct {
+	base             http.RoundTripper
+	invalidOAuthHost string
+	validOAuthHost   string
+	invalidAdminHost string
+	validAdminHost   string
+}
+
+// oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
+// identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
+// OneAPI token and ZIdentity admin endpoints remain on zslogin.net.
+func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
+	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
+		return base
+	}
+	vanityDomain = strings.TrimSpace(vanityDomain)
+	return &zpaTwoIdentityTransport{
+		base:             base,
+		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
+		validOAuthHost:   vanityDomain + ".zslogin.net",
+		invalidAdminHost: vanityDomain + "-admin.zsloginzpatwo.net",
+		validAdminHost:   vanityDomain + "-admin.zslogin.net",
+	}
+}
+
+// RoundTrip rewrites only invalid identity endpoints emitted by the SDK. All
+// product API requests and every other host or path pass through unchanged.
+func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Scheme != "https" {
+		return t.base.RoundTrip(request)
+	}
+	validHost := ""
+	switch {
+	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
+		validHost = t.validOAuthHost
+	case strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
+		validHost = t.validAdminHost
+	default:
+		return t.base.RoundTrip(request)
+	}
+	cloned := request.Clone(request.Context())
+	clonedURL := *request.URL
+	cloned.URL = &clonedURL
+	cloned.URL.Host = validHost
+	return t.base.RoundTrip(cloned)
+}
+
+func isZidentityAdminPath(path string) bool {
+	return path == "/admin/api/v1" || strings.HasPrefix(path, "/admin/api/v1/")
+}
+
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
 	if proxy.FromEnvironment {
 		return http.ProxyFromEnvironment
@@ -1389,10 +1445,33 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
+		if !validDNSLabel(cfg.VanityDomain) {
+			return fmt.Errorf("%w: ZSCALERCTL_VANITY_DOMAIN must be a single DNS label", ErrMissingCredentials)
+		}
+		if cfg.Cloud != "" && !validDNSLabel(cfg.Cloud) {
+			return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be a single DNS label", ErrMissingCredentials)
+		}
 		return nil
 	default:
 		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
 	}
+}
+
+func validDNSLabel(value string) bool {
+	if len(value) == 0 || len(value) > 63 || value[0] == '-' || value[len(value)-1] == '-' {
+		return false
+	}
+	for i := range len(value) {
+		char := value[i]
+		if (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ValidateReaderConfig exposes credential validation for callers that inject a
