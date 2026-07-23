@@ -25,11 +25,14 @@ func TestParseZPATotalPages(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "number", raw: json.RawMessage(`3`), want: 3},
+		{name: "integral decimal number", raw: json.RawMessage(`3.0`), want: 3},
 		{name: "quoted number", raw: json.RawMessage(`"3"`), want: 3},
 		{name: "zero", raw: json.RawMessage(`0`), want: 0},
 		{name: "missing", raw: nil, wantErr: true},
 		{name: "null", raw: json.RawMessage(`null`), wantErr: true},
 		{name: "negative", raw: json.RawMessage(`-1`), wantErr: true},
+		{name: "fractional number", raw: json.RawMessage(`1.5`), wantErr: true},
+		{name: "quoted decimal number", raw: json.RawMessage(`"3.0"`), wantErr: true},
 		{name: "not a number", raw: json.RawMessage(`"many"`), wantErr: true},
 	}
 	for _, test := range tests {
@@ -225,7 +228,13 @@ func TestGetZPAAllPagesPreservesEndpointPageAndMicrotenantQueries(t *testing.T) 
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	items, _, err := getZPAAllPages[item](context.Background(), service, zpaAPIV1, "/serverGroup")
+	scopedService := service.WithMicroTenant("service-scoped-microtenant")
+	items, _, err := getZPAAllPagesForMicrotenant[item](
+		context.Background(),
+		scopedService,
+		zpaAPIV1,
+		"/serverGroup",
+	)
 	if err != nil {
 		t.Fatalf("getZPAAllPages(serverGroup) error = %v, want nil", err)
 	}
@@ -235,7 +244,7 @@ func TestGetZPAAllPagesPreservesEndpointPageAndMicrotenantQueries(t *testing.T) 
 	for index, request := range productRequests {
 		query := request.URL.Query()
 		for key, want := range map[string]string{
-			"microtenantId": "zscalerctl-zpa-microtenant-id",
+			"microtenantId": "service-scoped-microtenant",
 			"page":          strconv.Itoa(index + 1),
 			"pagesize":      strconv.Itoa(zpaPageSize),
 		} {
@@ -309,7 +318,48 @@ func TestZPAListHandlersAvoidUnboundedSDKPagination(t *testing.T) {
 			t.Errorf("reader_zpa.go still calls SDK pagination with an unverified totalPages contract: %q", banned)
 		}
 	}
-	if got, want := strings.Count(source, "getZPAAllPages["), 24; got != want {
+	got := strings.Count(source, "getZPAAllPages[") +
+		strings.Count(source, "getZPAAllPagesForMicrotenant[")
+	if want := 24; got != want {
 		t.Errorf("reader_zpa.go bounded paginator wiring count = %d, want %d", got, want)
+	}
+
+	for _, itemType := range []string{
+		"zpaservergroup.ServerGroup",
+		"zpabranchconnector.BranchConnector",
+		"zpauserportal.UserPortalController",
+		"zpauserportalaup.UserPortalAup",
+		"zpauserportallink.UserPortalLink",
+		"zpaappsegmentba.BrowserAccess",
+		"zpaappsegmentinspection.AppSegmentInspection",
+		"zpaappsegmentpra.AppSegmentPRA",
+		"zpasegmentgroup.SegmentGroup",
+		"zpaapplicationsegment.ApplicationSegmentResource",
+		"zpaappconnectorcontroller.AppConnector",
+		"zpaappconnectorgroup.AppConnectorGroup",
+		"zpaappservercontroller.ApplicationServer",
+		"zpamachinegroup.MachineGroup",
+		"zpaserviceedgegroup.ServiceEdgeGroup",
+		"zpaserviceedgecontroller.ServiceEdgeController",
+		"zpacloudconnector.CloudConnector",
+	} {
+		required := "getZPAAllPagesForMicrotenant[" + itemType + "]"
+		if !strings.Contains(source, required) {
+			t.Errorf("reader_zpa.go missing service-scoped paginator wiring %q", required)
+		}
+	}
+	for _, itemType := range []string{
+		"zpamicrotenants.MicroTenant",
+		"zpaversionprofile.CustomerVersionProfile",
+		"zpaisolationprofile.IsolationProfile",
+		"zpatrustednetwork.TrustedNetwork",
+		"zpacloudconnectorgroup.CloudConnectorGroup",
+		"zpapostureprofile.PostureProfile",
+		"zpaconfigoverride.ConfigOverrides",
+	} {
+		required := "getZPAAllPages[" + itemType + "]"
+		if !strings.Contains(source, required) {
+			t.Errorf("reader_zpa.go missing client-scoped paginator wiring %q", required)
+		}
 	}
 }

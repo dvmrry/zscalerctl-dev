@@ -148,6 +148,91 @@ func TestGetZCCAllPagesPreservesFiltersAndReadsEveryPage(t *testing.T) {
 	}
 }
 
+func TestGetZCCAllPagesPreservesAdminRolePageSize(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	type item struct {
+		ID int `json:"id"`
+	}
+
+	const pageSize = zcccommon.DefaultPageSize
+	var productRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zcc/papi/public/v1/getAdminRoles" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequests = append(productRequests, cloned)
+
+			switch request.URL.Query().Get("page") {
+			case "1":
+				page := make([]item, pageSize)
+				for index := range page {
+					page[index].ID = index + 1
+				}
+				var err error
+				body, err = json.Marshal(page)
+				if err != nil {
+					return nil, err
+				}
+			case "2":
+				body = []byte(`[{"id":51}]`)
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte(`{"message":"unexpected page"}`)
+			}
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZCCHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	items, err := getZCCAllPagesWithSize[item](
+		context.Background(),
+		service,
+		"/zcc/papi/public/v1/getAdminRoles",
+		zcccommon.QueryParams{},
+		pageSize,
+	)
+	if err != nil {
+		t.Fatalf("getZCCAllPagesWithSize(getAdminRoles) error = %v, want nil", err)
+	}
+	if got, want := len(productRequests), 2; got != want {
+		t.Fatalf("getZCCAllPagesWithSize(getAdminRoles) request count = %d, want %d", got, want)
+	}
+	for index, request := range productRequests {
+		query := request.URL.Query()
+		for key, want := range map[string]string{
+			"page":     strconv.Itoa(index + 1),
+			"pageSize": strconv.Itoa(pageSize),
+		} {
+			if got := query.Get(key); got != want {
+				t.Errorf("request %d query[%q] = %q, want %q", index+1, key, got, want)
+			}
+		}
+	}
+	if got, want := len(items), pageSize+1; got != want {
+		t.Fatalf("getZCCAllPagesWithSize(getAdminRoles) record count = %d, want %d", got, want)
+	}
+}
+
 func TestZCCListHandlersAvoidUnboundedSDKPagination(t *testing.T) {
 	t.Parallel()
 
@@ -165,8 +250,14 @@ func TestZCCListHandlersAvoidUnboundedSDKPagination(t *testing.T) {
 			t.Errorf("reader_zcc.go still calls unbounded SDK pagination: %q", banned)
 		}
 	}
-	if got, want := strings.Count(source, "return getZCCAllPages["), 3; got != want {
-		t.Errorf("reader_zcc.go bounded raw-array paginator wiring count = %d, want %d", got, want)
+	for _, required := range []string{
+		"return getZCCAllPages[zccfailopen.WebFailOpenPolicy]",
+		"return getZCCAllPages[zccdevices.GetDevices]",
+		"return getZCCAllPagesWithSize[zccadminroles.AdminRole]",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("reader_zcc.go missing bounded paginator wiring %q", required)
+		}
 	}
 }
 
@@ -477,6 +568,26 @@ func TestGetZIAAllPagesPreservesQueryAndReadsEveryPage(t *testing.T) {
 	}
 }
 
+func TestNormalizeZIABrowserIsolationListError(t *testing.T) {
+	t.Parallel()
+
+	subscriptionErr := errors.New(
+		"request failed: Cloud Browser Isolation subscription is required (status 403)",
+	)
+	got := normalizeZIABrowserIsolationListError(subscriptionErr)
+	if want := "NOT_SUBSCRIBED: Cloud Browser Isolation subscription is required"; got == nil || got.Error() != want {
+		t.Errorf("normalize subscription error = %v, want %q", got, want)
+	}
+
+	otherErr := errors.New("ordinary browser isolation failure")
+	if got := normalizeZIABrowserIsolationListError(otherErr); !errors.Is(got, otherErr) {
+		t.Errorf("normalize ordinary error = %v, want original error", got)
+	}
+	if got := normalizeZIABrowserIsolationListError(nil); got != nil {
+		t.Errorf("normalize nil error = %v, want nil", got)
+	}
+}
+
 func TestGetZIAUsersAllPagesPreservesSDKSortDefaults(t *testing.T) {
 	cfg := validReaderConfig()
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
@@ -699,6 +810,104 @@ func TestGetZIALocationGroupsAllPagesFetchesMemberLocations(t *testing.T) {
 	}
 	if got, want := memberGroup.Locations[1].Name, "Branch sublocation"; got != want {
 		t.Errorf("groups[last].Locations[1].Name = %q, want %q", got, want)
+	}
+}
+
+func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T) {
+	tests := []struct {
+		name             string
+		firstParentFails bool
+		wantSecondParent bool
+	}{
+		{
+			name: "returns before unrelated later parent",
+		},
+		{
+			name:             "skips inaccessible earlier parent",
+			firstParentFails: true,
+			wantSecondParent: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := validReaderConfig()
+			sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+			var parentPaths []string
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				body := `{"access_token":"test-token","expires_in":60}`
+				statusCode := http.StatusOK
+				switch request.URL.Path {
+				case "/zia/api/v1/locations":
+					body = `[{"id":1,"name":"first"},{"id":2,"name":"second"}]`
+				case "/zia/api/v1/locations/1/sublocations":
+					parentPaths = append(parentPaths, request.URL.Path)
+					if test.firstParentFails {
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"parent unavailable"}`
+					} else {
+						body = `[{"id":99,"name":"target"}]`
+					}
+				case "/zia/api/v1/locations/2/sublocations":
+					parentPaths = append(parentPaths, request.URL.Path)
+					if test.firstParentFails {
+						body = `[{"id":99,"name":"target"}]`
+					} else {
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"later parent unavailable"}`
+					}
+				case "/oauth2/v1/token":
+				default:
+					statusCode = http.StatusNotFound
+					body = `{}`
+				}
+				return &http.Response{
+					StatusCode: statusCode,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})
+			sdkCfg.HTTPClient.Transport = transport
+			sdkCfg.ZIAHTTPClient.Transport = transport
+
+			service, err := zsdk.NewOneAPIClient(sdkCfg)
+			if err != nil {
+				t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+			}
+			t.Cleanup(service.Client.Close)
+
+			item, err := getZIASublocationByID(context.Background(), service, 99)
+			if err != nil {
+				t.Fatalf("getZIASublocationByID(99) error = %v, want nil", err)
+			}
+			if item == nil || item.ID != 99 {
+				t.Fatalf("getZIASublocationByID(99) = %#v, want ID 99", item)
+			}
+			firstPath := "/zia/api/v1/locations/1/sublocations"
+			secondPath := "/zia/api/v1/locations/2/sublocations"
+			firstCount := 0
+			secondCount := 0
+			for _, path := range parentPaths {
+				switch path {
+				case firstPath:
+					firstCount++
+				case secondPath:
+					secondCount++
+				}
+			}
+			if firstCount == 0 {
+				t.Errorf("sublocation parent paths = %v, want at least one first-parent request", parentPaths)
+			}
+			if got := secondCount > 0; got != test.wantSecondParent {
+				t.Errorf(
+					"sublocation second-parent request presence = %t, want %t (paths %v)",
+					got,
+					test.wantSecondParent,
+					parentPaths,
+				)
+			}
+		})
 	}
 }
 

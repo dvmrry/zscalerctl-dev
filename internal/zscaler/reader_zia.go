@@ -2,9 +2,11 @@ package zscaler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	activation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/activation"
@@ -173,6 +175,15 @@ func ziaSortedListEndpoint(service *zsdk.Service, endpoint string) string {
 	return endpoint + "?" + query.Encode()
 }
 
+func getZIASublocationsForParentAllPages(
+	ctx context.Context,
+	service *zsdk.Service,
+	parentID int,
+) ([]locationmanagement.Locations, error) {
+	endpoint := fmt.Sprintf("/zia/api/v1/locations/%d/sublocations", parentID)
+	return getZIAAllPages[locationmanagement.Locations](ctx, service, endpoint)
+}
+
 func getZIASublocationsAllPages(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
 	parents, err := getZIALocationsAllPages(ctx, service)
 	if err != nil {
@@ -181,8 +192,7 @@ func getZIASublocationsAllPages(ctx context.Context, service *zsdk.Service) ([]l
 
 	var sublocations []locationmanagement.Locations
 	for _, parent := range parents {
-		endpoint := fmt.Sprintf("/zia/api/v1/locations/%d/sublocations", parent.ID)
-		items, err := getZIAAllPages[locationmanagement.Locations](ctx, service, endpoint)
+		items, err := getZIASublocationsForParentAllPages(ctx, service, parent.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -196,13 +206,25 @@ func getZIASublocationByID(
 	service *zsdk.Service,
 	id int,
 ) (*locationmanagement.Locations, error) {
-	sublocations, err := getZIASublocationsAllPages(ctx, service)
+	parents, err := getZIALocationsAllPages(ctx, service)
 	if err != nil {
 		return nil, err
 	}
-	for index := range sublocations {
-		if sublocations[index].ID == id {
-			return &sublocations[index], nil
+
+	for _, parent := range parents {
+		sublocations, err := getZIASublocationsForParentAllPages(ctx, service, parent.ID)
+		if err != nil {
+			// Preserve the SDK get helper's tolerance for an inaccessible
+			// parent, but never turn caller cancellation into a false not-found.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			continue
+		}
+		for index := range sublocations {
+			if sublocations[index].ID == id {
+				return &sublocations[index], nil
+			}
 		}
 	}
 	return nil, fmt.Errorf("sublocation not found: %d", id)
@@ -223,6 +245,33 @@ func getZIADeviceByID(
 		}
 	}
 	return nil, fmt.Errorf("no device found with ID: %d", id)
+}
+
+func getZIABrowserIsolationAllPages(
+	ctx context.Context,
+	service *zsdk.Service,
+) ([]browserisolation.CBIProfile, error) {
+	items, err := getZIAAllPages[browserisolation.CBIProfile](
+		ctx,
+		service,
+		"/zia/api/v1/browserIsolation/profiles",
+	)
+	if err == nil {
+		return items, nil
+	}
+	return nil, normalizeZIABrowserIsolationListError(err)
+}
+
+func normalizeZIABrowserIsolationListError(err error) error {
+	if err == nil {
+		return nil
+	}
+	const subscriptionMessage = "Cloud Browser Isolation subscription is required"
+	if strings.Contains(err.Error(), subscriptionMessage) {
+		// Match the SDK wrapper's intentionally status-free operator message.
+		return errors.New("NOT_SUBSCRIBED: " + subscriptionMessage)
+	}
+	return err
 }
 
 // getZIAUsersAllPages reads /zia/api/v1/users with a bounded page walk. It
@@ -787,7 +836,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceBrowserIsolation}: newListOnlyHandler(
 			resourceBrowserIsolation,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]browserisolation.CBIProfile, error) {
-				return getZIAAllPages[browserisolation.CBIProfile](ctx, service, "/zia/api/v1/browserIsolation/profiles")
+				return getZIABrowserIsolationAllPages(ctx, service)
 			}),
 			browserIsolationProfileSourceRecord,
 		),

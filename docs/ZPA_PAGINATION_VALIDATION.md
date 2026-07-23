@@ -18,10 +18,10 @@ go test -race -mod=vendor ./internal/zscaler \
   -count=1
 ```
 
-The tests cover numeric and quoted page counts, malformed metadata, multiple
-pages, metadata drift, empty and repeated pages, page errors, the 1,000-page
-ceiling, exact query parameters, microtenant propagation, and all 24 handler
-wirings.
+The tests cover integer, integral-decimal, and quoted page counts; malformed
+metadata; multiple pages; metadata drift; empty and repeated pages; page
+errors; the 1,000-page ceiling; exact query parameters; client and
+service-scoped microtenant propagation; and all 24 handler wirings.
 
 ## Live Tenant Check
 
@@ -29,6 +29,8 @@ Build the branch and use the normal `ZSCALERCTL_*` environment configuration.
 Do not add credentials or tenant payloads to this repository.
 
 ```bash
+set -o pipefail
+
 go build -mod=vendor -o ./zscalerctl ./cmd/zscalerctl
 ./zscalerctl doctor
 

@@ -10,10 +10,10 @@ No credentials are required:
 
 ```sh
 go test -mod=vendor ./internal/zscaler \
-  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
+  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
   -count=1
 go test -race -mod=vendor ./internal/zscaler \
-  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
+  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
   -count=1
 ```
 

@@ -27,8 +27,9 @@ type zpaPage[T any] struct {
 }
 
 type zpaPaginationQuery struct {
-	PageSize int `json:"pagesize,omitempty" url:"pagesize,omitempty"`
-	Page     int `json:"page,omitempty" url:"page,omitempty"`
+	PageSize      int     `json:"pagesize,omitempty" url:"pagesize,omitempty"`
+	Page          int     `json:"page,omitempty" url:"page,omitempty"`
+	MicroTenantID *string `json:"microtenantId,omitempty" url:"microtenantId,omitempty"`
 }
 
 type zpaPageEnvelope[T any] struct {
@@ -50,10 +51,24 @@ func parseZPATotalPages(raw json.RawMessage) (int, error) {
 	}
 
 	totalPages, err := strconv.Atoi(value)
-	if err != nil || totalPages < 0 {
-		return 0, fmt.Errorf("zpa pagination response has invalid totalPages")
+	if err == nil && totalPages >= 0 {
+		return totalPages, nil
 	}
-	return totalPages, nil
+
+	// The SDK decoded unquoted JSON numbers through float64 before formatting
+	// them, so an integral value such as 1.0 was accepted as "1". Preserve that
+	// envelope compatibility while still rejecting fractional and negative
+	// values. Quoted "1.0" remains invalid, matching the SDK's string path.
+	if strings.ContainsAny(value, ".eE") && !strings.HasPrefix(strings.TrimSpace(string(raw)), `"`) {
+		number, floatErr := strconv.ParseFloat(value, 64)
+		if floatErr == nil {
+			totalPages, intErr := strconv.Atoi(fmt.Sprintf("%v", number))
+			if intErr == nil && totalPages >= 0 {
+				return totalPages, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("zpa pagination response has invalid totalPages")
 }
 
 // zpaPaginate follows the page count declared by the first response and fails
@@ -142,16 +157,48 @@ func getZPAAllPages[T any](
 	apiVersion string,
 	endpointSuffix string,
 ) ([]T, *http.Response, error) {
+	return getZPAAllPagesWithMicrotenant[T](
+		ctx,
+		service,
+		apiVersion,
+		endpointSuffix,
+		nil,
+	)
+}
+
+func getZPAAllPagesForMicrotenant[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	apiVersion string,
+	endpointSuffix string,
+) ([]T, *http.Response, error) {
+	return getZPAAllPagesWithMicrotenant[T](
+		ctx,
+		service,
+		apiVersion,
+		endpointSuffix,
+		service.MicroTenantID(),
+	)
+}
+
+func getZPAAllPagesWithMicrotenant[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	apiVersion string,
+	endpointSuffix string,
+	microTenantID *string,
+) ([]T, *http.Response, error) {
 	endpoint := "/zpa/mgmtconfig/" + apiVersion + "/admin/customers/" +
 		service.Client.GetCustomerID() + endpointSuffix
 
 	items, response, err := zpaPaginate(ctx, func(ctx context.Context, pageNumber, pageSize int) (zpaPage[T], error) {
-		// NewRequestDo injects the explicitly configured ZPA microtenant from
-		// the SDK client on every request. Foreign SDK environment names are
-		// neutralized when zscalerctl builds that client.
+		// NewRequestDo injects the client-level ZPA microtenant when this field
+		// is nil. Replaced SDK methods that accepted service.WithMicroTenant
+		// pass that service-scoped override explicitly instead.
 		query := zpaPaginationQuery{
-			PageSize: pageSize,
-			Page:     pageNumber,
+			PageSize:      pageSize,
+			Page:          pageNumber,
+			MicroTenantID: microTenantID,
 		}
 
 		var envelope zpaPageEnvelope[T]
