@@ -356,6 +356,12 @@ zscalerctl zia url-filtering-rules list
 zscalerctl zia url-filtering-rules get <id>
 ```
 
+`list` and dump collection explicitly request 100-record pages until the API
+returns a short page. The walk fails closed after 1,000 full pages or on any
+page error, so a partial ruleset is never presented as complete. See
+[URL_FILTERING_PAGINATION_VALIDATION.md](URL_FILTERING_PAGINATION_VALIDATION.md)
+for the focused automated and live-tenant checks.
+
 Fields:
 
 | Field | Classification | Modes | Notes |
