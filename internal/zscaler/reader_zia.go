@@ -3,6 +3,7 @@ package zscaler
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
@@ -129,17 +130,114 @@ func ziaPaginate[T any](ctx context.Context, pageSize int, fetchPage func(ctx co
 	return all, nil
 }
 
+func getZIAAllPages[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	endpoint string,
+) ([]T, error) {
+	return getZIAAllPagesWithSize[T](ctx, service, endpoint, ziacommon.GetPageSize())
+}
+
+func getZIAAllPagesWithSize[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	endpoint string,
+	pageSize int,
+) ([]T, error) {
+	items, err := ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]T, error) {
+		var pageItems []T
+		err := ziacommon.ReadPage(ctx, service.Client, endpoint, page, &pageItems, size)
+		return pageItems, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err = zsdk.ApplyJMESPathFromContext(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("apply zia list filter: %w", err)
+	}
+	return items, nil
+}
+
+func ziaSortedListEndpoint(service *zsdk.Service, endpoint string) string {
+	query := url.Values{}
+	if service.SortBy != "" {
+		query.Set("sortBy", string(service.SortBy))
+	}
+	if service.SortOrder != "" {
+		query.Set("sortOrder", string(service.SortOrder))
+	}
+	if len(query) == 0 {
+		return endpoint
+	}
+	return endpoint + "?" + query.Encode()
+}
+
+func getZIASublocationsAllPages(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
+	parents, err := getZIALocationsAllPages(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+
+	var sublocations []locationmanagement.Locations
+	for _, parent := range parents {
+		endpoint := fmt.Sprintf("/zia/api/v1/locations/%d/sublocations", parent.ID)
+		items, err := getZIAAllPages[locationmanagement.Locations](ctx, service, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		sublocations = append(sublocations, items...)
+	}
+	return sublocations, nil
+}
+
+func getZIASublocationByID(
+	ctx context.Context,
+	service *zsdk.Service,
+	id int,
+) (*locationmanagement.Locations, error) {
+	sublocations, err := getZIASublocationsAllPages(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	for index := range sublocations {
+		if sublocations[index].ID == id {
+			return &sublocations[index], nil
+		}
+	}
+	return nil, fmt.Errorf("sublocation not found: %d", id)
+}
+
+func getZIADeviceByID(
+	ctx context.Context,
+	service *zsdk.Service,
+	id int,
+) (*devicegroups.Devices, error) {
+	devices, err := getZIAAllPages[devicegroups.Devices](ctx, service, "/zia/api/v1/deviceGroups/devices")
+	if err != nil {
+		return nil, err
+	}
+	for index := range devices {
+		if devices[index].ID == id {
+			return &devices[index], nil
+		}
+	}
+	return nil, fmt.Errorf("no device found with ID: %d", id)
+}
+
 // getZIAUsersAllPages reads /zia/api/v1/users with a bounded page walk. It
 // replaces ziausers.GetAllUsers, whose vendored ReadAllPages loop has no page
-// ceiling; the endpoint, 10000-record page size, and short-page termination are
-// preserved exactly (the reader sets no sort options, so none are sent).
+// ceiling; the endpoint, service-level sort options, 10000-record page size,
+// short-page termination, and post-aggregation JMESPath filtering are
+// preserved.
 func getZIAUsersAllPages(ctx context.Context, service *zsdk.Service) ([]ziausers.Users, error) {
 	const pageSize = 10000
-	return ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]ziausers.Users, error) {
-		var items []ziausers.Users
-		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/users", page, &items, size)
-		return items, err
-	})
+	return getZIAAllPagesWithSize[ziausers.Users](
+		ctx,
+		service,
+		ziaSortedListEndpoint(service, "/zia/api/v1/users"),
+		pageSize,
+	)
 }
 
 // getZIALocationsAllPages reads /zia/api/v1/locations with a bounded page walk,
@@ -161,11 +259,12 @@ func getZIALocationsAllPages(ctx context.Context, service *zsdk.Service) ([]loca
 // ziaPaginate's fail-closed page ceiling.
 func getZIALocationGroupsAllPages(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
 	const pageSize = 1000
-	return ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]locationgroups.LocationGroup, error) {
-		var items []locationgroups.LocationGroup
-		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/locations/groups?fetchLocations=true", page, &items, size)
-		return items, err
-	})
+	return getZIAAllPagesWithSize[locationgroups.LocationGroup](
+		ctx,
+		service,
+		"/zia/api/v1/locations/groups?fetchLocations=true",
+		pageSize,
+	)
 }
 
 // getZIAURLFilteringRulesAllPages reads /zia/api/v1/urlFilteringRules with an
@@ -229,7 +328,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceRuleLabels}: newListGetHandler(
 			resourceRuleLabels,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]rulelabels.RuleLabels, error) {
-				return rulelabels.GetAll(ctx, service)
+				return getZIAAllPages[rulelabels.RuleLabels](ctx, service, "/zia/api/v1/ruleLabels")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*rulelabels.RuleLabels, error) {
 				return rulelabels.Get(ctx, service, id)
@@ -246,7 +345,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceStaticIPs}: newListGetHandler(
 			resourceStaticIPs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]staticips.StaticIP, error) {
-				return staticips.GetAll(ctx, service)
+				return getZIAAllPages[staticips.StaticIP](ctx, service, "/zia/api/v1/staticIP")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*staticips.StaticIP, error) {
 				return staticips.Get(ctx, service, id)
@@ -256,7 +355,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceGRETunnels}: newListGetHandler(
 			resourceGRETunnels,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]gretunnels.GreTunnels, error) {
-				return gretunnels.GetAll(ctx, service)
+				return getZIAAllPages[gretunnels.GreTunnels](ctx, service, "/zia/api/v1/greTunnels")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*gretunnels.GreTunnels, error) {
 				return gretunnels.GetGreTunnels(ctx, service, id)
@@ -266,10 +365,10 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceSublocations}: newListGetHandler(
 			resourceSublocations,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
-				return locationmanagement.GetAllSublocations(ctx, service)
+				return getZIASublocationsAllPages(ctx, service)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*locationmanagement.Locations, error) {
-				return locationmanagement.GetSubLocationBySubID(ctx, service, id)
+				return getZIASublocationByID(ctx, service, id)
 			}),
 			sublocationSourceRecord,
 		),
@@ -306,7 +405,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceFirewallRules}: newListGetHandler(
 			resourceFirewallRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]filteringrules.FirewallFilteringRules, error) {
-				return filteringrules.GetAll(ctx, service, nil)
+				return getZIAAllPagesWithSize[filteringrules.FirewallFilteringRules](
+					ctx,
+					service,
+					"/zia/api/v1/firewallFilteringRules",
+					5000,
+				)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*filteringrules.FirewallFilteringRules, error) {
 				return filteringrules.Get(ctx, service, id)
@@ -316,7 +420,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceForwardingRules}: newListGetHandler(
 			resourceForwardingRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]forwardingrules.ForwardingRules, error) {
-				return forwardingrules.GetAll(ctx, service)
+				return getZIAAllPages[forwardingrules.ForwardingRules](ctx, service, "/zia/api/v1/forwardingRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*forwardingrules.ForwardingRules, error) {
 				return forwardingrules.Get(ctx, service, id)
@@ -346,7 +450,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceNetworkServices}: newListGetHandler(
 			resourceNetworkServices,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkservices.NetworkServices, error) {
-				return networkservices.GetAllNetworkServices(ctx, service, nil, nil)
+				return getZIAAllPages[networkservices.NetworkServices](ctx, service, "/zia/api/v1/networkServices")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkservices.NetworkServices, error) {
 				return networkservices.Get(ctx, service, id)
@@ -356,7 +460,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceNetworkSvcGroups}: newListGetHandler(
 			resourceNetworkSvcGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkservicegroups.NetworkServiceGroups, error) {
-				return networkservicegroups.GetAllNetworkServiceGroups(ctx, service)
+				return getZIAAllPages[networkservicegroups.NetworkServiceGroups](ctx, service, "/zia/api/v1/networkServiceGroups")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkservicegroups.NetworkServiceGroups, error) {
 				return networkservicegroups.GetNetworkServiceGroups(ctx, service, id)
@@ -376,12 +480,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceAppServices}: newListGetHandler(
 			resourceAppServices,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
-				return applicationservices.GetAll(ctx, service)
+				return getZIAAllPages[applicationservices.ApplicationServicesLite](ctx, service, "/zia/api/v1/appServices/lite")
 			}),
 			ziaSDKListGetByIntID(
 				client,
 				func(ctx context.Context, service *zsdk.Service) ([]applicationservices.ApplicationServicesLite, error) {
-					return applicationservices.GetAll(ctx, service)
+					return getZIAAllPages[applicationservices.ApplicationServicesLite](ctx, service, "/zia/api/v1/appServices/lite")
 				},
 				func(item applicationservices.ApplicationServicesLite) int { return item.ID },
 			),
@@ -390,12 +494,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceAppServiceGroups}: newListGetHandler(
 			resourceAppServiceGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]appservicegroups.ApplicationServicesGroupLite, error) {
-				return appservicegroups.GetAll(ctx, service)
+				return getZIAAllPages[appservicegroups.ApplicationServicesGroupLite](ctx, service, "/zia/api/v1/appServiceGroups/lite")
 			}),
 			ziaSDKListGetByIntID(
 				client,
 				func(ctx context.Context, service *zsdk.Service) ([]appservicegroups.ApplicationServicesGroupLite, error) {
-					return appservicegroups.GetAll(ctx, service)
+					return getZIAAllPages[appservicegroups.ApplicationServicesGroupLite](ctx, service, "/zia/api/v1/appServiceGroups/lite")
 				},
 				func(item appservicegroups.ApplicationServicesGroupLite) int { return item.ID },
 			),
@@ -404,7 +508,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceNetworkAppGroups}: newListGetHandler(
 			resourceNetworkAppGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]networkapplicationgroups.NetworkApplicationGroups, error) {
-				return networkapplicationgroups.GetAllNetworkApplicationGroups(ctx, service)
+				return getZIAAllPages[networkapplicationgroups.NetworkApplicationGroups](ctx, service, "/zia/api/v1/networkApplicationGroups")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*networkapplicationgroups.NetworkApplicationGroups, error) {
 				return networkapplicationgroups.GetNetworkApplicationGroups(ctx, service, id)
@@ -428,7 +532,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceProxies}: newListGetHandler(
 			resourceProxies,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxies.Proxies, error) {
-				return proxies.GetAll(ctx, service)
+				return getZIAAllPages[proxies.Proxies](ctx, service, "/zia/api/v1/proxies")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*proxies.Proxies, error) {
 				return proxies.Get(ctx, service, id)
@@ -438,12 +542,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceProxyGateways}: newListGetHandler(
 			resourceProxyGateways,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
-				return proxygateways.GetAll(ctx, service)
+				return getZIAAllPages[proxygateways.ProxyGateways](ctx, service, "/zia/api/v1/proxyGateways")
 			}),
 			ziaSDKListGetByIntID(
 				client,
 				func(ctx context.Context, service *zsdk.Service) ([]proxygateways.ProxyGateways, error) {
-					return proxygateways.GetAll(ctx, service)
+					return getZIAAllPages[proxygateways.ProxyGateways](ctx, service, "/zia/api/v1/proxyGateways")
 				},
 				func(item proxygateways.ProxyGateways) int { return item.ID },
 			),
@@ -452,12 +556,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDedicatedIPGWs}: newListGetHandler(
 			resourceDedicatedIPGWs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
-				return proxies.GetDedicatedIPGWLite(ctx, service)
+				return getZIAAllPages[proxies.DedicatedIPGateways](ctx, service, "/zia/api/v1/dedicatedIPGateways/lite")
 			}),
 			ziaSDKListGetByIntID(
 				client,
 				func(ctx context.Context, service *zsdk.Service) ([]proxies.DedicatedIPGateways, error) {
-					return proxies.GetDedicatedIPGWLite(ctx, service)
+					return getZIAAllPages[proxies.DedicatedIPGateways](ctx, service, "/zia/api/v1/dedicatedIPGateways/lite")
 				},
 				func(item proxies.DedicatedIPGateways) int { return item.Id },
 			),
@@ -466,7 +570,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceTimeIntervals}: newListGetHandler(
 			resourceTimeIntervals,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]timeintervals.TimeInterval, error) {
-				return timeintervals.GetAll(ctx, service)
+				return getZIAAllPages[timeintervals.TimeInterval](ctx, service, "/zia/api/v1/timeIntervals")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*timeintervals.TimeInterval, error) {
 				return timeintervals.Get(ctx, service, id)
@@ -476,7 +580,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceBandwidthClasses}: newListGetHandler(
 			resourceBandwidthClasses,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]bandwidthclasses.BandwidthClasses, error) {
-				return bandwidthclasses.GetAll(ctx, service)
+				return getZIAAllPages[bandwidthclasses.BandwidthClasses](ctx, service, "/zia/api/v1/bandwidthClasses")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthclasses.BandwidthClasses, error) {
 				return bandwidthclasses.Get(ctx, service, id)
@@ -486,7 +590,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceBandwidthRules}: newListGetHandler(
 			resourceBandwidthRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]bandwidthcontrolrules.BandwidthControlRules, error) {
-				return bandwidthcontrolrules.GetAll(ctx, service)
+				return getZIAAllPages[bandwidthcontrolrules.BandwidthControlRules](ctx, service, "/zia/api/v1/bandwidthControlRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*bandwidthcontrolrules.BandwidthControlRules, error) {
 				return bandwidthcontrolrules.Get(ctx, service, id)
@@ -496,7 +600,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceIPSSignatureRules}: newListGetHandler(
 			resourceIPSSignatureRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipssignaturerules.IPSSignatureRules, error) {
-				return ipssignaturerules.GetAll(ctx, service)
+				return getZIAAllPages[ipssignaturerules.IPSSignatureRules](ctx, service, "/zia/api/v1/ipsSignatureRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ipssignaturerules.IPSSignatureRules, error) {
 				return ipssignaturerules.Get(ctx, service, id)
@@ -506,7 +610,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceIPSPolicies}: newListGetHandler(
 			resourceIPSPolicies,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipspolicies.FirewallIPSRules, error) {
-				return ipspolicies.GetAll(ctx, service)
+				return getZIAAllPages[ipspolicies.FirewallIPSRules](ctx, service, "/zia/api/v1/firewallIpsRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ipspolicies.FirewallIPSRules, error) {
 				return ipspolicies.Get(ctx, service, id)
@@ -516,7 +620,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDNSGateways}: newListGetHandler(
 			resourceDNSGateways,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dnsgateways.DNSGateways, error) {
-				return dnsgateways.GetAll(ctx, service)
+				return getZIAAllPages[dnsgateways.DNSGateways](ctx, service, "/zia/api/v1/dnsGateways")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dnsgateways.DNSGateways, error) {
 				return dnsgateways.Get(ctx, service, id)
@@ -526,7 +630,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceNATRules}: newListGetHandler(
 			resourceNATRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]natcontrol.NatControlPolicies, error) {
-				return natcontrol.GetAll(ctx, service)
+				return getZIAAllPages[natcontrol.NatControlPolicies](ctx, service, "/zia/api/v1/dnatRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*natcontrol.NatControlPolicies, error) {
 				return natcontrol.Get(ctx, service, id)
@@ -536,7 +640,11 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceGroups}: newListGetHandler(
 			resourceGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]usergroups.Groups, error) {
-				return usergroups.GetAllGroups(ctx, service, nil)
+				return getZIAAllPages[usergroups.Groups](
+					ctx,
+					service,
+					ziaSortedListEndpoint(service, "/zia/api/v1/groups"),
+				)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*usergroups.Groups, error) {
 				return usergroups.GetGroups(ctx, service, id)
@@ -546,7 +654,11 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDepartments}: newListGetHandler(
 			resourceDepartments,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]userdepartments.Department, error) {
-				return userdepartments.GetAll(ctx, service, nil)
+				return getZIAAllPages[userdepartments.Department](
+					ctx,
+					service,
+					ziaSortedListEndpoint(service, "/zia/api/v1/departments"),
+				)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*userdepartments.Department, error) {
 				return userdepartments.GetDepartments(ctx, service, id)
@@ -566,12 +678,12 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDeviceGroups}: newListGetHandler(
 			resourceDeviceGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
-				return devicegroups.GetAllDevicesGroups(ctx, service)
+				return getZIAAllPages[devicegroups.DeviceGroups](ctx, service, "/zia/api/v1/deviceGroups")
 			}),
 			ziaSDKListGetByIntID(
 				client,
 				func(ctx context.Context, service *zsdk.Service) ([]devicegroups.DeviceGroups, error) {
-					return devicegroups.GetAllDevicesGroups(ctx, service)
+					return getZIAAllPages[devicegroups.DeviceGroups](ctx, service, "/zia/api/v1/deviceGroups")
 				},
 				func(item devicegroups.DeviceGroups) int { return item.ID },
 			),
@@ -580,17 +692,17 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDevices}: newListGetHandler(
 			resourceDevices,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.Devices, error) {
-				return devicegroups.GetAllDevices(ctx, service)
+				return getZIAAllPages[devicegroups.Devices](ctx, service, "/zia/api/v1/deviceGroups/devices")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*devicegroups.Devices, error) {
-				return devicegroups.GetDevicesByID(ctx, service, id)
+				return getZIADeviceByID(ctx, service, id)
 			}),
 			deviceSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceWorkloadGroups}: newListGetHandler(
 			resourceWorkloadGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]workloadgroups.WorkloadGroup, error) {
-				return workloadgroups.GetAll(ctx, service)
+				return getZIAAllPages[workloadgroups.WorkloadGroup](ctx, service, "/zia/api/v1/workloadGroups")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*workloadgroups.WorkloadGroup, error) {
 				return workloadgroups.Get(ctx, service, id)
@@ -600,7 +712,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceAlertSubs}: newListGetHandler(
 			resourceAlertSubs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]alerts.AlertSubscriptions, error) {
-				return alerts.GetAll(ctx, service)
+				return getZIAAllPages[alerts.AlertSubscriptions](ctx, service, "/zia/api/v1/alertSubscriptions")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*alerts.AlertSubscriptions, error) {
 				return alerts.Get(ctx, service, id)
@@ -625,7 +737,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceIntermediateCAs}: newListGetHandler(
 			resourceIntermediateCAs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]intermediatecacertificates.IntermediateCACertificate, error) {
-				return intermediatecacertificates.GetAll(ctx, service)
+				return getZIAAllPages[intermediatecacertificates.IntermediateCACertificate](ctx, service, "/zia/api/v1/intermediateCaCertificate")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*intermediatecacertificates.IntermediateCACertificate, error) {
 				return intermediatecacertificates.GetCertificate(ctx, service, id)
@@ -635,7 +747,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceCloudAppInsts}: newListGetHandler(
 			resourceCloudAppInsts,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudappinstances.CloudApplicationInstances, error) {
-				return cloudappinstances.GetAll(ctx, service)
+				return getZIAAllPages[cloudappinstances.CloudApplicationInstances](ctx, service, "/zia/api/v1/cloudApplicationInstances")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*cloudappinstances.CloudApplicationInstances, error) {
 				return cloudappinstances.Get(ctx, service, id)
@@ -645,7 +757,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceTenancyProfiles}: newListGetHandler(
 			resourceTenancyProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]tenancyrestriction.TenancyRestrictionProfile, error) {
-				return tenancyrestriction.GetAll(ctx, service)
+				return getZIAAllPages[tenancyrestriction.TenancyRestrictionProfile](ctx, service, "/zia/api/v1/tenancyRestrictionProfile")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*tenancyrestriction.TenancyRestrictionProfile, error) {
 				return tenancyrestriction.Get(ctx, service, id)
@@ -655,7 +767,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceVZENClusters}: newListGetHandler(
 			resourceVZENClusters,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]vzenclusters.VZENClusters, error) {
-				return vzenclusters.GetAll(ctx, service)
+				return getZIAAllPages[vzenclusters.VZENClusters](ctx, service, "/zia/api/v1/virtualZenClusters")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*vzenclusters.VZENClusters, error) {
 				return vzenclusters.Get(ctx, service, id)
@@ -665,7 +777,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceVZENNodes}: newListGetHandler(
 			resourceVZENNodes,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]vzennodes.VZENNodes, error) {
-				return vzennodes.GetAll(ctx, service)
+				return getZIAAllPages[vzennodes.VZENNodes](ctx, service, "/zia/api/v1/virtualZenNodes")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*vzennodes.VZENNodes, error) {
 				return vzennodes.Get(ctx, service, id)
@@ -675,14 +787,14 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceBrowserIsolation}: newListOnlyHandler(
 			resourceBrowserIsolation,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]browserisolation.CBIProfile, error) {
-				return browserisolation.GetAll(ctx, service)
+				return getZIAAllPages[browserisolation.CBIProfile](ctx, service, "/zia/api/v1/browserIsolation/profiles")
 			}),
 			browserIsolationProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDLPEngines}: newListGetHandler(
 			resourceDLPEngines,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpengines.DLPEngines, error) {
-				return dlpengines.GetAll(ctx, service)
+				return getZIAAllPages[dlpengines.DLPEngines](ctx, service, "/zia/api/v1/dlpEngines")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpengines.DLPEngines, error) {
 				return dlpengines.Get(ctx, service, id)
@@ -692,7 +804,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPDictionaries}: newListGetHandler(
 			resourceDLPDictionaries,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpdictionaries.DlpDictionary, error) {
-				return dlpdictionaries.GetAll(ctx, service)
+				return getZIAAllPages[dlpdictionaries.DlpDictionary](ctx, service, "/zia/api/v1/dlpDictionaries")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpdictionaries.DlpDictionary, error) {
 				return dlpdictionaries.Get(ctx, service, id)
@@ -702,7 +814,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPEDMSchemas}: newListGetHandler(
 			resourceDLPEDMSchemas,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpexactdatamatch.DLPEDMSchema, error) {
-				return dlpexactdatamatch.GetAll(ctx, service)
+				return getZIAAllPages[dlpexactdatamatch.DLPEDMSchema](ctx, service, "/zia/api/v1/dlpExactDataMatchSchemas")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpexactdatamatch.DLPEDMSchema, error) {
 				return dlpexactdatamatch.GetDLPEDMSchemaID(ctx, service, id)
@@ -712,14 +824,14 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPEDMLite}: newListOnlyHandler(
 			resourceDLPEDMLite,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpedmlite.DLPEDMLite, error) {
-				return dlpedmlite.GetAllEDMSchema(ctx, service, false, false)
+				return getZIAAllPages[dlpedmlite.DLPEDMLite](ctx, service, "/zia/api/v1/dlpExactDataMatchSchemas/lite")
 			}),
 			dlpEDMLiteSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDLPIDMLite}: newListGetHandler(
 			resourceDLPIDMLite,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofilelite.DLPIDMProfileLite, error) {
-				return dlpidmprofilelite.GetAll(ctx, service, false)
+				return getZIAAllPages[dlpidmprofilelite.DLPIDMProfileLite](ctx, service, "/zia/api/v1/idmprofile/lite")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmprofilelite.DLPIDMProfileLite, error) {
 				return dlpidmprofilelite.GetDLPProfileLiteID(ctx, service, id, false)
@@ -729,7 +841,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPIDMProfiles}: newListGetHandler(
 			resourceDLPIDMProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofiles.DLPIDMProfile, error) {
-				return dlpidmprofiles.GetAll(ctx, service)
+				return getZIAAllPages[dlpidmprofiles.DLPIDMProfile](ctx, service, "/zia/api/v1/idmprofile")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmprofiles.DLPIDMProfile, error) {
 				return dlpidmprofiles.Get(ctx, service, id)
@@ -739,7 +851,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPWebRules}: newListGetHandler(
 			resourceDLPWebRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpwebrules.WebDLPRules, error) {
-				return dlpwebrules.GetAll(ctx, service)
+				return getZIAAllPages[dlpwebrules.WebDLPRules](ctx, service, "/zia/api/v1/webDlpRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpwebrules.WebDLPRules, error) {
 				return dlpwebrules.Get(ctx, service, id)
@@ -749,7 +861,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPICAPServers}: newListGetHandler(
 			resourceDLPICAPServers,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpicapservers.DLPICAPServers, error) {
-				return dlpicapservers.GetAll(ctx, service)
+				return getZIAAllPages[dlpicapservers.DLPICAPServers](ctx, service, "/zia/api/v1/icapServers")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpicapservers.DLPICAPServers, error) {
 				return dlpicapservers.Get(ctx, service, id)
@@ -759,7 +871,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPIncidentRcvs}: newListGetHandler(
 			resourceDLPIncidentRcvs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpincidentreceivers.IncidentReceiverServers, error) {
-				return dlpincidentreceivers.GetAll(ctx, service)
+				return getZIAAllPages[dlpincidentreceivers.IncidentReceiverServers](ctx, service, "/zia/api/v1/incidentReceiverServers")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpincidentreceivers.IncidentReceiverServers, error) {
 				return dlpincidentreceivers.Get(ctx, service, id)
@@ -769,7 +881,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceDLPNotifyTmpls}: newListGetHandler(
 			resourceDLPNotifyTmpls,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpnotificationtemplates.DlpNotificationTemplates, error) {
-				return dlpnotificationtemplates.GetAll(ctx, service)
+				return getZIAAllPages[dlpnotificationtemplates.DlpNotificationTemplates](ctx, service, "/zia/api/v1/dlpNotificationTemplates")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpnotificationtemplates.DlpNotificationTemplates, error) {
 				return dlpnotificationtemplates.Get(ctx, service, id)
@@ -779,7 +891,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceC2CIncidentRcvs}: newListGetHandler(
 			resourceC2CIncidentRcvs,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]c2cincidentreceiver.C2CIncidentReceiver, error) {
-				return c2cincidentreceiver.GetAll(ctx, service)
+				return getZIAAllPages[c2cincidentreceiver.C2CIncidentReceiver](ctx, service, "/zia/api/v1/cloudToCloudIR")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*c2cincidentreceiver.C2CIncidentReceiver, error) {
 				return c2cincidentreceiver.Get(ctx, service, id)
@@ -789,7 +901,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceRiskProfiles}: newListGetHandler(
 			resourceRiskProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]riskprofiles.RiskProfiles, error) {
-				return riskprofiles.GetAll(ctx, service)
+				return getZIAAllPages[riskprofiles.RiskProfiles](ctx, service, "/zia/api/v1/riskProfiles")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*riskprofiles.RiskProfiles, error) {
 				return riskprofiles.Get(ctx, service, id)
@@ -809,7 +921,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceNSSFeeds}: newListGetHandler(
 			resourceNSSFeeds,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudnss.NSSFeed, error) {
-				return cloudnss.GetAll(ctx, service)
+				return getZIAAllPages[cloudnss.NSSFeed](ctx, service, "/zia/api/v1/nssFeeds")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*cloudnss.NSSFeed, error) {
 				return cloudnss.Get(ctx, service, id)
@@ -819,7 +931,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceFileTypeRules}: newListGetHandler(
 			resourceFileTypeRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]filetypecontrol.FileTypeRules, error) {
-				return filetypecontrol.GetAll(ctx, service)
+				return getZIAAllPages[filetypecontrol.FileTypeRules](ctx, service, "/zia/api/v1/fileTypeRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*filetypecontrol.FileTypeRules, error) {
 				return filetypecontrol.Get(ctx, service, id)
@@ -839,7 +951,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceFirewallDNSRules}: newListGetHandler(
 			resourceFirewallDNSRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]firewalldnscontrolpolicies.FirewallDNSRules, error) {
-				return firewalldnscontrolpolicies.GetAll(ctx, service)
+				return getZIAAllPages[firewalldnscontrolpolicies.FirewallDNSRules](ctx, service, "/zia/api/v1/firewallDnsRules")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*firewalldnscontrolpolicies.FirewallDNSRules, error) {
 				return firewalldnscontrolpolicies.Get(ctx, service, id)
@@ -849,7 +961,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceCustomFileTypes}: newListGetHandler(
 			resourceCustomFileTypes,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]customfiletypes.CustomFileTypes, error) {
-				return customfiletypes.GetCustomFileTypes(ctx, service)
+				return getZIAAllPages[customfiletypes.CustomFileTypes](ctx, service, "/zia/api/v1/customFileTypes")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*customfiletypes.CustomFileTypes, error) {
 				return customfiletypes.Get(ctx, service, id)
@@ -859,7 +971,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceZPAGateways}: newListGetHandler(
 			resourceZPAGateways,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpagateways.ZPAGateways, error) {
-				return zpagateways.GetAll(ctx, service)
+				return getZIAAllPages[zpagateways.ZPAGateways](ctx, service, "/zia/api/v1/zpaGateways")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*zpagateways.ZPAGateways, error) {
 				return zpagateways.Get(ctx, service, id)
@@ -876,7 +988,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceSubClouds}: newListOnlyHandler(
 			resourceSubClouds,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]subclouds.SubClouds, error) {
-				return subclouds.GetAll(ctx, service)
+				return getZIAAllPages[subclouds.SubClouds](ctx, service, "/zia/api/v1/subclouds")
 			}),
 			subCloudSourceRecord,
 		),
@@ -888,21 +1000,21 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceIPv6DNS64Prefix}: newListOnlyHandler(
 			resourceIPv6DNS64Prefix,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipv6config.IPv6ConfigPrefix, error) {
-				return ipv6config.GetDns64Prefix(ctx, service)
+				return getZIAAllPages[ipv6config.IPv6ConfigPrefix](ctx, service, "/zia/api/v1/ipv6config/dns64prefix")
 			}),
 			ipv6ConfigPrefixSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceIPv6NAT64Prefix}: newListOnlyHandler(
 			resourceIPv6NAT64Prefix,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ipv6config.IPv6ConfigPrefix, error) {
-				return ipv6config.GetNat64Prefix(ctx, service)
+				return getZIAAllPages[ipv6config.IPv6ConfigPrefix](ctx, service, "/zia/api/v1/ipv6config/nat64prefix")
 			}),
 			ipv6ConfigPrefixSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourcePACFiles}: newListOnlyHandler(
 			resourcePACFiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]pacfiles.PACFileConfig, error) {
-				return pacfiles.GetPacFiles(ctx, service, "")
+				return getZIAAllPages[pacfiles.PACFileConfig](ctx, service, "/zia/api/v1/pacFiles")
 			}),
 			pacFileSourceRecord,
 		),
@@ -953,56 +1065,56 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceCloudAppPolicy}: newListOnlyHandler(
 			resourceCloudAppPolicy,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudapplications.CloudApplications, error) {
-				return cloudapplications.GetCloudApplicationPolicy(ctx, service, map[string]any{})
+				return getZIAAllPages[cloudapplications.CloudApplications](ctx, service, "/zia/api/v1/cloudApplications/policy")
 			}),
 			cloudApplicationPolicySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCloudAppSSLPol}: newListOnlyHandler(
 			resourceCloudAppSSLPol,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]cloudapplications.CloudApplications, error) {
-				return cloudapplications.GetCloudApplicationSSLPolicy(ctx, service, map[string]any{})
+				return getZIAAllPages[cloudapplications.CloudApplications](ctx, service, "/zia/api/v1/cloudApplications/sslPolicy")
 			}),
 			cloudApplicationPolicySourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDomainProfiles}: newListOnlyHandler(
 			resourceDomainProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.DomainProfiles, error) {
-				return saassecurityapi.GetDomainProfiles(ctx, service)
+				return getZIAAllPages[saassecurityapi.DomainProfiles](ctx, service, "/zia/api/v1/domainProfiles")
 			}),
 			domainProfileSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCASBTombstones}: newListOnlyHandler(
 			resourceCASBTombstones,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.QuarantineTombstoneLite, error) {
-				return saassecurityapi.GetQuarantineTombstoneLite(ctx, service)
+				return getZIAAllPages[saassecurityapi.QuarantineTombstoneLite](ctx, service, "/zia/api/v1/quarantineTombstoneTemplate/lite")
 			}),
 			casbTombstoneTemplateSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCASBEmailLabels}: newListOnlyHandler(
 			resourceCASBEmailLabels,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.CasbEmailLabel, error) {
-				return saassecurityapi.GetCasbEmailLabelLite(ctx, service)
+				return getZIAAllPages[saassecurityapi.CasbEmailLabel](ctx, service, "/zia/api/v1/casbEmailLabel/lite")
 			}),
 			casbEmailLabelSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCASBTenants}: newListOnlyHandler(
 			resourceCASBTenants,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]saassecurityapi.CasbTenants, error) {
-				return saassecurityapi.GetCasbTenantLite(ctx, service, map[string]any{})
+				return getZIAAllPages[saassecurityapi.CasbTenants](ctx, service, "/zia/api/v1/casbTenant/lite")
 			}),
 			casbTenantSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCASBDLPRules}: newListOnlyHandler(
 			resourceCASBDLPRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]casbdlprules.CasbDLPRules, error) {
-				return casbdlprules.GetAll(ctx, service)
+				return getZIAAllPages[casbdlprules.CasbDLPRules](ctx, service, "/zia/api/v1/casbDlpRules/all")
 			}),
 			casbDLPRuleSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceCASBMalwareRules}: newListOnlyHandler(
 			resourceCASBMalwareRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]casbmalwarerules.CasbMalwareRules, error) {
-				return casbmalwarerules.GetAll(ctx, service)
+				return getZIAAllPages[casbmalwarerules.CasbMalwareRules](ctx, service, "/zia/api/v1/casbMalwareRules/all")
 			}),
 			casbMalwareRuleSourceRecord,
 		),
@@ -1031,7 +1143,11 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceAdminUsers}: newListGetHandler(
 			resourceAdminUsers,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ziaadminusers.AdminUsers, error) {
-				return ziaadminusers.GetAllAdminUsers(ctx, service)
+				return getZIAAllPages[ziaadminusers.AdminUsers](
+					ctx,
+					service,
+					"/zia/api/v1/adminUsers?includeAuditorUsers=true&includeAdminUsers=true",
+				)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*ziaadminusers.AdminUsers, error) {
 				return ziaadminusers.GetAdminUsers(ctx, service, id)
@@ -1051,7 +1167,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceEmailProfiles}: newListGetHandler(
 			resourceEmailProfiles,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]emailprofiles.EmailProfiles, error) {
-				return emailprofiles.GetAll(ctx, service, nil)
+				return getZIAAllPages[emailprofiles.EmailProfiles](ctx, service, "/zia/api/v1/emailRecipientProfile")
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*emailprofiles.EmailProfiles, error) {
 				return emailprofiles.Get(ctx, service, id)

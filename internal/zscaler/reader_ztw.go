@@ -3,6 +3,7 @@ package zscaler
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	ztwactivation "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ztw/services/activation"
@@ -30,6 +31,66 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
+const (
+	ztwPageSize = 1000
+	ztwMaxPages = 1000
+)
+
+func ztwPaginate[T any](
+	ctx context.Context,
+	fetchPage func(context.Context, int) ([]T, error),
+) ([]T, error) {
+	var all []T
+	for page := 1; ; page++ {
+		if page > ztwMaxPages {
+			return nil, fmt.Errorf(
+				"ztw pagination exceeded the ceiling of %d pages (%d records)",
+				ztwMaxPages,
+				len(all),
+			)
+		}
+		items, err := fetchPage(ctx, page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if len(items) < ztwPageSize {
+			return all, nil
+		}
+	}
+}
+
+func getZTWAllPages[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	endpoint string,
+) ([]T, error) {
+	baseEndpoint, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse ztw list endpoint: %w", err)
+	}
+
+	items, err := ztwPaginate(ctx, func(ctx context.Context, page int) ([]T, error) {
+		pageEndpoint := *baseEndpoint
+		query := pageEndpoint.Query()
+		query.Set("pageSize", fmt.Sprintf("%d", ztwPageSize))
+		query.Set("page", fmt.Sprintf("%d", page))
+		pageEndpoint.RawQuery = query.Encode()
+
+		var pageItems []T
+		err = service.Client.ReadResource(ctx, pageEndpoint.String(), &pageItems)
+		return pageItems, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err = zsdk.ApplyJMESPathFromContext(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("apply ztw list filter: %w", err)
+	}
+	return items, nil
+}
+
 func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 	entries := map[resourceKey]resourceHandler{
 		{product: resources.ProductZTW, name: resourceZTWActivationStat}: newSingletonHandler(
@@ -40,7 +101,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceWorkloadGroups}: newListGetHandler(
 			resourceWorkloadGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwworkloadgroups.WorkloadGroup, error) {
-				return ztwworkloadgroups.GetAll(ctx, service)
+				return getZTWAllPages[ztwworkloadgroups.WorkloadGroup](ctx, service, "/ztw/api/v1/workloadGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwworkloadgroups.WorkloadGroup, error) {
 				return ztwworkloadgroups.Get(ctx, service, id)
@@ -50,7 +111,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourcePublicCloudAccts}: newListGetHandler(
 			resourcePublicCloudAccts,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwpubliccloudaccount.PublicCloudAccountDetails, error) {
-				return ztwpubliccloudaccount.GetAll(ctx, service)
+				return getZTWAllPages[ztwpubliccloudaccount.PublicCloudAccountDetails](ctx, service, "/ztw/api/v1/publicCloudAccountDetails")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwpubliccloudaccount.PublicCloudAccountDetails, error) {
 				return ztwpubliccloudaccount.GetAccountID(ctx, service, id)
@@ -60,7 +121,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceDNSGateways}: newListGetHandler(
 			resourceDNSGateways,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwdnsgateway.DNSGateway, error) {
-				return ztwdnsgateway.GetAll(ctx, service)
+				return getZTWAllPages[ztwdnsgateway.DNSGateway](ctx, service, "/ztw/api/v1/dnsGateways")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwdnsgateway.DNSGateway, error) {
 				return ztwdnsgateway.Get(ctx, service, id)
@@ -70,7 +131,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceForwardingGWs}: newListGetHandler(
 			resourceForwardingGWs,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwziaforwardinggateway.ECGateway, error) {
-				return ztwziaforwardinggateway.GetAll(ctx, service)
+				return getZTWAllPages[ztwziaforwardinggateway.ECGateway](ctx, service, "/ztw/api/v1/gateways")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwziaforwardinggateway.ECGateway, error) {
 				gateway, _, err := ztwziaforwardinggateway.Get(ctx, service, id)
@@ -81,7 +142,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceECGroups}: newListGetHandler(
 			resourceECGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwecgroup.EcGroup, error) {
-				return ztwecgroup.GetAll(ctx, service)
+				return getZTWAllPages[ztwecgroup.EcGroup](ctx, service, "/ztw/api/v1/ecgroup")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwecgroup.EcGroup, error) {
 				return ztwecgroup.Get(ctx, service, id)
@@ -91,7 +152,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceIPSourceGroups}: newListGetHandler(
 			resourceIPSourceGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwipsourcegroups.IPSourceGroups, error) {
-				return ztwipsourcegroups.GetAll(ctx, service)
+				return getZTWAllPages[ztwipsourcegroups.IPSourceGroups](ctx, service, "/ztw/api/v1/ipSourceGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwipsourcegroups.IPSourceGroups, error) {
 				return ztwipsourcegroups.Get(ctx, service, id)
@@ -101,7 +162,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceIPDestGroups}: newListGetHandler(
 			resourceIPDestGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwipdestinationgroups.IPDestinationGroups, error) {
-				return ztwipdestinationgroups.GetAll(ctx, service)
+				return getZTWAllPages[ztwipdestinationgroups.IPDestinationGroups](ctx, service, "/ztw/api/v1/ipDestinationGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwipdestinationgroups.IPDestinationGroups, error) {
 				return ztwipdestinationgroups.Get(ctx, service, id)
@@ -111,7 +172,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceIPGroups}: newListGetHandler(
 			resourceIPGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwipgroups.IPGroups, error) {
-				return ztwipgroups.GetAll(ctx, service)
+				return getZTWAllPages[ztwipgroups.IPGroups](ctx, service, "/ztw/api/v1/ipGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwipgroups.IPGroups, error) {
 				return ztwipgroups.Get(ctx, service, id)
@@ -121,7 +182,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceNetworkServices}: newListGetHandler(
 			resourceNetworkServices,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwnetworkservices.NetworkServices, error) {
-				return ztwnetworkservices.GetAllNetworkServices(ctx, service)
+				return getZTWAllPages[ztwnetworkservices.NetworkServices](ctx, service, "/ztw/api/v1/networkServices")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwnetworkservices.NetworkServices, error) {
 				return ztwnetworkservices.Get(ctx, service, id)
@@ -131,7 +192,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceNetworkSvcGroups}: newListGetHandler(
 			resourceNetworkSvcGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwnetworkservicegroups.NetworkServiceGroups, error) {
-				return ztwnetworkservicegroups.GetAllNetworkServiceGroups(ctx, service)
+				return getZTWAllPages[ztwnetworkservicegroups.NetworkServiceGroups](ctx, service, "/ztw/api/v1/networkServiceGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwnetworkservicegroups.NetworkServiceGroups, error) {
 				return ztwnetworkservicegroups.GetNetworkServiceGroups(ctx, service, id)
@@ -141,7 +202,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceAdminUsers}: newListGetHandler(
 			resourceAdminUsers,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwadminusers.AdminUsers, error) {
-				return ztwadminusers.GetAllAdminUsers(ctx, service)
+				return getZTWAllPages[ztwadminusers.AdminUsers](ctx, service, "/ztw/api/v1/adminUsers?includeAuditorUsers=true&includeAdminUsers=true")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwadminusers.AdminUsers, error) {
 				return ztwadminusers.GetAdminUsers(ctx, service, id)
@@ -161,7 +222,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceLocations}: newListGetHandler(
 			resourceLocations,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwlocation.Locations, error) {
-				return ztwlocation.GetAll(ctx, service)
+				return getZTWAllPages[ztwlocation.Locations](ctx, service, "/ztw/api/v1/location")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwlocation.Locations, error) {
 				return ztwlocation.GetLocation(ctx, service, id)
@@ -171,7 +232,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceLocationTmpls}: newListGetHandler(
 			resourceLocationTmpls,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwlocationtemplate.LocationTemplate, error) {
-				return ztwlocationtemplate.GetAll(ctx, service)
+				return getZTWAllPages[ztwlocationtemplate.LocationTemplate](ctx, service, "/ztw/api/v1/locationTemplate")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwlocationtemplate.LocationTemplate, error) {
 				return ztwlocationtemplate.Get(ctx, service, id)
@@ -181,7 +242,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceAccountGroups}: newListGetHandler(
 			resourceAccountGroups,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwaccountgroups.AccountGroups, error) {
-				return ztwaccountgroups.GetAllAccountGroups(ctx, service)
+				return getZTWAllPages[ztwaccountgroups.AccountGroups](ctx, service, "/ztw/api/v1/accountGroups")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwaccountgroups.AccountGroups, error) {
 				groups, err := ztwaccountgroups.GetAccountGroup(ctx, service, id)
@@ -198,7 +259,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourcePublicCloudInfo}: newListGetHandler(
 			resourcePublicCloudInfo,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwpubliccloudinfo.PublicCloudInfo, error) {
-				return ztwpubliccloudinfo.GetAllPublicCloudInfo(ctx, service)
+				return getZTWAllPages[ztwpubliccloudinfo.PublicCloudInfo](ctx, service, "/ztw/api/v1/publicCloudInfo")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwpubliccloudinfo.PublicCloudInfo, error) {
 				return ztwpubliccloudinfo.GetPublicCloudInfo(ctx, service, id)
@@ -208,14 +269,14 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceZTWZPAAppSegs}: newListOnlyHandler(
 			resourceZTWZPAAppSegs,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwzparesources.ZPAApplicationSegment, error) {
-				return ztwzparesources.GetZPAApplicationSegments(ctx, service)
+				return getZTWAllPages[ztwzparesources.ZPAApplicationSegment](ctx, service, "/ztw/api/v1/zpaResources/applicationSegments")
 			}),
 			ztwZPAApplicationSegmentSourceRecord,
 		),
 		{product: resources.ProductZTW, name: resourceForwardingRules}: newListGetHandler(
 			resourceForwardingRules,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwforwardingrules.ForwardingRules, error) {
-				return ztwforwardingrules.GetAll(ctx, service)
+				return getZTWAllPages[ztwforwardingrules.ForwardingRules](ctx, service, "/ztw/api/v1/ecRules/ecRdr")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwforwardingrules.ForwardingRules, error) {
 				return ztwforwardingrules.Get(ctx, service, id)
@@ -225,7 +286,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceTrafficDNSRules}: newListGetHandler(
 			resourceTrafficDNSRules,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwtrafficdnsrules.ECDNSRules, error) {
-				return ztwtrafficdnsrules.GetAll(ctx, service)
+				return getZTWAllPages[ztwtrafficdnsrules.ECDNSRules](ctx, service, "/ztw/api/v1/ecRules/ecDns")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwtrafficdnsrules.ECDNSRules, error) {
 				return ztwtrafficdnsrules.Get(ctx, service, id)
@@ -235,7 +296,7 @@ func addZTWHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZTW, name: resourceTrafficLogRules}: newListGetHandler(
 			resourceTrafficLogRules,
 			sdkProductList(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service) ([]ztwtrafficlogrules.ECTrafficLogRules, error) {
-				return ztwtrafficlogrules.GetAll(ctx, service)
+				return getZTWAllPages[ztwtrafficlogrules.ECTrafficLogRules](ctx, service, "/ztw/api/v1/ecRules/self")
 			}),
 			sdkProductGet(resources.ProductZTW, client, func(ctx context.Context, service *zsdk.Service, id int) (*ztwtrafficlogrules.ECTrafficLogRules, error) {
 				return ztwtrafficlogrules.Get(ctx, service, id)
