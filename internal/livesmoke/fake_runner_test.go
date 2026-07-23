@@ -32,7 +32,7 @@ var fakeSchemaFields = map[string]string{
 	"atp-malware-policy":           `[{"name":"blockPasswordProtectedArchiveFiles","allowed_modes":["standard"]},{"name":"blockUnscannableFiles","allowed_modes":["standard"]}]`,
 	"gre-tunnels":                  `[{"name":"id","allowed_modes":["standard"]},{"name":"sourceIp","allowed_modes":["standard"]},{"name":"internalIpRange","allowed_modes":["standard"]},{"name":"comment","allowed_modes":["standard"]},{"name":"withinCountry","allowed_modes":["standard"]}]`,
 	"intermediate-ca-certificates": `[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"defaultCertificate","allowed_modes":["standard"]},{"name":"certStartDate","allowed_modes":["standard"]},{"name":"certExpDate","allowed_modes":["standard"]}]`,
-	"location-groups":              `[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"comments","allowed_modes":["standard"]},{"name":"groupType","allowed_modes":["standard"]},{"name":"predefined","allowed_modes":["standard"]}]`,
+	"location-groups":              `[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"comments","allowed_modes":["standard"]},{"name":"groupType","allowed_modes":["standard"]},{"name":"dynamicLocationGroupCriteria","allowed_modes":["standard"]},{"name":"locations","allowed_modes":["standard"]},{"name":"predefined","allowed_modes":["standard"]}]`,
 	"locations":                    `[{"name":"id","allowed_modes":["standard"]},{"name":"name","allowed_modes":["standard"]},{"name":"description","allowed_modes":["standard"]},{"name":"ipAddresses","allowed_modes":["standard"]}]`,
 	"mobile-threat-settings":       `[{"name":"blockAppsSendingUnencryptedUserCredentials","allowed_modes":["standard"]},{"name":"blockAppsSendingDeviceIdentifier","allowed_modes":["standard"]}]`,
 	"org-information":              `[{"name":"name","allowed_modes":["standard"]},{"name":"city","allowed_modes":["standard"]}]`,
@@ -98,6 +98,8 @@ func (f *fakeRunner) fakeResourceBody(product, resource string) (string, string,
 		return "", `{"error":{"kind":"live_access_failed","message":"zscaler API request failed: list zia/gre-tunnels"}}` + "\n", 7
 	case "leaky-location-groups:zia:location-groups":
 		return `[{"id":5,"name":"Branch groups","lastModUser":{"id":1,"name":"Admin"},"dynamicLocationGroupCriteria":{"name":{"matchString":"secret branch"}},"locations":[{"id":1,"name":"HQ"}]}]` + "\n", "", 0
+	case "misplaced-location-group-fields:zia:location-groups":
+		return `[{"id":5,"name":"Branch groups","locations":[{"id":1,"name":"HQ","city":"New York","managedBy":{"id":9,"name":"Admin"}}]}]` + "\n", "", 0
 	case "unexpected-field:zia:rule-labels":
 		return `[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4,"unexpectedField":"not a value to print"}]` + "\n", "", 0
 	}
@@ -113,7 +115,7 @@ func (f *fakeRunner) fakeResourceBody(product, resource string) (string, string,
 	case "zia:locations":
 		return `[{"id":1,"name":"HQ","description":"<REDACTED:SECRET>","ipAddresses":["192.0.2.10"]}]` + "\n", "", 0
 	case "zia:location-groups":
-		return `[{"id":5,"name":"Branch groups","comments":"","groupType":"STATIC_GROUP","predefined":false}]` + "\n", "", 0
+		return `[{"id":5,"name":"Branch groups","comments":"","groupType":"STATIC_GROUP","locations":[{"id":1,"name":"HQ"},{"id":2,"name":"HQ sublocation"}],"predefined":false}]` + "\n", "", 0
 	case "zia:rule-labels":
 		return `[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4}]` + "\n", "", 0
 	case "zia:static-ips":

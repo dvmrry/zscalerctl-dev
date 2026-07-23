@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
 )
 
@@ -188,6 +189,106 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 	}
 }
 
+func TestGetZIALocationGroupsAllPagesFetchesMemberLocations(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	var productRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zia/api/v1/locations/groups" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequests = append(productRequests, cloned)
+			switch request.URL.Query().Get("page") {
+			case "1":
+				page := make([]locationgroups.LocationGroup, 1000)
+				for index := range page {
+					page[index] = locationgroups.LocationGroup{
+						ID:   index + 1,
+						Name: "pagination-regression-group",
+					}
+				}
+				encoded, err := json.Marshal(page)
+				if err != nil {
+					return nil, err
+				}
+				body = encoded
+			case "2":
+				body = []byte(`[
+					{
+						"id": 1001,
+						"name": "Branches",
+						"groupType": "STATIC_GROUP",
+						"locations": [
+							{"id": 601, "name": "Branch parent"},
+							{"id": 602, "name": "Branch sublocation"}
+						]
+					}
+				]`)
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte(`{"message":"unexpected page"}`)
+			}
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	groups, err := getZIALocationGroupsAllPages(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIALocationGroupsAllPages() error = %v, want nil", err)
+	}
+	if got, want := len(productRequests), 2; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() request count = %d, want %d", got, want)
+	}
+	for index, request := range productRequests {
+		if got, want := request.URL.Host, "api.zsapi.net"; got != want {
+			t.Errorf("request %d host = %q, want %q", index+1, got, want)
+		}
+		query := request.URL.Query()
+		for key, want := range map[string]string{
+			"fetchLocations": "true",
+			"page":           strconv.Itoa(index + 1),
+			"pageSize":       "1000",
+		} {
+			if got := query.Get(key); got != want {
+				t.Errorf("request %d query[%q] = %q, want %q", index+1, key, got, want)
+			}
+		}
+	}
+	if got, want := len(groups), 1001; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() group count = %d, want %d", got, want)
+	}
+	memberGroup := groups[len(groups)-1]
+	if got, want := len(memberGroup.Locations), 2; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() member count = %d, want %d", got, want)
+	}
+	if got, want := memberGroup.Locations[1].ID, 602; got != want {
+		t.Errorf("groups[last].Locations[1].ID = %d, want %d", got, want)
+	}
+	if got, want := memberGroup.Locations[1].Name, "Branch sublocation"; got != want {
+		t.Errorf("groups[last].Locations[1].Name = %q, want %q", got, want)
+	}
+}
+
 func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -293,9 +394,9 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 }
 
 // TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination guards against
-// regressing the wrapped users/locations/url-categories/url-filtering-rules
-// endpoints back to unbounded or single-page SDK calls, mirroring the
-// networkApplications source guard.
+// regressing the wrapped users/locations/location-groups/url-categories/
+// url-filtering-rules endpoints back to unbounded or single-page SDK calls,
+// mirroring the networkApplications source guard.
 func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	t.Parallel()
 
@@ -308,6 +409,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	for _, banned := range []string{
 		"return ziausers.GetAllUsers(ctx, service",
 		"return locationmanagement.GetAll(ctx, service)",
+		"return locationgroups.GetAll(ctx, service",
 		"return urlcategories.GetAll(ctx, service",
 		"return urlfilteringpolicies.GetAll(ctx, service)",
 	} {
@@ -318,6 +420,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	for _, want := range []string{
 		"getZIAUsersAllPages(ctx, service)",
 		"getZIALocationsAllPages(ctx, service)",
+		"getZIALocationGroupsAllPages(ctx, service)",
 		"getZIAURLCategoriesAll(ctx, service)",
 		"getZIAURLFilteringRulesAllPages(ctx, service)",
 	} {

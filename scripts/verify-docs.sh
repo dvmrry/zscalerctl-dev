@@ -75,6 +75,14 @@ if ! grep -Fq "github.com/zscaler/zscaler-sdk-go/v3 ${sdk_version}" docs/THREAT_
   fail=1
 fi
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "verify-docs: jq is required to test the documented location-group validation filter" >&2
+  fail=1
+elif ! bash scripts/testdata/test-location-group-members-validation.sh; then
+  echo "verify-docs: documented location-group validation filter failed its fixtures" >&2
+  fail=1
+fi
+
 if (( fail != 0 )); then
   exit 1
 fi
