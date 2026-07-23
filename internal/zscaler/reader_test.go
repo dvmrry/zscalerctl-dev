@@ -1638,6 +1638,13 @@ func TestReaderListURLCategoriesProjectsSDKShapeThroughAllowList(t *testing.T) {
 								RetainParentKeywordCount: 2,
 							},
 						},
+						{
+							ID:              "CUSTOM_TLD_01",
+							ConfiguredName:  "example TLD category",
+							Type:            "TLD_CATEGORY",
+							CustomCategory:  true,
+							CustomUrlsCount: 1,
+						},
 					}, nil
 				},
 				func(context.Context, string) (*urlcategories.URLCategory, error) { return nil, nil },
@@ -1658,7 +1665,11 @@ func TestReaderListURLCategoriesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProjectRecords(zia url-categories) error = %v, want nil", err)
 	}
-	got := projected.Records()[0].Fields()
+	projectedRecords := projected.Records()
+	if got, want := len(projectedRecords), 2; got != want {
+		t.Fatalf("ProjectRecords(zia url-categories) record count = %d, want %d", got, want)
+	}
+	got := projectedRecords[0].Fields()
 	for _, field := range []string{"configuredName", "description"} {
 		value := toString(got[field])
 		if strings.Contains(value, canary) {
@@ -1712,6 +1723,17 @@ func TestReaderListURLCategoriesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected url-categories SDK shape) error = %v, want nil", err)
+	}
+
+	tld := projectedRecords[1].Fields()
+	if got, want := tld["type"], "TLD_CATEGORY"; got != want {
+		t.Errorf("projected TLD category type = %v, want %v", got, want)
+	}
+	if got, want := tld["customUrlsCount"], 1; got != want {
+		t.Errorf("projected TLD category customUrlsCount = %v, want %v", got, want)
+	}
+	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, tld); err != nil {
+		t.Errorf("AssertRenderedSubset(projected TLD category SDK shape) error = %v, want nil", err)
 	}
 }
 
