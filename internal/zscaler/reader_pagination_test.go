@@ -188,6 +188,85 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 	}
 }
 
+func TestGetZIALocationGroupsAllPagesFetchesMemberLocations(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	var productRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := `{"access_token":"test-token","expires_in":60}`
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zia/api/v1/locations/groups" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequests = append(productRequests, cloned)
+			body = `[
+				{
+					"id": 501,
+					"name": "Branches",
+					"groupType": "STATIC_GROUP",
+					"locations": [
+						{"id": 601, "name": "Branch parent"},
+						{"id": 602, "name": "Branch sublocation"}
+					]
+				}
+			]`
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = `{}`
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	groups, err := getZIALocationGroupsAllPages(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIALocationGroupsAllPages() error = %v, want nil", err)
+	}
+	if got, want := len(productRequests), 1; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() request count = %d, want %d", got, want)
+	}
+	request := productRequests[0]
+	if got, want := request.URL.Host, "api.zsapi.net"; got != want {
+		t.Errorf("getZIALocationGroupsAllPages() host = %q, want %q", got, want)
+	}
+	query := request.URL.Query()
+	for key, want := range map[string]string{
+		"fetchLocations": "true",
+		"page":           "1",
+		"pageSize":       "1000",
+	} {
+		if got := query.Get(key); got != want {
+			t.Errorf("getZIALocationGroupsAllPages() query[%q] = %q, want %q", key, got, want)
+		}
+	}
+	if got, want := len(groups), 1; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() group count = %d, want %d", got, want)
+	}
+	if got, want := len(groups[0].Locations), 2; got != want {
+		t.Fatalf("getZIALocationGroupsAllPages() member count = %d, want %d", got, want)
+	}
+	if got, want := groups[0].Locations[1].ID, 602; got != want {
+		t.Errorf("groups[0].Locations[1].ID = %d, want %d", got, want)
+	}
+	if got, want := groups[0].Locations[1].Name, "Branch sublocation"; got != want {
+		t.Errorf("groups[0].Locations[1].Name = %q, want %q", got, want)
+	}
+}
+
 func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -293,9 +372,9 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 }
 
 // TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination guards against
-// regressing the wrapped users/locations/url-categories/url-filtering-rules
-// endpoints back to unbounded or single-page SDK calls, mirroring the
-// networkApplications source guard.
+// regressing the wrapped users/locations/location-groups/url-categories/
+// url-filtering-rules endpoints back to unbounded or single-page SDK calls,
+// mirroring the networkApplications source guard.
 func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	t.Parallel()
 
@@ -308,6 +387,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	for _, banned := range []string{
 		"return ziausers.GetAllUsers(ctx, service",
 		"return locationmanagement.GetAll(ctx, service)",
+		"return locationgroups.GetAll(ctx, service",
 		"return urlcategories.GetAll(ctx, service",
 		"return urlfilteringpolicies.GetAll(ctx, service)",
 	} {
@@ -318,6 +398,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	for _, want := range []string{
 		"getZIAUsersAllPages(ctx, service)",
 		"getZIALocationsAllPages(ctx, service)",
+		"getZIALocationGroupsAllPages(ctx, service)",
 		"getZIAURLCategoriesAll(ctx, service)",
 		"getZIAURLFilteringRulesAllPages(ctx, service)",
 	} {

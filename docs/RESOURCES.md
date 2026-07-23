@@ -150,14 +150,20 @@ Fields:
 | `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `deleted` | Operational metadata | `standard`, `share`, `paranoid` | Whether the group is marked deleted. |
 | `groupType` | Operational metadata | `standard`, `share`, `paranoid` | Static or dynamic location group type. |
+| `dynamicLocationGroupCriteria` | Tenant configuration | `standard`, `share` | Reviewed dynamic-membership criteria. Name and city match strings and `managedBy` references are standard-only; nested extension maps never render. |
 | `comments` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
+| `locations` | Tenant configuration | `standard` | Associated locations and sublocations returned as id/name references only. Nested extension maps never render. |
 | `lastModTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
 | `predefined` | Operational metadata | `standard`, `share`, `paranoid` | Whether the group is predefined by Zscaler. |
+| `lastModUser` | Secret | never | Admin identity reference; explicitly modeled and dropped by projection. |
 
-The SDK also returns nested dynamic criteria, member locations, and admin
-references such as `lastModUser`. The reader maps those objects into source
-records, but the catalog does not allow them to render, so projection drops
-them.
+List and dump collection request `fetchLocations=true`; this is required for
+the API to populate associated location references. Zscaler location groups
+can contain parent locations and sublocations independently, so the returned
+array is intentionally preserved as a flat set of id/name members rather than
+having parent-child relationships inferred locally. See
+[Location Group Members Validation](LOCATION_GROUP_MEMBERS_VALIDATION.md) for
+the focused downstream check.
 
 ## ZIA Rule Labels
 

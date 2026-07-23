@@ -22,10 +22,11 @@ var (
 		"managedBy", "city", "primaryDestVip", "secondaryDestVip",
 	}
 	deniedResourceExactKeys = map[string][]string{
-		"location-groups": {"lastModUser", "dynamicLocationGroupCriteria", "locations"},
+		"location-groups": {"extensions", "lastModUser"},
 	}
 	allowedResourceDeniedKeys = map[string][]string{
 		"atp-malware-policy":           {"blockPasswordProtectedArchiveFiles"},
+		"location-groups":              {"city", "managedBy"},
 		"mobile-threat-settings":       {"blockAppsSendingUnencryptedUserCredentials"},
 		"org-information":              {"city"},
 		"intermediate-ca-certificates": {"certStartDate", "certExpDate", "defaultCertificate"},

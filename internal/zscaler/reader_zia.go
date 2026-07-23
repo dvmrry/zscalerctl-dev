@@ -154,6 +154,20 @@ func getZIALocationsAllPages(ctx context.Context, service *zsdk.Service) ([]loca
 	})
 }
 
+// getZIALocationGroupsAllPages reads /zia/api/v1/locations/groups with the
+// fetchLocations option enabled so list and dump records include associated
+// parent locations and sublocations. It preserves the SDK's documented
+// 1000-record page size while replacing its unbounded ReadAllPages loop with
+// ziaPaginate's fail-closed page ceiling.
+func getZIALocationGroupsAllPages(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
+	const pageSize = 1000
+	return ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]locationgroups.LocationGroup, error) {
+		var items []locationgroups.LocationGroup
+		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/locations/groups?fetchLocations=true", page, &items, size)
+		return items, err
+	})
+}
+
 // getZIAURLFilteringRulesAllPages reads /zia/api/v1/urlFilteringRules with an
 // explicit bounded page walk. The vendored SDK's GetAll performs one bare Read,
 // so tenants with more than the API's 100-record default page are silently
@@ -205,10 +219,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceLocationGroups}: newListGetHandler(
 			resourceLocationGroups,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]locationgroups.LocationGroup, error) {
-				fetchLocations := false
-				return locationgroups.GetAll(ctx, service, &locationgroups.GetAllFilterOptions{
-					FetchLocations: &fetchLocations,
-				})
+				return getZIALocationGroupsAllPages(ctx, service)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*locationgroups.LocationGroup, error) {
 				return locationgroups.GetLocationGroup(ctx, service, id)
