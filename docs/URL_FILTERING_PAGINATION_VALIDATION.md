@@ -23,9 +23,10 @@ go test -race ./internal/zscaler \
   -count=1
 ```
 
-The transport regression returns exactly 100 records on page 1 and 33 on page
-2, then verifies that all 133 records are returned and no third request is
-made. The source guard prevents this resource from being rewired to the
+The transport regressions cover both a 100+33 split and an exact 100-record
+total. They verify that all records are returned, that the short page stops the
+walk, and that an exact multiple causes the required empty terminal-page
+request. The source guard prevents this resource from being rewired to the
 vendored SDK's single-page `GetAll` implementation.
 
 ## Live Tenant Check
@@ -33,9 +34,10 @@ vendored SDK's single-page `GetAll` implementation.
 Build the branch and use the normal `ZSCALERCTL_*` environment configuration.
 Do not add credentials or tenant payloads to this repository.
 
-```sh
+```bash
 go build -mod=vendor -o ./zscalerctl ./cmd/zscalerctl
 ./zscalerctl doctor
+set -o pipefail
 ./zscalerctl --timeout 30s --format json zia url-filtering-rules list |
   jq '{count: length, unique_ids: ([.[].id] | unique | length)}'
 ```
@@ -51,7 +53,9 @@ PowerShell equivalent for a Windows validation host:
 
 ```powershell
 go build -mod=vendor -o zscalerctl.exe ./cmd/zscalerctl
-$rules = .\zscalerctl.exe --timeout 30s --format json zia url-filtering-rules list | ConvertFrom-Json
+$json = .\zscalerctl.exe --timeout 30s --format json zia url-filtering-rules list
+if ($LASTEXITCODE -ne 0) { throw "zscalerctl exited $LASTEXITCODE" }
+$rules = ConvertFrom-Json -InputObject ($json -join "`n")
 [pscustomobject]@{
   Count = $rules.Count
   UniqueIds = ($rules.id | Sort-Object -Unique).Count
