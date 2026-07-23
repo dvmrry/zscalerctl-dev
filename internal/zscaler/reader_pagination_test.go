@@ -2,9 +2,13 @@ package zscaler
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
+
+	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 )
 
 // TestZCCPaginateCeilingFailsClosed drives the zccPaginate page ceiling: an
@@ -86,6 +90,78 @@ func TestZIAPaginateStopsOnShortPage(t *testing.T) {
 	}
 	if len(got) != pageSize+5 {
 		t.Errorf("ziaPaginate returned %d records, want %d", len(got), pageSize+5)
+	}
+}
+
+func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	var productRequest *http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := `{"access_token":"test-token","expires_in":60}`
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zia/api/v1/urlCategories" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequest = cloned
+			body = `[
+				{"id":"CUSTOM_URL","type":"URL_CATEGORY"},
+				{"id":"CUSTOM_TLD","type":"TLD_CATEGORY","customUrlsCount":1}
+			]`
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = `{}`
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
+	}
+	if productRequest == nil {
+		t.Fatal("getZIAURLCategoriesAll() product request = nil, want URL-category request")
+	}
+	if got, want := productRequest.URL.Host, "api.zsapi.net"; got != want {
+		t.Errorf("getZIAURLCategoriesAll() host = %q, want %q", got, want)
+	}
+	query := productRequest.URL.Query()
+	for key, want := range map[string]string{
+		"includeOnlyUrlKeywordCounts": "true",
+		"page":                        "1",
+		"pageSize":                    "5000",
+		"type":                        "ALL",
+	} {
+		if got := query.Get(key); got != want {
+			t.Errorf("getZIAURLCategoriesAll() query[%q] = %q, want %q", key, got, want)
+		}
+	}
+	if got, want := len(categories), 2; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() category count = %d, want %d", got, want)
+	}
+	if got, want := categories[0].Type, "URL_CATEGORY"; got != want {
+		t.Errorf("getZIAURLCategoriesAll() categories[0].Type = %q, want %q", got, want)
+	}
+	if got, want := categories[1].Type, "TLD_CATEGORY"; got != want {
+		t.Errorf("getZIAURLCategoriesAll() categories[1].Type = %q, want %q", got, want)
+	}
+	if got, want := categories[1].CustomUrlsCount, 1; got != want {
+		t.Errorf("getZIAURLCategoriesAll() categories[1].CustomUrlsCount = %d, want %d", got, want)
 	}
 }
 

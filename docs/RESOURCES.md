@@ -324,6 +324,10 @@ zscalerctl zia url-categories list
 zscalerctl zia url-categories get <id>
 ```
 
+The list includes ordinary `URL_CATEGORY` records and `TLD_CATEGORY` records.
+List responses request the API's count-only payload; use `get <id>` when the
+category's members are needed. TLD members use the existing `urls` field.
+
 Fields:
 
 | Field | Classification | Modes | Notes |
