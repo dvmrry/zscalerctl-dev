@@ -112,9 +112,8 @@ remain unchanged.
 - The Go error-flow anti-pattern checker over every changed Go file.
 - `git diff --check`.
 
-`make check` reached the required adversarial-review gate with every preceding
-gate passing. The final complete run is intentionally deferred until an
-approved review artifact exists.
+After the approved review artifact was added, a complete clean-environment
+`make check` passed on the final runtime head and review documentation.
 
 ## Known Deferrals
 
@@ -208,6 +207,7 @@ inventory gates passed.
 The reviewer independently passed `git diff --check`, formatting checks,
 `go vet -mod=vendor ./internal/zscaler`, and focused ordinary and race tests.
 The builder separately passed the complete ordinary and race repository suites
-on the final runtime head. No credentialed tenant was used.
+and the complete `make check` gate on the final runtime head. No credentialed
+tenant was used.
 
 Verdict: approve
