@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
 )
 
@@ -194,32 +195,51 @@ func TestGetZIALocationGroupsAllPagesFetchesMemberLocations(t *testing.T) {
 
 	var productRequests []*http.Request
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		body := `{"access_token":"test-token","expires_in":60}`
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
 		statusCode := http.StatusOK
 		if request.URL.Path == "/zia/api/v1/locations/groups" {
 			cloned := request.Clone(request.Context())
 			clonedURL := *request.URL
 			cloned.URL = &clonedURL
 			productRequests = append(productRequests, cloned)
-			body = `[
-				{
-					"id": 501,
-					"name": "Branches",
-					"groupType": "STATIC_GROUP",
-					"locations": [
-						{"id": 601, "name": "Branch parent"},
-						{"id": 602, "name": "Branch sublocation"}
-					]
+			switch request.URL.Query().Get("page") {
+			case "1":
+				page := make([]locationgroups.LocationGroup, 1000)
+				for index := range page {
+					page[index] = locationgroups.LocationGroup{
+						ID:   index + 1,
+						Name: "pagination-regression-group",
+					}
 				}
-			]`
+				encoded, err := json.Marshal(page)
+				if err != nil {
+					return nil, err
+				}
+				body = encoded
+			case "2":
+				body = []byte(`[
+					{
+						"id": 1001,
+						"name": "Branches",
+						"groupType": "STATIC_GROUP",
+						"locations": [
+							{"id": 601, "name": "Branch parent"},
+							{"id": 602, "name": "Branch sublocation"}
+						]
+					}
+				]`)
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte(`{"message":"unexpected page"}`)
+			}
 		} else if request.URL.Path != "/oauth2/v1/token" {
 			statusCode = http.StatusNotFound
-			body = `{}`
+			body = []byte(`{}`)
 		}
 		return &http.Response{
 			StatusCode: statusCode,
 			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
 			Request:    request,
 		}, nil
 	})
@@ -236,34 +256,36 @@ func TestGetZIALocationGroupsAllPagesFetchesMemberLocations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getZIALocationGroupsAllPages() error = %v, want nil", err)
 	}
-	if got, want := len(productRequests), 1; got != want {
+	if got, want := len(productRequests), 2; got != want {
 		t.Fatalf("getZIALocationGroupsAllPages() request count = %d, want %d", got, want)
 	}
-	request := productRequests[0]
-	if got, want := request.URL.Host, "api.zsapi.net"; got != want {
-		t.Errorf("getZIALocationGroupsAllPages() host = %q, want %q", got, want)
-	}
-	query := request.URL.Query()
-	for key, want := range map[string]string{
-		"fetchLocations": "true",
-		"page":           "1",
-		"pageSize":       "1000",
-	} {
-		if got := query.Get(key); got != want {
-			t.Errorf("getZIALocationGroupsAllPages() query[%q] = %q, want %q", key, got, want)
+	for index, request := range productRequests {
+		if got, want := request.URL.Host, "api.zsapi.net"; got != want {
+			t.Errorf("request %d host = %q, want %q", index+1, got, want)
+		}
+		query := request.URL.Query()
+		for key, want := range map[string]string{
+			"fetchLocations": "true",
+			"page":           strconv.Itoa(index + 1),
+			"pageSize":       "1000",
+		} {
+			if got := query.Get(key); got != want {
+				t.Errorf("request %d query[%q] = %q, want %q", index+1, key, got, want)
+			}
 		}
 	}
-	if got, want := len(groups), 1; got != want {
+	if got, want := len(groups), 1001; got != want {
 		t.Fatalf("getZIALocationGroupsAllPages() group count = %d, want %d", got, want)
 	}
-	if got, want := len(groups[0].Locations), 2; got != want {
+	memberGroup := groups[len(groups)-1]
+	if got, want := len(memberGroup.Locations), 2; got != want {
 		t.Fatalf("getZIALocationGroupsAllPages() member count = %d, want %d", got, want)
 	}
-	if got, want := groups[0].Locations[1].ID, 602; got != want {
-		t.Errorf("groups[0].Locations[1].ID = %d, want %d", got, want)
+	if got, want := memberGroup.Locations[1].ID, 602; got != want {
+		t.Errorf("groups[last].Locations[1].ID = %d, want %d", got, want)
 	}
-	if got, want := groups[0].Locations[1].Name, "Branch sublocation"; got != want {
-		t.Errorf("groups[0].Locations[1].Name = %q, want %q", got, want)
+	if got, want := memberGroup.Locations[1].Name, "Branch sublocation"; got != want {
+		t.Errorf("groups[last].Locations[1].Name = %q, want %q", got, want)
 	}
 }
 

@@ -226,6 +226,21 @@ func TestLeakAndShapeFailures(t *testing.T) {
 	}
 }
 
+func TestMisplacedLocationGroupFieldsFailListAndDumpSmoke(t *testing.T) {
+	t.Parallel()
+
+	code, _, errb := runMode(t, "misplaced-location-group-fields", Options{NoManifest: true, SkipCredentialCheck: true}, noEnv)
+	if code == 0 {
+		t.Fatal("misplaced-location-group-fields exit = 0, want failure")
+	}
+	for _, want := range []string{
+		"[FAIL] zia location-groups list contains denied field key(s): city managedBy",
+		"[FAIL] dump zia location-groups contains denied field key(s): city managedBy",
+	} {
+		wantContains(t, "stderr", errb, want)
+	}
+}
+
 func TestLeakFailureWritesSummary(t *testing.T) {
 	t.Parallel()
 	_, _, errb := runMode(t, "leaky", Options{NoManifest: true, SkipCredentialCheck: true}, noEnv)

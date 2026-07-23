@@ -98,6 +98,8 @@ func (f *fakeRunner) fakeResourceBody(product, resource string) (string, string,
 		return "", `{"error":{"kind":"live_access_failed","message":"zscaler API request failed: list zia/gre-tunnels"}}` + "\n", 7
 	case "leaky-location-groups:zia:location-groups":
 		return `[{"id":5,"name":"Branch groups","lastModUser":{"id":1,"name":"Admin"},"dynamicLocationGroupCriteria":{"name":{"matchString":"secret branch"}},"locations":[{"id":1,"name":"HQ"}]}]` + "\n", "", 0
+	case "misplaced-location-group-fields:zia:location-groups":
+		return `[{"id":5,"name":"Branch groups","locations":[{"id":1,"name":"HQ","city":"New York","managedBy":{"id":9,"name":"Admin"}}]}]` + "\n", "", 0
 	case "unexpected-field:zia:rule-labels":
 		return `[{"id":2,"name":"Production","description":"","lastModifiedTime":1632411150,"referencedRuleCount":4,"unexpectedField":"not a value to print"}]` + "\n", "", 0
 	}

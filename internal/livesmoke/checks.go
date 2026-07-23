@@ -24,9 +24,9 @@ var (
 	deniedResourceExactKeys = map[string][]string{
 		"location-groups": {"extensions", "lastModUser"},
 	}
-	allowedResourceDeniedKeys = map[string][]string{
+	allowedResourceDeniedPaths = map[string][]string{
 		"atp-malware-policy":           {"blockPasswordProtectedArchiveFiles"},
-		"location-groups":              {"city", "managedBy"},
+		"location-groups":              {"dynamicLocationGroupCriteria.city", "dynamicLocationGroupCriteria.managedBy"},
 		"mobile-threat-settings":       {"blockAppsSendingUnencryptedUserCredentials"},
 		"org-information":              {"city"},
 		"intermediate-ca-certificates": {"certStartDate", "certExpDate", "defaultCertificate"},
@@ -41,9 +41,10 @@ const manifestWarning = "sanitized dumps remain confidential operational data"
 
 // findDeniedKeys returns the sorted, unique set of denied field keys anywhere in
 // data (recursively, every nested object), for the given resource. A key is
-// denied when it is not in the resource's reviewed allow-list AND it is either
-// an exact denied key (global or per-resource) or matches the denied-key
-// pattern. Mirrors the jq `.. | objects | keys` recursive scan.
+// denied when its exact path is not in the resource's reviewed allow-list AND
+// it is either an exact denied key (global or per-resource) or matches the
+// denied-key pattern. Array indices are omitted from paths. Mirrors the jq
+// `.. | objects | keys` recursive scan while keeping exceptions path-scoped.
 func findDeniedKeys(resource string, data any) []string {
 	exact := map[string]bool{}
 	for _, k := range deniedExactKeys {
@@ -53,28 +54,32 @@ func findDeniedKeys(resource string, data any) []string {
 		exact[k] = true
 	}
 	allowed := map[string]bool{}
-	for _, k := range allowedResourceDeniedKeys[resource] {
-		allowed[k] = true
+	for _, path := range allowedResourceDeniedPaths[resource] {
+		allowed[path] = true
 	}
 
 	found := map[string]bool{}
-	var walk func(v any)
-	walk = func(v any) {
+	var walk func(v any, path string)
+	walk = func(v any, path string) {
 		switch t := v.(type) {
 		case map[string]any:
 			for key, val := range t {
-				if !allowed[key] && (exact[key] || deniedKeyPattern.MatchString(key)) {
+				keyPath := key
+				if path != "" {
+					keyPath = path + "." + key
+				}
+				if !allowed[keyPath] && (exact[key] || deniedKeyPattern.MatchString(key)) {
 					found[key] = true
 				}
-				walk(val)
+				walk(val, keyPath)
 			}
 		case []any:
 			for _, e := range t {
-				walk(e)
+				walk(e, path)
 			}
 		}
 	}
-	walk(data)
+	walk(data, "")
 	return sortedKeys(found)
 }
 

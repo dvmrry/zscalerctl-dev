@@ -27,6 +27,8 @@ func TestFindDeniedKeys(t *testing.T) {
 		{"preSharedKey leak", "locations", `[{"id":1,"name":"HQ","preSharedKey":"plain-secret"}]`, []string{"preSharedKey"}},
 		{"pattern credential", "mobile-threat-settings", `{"blockAppsSendingUnencryptedUserCredentials":true,"clientCredential":"x"}`, []string{"clientCredential"}},
 		{"reviewed location-group members and criteria", "location-groups", `[{"id":5,"name":"g","dynamicLocationGroupCriteria":{"city":{"matchString":"NY","matchType":"CONTAINS"},"managedBy":[{"id":7,"name":"Self"}]},"locations":[{"id":1,"name":"HQ"}]}]`, nil},
+		{"location-group reviewed keys under member path", "location-groups", `[{"id":5,"name":"g","locations":[{"id":1,"name":"HQ","city":"NY","managedBy":{"id":9,"name":"Admin"}}]}]`, []string{"city", "managedBy"}},
+		{"location-group reviewed city under wrong criteria path", "location-groups", `[{"id":5,"name":"g","dynamicLocationGroupCriteria":{"name":{"city":"NY"}}}]`, []string{"city"}},
 		{"location-group admin and extension leak", "location-groups", `[{"id":5,"name":"g","lastModUser":{"id":1},"locations":[{"id":1,"extensions":{"opaque":"canary"}}]}]`, []string{"extensions", "lastModUser"}},
 		{"allowed city for org-info", "org-information", `{"name":"t","city":"NY"}`, nil},
 		{"allowed atp password field", "atp-malware-policy", `{"blockPasswordProtectedArchiveFiles":true,"blockUnscannableFiles":false}`, nil},

@@ -22,10 +22,10 @@ Run the focused ordinary and race tests without credentials:
 
 ```sh
 go test ./internal/zscaler ./internal/livesmoke \
-  -run '^(TestGetZIALocationGroupsAllPagesFetchesMemberLocations|TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination|TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList|TestLocationGroup.*|TestFindDeniedKeys|TestGoodFixturePasses)$' \
+  -run '^(TestGetZIALocationGroupsAllPagesFetchesMemberLocations|TestZIAPaginate.*|TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination|TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList|TestLocationGroup.*|TestFindDeniedKeys|TestGoodFixturePasses|TestMisplacedLocationGroupFieldsFailListAndDumpSmoke)$' \
   -count=1
 go test -race ./internal/zscaler ./internal/livesmoke \
-  -run '^(TestGetZIALocationGroupsAllPagesFetchesMemberLocations|TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination|TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList|TestLocationGroup.*|TestFindDeniedKeys|TestGoodFixturePasses)$' \
+  -run '^(TestGetZIALocationGroupsAllPagesFetchesMemberLocations|TestZIAPaginate.*|TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination|TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList|TestLocationGroup.*|TestFindDeniedKeys|TestGoodFixturePasses|TestMisplacedLocationGroupFieldsFailListAndDumpSmoke)$' \
   -count=1
 ```
 
@@ -48,15 +48,8 @@ go build -mod=vendor -o ./zscalerctl ./cmd/zscalerctl
 GROUP_FRAGMENT='replace with a known group name fragment'
 set -o pipefail
 ./zscalerctl --timeout 30s --format json \
-  --fields id,name,groupType,locations \
   zia location-groups list --filter "name~$GROUP_FRAGMENT" |
-  jq '[.[] | {
-    id,
-    name,
-    groupType,
-    member_count: ((.locations // []) | length),
-    members: [(.locations // [])[] | {id, name}]
-  }]'
+  jq -e -f docs/testdata/location-group-members-summary.jq
 ```
 
 Expected result:
@@ -65,8 +58,9 @@ Expected result:
   admin-console membership.
 - `members` includes the known sublocation by id and name, even if its parent
   location is not independently assigned to that group.
-- No member object contains an `extensions` field, and no group contains
-  `lastModUser`.
+- The validation filter checks the un-narrowed records before producing the
+  summary. It fails nonzero if any group contains `lastModUser` or any member
+  object contains a field other than `id` and `name`.
 - The command exits 0. A page error must produce the normal structured error
   envelope and a nonzero exit instead of a shorter successful array.
 
@@ -76,10 +70,22 @@ PowerShell equivalent for a Windows validation host:
 go build -mod=vendor -o zscalerctl.exe ./cmd/zscalerctl
 $GroupFragment = 'replace with a known group name fragment'
 $json = .\zscalerctl.exe --timeout 30s --format json `
-  --fields id,name,groupType,locations `
   zia location-groups list --filter "name~$GroupFragment"
 if ($LASTEXITCODE -ne 0) { throw "zscalerctl exited $LASTEXITCODE" }
 $groups = ConvertFrom-Json -InputObject ($json -join "`n")
+foreach ($group in $groups) {
+  if ($group.PSObject.Properties.Name -contains 'lastModUser') {
+    throw "forbidden lastModUser field present"
+  }
+  foreach ($member in @($group.locations)) {
+    $unexpected = @($member.PSObject.Properties.Name | Where-Object {
+      $_ -notin @('id', 'name')
+    })
+    if ($unexpected.Count -ne 0) {
+      throw "unexpected location member field(s): $($unexpected -join ', ')"
+    }
+  }
+}
 $groups | ForEach-Object {
   [pscustomobject]@{
     Id = $_.id
@@ -99,7 +105,7 @@ Member references are standard-only. This check should print `true`:
 set -o pipefail
 ./zscalerctl --timeout 30s --format json --redaction share \
   zia location-groups list |
-  jq 'all(.[]; has("locations") | not)'
+  jq -e 'all(.[]; has("locations") | not)'
 ```
 
 List and dump use the same reader. A focused dump should carry the same group
