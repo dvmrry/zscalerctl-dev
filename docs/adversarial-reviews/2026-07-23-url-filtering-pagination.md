@@ -21,9 +21,14 @@ downstream validation instructions.
 - `internal/zscaler/reader_pagination_test.go`
 - `docs/RESOURCES.md`
 - `docs/URL_FILTERING_PAGINATION_VALIDATION.md`
+- `tools/go.mod`
+- `tools/go.sum`
 
-This review artifact is the only additional file added after the final reviewed
-head.
+The fresh-context review covered the four runtime/test/documentation files at
+the final reviewed head. After that review, CI began reporting `GO-2026-5970`
+from the separate tools module. The operator explicitly approved the
+tools-only dependency closure; it does not alter the application module or the
+reviewed reader behavior.
 
 ## Source Inputs Consulted
 
@@ -38,8 +43,10 @@ head.
 
 ## Generated Artifacts
 
-None changed. CLI docs, schemas, field-coverage reports, machine manifests,
-surface goldens, and generated agent skills remain unchanged.
+The tools module's dependency graph and checksums changed to select the fixed
+`golang.org/x/text` v0.39.0 graph. CLI docs, schemas, field-coverage reports,
+machine manifests, surface goldens, and generated agent skills remain
+unchanged.
 
 ## Expected Delta
 
@@ -74,11 +81,11 @@ The builder ran the following against the reviewed implementation:
 - License, semgrep, secret, gitleaks, toolchain, TypeScript-client, experiment,
   CI-credential, action-pin, PTY, release, scaffold, inventory, script-registry,
   and agent-skill gates.
-- Root `govulncheck`, which reported no vulnerabilities.
+- Root and tools-module `govulncheck`, which reported no reachable
+  vulnerabilities after the approved dependency update.
+- A complete `make check`, which exited 0 after the dependency update.
 
-The tools-module vulnerability scan retains the unrelated baseline
-`GO-2026-5970` finding in `golang.org/x/text`; this branch does not modify that
-module. No credentials or live tenant were used.
+No credentials or live tenant were used.
 
 ## Known Deferrals
 
@@ -147,6 +154,8 @@ drift, SDK/core boundary, machine-contract, and surface-manifest checks passed.
 The reviewer independently passed focused and full ordinary/race tests,
 `go vet ./internal/zscaler`, formatting and docs checks, `git diff --check`, and
 25 repeated runs of the exact-multiple subtest. The final delta changed only
-the addressed test and validation document.
+the addressed test and validation document. The later tools-module dependency
+update was an operator-approved CI security closure and is outside the runtime
+reader review scope documented above.
 
 Verdict: approve
