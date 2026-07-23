@@ -101,9 +101,9 @@ import (
 // paginators will fetch. Like the zcc/zidentity guards, termination otherwise
 // relies entirely on the server returning a short final page; an endpoint that
 // keeps returning a persistently-full page would loop until --timeout fires on
-// every request. The ceiling never trips on a real tenant (even at the smallest
-// 1000-record page size it admits a million records) but converts a
-// pathological infinite loop into a visible, descriptive error.
+// every request. At the smallest 100-record page size used by these wrappers,
+// the ceiling still admits 100,000 records, but converts a pathological
+// infinite loop into a visible, descriptive error.
 const ziaMaxPages = 1000
 
 // ziaPaginate walks every page of a ZIA list endpoint, mirroring the SDK's
@@ -150,6 +150,21 @@ func getZIALocationsAllPages(ctx context.Context, service *zsdk.Service) ([]loca
 	return ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]locationmanagement.Locations, error) {
 		var items []locationmanagement.Locations
 		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/locations", page, &items, size)
+		return items, err
+	})
+}
+
+// getZIAURLFilteringRulesAllPages reads /zia/api/v1/urlFilteringRules with an
+// explicit bounded page walk. The vendored SDK's GetAll performs one bare Read,
+// so tenants with more than the API's 100-record default page are silently
+// truncated. Keeping the explicit page size at 100 matches Zscaler's published
+// pagination example and the observed default boundary. It also avoids relying
+// on a larger, endpoint-specific maximum that the API reference does not state.
+func getZIAURLFilteringRulesAllPages(ctx context.Context, service *zsdk.Service) ([]urlfilteringpolicies.URLFilteringRule, error) {
+	const pageSize = 100
+	return ziaPaginate(ctx, pageSize, func(ctx context.Context, page, size int) ([]urlfilteringpolicies.URLFilteringRule, error) {
+		var items []urlfilteringpolicies.URLFilteringRule
+		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/urlFilteringRules", page, &items, size)
 		return items, err
 	})
 }
@@ -270,7 +285,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZIA, name: resourceURLRules}: newListGetHandler(
 			resourceURLRules,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]urlfilteringpolicies.URLFilteringRule, error) {
-				return urlfilteringpolicies.GetAll(ctx, service)
+				return getZIAURLFilteringRulesAllPages(ctx, service)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
 				return urlfilteringpolicies.Get(ctx, service, id)

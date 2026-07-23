@@ -2,13 +2,17 @@ package zscaler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
 )
 
 // TestZCCPaginateCeilingFailsClosed drives the zccPaginate page ceiling: an
@@ -93,6 +97,25 @@ func TestZIAPaginateStopsOnShortPage(t *testing.T) {
 	}
 }
 
+func TestZIAPaginateDiscardsPartialResultsOnPageError(t *testing.T) {
+	t.Parallel()
+
+	const pageSize = 100
+	wantErr := errors.New("page 2 failed")
+	got, err := ziaPaginate(context.Background(), pageSize, func(_ context.Context, page, _ int) ([]int, error) {
+		if page == 1 {
+			return make([]int, pageSize), nil
+		}
+		return nil, wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("ziaPaginate(page error) error = %v, want %v", err, wantErr)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(page error) result = %#v, want nil", got)
+	}
+}
+
 func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 	cfg := validReaderConfig()
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
@@ -165,9 +188,114 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 	}
 }
 
+func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
+	tests := []struct {
+		name       string
+		pageCounts []int
+		wantCount  int
+	}{
+		{name: "short final page", pageCounts: []int{100, 33}, wantCount: 133},
+		{name: "exact multiple requires empty terminal page", pageCounts: []int{100, 0}, wantCount: 100},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := validReaderConfig()
+			sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+			var productRequests []*http.Request
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				body := []byte(`{"access_token":"test-token","expires_in":60}`)
+				statusCode := http.StatusOK
+				if request.URL.Path == "/zia/api/v1/urlFilteringRules" {
+					cloned := request.Clone(request.Context())
+					clonedURL := *request.URL
+					cloned.URL = &clonedURL
+					productRequests = append(productRequests, cloned)
+
+					pageIndex := -1
+					for index := range test.pageCounts {
+						if request.URL.Query().Get("page") == strconv.Itoa(index+1) {
+							pageIndex = index
+							break
+						}
+					}
+					if pageIndex == -1 {
+						statusCode = http.StatusBadRequest
+						body = []byte(`{"message":"unexpected page"}`)
+					} else {
+						startID := 1
+						for _, priorCount := range test.pageCounts[:pageIndex] {
+							startID += priorCount
+						}
+						rules := make([]urlfilteringpolicies.URLFilteringRule, test.pageCounts[pageIndex])
+						for index := range rules {
+							rules[index] = urlfilteringpolicies.URLFilteringRule{
+								ID:   startID + index,
+								Name: "pagination-regression-rule",
+							}
+						}
+						var err error
+						body, err = json.Marshal(rules)
+						if err != nil {
+							return nil, err
+						}
+					}
+				} else if request.URL.Path != "/oauth2/v1/token" {
+					statusCode = http.StatusNotFound
+					body = []byte(`{}`)
+				}
+				return &http.Response{
+					StatusCode: statusCode,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(string(body))),
+					Request:    request,
+				}, nil
+			})
+			sdkCfg.HTTPClient.Transport = transport
+			sdkCfg.ZIAHTTPClient.Transport = transport
+
+			service, err := zsdk.NewOneAPIClient(sdkCfg)
+			if err != nil {
+				t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+			}
+			t.Cleanup(service.Client.Close)
+
+			rules, err := getZIAURLFilteringRulesAllPages(context.Background(), service)
+			if err != nil {
+				t.Fatalf("getZIAURLFilteringRulesAllPages() error = %v, want nil", err)
+			}
+			if got, want := len(productRequests), len(test.pageCounts); got != want {
+				t.Fatalf("getZIAURLFilteringRulesAllPages() request count = %d, want %d", got, want)
+			}
+			for index, request := range productRequests {
+				if got, want := request.URL.Host, "api.zsapi.net"; got != want {
+					t.Errorf("request %d host = %q, want %q", index+1, got, want)
+				}
+				query := request.URL.Query()
+				if got, want := query.Get("page"), strconv.Itoa(index+1); got != want {
+					t.Errorf("request %d page = %q, want %q", index+1, got, want)
+				}
+				if got, want := query.Get("pageSize"), "100"; got != want {
+					t.Errorf("request %d pageSize = %q, want %q", index+1, got, want)
+				}
+			}
+			if got, want := len(rules), test.wantCount; got != want {
+				t.Fatalf("getZIAURLFilteringRulesAllPages() rule count = %d, want %d", got, want)
+			}
+			if got, want := rules[0].ID, 1; got != want {
+				t.Errorf("rules[0].ID = %d, want %d", got, want)
+			}
+			if got, want := rules[len(rules)-1].ID, test.wantCount; got != want {
+				t.Errorf("rules[last].ID = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
 // TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination guards against
-// regressing the wrapped users/locations/url-categories endpoints back to the
-// SDK's unbounded GetAll, mirroring the networkApplications source guard.
+// regressing the wrapped users/locations/url-categories/url-filtering-rules
+// endpoints back to unbounded or single-page SDK calls, mirroring the
+// networkApplications source guard.
 func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +309,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		"return ziausers.GetAllUsers(ctx, service",
 		"return locationmanagement.GetAll(ctx, service)",
 		"return urlcategories.GetAll(ctx, service",
+		"return urlfilteringpolicies.GetAll(ctx, service)",
 	} {
 		if strings.Contains(source, banned) {
 			t.Errorf("reader_zia.go still calls unbounded SDK pagination: %q", banned)
@@ -190,6 +319,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		"getZIAUsersAllPages(ctx, service)",
 		"getZIALocationsAllPages(ctx, service)",
 		"getZIAURLCategoriesAll(ctx, service)",
+		"getZIAURLFilteringRulesAllPages(ctx, service)",
 	} {
 		if !strings.Contains(source, want) {
 			t.Errorf("reader_zia.go missing bounded paginator wiring: %q", want)
