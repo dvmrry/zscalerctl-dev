@@ -5,7 +5,7 @@ and ZPA resource tracks. It is not an enabled catalog, entitlement check, safety
 proof, or live response-shape validation.
 
 The inventory was generated from the full `github.com/zscaler/zscaler-sdk-go/v3`
-module cache for SDK `v3.8.38`, not only from the committed vendor tree:
+module cache for SDK `v3.8.41`, not only from the committed vendor tree:
 
 ```sh
 SDK_DIR="$(go list -m -f '{{.Dir}}' -mod=mod github.com/zscaler/zscaler-sdk-go/v3)"
@@ -70,6 +70,10 @@ not validate product entitlement.
 
 Counts are scout signals only. `list-get-with-mutating-neighbors` can still be
 safe when zscalerctl wires only read functions, but it requires explicit review.
+The `v3.8.41` refresh did not add ZCC, ZDX, ZTW, Zidentity, or ZWA packages, so
+the table counts for these product tracks are unchanged. It added one ZPA
+private-cloud package; that stays in the active ZPA queue and needs entitlement
+and response-shape smoke before cataloging.
 
 ## Recommended Sequence
 

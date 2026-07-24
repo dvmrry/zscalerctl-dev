@@ -282,7 +282,7 @@ ZTW resources, 11 ZCC resources, and 3 Zidentity resources. The rows below are
 package-level scouting notes, not a promise that every surface should become a
 resource.
 
-The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.38) remains the
+The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.41) remains the
 implementation authority. The Python SDK is useful only as scout evidence for
 resource names, endpoint intent, and default query semantics; do not use it to
 override the pinned Go SDK shape.
@@ -309,6 +309,32 @@ Remaining work is grouped by the decision that blocks catalog work:
 | Privacy, identity, export, or material surfaces | `adminauditlogs`, `scim_api`, `trafficforwarding/vpncredentials` | Hold for explicit privacy/material policy. These are not ordinary inventory resources. ZIA and ZTW admin governance are cataloged as read-only admin inventory with identifier stripping. |
 | Helper/catalog/diagnostic surfaces | `apptotal`, `trafficforwarding/virtualipaddress` | Do not force into config dump semantics. Treat as future lookup/report/diagnostic commands if needed. |
 | Product-family tracks | ZPA, ZTW, ZCC, Zidentity, ZDX, ZWA | Keep product-specific posture in [Zscaler Product Scope Plan](ZSCALER_PRODUCT_SCOPE_PLAN.md). The queue should not duplicate that product map. |
+
+## SDK v3.8.41 Addition Triage
+
+The full module-cache comparison from `v3.8.38` to `v3.8.41` found 23 new
+service packages. This upgrade promotes only newly modeled fields on existing
+catalog resources; it does not claim live validation for any new endpoint.
+
+| SDK package(s) | Read shape | Queue disposition |
+| --- | --- | --- |
+| `firewallpolicies/dns_application_groups` | Ordinary list/get beside mutators | Highest-priority new dependency resource. Firewall DNS rules already reference these groups. Add in a focused batch with bounded-pagination and live count/shape smoke. |
+| `http_header_control/http_header_profile`, `http_header_control/http_header_action_profile` | List and name lookup beside mutators; no integer get | Highest-priority list-only dependency resources. URL filtering rules now expose compact references to both families. Requires list-only semantics, pagination proof, and live smoke. |
+| `ips_control_policies/ips_signature_rules.GetIPSCategories` | New list read in an existing mixed package | High-priority list-only dependency resource for IPS signatures. Replace the SDK's unbounded `ReadAllPages` call with the local bounded paginator before wiring it. |
+| `adaptive_access` | Read-only profiles plus a profile-rules child lookup | Useful configuration candidate, but decide whether child rules are nested data or a parameterized child resource before cataloging. |
+| `dlp/dlp_global_options` | Singleton read beside update | Good singleton candidate after secret-field review and live response-shape smoke. |
+| `end_user_notification` template, confirmation, and enablement-status reads | Parameterized lists and singletons added to an existing package | Split into explicit resource/child-query shapes. Language-template messages are administrator-controlled free text; template IDs, recommended apps, and status maps need separate field classification. |
+| `zpa/services/private_cloud` | Ordinary list/get beside mutators | ZPA configuration candidate; requires entitlement, pagination, and response-shape smoke. |
+| `endpoint_dlp/endpoint_application_groups`, `endpoint_applications`, `endpoint_custom_apps`, `endpoint_dlp_rules`, `endpoint_dlp_sub_rules`, `endpoint_resource`, `endpoint_resource_channel`, `endpoint_resource_group`, `outbound_email_dlp` | Mixed ordinary, child-query, nonstandard, and mutating-only shapes | Treat as a dedicated Endpoint DLP design track. Application inventory, filenames, channels, resource tags, email policy, and nested rule data need explicit privacy and projection decisions. Packages with no read function are not standalone read-resource candidates. |
+| `devices` | Read-only ordinary list/get | Hold for explicit device/privacy policy even though the SDK shape is straightforward. |
+| `security_ueba_alerts/alert_configurations`, `alert_definitions`, `ueba_rules`, `webhooks` | Ordinary/config reads beside mutators | Hold as a focused security-alert configuration track. Webhook destinations and alert definitions need URL/free-text/identity review; never wire the adjacent webhook test operation. |
+| `partner_integrations` | Nonstandard integration and CrowdStrike reads plus ambiguous action-like functions | Hold for manual command and secret-boundary design. Do not expose report hashes, allowlist URLs, or action-like helpers through a generic resource mapper. |
+| `smpc_instance`, `votiro_cdr` | Singleton/nonstandard reads beside token/config mutation | Hold pending entitlement and secret review. CDR token configuration must not expose token material. |
+
+Recommended implementation order is DNS application groups, HTTP header
+profiles, IPS categories, then adaptive access or DLP global options. Keep each
+as a separate live-smokeable batch; absence or entitlement failure on one
+family must not block the SDK dependency refresh itself.
 
 No remaining row should be wired as a normal list/get resource before one of
 those track-level decisions is made. The core list-only and singleton

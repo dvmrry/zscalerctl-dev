@@ -1015,6 +1015,189 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	}
 }
 
+func TestGetZIAURLFilteringRuleByIDUsesBoundedCBIProfileFallback(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	var listRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		switch request.URL.Path {
+		case "/oauth2/v1/token":
+		case "/zia/api/v1/urlFilteringRules/42":
+			body = []byte(`{"id":42,"name":"isolate rule","action":"ISOLATE","cbiProfileId":7}`)
+		case "/zia/api/v1/urlFilteringRules":
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			listRequests = append(listRequests, cloned)
+
+			switch request.URL.Query().Get("page") {
+			case "1":
+				rules := make([]urlfilteringpolicies.URLFilteringRule, 100)
+				for i := range rules {
+					rules[i] = urlfilteringpolicies.URLFilteringRule{ID: 1000 + i, Name: "other rule"}
+				}
+				var err error
+				body, err = json.Marshal(rules)
+				if err != nil {
+					return nil, err
+				}
+			case "2":
+				body = []byte(`[{
+					"id":42,
+					"name":"isolate rule",
+					"action":"ISOLATE",
+					"cbiProfileId":7,
+					"cbiProfile":{"id":"profile-7","name":"Isolation profile","url":"https://isolate.invalid","profileSeq":9}
+				}]`)
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte(`{"message":"unexpected page"}`)
+			}
+		default:
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	rule, err := getZIAURLFilteringRuleByID(context.Background(), service, 42)
+	if err != nil {
+		t.Fatalf("getZIAURLFilteringRuleByID() error = %v, want nil", err)
+	}
+	if rule == nil || rule.ID != 42 {
+		t.Fatalf("getZIAURLFilteringRuleByID() = %#v, want rule 42", rule)
+	}
+	if rule.CBIProfile == nil || rule.CBIProfile.ID != "profile-7" || rule.CBIProfile.Name != "Isolation profile" || rule.CBIProfile.ProfileSeq != 9 {
+		t.Errorf("getZIAURLFilteringRuleByID() cbiProfile = %#v, want enriched profile", rule.CBIProfile)
+	}
+	if got, want := len(listRequests), 2; got != want {
+		t.Fatalf("getZIAURLFilteringRuleByID() list request count = %d, want %d", got, want)
+	}
+	for index, request := range listRequests {
+		if got, want := request.URL.Query().Get("page"), strconv.Itoa(index+1); got != want {
+			t.Errorf("fallback request %d page = %q, want %q", index+1, got, want)
+		}
+		if got, want := request.URL.Query().Get("pageSize"), "100"; got != want {
+			t.Errorf("fallback request %d pageSize = %q, want %q", index+1, got, want)
+		}
+	}
+}
+
+func TestGetZIAURLFilteringRuleByIDPreservesDirectResultWhenFallbackFails(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	listCalls := 0
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		switch request.URL.Path {
+		case "/oauth2/v1/token":
+		case "/zia/api/v1/urlFilteringRules/43":
+			body = []byte(`{"id":43,"name":"partially enriched rule","action":"ISOLATE","cbiProfileId":8}`)
+		case "/zia/api/v1/urlFilteringRules":
+			listCalls++
+			statusCode = http.StatusBadRequest
+			body = []byte(`{"message":"fallback unavailable"}`)
+		default:
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	rule, err := getZIAURLFilteringRuleByID(context.Background(), service, 43)
+	if err != nil {
+		t.Fatalf("getZIAURLFilteringRuleByID() error = %v, want nil", err)
+	}
+	if rule == nil || rule.ID != 43 || rule.Name != "partially enriched rule" || rule.CBIProfileID != 8 {
+		t.Fatalf("getZIAURLFilteringRuleByID() = %#v, want successful direct result", rule)
+	}
+	if rule.CBIProfile != nil {
+		t.Errorf("getZIAURLFilteringRuleByID() cbiProfile = %#v, want nil after failed optional enrichment", rule.CBIProfile)
+	}
+	if listCalls != 1 {
+		t.Errorf("getZIAURLFilteringRuleByID() fallback calls = %d, want 1", listCalls)
+	}
+}
+
+func TestGetZIAURLFilteringRuleByIDHonorsCancellationDuringFallback(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		switch request.URL.Path {
+		case "/oauth2/v1/token":
+		case "/zia/api/v1/urlFilteringRules/44":
+			body = []byte(`{"id":44,"name":"cancelled enrichment","action":"ISOLATE","cbiProfileId":9}`)
+		case "/zia/api/v1/urlFilteringRules":
+			cancel()
+			return nil, context.Canceled
+		default:
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	rule, err := getZIAURLFilteringRuleByID(ctx, service, 44)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("getZIAURLFilteringRuleByID() error = %v, want context.Canceled", err)
+	}
+	if rule != nil {
+		t.Errorf("getZIAURLFilteringRuleByID() rule = %#v, want nil on caller cancellation", rule)
+	}
+}
+
 // TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination guards against
 // regressing the wrapped users/locations/location-groups/url-categories/
 // url-filtering-rules endpoints back to unbounded or single-page SDK calls,
@@ -1034,6 +1217,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		"return locationgroups.GetAll(ctx, service",
 		"return urlcategories.GetAll(ctx, service",
 		"return urlfilteringpolicies.GetAll(ctx, service)",
+		"return urlfilteringpolicies.Get(ctx, service, id)",
 	} {
 		if strings.Contains(source, banned) {
 			t.Errorf("reader_zia.go still calls unbounded SDK pagination: %q", banned)
@@ -1045,6 +1229,7 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		"getZIALocationGroupsAllPages(ctx, service)",
 		"getZIAURLCategoriesAll(ctx, service)",
 		"getZIAURLFilteringRulesAllPages(ctx, service)",
+		"getZIAURLFilteringRuleByID(ctx, service, id)",
 	} {
 		if !strings.Contains(source, want) {
 			t.Errorf("reader_zia.go missing bounded paginator wiring: %q", want)

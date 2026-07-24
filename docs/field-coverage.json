@@ -2,8 +2,8 @@
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
     "resources": 165,
-    "total_fields": 2979,
-    "classified_fields": 2961,
+    "total_fields": 2993,
+    "classified_fields": 2975,
     "ignored_fields": 18,
     "deliberate_fields": 18,
     "deferred_fields": 0,
@@ -14,8 +14,8 @@
     {
       "product": "zia",
       "resources": 102,
-      "total_fields": 1681,
-      "classified_fields": 1663,
+      "total_fields": 1695,
+      "classified_fields": 1677,
       "ignored_fields": 18,
       "deliberate_fields": 18,
       "deferred_fields": 0,
@@ -625,6 +625,43 @@
       "ignored_by_reason": []
     },
     {
+      "product": "zia",
+      "resource": "firewall-dns-rules",
+      "sdk_types": [
+        "firewalldnscontrolpolicies.FirewallDNSRules"
+      ],
+      "total_fields": 48,
+      "classified_fields": 48,
+      "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 13
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 5
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 28
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
       "product": "zpa",
       "resource": "inspection-app-segments",
       "sdk_types": [
@@ -810,6 +847,80 @@
       "ignored_by_reason": []
     },
     {
+      "product": "zia",
+      "resource": "firewall-filtering-rules",
+      "sdk_types": [
+        "filteringrules.FirewallFilteringRules"
+      ],
+      "total_fields": 44,
+      "classified_fields": 44,
+      "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 12
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 27
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "url-filtering-rules",
+      "sdk_types": [
+        "urlfilteringpolicies.URLFilteringRule"
+      ],
+      "total_fields": 44,
+      "classified_fields": 44,
+      "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 14
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 25
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
       "product": "zpa",
       "resource": "service-edges",
       "sdk_types": [
@@ -842,80 +953,6 @@
         {
           "class": "tenant_configuration",
           "count": 10
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "firewall-dns-rules",
-      "sdk_types": [
-        "firewalldnscontrolpolicies.FirewallDNSRules"
-      ],
-      "total_fields": 43,
-      "classified_fields": 43,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 13
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 5
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 23
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "url-filtering-rules",
-      "sdk_types": [
-        "urlfilteringpolicies.URLFilteringRule"
-      ],
-      "total_fields": 42,
-      "classified_fields": 42,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 14
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 23
         }
       ],
       "ignored_by_reason": []
@@ -1056,43 +1093,6 @@
         {
           "class": "tenant_configuration",
           "count": 21
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "firewall-filtering-rules",
-      "sdk_types": [
-        "filteringrules.FirewallFilteringRules"
-      ],
-      "total_fields": 39,
-      "classified_fields": 39,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 12
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 22
         }
       ],
       "ignored_by_reason": []
@@ -1313,8 +1313,8 @@
       "sdk_types": [
         "sslinspection.SSLInspectionRules"
       ],
-      "total_fields": 32,
-      "classified_fields": 32,
+      "total_fields": 34,
+      "classified_fields": 34,
       "ignored_fields": 0,
       "deliberate_fields": 0,
       "deferred_fields": 0,
@@ -1335,7 +1335,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 21
+          "count": 23
         }
       ],
       "ignored_by_reason": []

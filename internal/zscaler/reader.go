@@ -1908,6 +1908,8 @@ func sslInspectionRuleSourceRecord(rule sslinspection.SSLInspectionRules) resour
 	if len(rule.WorkloadGroups) > 0 {
 		fields["workloadGroups"] = idNameSliceSource(rule.WorkloadGroups)
 	}
+	addEndpointApplications(fields, "endPointApplications", rule.EndPointApplications)
+	addEndpointApplicationGroups(fields, "endPointApplicationGroups", rule.EndPointApplicationGroups)
 	return resources.NewSourceRecord(fields)
 }
 
@@ -2004,6 +2006,8 @@ func urlFilteringRuleSourceRecord(rule urlfilteringpolicies.URLFilteringRule) re
 	addIDNameExtensionsSlice(fields, "users", rule.Users)
 	addIDNameExtensionsSlice(fields, "sourceIpGroups", rule.SourceIPGroups)
 	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "httpHeaderProfiles", rule.HTTPHeaderProfiles)
+	addIDNameExtensionsSlice(fields, "httpHeaderActionProfiles", rule.HTTPHeaderActionProfiles)
 	addIDNameSlice(fields, "workloadGroups", rule.WorkloadGroups)
 	if rule.CBIProfile != nil {
 		fields["cbiProfile"] = cbiProfileSource(rule.CBIProfile)
@@ -2027,6 +2031,9 @@ func firewallFilteringRuleSourceRecord(rule filteringrules.FirewallFilteringRule
 		"defaultRule":         rule.DefaultRule,
 		"predefined":          rule.Predefined,
 	}
+	fields["excludeContextShieldEndPoint"] = rule.ExcludeContextShieldEndPoint
+	fields["isEunEnabled"] = rule.IsEUNEnabled
+	fields["eunTemplateId"] = rule.EUNTemplateID
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
 	addStringSlice(fields, "srcIps", rule.SrcIps)
 	addStringSlice(fields, "destAddresses", rule.DestAddresses)
@@ -2055,6 +2062,8 @@ func firewallFilteringRuleSourceRecord(rule filteringrules.FirewallFilteringRule
 	if len(rule.ZPAAppSegments) > 0 {
 		fields["zpaAppSegments"] = zpaAppSegmentsSource(rule.ZPAAppSegments)
 	}
+	addEndpointApplications(fields, "endPointApplications", rule.EndPointApplications)
+	addEndpointApplicationGroups(fields, "endPointApplicationGroups", rule.EndPointApplicationGroups)
 	return resources.NewSourceRecord(fields)
 }
 
@@ -3143,6 +3152,9 @@ func firewallDNSRuleSourceRecord(rule firewalldnscontrolpolicies.FirewallDNSRule
 		"isWebEunEnabled":        rule.IsWebEUNEnabled,
 		"defaultDnsRuleNameUsed": rule.DefaultDNSRuleNameUsed,
 	}
+	fields["isEunEnabled"] = rule.IsEUNEnabled
+	fields["eunTemplateId"] = rule.EUNTemplateID
+	fields["excludeContextShieldEndPoint"] = rule.ExcludeContextShieldEndPoint
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
 	addStringSlice(fields, "srcIps", rule.SrcIps)
 	addStringSlice(fields, "destAddresses", rule.DestAddresses)
@@ -3170,6 +3182,8 @@ func firewallDNSRuleSourceRecord(rule firewalldnscontrolpolicies.FirewallDNSRule
 	addIDNameExtensionsSlice(fields, "srcIpv6Groups", rule.SrcIpv6Groups)
 	addIDNameExtensionsSlice(fields, "deviceGroups", rule.DeviceGroups)
 	addIDNameExtensionsSlice(fields, "devices", rule.Devices)
+	addEndpointApplications(fields, "endPointApplications", rule.EndPointApplications)
+	addEndpointApplicationGroups(fields, "endPointApplicationGroups", rule.EndPointApplicationGroups)
 	return resources.NewSourceRecord(fields)
 }
 
@@ -3839,6 +3853,36 @@ func addZTWNetworkPorts(fields map[string]any, name string, values []ztwnetworks
 	if len(values) > 0 {
 		fields[name] = ztwNetworkPortsSource(values)
 	}
+}
+
+func addEndpointApplications(fields map[string]any, name string, values []ziacommon.EndPointApplications) {
+	if len(values) == 0 {
+		return
+	}
+	items := make([]any, 0, len(values))
+	for _, value := range values {
+		items = append(items, map[string]any{
+			"resourceId":      value.ResourceID,
+			"applicationName": value.ApplicationName,
+			"osType":          value.OsType,
+			"applicationType": value.ApplicationType,
+		})
+	}
+	fields[name] = items
+}
+
+func addEndpointApplicationGroups(fields map[string]any, name string, values []ziacommon.EndPointApplicationGroups) {
+	if len(values) == 0 {
+		return
+	}
+	items := make([]any, 0, len(values))
+	for _, value := range values {
+		items = append(items, map[string]any{
+			"groupId": value.GroupID,
+			"name":    value.Name,
+		})
+	}
+	fields[name] = items
 }
 
 func idNameExtensionsSource(value *ziacommon.IDNameExtensions) map[string]any {

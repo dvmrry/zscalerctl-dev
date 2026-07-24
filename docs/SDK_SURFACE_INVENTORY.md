@@ -31,7 +31,7 @@ Markdown output so generated inventory cannot be mistaken for validation data.
 
 ## Current Findings
 
-As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.38`:
+As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.41`:
 
 - ZIA and ZPA have broad high-level service package trees.
 - ZTW has the next strongest config-like service tree and is the best candidate
@@ -49,6 +49,18 @@ As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.38`:
 - ZWA is exposed under `zscaler/zwa/services/...`; treat customer audit and DLP
   incident surfaces as out of pre-`v1.0.0` scope unless Zscaler exposes
   deterministic configuration APIs.
+- Releases `v3.8.39` through `v3.8.41` add 23 service packages relative to
+  `v3.8.38`: 22 under ZIA and one ZPA private-cloud package. The most useful
+  dependency-shaped candidates are DNS application groups and the two HTTP
+  header profile families. Existing packages also gained IPS-category and EUN
+  template/status reads. Endpoint DLP, UEBA, device, integration, EUN message,
+  and token configuration surfaces require separate privacy/secret and
+  command-shape review; see
+  [Resource Queue](RESOURCE_QUEUE.md#sdk-v3841-addition-triage).
+- OneAPI now recognizes `GOV` and `GOVUS` identity/API hosts. zscalerctl keeps
+  its narrow ZPATWO compatibility transport and exercises the new government
+  routing through mocked HTTP tests; live government-cloud validation remains
+  environment-specific.
 
 These findings are SDK-shape evidence only. They do not prove entitlement,
 tenant availability, pagination behavior, or real response shape.
