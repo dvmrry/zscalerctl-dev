@@ -2073,6 +2073,14 @@ zscalerctl zia url-deny-list show
 This singleton settings page renders the global URL deny list only in
 `standard`. The allow-list field is explicitly modeled and dropped.
 
+The 24 paginated ZPA list resources use a shared fail-closed reader. See
+[ZPA Pagination Validation](ZPA_PAGINATION_VALIDATION.md) for the pagination
+contract and focused downstream count checks.
+
+Bounded ZIA, ZTW, and ZCC list readers have corresponding automated and
+live-count checks in
+[SDK Pagination Validation](SDK_PAGINATION_VALIDATION.md).
+
 ## ZPA Version Profiles
 
 Commands:

@@ -49,6 +49,13 @@ GitHub security policy.
 - [adversarial-review-template.md](adversarial-review-template.md) — reviewer
   report template for adversarial-review findings and verdicts.
 - [SDK_SURFACE_INVENTORY.md](SDK_SURFACE_INVENTORY.md)
+- [SDK_LIST_COMPLETENESS_AUDIT.md](SDK_LIST_COMPLETENESS_AUDIT.md) — resolved
+  SDK list-helper pagination contracts and product-by-product remediation
+  status.
+- [SDK_PAGINATION_VALIDATION.md](SDK_PAGINATION_VALIDATION.md) — focused
+  automated and live count checks for bounded ZIA, ZTW, and ZCC readers.
+- [ZPA_PAGINATION_VALIDATION.md](ZPA_PAGINATION_VALIDATION.md) — focused
+  automated and live-tenant checks for the bounded ZPA list reader.
 - [DEFERRED_RESOURCE_RECHECK.md](DEFERRED_RESOURCE_RECHECK.md) — pinned-SDK
   source review for resources removed after live-smoke failures.
 - [ZSCALER_PRODUCT_SCOPE_PLAN.md](ZSCALER_PRODUCT_SCOPE_PLAN.md)

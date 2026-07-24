@@ -43,7 +43,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAServerGroups}: newListGetHandler(
 			resourceZPAServerGroups,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaservergroup.ServerGroup, *http.Response, error) {
-				return zpaservergroup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaservergroup.ServerGroup](ctx, service, zpaAPIV1, "/serverGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaservergroup.ServerGroup, *http.Response, error) {
 				return zpaservergroup.Get(ctx, service, id)
@@ -53,7 +53,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAMicrotenants}: newListGetHandler(
 			resourceZPAMicrotenants,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpamicrotenants.MicroTenant, *http.Response, error) {
-				return zpamicrotenants.GetAll(ctx, service)
+				return getZPAAllPages[zpamicrotenants.MicroTenant](ctx, service, zpaAPIV1, "/microtenants")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpamicrotenants.MicroTenant, *http.Response, error) {
 				return zpamicrotenants.Get(ctx, service, id)
@@ -63,7 +63,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAVersionProfiles}: newListOnlyHandler(
 			resourceZPAVersionProfiles,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaversionprofile.CustomerVersionProfile, *http.Response, error) {
-				return zpaversionprofile.GetAll(ctx, service)
+				return getZPAAllPages[zpaversionprofile.CustomerVersionProfile](ctx, service, zpaAPIV1, "/visible/versionProfiles")
 			}),
 			jsonSourceRecord[zpaversionprofile.CustomerVersionProfile],
 		),
@@ -84,21 +84,21 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAIsolationProfiles}: newListOnlyHandler(
 			resourceZPAIsolationProfiles,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaisolationprofile.IsolationProfile, *http.Response, error) {
-				return zpaisolationprofile.GetAll(ctx, service)
+				return getZPAAllPages[zpaisolationprofile.IsolationProfile](ctx, service, zpaAPIV1, "/isolation/profiles")
 			}),
 			jsonSourceRecord[zpaisolationprofile.IsolationProfile],
 		),
 		{product: resources.ProductZPA, name: resourceZPABranchConnectors}: newListOnlyHandler(
 			resourceZPABranchConnectors,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpabranchconnector.BranchConnector, *http.Response, error) {
-				return zpabranchconnector.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpabranchconnector.BranchConnector](ctx, service, zpaAPIV1, "/branchConnector")
 			}),
 			jsonSourceRecord[zpabranchconnector.BranchConnector],
 		),
 		{product: resources.ProductZPA, name: resourceZPAUserPortals}: newListGetHandler(
 			resourceZPAUserPortals,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpauserportal.UserPortalController, *http.Response, error) {
-				return zpauserportal.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpauserportal.UserPortalController](ctx, service, zpaAPIV1, "/userPortal")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpauserportal.UserPortalController, *http.Response, error) {
 				return zpauserportal.Get(ctx, service, id)
@@ -108,7 +108,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAUserPortalAups}: newListGetHandler(
 			resourceZPAUserPortalAups,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpauserportalaup.UserPortalAup, *http.Response, error) {
-				return zpauserportalaup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpauserportalaup.UserPortalAup](ctx, service, zpaAPIV1, "/userportal/aup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpauserportalaup.UserPortalAup, *http.Response, error) {
 				return zpauserportalaup.Get(ctx, service, id)
@@ -118,7 +118,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAUserPortalLinks}: newListGetHandler(
 			resourceZPAUserPortalLinks,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpauserportallink.UserPortalLink, *http.Response, error) {
-				return zpauserportallink.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpauserportallink.UserPortalLink](ctx, service, zpaAPIV1, "/userPortalLink")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpauserportallink.UserPortalLink, *http.Response, error) {
 				return zpauserportallink.Get(ctx, service, id)
@@ -128,7 +128,17 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPABrowserAccess}: newListGetHandler(
 			resourceZPABrowserAccess,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappsegmentba.BrowserAccess, *http.Response, error) {
-				return zpaappsegmentba.GetAll(ctx, service)
+				items, response, err := getZPAAllPagesForMicrotenant[zpaappsegmentba.BrowserAccess](ctx, service, zpaAPIV1, "/application")
+				if err != nil {
+					return nil, response, err
+				}
+				filtered := make([]zpaappsegmentba.BrowserAccess, 0, len(items))
+				for _, item := range items {
+					if len(item.ClientlessApps) > 0 {
+						filtered = append(filtered, item)
+					}
+				}
+				return filtered, response, nil
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappsegmentba.BrowserAccess, *http.Response, error) {
 				return zpaappsegmentba.Get(ctx, service, id)
@@ -138,7 +148,17 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAInspectionAppSegments}: newListGetHandler(
 			resourceZPAInspectionAppSegments,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappsegmentinspection.AppSegmentInspection, *http.Response, error) {
-				return zpaappsegmentinspection.GetAll(ctx, service)
+				items, response, err := getZPAAllPagesForMicrotenant[zpaappsegmentinspection.AppSegmentInspection](ctx, service, zpaAPIV1, "/application")
+				if err != nil {
+					return nil, response, err
+				}
+				filtered := make([]zpaappsegmentinspection.AppSegmentInspection, 0, len(items))
+				for _, item := range items {
+					if len(item.InspectionAppDto) > 0 {
+						filtered = append(filtered, item)
+					}
+				}
+				return filtered, response, nil
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappsegmentinspection.AppSegmentInspection, *http.Response, error) {
 				return zpaappsegmentinspection.Get(ctx, service, id)
@@ -148,7 +168,17 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAPRAAppSegments}: newListGetHandler(
 			resourceZPAPRAAppSegments,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappsegmentpra.AppSegmentPRA, *http.Response, error) {
-				return zpaappsegmentpra.GetAll(ctx, service)
+				items, response, err := getZPAAllPagesForMicrotenant[zpaappsegmentpra.AppSegmentPRA](ctx, service, zpaAPIV1, "/application")
+				if err != nil {
+					return nil, response, err
+				}
+				filtered := make([]zpaappsegmentpra.AppSegmentPRA, 0, len(items))
+				for _, item := range items {
+					if len(item.PRAApps) > 0 {
+						filtered = append(filtered, item)
+					}
+				}
+				return filtered, response, nil
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappsegmentpra.AppSegmentPRA, *http.Response, error) {
 				return zpaappsegmentpra.Get(ctx, service, id)
@@ -158,7 +188,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPASegmentGroups}: newListGetHandler(
 			resourceZPASegmentGroups,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpasegmentgroup.SegmentGroup, *http.Response, error) {
-				return zpasegmentgroup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpasegmentgroup.SegmentGroup](ctx, service, zpaAPIV1, "/segmentGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpasegmentgroup.SegmentGroup, *http.Response, error) {
 				return zpasegmentgroup.Get(ctx, service, id)
@@ -168,7 +198,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAAppSegments}: newListGetHandler(
 			resourceZPAAppSegments,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaapplicationsegment.ApplicationSegmentResource, *http.Response, error) {
-				return zpaapplicationsegment.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaapplicationsegment.ApplicationSegmentResource](ctx, service, zpaAPIV1, "/application")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaapplicationsegment.ApplicationSegmentResource, *http.Response, error) {
 				return zpaapplicationsegment.Get(ctx, service, id)
@@ -178,7 +208,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAAppConnectors}: newListGetHandler(
 			resourceZPAAppConnectors,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappconnectorcontroller.AppConnector, *http.Response, error) {
-				return zpaappconnectorcontroller.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaappconnectorcontroller.AppConnector](ctx, service, zpaAPIV1, "/connector")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappconnectorcontroller.AppConnector, *http.Response, error) {
 				return zpaappconnectorcontroller.Get(ctx, service, id)
@@ -188,7 +218,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAConnectorGrps}: newListGetHandler(
 			resourceZPAConnectorGrps,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappconnectorgroup.AppConnectorGroup, *http.Response, error) {
-				return zpaappconnectorgroup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaappconnectorgroup.AppConnectorGroup](ctx, service, zpaAPIV1, "/appConnectorGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappconnectorgroup.AppConnectorGroup, *http.Response, error) {
 				return zpaappconnectorgroup.Get(ctx, service, id)
@@ -198,7 +228,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAAppServers}: newListGetHandler(
 			resourceZPAAppServers,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaappservercontroller.ApplicationServer, *http.Response, error) {
-				return zpaappservercontroller.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaappservercontroller.ApplicationServer](ctx, service, zpaAPIV1, "/server")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaappservercontroller.ApplicationServer, *http.Response, error) {
 				return zpaappservercontroller.Get(ctx, service, id)
@@ -208,7 +238,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAMachineGroups}: newListGetHandler(
 			resourceZPAMachineGroups,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpamachinegroup.MachineGroup, *http.Response, error) {
-				return zpamachinegroup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpamachinegroup.MachineGroup](ctx, service, zpaAPIV1, "/machineGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpamachinegroup.MachineGroup, *http.Response, error) {
 				return zpamachinegroup.Get(ctx, service, id)
@@ -218,7 +248,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPATrustedNets}: newListGetHandler(
 			resourceZPATrustedNets,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpatrustednetwork.TrustedNetwork, *http.Response, error) {
-				return zpatrustednetwork.GetAll(ctx, service)
+				return getZPAAllPages[zpatrustednetwork.TrustedNetwork](ctx, service, zpaAPIV2, "/network")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpatrustednetwork.TrustedNetwork, *http.Response, error) {
 				return zpatrustednetwork.Get(ctx, service, id)
@@ -228,7 +258,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAServiceGrps}: newListGetHandler(
 			resourceZPAServiceGrps,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
-				return zpaserviceedgegroup.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaserviceedgegroup.ServiceEdgeGroup](ctx, service, zpaAPIV1, "/serviceEdgeGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgegroup.ServiceEdgeGroup, *http.Response, error) {
 				return zpaserviceedgegroup.Get(ctx, service, id)
@@ -238,7 +268,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAServiceEdges}: newListGetHandler(
 			resourceZPAServiceEdges,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
-				return zpaserviceedgecontroller.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpaserviceedgecontroller.ServiceEdgeController](ctx, service, zpaAPIV1, "/serviceEdge")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaserviceedgecontroller.ServiceEdgeController, *http.Response, error) {
 				return zpaserviceedgecontroller.Get(ctx, service, id)
@@ -248,7 +278,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPACloudConnGrps}: newListGetHandler(
 			resourceZPACloudConnGrps,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
-				return zpacloudconnectorgroup.GetAll(ctx, service)
+				return getZPAAllPages[zpacloudconnectorgroup.CloudConnectorGroup](ctx, service, zpaAPIV1, "/cloudConnectorGroup")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacloudconnectorgroup.CloudConnectorGroup, *http.Response, error) {
 				return zpacloudconnectorgroup.Get(ctx, service, id)
@@ -258,7 +288,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPACloudConns}: newListGetHandler(
 			resourceZPACloudConns,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacloudconnector.CloudConnector, *http.Response, error) {
-				return zpacloudconnector.GetAll(ctx, service)
+				return getZPAAllPagesForMicrotenant[zpacloudconnector.CloudConnector](ctx, service, zpaAPIV1, "/cloudConnector")
 			}),
 			func(context.Context, string) (*zpacloudconnector.CloudConnector, error) {
 				return nil, fmt.Errorf("%w: %s/%s get", ErrUnsupportedResource, resources.ProductZPA, resourceZPACloudConns)
@@ -268,7 +298,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
 			resourceZPAPostureProfs,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpapostureprofile.PostureProfile, *http.Response, error) {
-				return zpapostureprofile.GetAll(ctx, service)
+				return getZPAAllPages[zpapostureprofile.PostureProfile](ctx, service, zpaAPIV2, "/posture")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpapostureprofile.PostureProfile, *http.Response, error) {
 				return zpapostureprofile.Get(ctx, service, id)
@@ -308,7 +338,7 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZPA, name: resourceZPAConfigOvrds}: newListGetHandler(
 			resourceZPAConfigOvrds,
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpaconfigoverride.ConfigOverrides, *http.Response, error) {
-				return zpaconfigoverride.GetAll(ctx, service)
+				return getZPAAllPages[zpaconfigoverride.ConfigOverrides](ctx, service, zpaAPIV1, "/configOverrides")
 			}),
 			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpaconfigoverride.ConfigOverrides, *http.Response, error) {
 				return zpaconfigoverride.Get(ctx, service, id)

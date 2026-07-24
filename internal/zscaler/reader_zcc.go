@@ -7,6 +7,7 @@ import (
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	zccadminroles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/admin_roles"
 	zccappprofiles "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/application_profiles"
+	zcccommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/common"
 	zcccompany "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/company"
 	zcccustomip "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/custom_ip_apps"
 	zccdevices "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/devices"
@@ -21,8 +22,8 @@ import (
 )
 
 // zccPageSize is the per-page size for paginated ZCC reads. ZCC PAPI clamps
-// page size to MaxPageSize (5000), so 1000 (the SDK's own ReadAllPages default)
-// is honored by the server and short-page termination stays valid.
+// page size to MaxPageSize (5000), so 1000 is honored by the server and
+// preserves the prior devices.GetAll request size.
 const zccPageSize = 1000
 
 // zccMaxPages is a fail-closed ceiling on the number of pages zccPaginate will
@@ -34,26 +35,68 @@ const zccPageSize = 1000
 // converts a pathological infinite loop into a visible, descriptive error.
 const zccMaxPages = 1000
 
-// zccPaginate walks every page of a ZCC list endpoint, mirroring the SDK's
-// ReadAllPages contract: advance pages until one returns fewer than a full page.
-// Several ZCC by-company list endpoints otherwise return only the first page
-// and silently truncate large tenants.
 func zccPaginate[T any](ctx context.Context, fetchPage func(ctx context.Context, page, pageSize int) ([]T, error)) ([]T, error) {
+	return zccPaginateWithSize(ctx, zccPageSize, fetchPage)
+}
+
+// zccPaginateWithSize walks every page of a ZCC list endpoint, mirroring the
+// SDK's ReadAllPages contract: advance pages until one returns fewer than the
+// requested page size. The explicit size preserves endpoint-specific SDK
+// defaults, including the 50-record admin-role boundary.
+func zccPaginateWithSize[T any](
+	ctx context.Context,
+	pageSize int,
+	fetchPage func(ctx context.Context, page, pageSize int) ([]T, error),
+) ([]T, error) {
+	if pageSize <= 0 {
+		return nil, fmt.Errorf("zcc pagination page size must be positive")
+	}
 	var all []T
 	for page := 1; ; page++ {
 		if page > zccMaxPages {
 			return nil, fmt.Errorf("zcc pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", zccMaxPages, len(all))
 		}
-		items, err := fetchPage(ctx, page, zccPageSize)
+		items, err := fetchPage(ctx, page, pageSize)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, items...)
-		if len(items) < zccPageSize {
+		if len(items) < pageSize {
 			break
 		}
 	}
 	return all, nil
+}
+
+func getZCCAllPages[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	endpoint string,
+	params zcccommon.QueryParams,
+) ([]T, error) {
+	return getZCCAllPagesWithSize[T](ctx, service, endpoint, params, zccPageSize)
+}
+
+func getZCCAllPagesWithSize[T any](
+	ctx context.Context,
+	service *zsdk.Service,
+	endpoint string,
+	params zcccommon.QueryParams,
+	pageSize int,
+) ([]T, error) {
+	items, err := zccPaginateWithSize(ctx, pageSize, func(ctx context.Context, page, pageSize int) ([]T, error) {
+		params.Page = page
+		params.PageSize = pageSize
+		return zcccommon.ReadPage[T](ctx, service.Client, endpoint, params)
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err = zsdk.ApplyJMESPathFromContext(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("apply zcc list filter: %w", err)
+	}
+	return items, nil
 }
 
 func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
@@ -61,8 +104,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCFailOpenPolicy}: newListOnlyHandler(
 			resourceZCCFailOpenPolicy,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccfailopen.WebFailOpenPolicy, error) {
-				// Fail-open policy is a per-company singleton list; one full page covers it.
-				return zccfailopen.GetFailOpenPolicy(ctx, service, zccPageSize)
+				return getZCCAllPages[zccfailopen.WebFailOpenPolicy](
+					ctx,
+					service,
+					"/zcc/papi/public/v1/webFailOpenPolicy/listByCompany",
+					zcccommon.QueryParams{},
+				)
 			}),
 			structSourceRecord[zccfailopen.WebFailOpenPolicy],
 		),
@@ -152,16 +199,25 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCDevices}: newListOnlyHandler(
 			resourceZCCDevices,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccdevices.GetDevices, error) {
-				// devices.GetAll paginates via the SDK's ReadAllPages.
-				return zccdevices.GetAll(ctx, service, "", "")
+				return getZCCAllPages[zccdevices.GetDevices](
+					ctx,
+					service,
+					"/zcc/papi/public/v1/getDevices",
+					zcccommon.QueryParams{},
+				)
 			}),
 			structSourceRecord[zccdevices.GetDevices],
 		),
 		{product: resources.ProductZCC, name: resourceZCCAdminRoles}: newListOnlyHandler(
 			resourceZCCAdminRoles,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccadminroles.AdminRole, error) {
-				// GetAdminRoles paginates via the SDK's ReadAllPages.
-				return zccadminroles.GetAdminRoles(ctx, service)
+				return getZCCAllPagesWithSize[zccadminroles.AdminRole](
+					ctx,
+					service,
+					"/zcc/papi/public/v1/getAdminRoles",
+					zcccommon.QueryParams{},
+					zcccommon.DefaultPageSize,
+				)
 			}),
 			structSourceRecord[zccadminroles.AdminRole],
 		),
