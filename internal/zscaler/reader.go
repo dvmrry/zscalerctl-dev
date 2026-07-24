@@ -1345,7 +1345,7 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
-type zpaTwoIdentityTransport struct {
+type oneAPIIdentityCompatibilityTransport struct {
 	base             http.RoundTripper
 	invalidOAuthHost string
 	validOAuthHost   string
@@ -1353,26 +1353,34 @@ type zpaTwoIdentityTransport struct {
 	validAdminHost   string
 }
 
-// oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
-// identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
-// OneAPI token and ZIdentity admin endpoints remain on zslogin.net.
+// oneAPIIdentityTransport narrowly corrects identity hosts that the pinned SDK
+// constructs inconsistently with its documented contract. Product API clients
+// retain the unwrapped transport and the SDK's own cloud routing.
 func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
-	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
+	vanityDomain = strings.TrimSpace(vanityDomain)
+	transport := &oneAPIIdentityCompatibilityTransport{base: base}
+	switch strings.ToUpper(strings.TrimSpace(cloud)) {
+	case "ZPATWO":
+		// ZPATWO selects a distinct ZPA gateway, but OAuth and Zidentity admin
+		// remain on the production identity hosts.
+		transport.invalidOAuthHost = vanityDomain + ".zsloginzpatwo.net"
+		transport.validOAuthHost = vanityDomain + ".zslogin.net"
+		transport.invalidAdminHost = vanityDomain + "-admin.zsloginzpatwo.net"
+		transport.validAdminHost = vanityDomain + "-admin.zslogin.net"
+	case "GOVUS":
+		// v3.8.41's implementation says zidentitygov.us while its tagged test,
+		// README, and changelog specify zidentitygovus.net.
+		transport.invalidOAuthHost = vanityDomain + ".zidentitygov.us"
+		transport.validOAuthHost = vanityDomain + ".zidentitygovus.net"
+	default:
 		return base
 	}
-	vanityDomain = strings.TrimSpace(vanityDomain)
-	return &zpaTwoIdentityTransport{
-		base:             base,
-		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
-		validOAuthHost:   vanityDomain + ".zslogin.net",
-		invalidAdminHost: vanityDomain + "-admin.zsloginzpatwo.net",
-		validAdminHost:   vanityDomain + "-admin.zslogin.net",
-	}
+	return transport
 }
 
 // RoundTrip rewrites only invalid identity endpoints emitted by the SDK. All
 // product API requests and every other host or path pass through unchanged.
-func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+func (t *oneAPIIdentityCompatibilityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if request.URL.Scheme != "https" {
 		return t.base.RoundTrip(request)
 	}
@@ -1380,7 +1388,7 @@ func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Respon
 	switch {
 	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
 		validHost = t.validOAuthHost
-	case strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
+	case t.invalidAdminHost != "" && strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
 		validHost = t.validAdminHost
 	default:
 		return t.base.RoundTrip(request)

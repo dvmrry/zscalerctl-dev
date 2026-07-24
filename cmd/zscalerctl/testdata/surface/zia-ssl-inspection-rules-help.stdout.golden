@@ -1,0 +1,19 @@
+usage: zscalerctl zia ssl-inspection-rules list|get
+fields:
+  id                         labels
+  name                       timeWindows
+  description                locations
+  action                     locationGroups
+  state                      departments
+  accessControl              groups
+  order                      users
+  rank                       deviceGroups
+  urlCategories              devices
+  platforms                  destIpGroups
+  cloudApplications          sourceIpGroups
+  lastModifiedTime           proxyGateways
+  defaultRule                zpaAppSegments
+  predefined                 workloadGroups
+  roadWarriorForKerberos     endPointApplications
+  userAgentTypes             endPointApplicationGroups
+  deviceTrustLevels

@@ -57,10 +57,14 @@ As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.41`:
   and token configuration surfaces require separate privacy/secret and
   command-shape review; see
   [Resource Queue](RESOURCE_QUEUE.md#sdk-v3841-addition-triage).
-- OneAPI now recognizes `GOV` and `GOVUS` identity/API hosts. zscalerctl keeps
-  its narrow ZPATWO compatibility transport and exercises the new government
-  routing through mocked HTTP tests; live government-cloud validation remains
-  environment-specific.
+- OneAPI now recognizes `GOV` and `GOVUS` OAuth and product-gateway hosts.
+  The tagged `v3.8.41` implementation misspells the documented GOVUS OAuth
+  domain as `zidentitygov.us`; zscalerctl's narrow identity compatibility
+  transport rewrites only that exact token endpoint to the SDK test, README,
+  and changelog contract `zidentitygovus.net`. Mocked tests cover OAuth and ZIA
+  product routing. GOV/GOVUS Zidentity `/admin` routing is not claimed because
+  the tagged SDK supplies no matching host test and no live government tenant
+  was available.
 
 These findings are SDK-shape evidence only. They do not prove entitlement,
 tenant availability, pagination behavior, or real response shape.

@@ -1,0 +1,17 @@
+usage: zscalerctl zia url-filtering-rules list|get
+fields:
+  id                        lastModifiedTime          locations
+  name                      enforceTimeValidity       locationGroups
+  description               validityStartTime         sourceIpGroups
+  state                     validityEndTime           departments
+  order                     validityTimeZoneId        groups
+  rank                      blockOverride             users
+  action                    timeQuota                 deviceGroups
+  protocols                 sizeQuota                 devices
+  requestMethods            ciparule                  overrideUsers
+  urlCategories             browserEunTemplateId      overrideGroups
+  urlCategories2            endUserNotificationUrl    httpHeaderProfiles
+  userRiskScoreLevels       cbiProfileId              httpHeaderActionProfiles
+  userAgentTypes            cbiProfile                workloadGroups
+  deviceTrustLevels         labels
+  sourceCountries           timeWindows

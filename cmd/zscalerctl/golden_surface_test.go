@@ -45,6 +45,7 @@ var goldenBinary string
 const (
 	goldenSurfaceFixtureEnv        = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
 	goldenSurfaceReadFixture       = "resource-read"
+	goldenSurfaceSDKV3841Fixture   = "sdk-v3841-rule-fields"
 	goldenSurfaceInvalidIDFixture  = "invalid-resource-id"
 	goldenSurfaceMissingZPAFixture = "missing-zpa-customer-id"
 )
@@ -331,6 +332,50 @@ func (r goldenSurfaceReader) List(_ context.Context, product resources.Product, 
 			}),
 		}, nil
 	}
+	if r.fixture == goldenSurfaceSDKV3841Fixture && product == resources.ProductZIA {
+		endpointApplications := []any{map[string]any{
+			"resourceId":      901,
+			"applicationName": "Managed Browser",
+			"osType":          "WINDOWS",
+			"applicationType": "BROWSER",
+		}}
+		endpointApplicationGroups := []any{map[string]any{
+			"groupId": 902,
+			"name":    "Approved Browsers",
+		}}
+		switch resource {
+		case "ssl-inspection-rules":
+			return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+				"id":                        9101,
+				"endPointApplications":      endpointApplications,
+				"endPointApplicationGroups": endpointApplicationGroups,
+			})}, nil
+		case "url-filtering-rules":
+			return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+				"id":                       9102,
+				"httpHeaderProfiles":       []any{map[string]any{"id": 501, "name": "Request profile"}},
+				"httpHeaderActionProfiles": []any{map[string]any{"id": 502, "name": "Insertion profile"}},
+			})}, nil
+		case "firewall-filtering-rules":
+			return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+				"id":                           9103,
+				"isEunEnabled":                 true,
+				"eunTemplateId":                771,
+				"excludeContextShieldEndPoint": true,
+				"endPointApplications":         endpointApplications,
+				"endPointApplicationGroups":    endpointApplicationGroups,
+			})}, nil
+		case "firewall-dns-rules":
+			return []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+				"id":                           9104,
+				"isEunEnabled":                 true,
+				"eunTemplateId":                772,
+				"excludeContextShieldEndPoint": true,
+				"endPointApplications":         endpointApplications,
+				"endPointApplicationGroups":    endpointApplicationGroups,
+			})}, nil
+		}
+	}
 	return nil, fmt.Errorf("surface fixture %q has no list result for %s/%s", r.fixture, product, resource)
 }
 
@@ -535,6 +580,30 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "resource-help",
 		},
+		{
+			name:     "zia-ssl-inspection-rules-help",
+			args:     []string{"zia", "ssl-inspection-rules", "--help"},
+			wantCode: 0,
+			note:     "sdk-v3841-resource-help",
+		},
+		{
+			name:     "zia-url-filtering-rules-help",
+			args:     []string{"zia", "url-filtering-rules", "--help"},
+			wantCode: 0,
+			note:     "sdk-v3841-resource-help",
+		},
+		{
+			name:     "zia-firewall-filtering-rules-help",
+			args:     []string{"zia", "firewall-filtering-rules", "--help"},
+			wantCode: 0,
+			note:     "sdk-v3841-resource-help",
+		},
+		{
+			name:     "zia-firewall-dns-rules-help",
+			args:     []string{"zia", "firewall-dns-rules", "--help"},
+			wantCode: 0,
+			note:     "sdk-v3841-resource-help",
+		},
 		// ── resource list (offline fixture → pretty/table success) ──────────────
 		{
 			name:     "zia-locations-list-pretty",
@@ -549,6 +618,50 @@ func TestGoldenSurface(t *testing.T) {
 			fixture:  goldenSurfaceReadFixture,
 			wantCode: 0,
 			note:     "table-resource-list-shape",
+		},
+		{
+			name: "zia-ssl-inspection-rules-list-table",
+			args: []string{
+				"--format", "table",
+				"--fields", "id,endPointApplications,endPointApplicationGroups",
+				"zia", "ssl-inspection-rules", "list",
+			},
+			fixture:  goldenSurfaceSDKV3841Fixture,
+			wantCode: 0,
+			note:     "sdk-v3841-table-fields",
+		},
+		{
+			name: "zia-url-filtering-rules-list-pretty",
+			args: []string{
+				"--format", "pretty", "--color", "never",
+				"--fields", "id,httpHeaderProfiles,httpHeaderActionProfiles",
+				"zia", "url-filtering-rules", "list",
+			},
+			fixture:  goldenSurfaceSDKV3841Fixture,
+			wantCode: 0,
+			note:     "sdk-v3841-pretty-fields",
+		},
+		{
+			name: "zia-firewall-filtering-rules-list-table",
+			args: []string{
+				"--format", "table",
+				"--fields", "id,isEunEnabled,eunTemplateId,excludeContextShieldEndPoint,endPointApplications,endPointApplicationGroups",
+				"zia", "firewall-filtering-rules", "list",
+			},
+			fixture:  goldenSurfaceSDKV3841Fixture,
+			wantCode: 0,
+			note:     "sdk-v3841-table-fields",
+		},
+		{
+			name: "zia-firewall-dns-rules-list-pretty",
+			args: []string{
+				"--format", "pretty", "--color", "never",
+				"--fields", "id,isEunEnabled,eunTemplateId,excludeContextShieldEndPoint,endPointApplications,endPointApplicationGroups",
+				"zia", "firewall-dns-rules", "list",
+			},
+			fixture:  goldenSurfaceSDKV3841Fixture,
+			wantCode: 0,
+			note:     "sdk-v3841-pretty-fields",
 		},
 		// ── resource get (offline fixture → pretty success) ─────────────────────
 		{

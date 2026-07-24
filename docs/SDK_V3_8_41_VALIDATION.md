@@ -26,8 +26,15 @@ The focused tests pin:
 - omission of endpoint filenames, bundles, descriptions, versions, signature
   metadata, nested inventories, and HTTP-header reference extensions;
 - classification of every reviewed top-level SDK field.
-- mocked OneAPI `GOV` and `GOVUS` OAuth/product host routing while preserving
-  the existing ZPATWO identity-host compatibility behavior.
+- mocked OneAPI `GOV` and `GOVUS` OAuth/product host routing, including a
+  narrow correction from the tagged SDK's GOVUS implementation typo to its
+  documented `zidentitygovus.net` contract, while preserving the existing
+  ZPATWO identity-host compatibility behavior.
+
+These routing tests cover OAuth token exchange and ZIA product-gateway
+selection only. They do not claim GOV/GOVUS Zidentity `/admin` routing, whose
+tagged SDK path lacks a matching authoritative host test and still requires a
+live environment-specific smoke.
 
 ## Optional live smoke
 

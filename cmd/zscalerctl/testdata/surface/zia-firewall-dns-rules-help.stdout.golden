@@ -1,0 +1,26 @@
+usage: zscalerctl zia firewall-dns-rules list|get
+fields:
+  id                            defaultDnsRuleNameUsed
+  name                          isEunEnabled
+  order                         eunTemplateId
+  rank                          excludeContextShieldEndPoint
+  accessControl                 applicationGroups
+  action                        dnsGateway
+  state                         zpaIpGroup
+  description                   ednsEcsObject
+  redirectIp                    locations
+  blockResponseCode             locationGroups
+  lastModifiedTime              departments
+  srcIps                        groups
+  destAddresses                 users
+  destIpCategories              timeWindows
+  destCountries                 labels
+  sourceCountries               destIpGroups
+  resCategories                 destIpv6Groups
+  applications                  srcIpGroups
+  dnsRuleRequestTypes           srcIpv6Groups
+  protocols                     deviceGroups
+  defaultRule                   devices
+  capturePCAP                   endPointApplications
+  predefined                    endPointApplicationGroups
+  isWebEunEnabled

@@ -24,9 +24,15 @@ func TestSDKV3841GovernmentCloudRouting(t *testing.T) {
 			wantProductURL: "https://api.zscalergov.net/zia/api/v1/status",
 		},
 		{
-			name:           "GOVUS case insensitive",
+			name:           "GOVUS lowercase",
 			cloud:          "govus",
-			wantOAuthURL:   "https://zscalerctl-vanity.zidentitygov.us/oauth2/v1/token",
+			wantOAuthURL:   "https://zscalerctl-vanity.zidentitygovus.net/oauth2/v1/token",
+			wantProductURL: "https://api.zscalergov.us/zia/api/v1/status",
+		},
+		{
+			name:           "GOVUS uppercase",
+			cloud:          "GOVUS",
+			wantOAuthURL:   "https://zscalerctl-vanity.zidentitygovus.net/oauth2/v1/token",
 			wantProductURL: "https://api.zscalergov.us/zia/api/v1/status",
 		},
 	}
@@ -51,7 +57,11 @@ func TestSDKV3841GovernmentCloudRouting(t *testing.T) {
 					Request:    request,
 				}, nil
 			})
-			sdkCfg.HTTPClient.Transport = transport
+			if compatibility, ok := sdkCfg.HTTPClient.Transport.(*oneAPIIdentityCompatibilityTransport); ok {
+				compatibility.base = transport
+			} else {
+				sdkCfg.HTTPClient.Transport = transport
+			}
 			sdkCfg.ZIAHTTPClient.Transport = transport
 
 			service, err := zsdk.NewOneAPIClient(sdkCfg)

@@ -387,9 +387,9 @@ func TestNewSDKConfigurationZPATWOUsesProductionOAuthHost(t *testing.T) {
 	cfg.Cloud = "ZPATWO"
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
+	transport, ok := sdkCfg.HTTPClient.Transport.(*oneAPIIdentityCompatibilityTransport)
 	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
+		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *oneAPIIdentityCompatibilityTransport", sdkCfg.HTTPClient.Transport)
 	}
 	var gotURL string
 	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -416,36 +416,60 @@ func TestNewSDKConfigurationZPATWOUsesProductionOAuthHost(t *testing.T) {
 	}
 }
 
-func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
+func TestOneAPIIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
 	tests := []struct {
 		name    string
+		cloud   string
 		url     string
 		wantURL string
 	}{
 		{
 			name:    "sdk token endpoint",
+			cloud:   "ZPATWO",
 			url:     "https://acme.zsloginzpatwo.net/oauth2/v1/token",
 			wantURL: "https://acme.zslogin.net/oauth2/v1/token",
 		},
 		{
 			name:    "zidentity admin endpoint",
+			cloud:   "ZPATWO",
 			url:     "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
 			wantURL: "https://acme-admin.zslogin.net/admin/api/v1/users",
 		},
 		{
 			name:    "non zidentity admin path",
+			cloud:   "ZPATWO",
 			url:     "https://acme-admin.zsloginzpatwo.net/other/users",
 			wantURL: "https://acme-admin.zsloginzpatwo.net/other/users",
 		},
 		{
 			name:    "different host",
+			cloud:   "ZPATWO",
 			url:     "https://other.zsloginzpatwo.net/oauth2/v1/token",
 			wantURL: "https://other.zsloginzpatwo.net/oauth2/v1/token",
 		},
 		{
 			name:    "non TLS",
+			cloud:   "ZPATWO",
 			url:     "http://acme.zsloginzpatwo.net/oauth2/v1/token",
 			wantURL: "http://acme.zsloginzpatwo.net/oauth2/v1/token",
+		},
+		{
+			name:    "GOVUS lowercase token endpoint",
+			cloud:   "govus",
+			url:     "https://acme.zidentitygov.us/oauth2/v1/token",
+			wantURL: "https://acme.zidentitygovus.net/oauth2/v1/token",
+		},
+		{
+			name:    "GOVUS uppercase token endpoint",
+			cloud:   "GOVUS",
+			url:     "https://acme.zidentitygov.us/oauth2/v1/token",
+			wantURL: "https://acme.zidentitygovus.net/oauth2/v1/token",
+		},
+		{
+			name:    "GOVUS unrelated path",
+			cloud:   "GOVUS",
+			url:     "https://acme.zidentitygov.us/admin/api/v1/users",
+			wantURL: "https://acme.zidentitygov.us/admin/api/v1/users",
 		},
 	}
 	for _, test := range tests {
@@ -455,7 +479,7 @@ func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
 				gotURL = request.URL.String()
 				return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: request}, nil
 			})
-			transport := oneAPIIdentityTransport(base, "acme", "ZPATWO")
+			transport := oneAPIIdentityTransport(base, "acme", test.cloud)
 			request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, test.url, nil)
 			if err != nil {
 				t.Fatalf("http.NewRequestWithContext(%q) error = %v, want nil", test.url, err)
@@ -477,9 +501,9 @@ func TestNewSDKConfigurationZPATWORoutesZidentityToProductionHost(t *testing.T) 
 	cfg := validReaderConfig()
 	cfg.Cloud = "ZPATWO"
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
+	transport, ok := sdkCfg.HTTPClient.Transport.(*oneAPIIdentityCompatibilityTransport)
 	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
+		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *oneAPIIdentityCompatibilityTransport", sdkCfg.HTTPClient.Transport)
 	}
 	var gotURLs []string
 	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
