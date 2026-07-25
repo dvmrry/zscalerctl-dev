@@ -1292,8 +1292,9 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 		return nil, err
 	}
 	httpClient := &http.Client{
-		Timeout:   timeout,
-		Transport: directTransport(cfg.Proxy),
+		Timeout:       timeout,
+		Transport:     directTransport(cfg.Proxy),
+		CheckRedirect: refuseLegacyZIARedirect,
 	}
 	ziaCfg := &sdkzia.Configuration{
 		Logger:        newSDKLogger(cfg.DiagLogger),
@@ -1314,6 +1315,19 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 	ziaCfg.ZIA.Client.RateLimit.RetryWaitMax = 3 * time.Second
 	ziaCfg.ZIA.Client.Cache.Enabled = false
 	return ziaCfg, nil
+}
+
+func refuseLegacyZIARedirect(_ *http.Request, _ []*http.Request) error {
+	// Returning ErrUseLastResponse keeps the original response available to the
+	// SDK while preventing Go from replaying a credential-bearing POST body.
+	return http.ErrUseLastResponse
+}
+
+// ValidateLegacyZIACloud rejects any cloud that does not map to a reviewed,
+// exact legacy ZIA origin. Callers can use it before resolving secret sources.
+func ValidateLegacyZIACloud(cloud string) error {
+	_, err := legacyZIABaseURL(cloud)
+	return err
 }
 
 func legacyZIABaseURL(cloud string) (*url.URL, error) {
@@ -1448,7 +1462,7 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
-		if _, err := legacyZIABaseURL(cfg.ZIALegacy.Cloud); err != nil {
+		if err := ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
 			return err
 		}
 		return nil

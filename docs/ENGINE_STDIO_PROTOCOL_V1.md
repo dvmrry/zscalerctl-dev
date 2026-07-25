@@ -186,6 +186,9 @@ Framing and parsing rules:
   Unicode format runes. Dynamic values remain lossless, untrusted data: clients
   must apply sink-specific escaping at terminal, HTML, log, and similar
   presentation boundaries rather than altering the wire value.
+- The Go and TypeScript codecs pin this category to Unicode 15.0.0. The
+  TypeScript client owns the shared table used by the OpenTUI experiment, and
+  exhaustive tests compare all code points so the two consumers cannot drift.
 
 Dynamic projected/diff JSON numbers retain their exact RFC 8259 decimal lexeme.
 They are not coerced through `float64`. Go uses `json.Number`; TypeScript uses a

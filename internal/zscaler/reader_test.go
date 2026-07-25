@@ -722,6 +722,54 @@ func TestNewLegacyZIAConfigurationDoesNotUseSDKDiscoveryOrProxy(t *testing.T) {
 	}
 }
 
+func TestNewLegacyZIAConfigurationRefusesCredentialBearingRedirects(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []int{http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		status := status
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
+
+			destinationBodies := make(chan string, 1)
+			destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				body, _ := io.ReadAll(req.Body) // httptest request bodies return no read error.
+				destinationBodies <- string(body)
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer destination.Close()
+
+			source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", destination.URL+"/credential-capture")
+				w.WriteHeader(status)
+			}))
+			defer source.Close()
+
+			cfg, err := newLegacyZIAConfiguration(context.Background(), validLegacyReaderConfig())
+			if err != nil {
+				t.Fatalf("newLegacyZIAConfiguration() error = %v, want nil", err)
+			}
+			const credentialBody = `{"username":"legacy-user","password":"legacy-password"}`
+			req, err := http.NewRequest(http.MethodPost, source.URL+"/api/v1/authenticatedSession", strings.NewReader(credentialBody))
+			if err != nil {
+				t.Fatalf("http.NewRequest(%s) error = %v, want nil", http.StatusText(status), err)
+			}
+			resp, err := cfg.HTTPClient.Do(req)
+			if err != nil {
+				t.Fatalf("legacy HTTP client redirect %d error = %v, want original response", status, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != status {
+				t.Errorf("legacy HTTP client redirect status = %d, want original %d", resp.StatusCode, status)
+			}
+			select {
+			case body := <-destinationBodies:
+				t.Errorf("legacy HTTP client followed redirect %d with body %q, want no destination request", status, body)
+			default:
+			}
+		})
+	}
+}
+
 func TestLegacyZIABaseURLUsesReviewedExactOrigins(t *testing.T) {
 	t.Parallel()
 

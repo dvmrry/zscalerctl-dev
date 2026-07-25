@@ -241,6 +241,9 @@ func readerConfigFromConfig(
 			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
 		}
 	case config.AuthModeZIALegacy:
+		if err := zscaler.ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
+			return zscaler.ReaderConfig{}, err
+		}
 		var err error
 		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
 		if err != nil {

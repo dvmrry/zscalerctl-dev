@@ -300,7 +300,9 @@ export ZSCALERCTL_ZIA_CLOUD=<zia-cloud-name>
 Supported legacy ZIA cloud names are `zscaler`, `zscalerone`, `zscalertwo`,
 `zscalerthree`, `zscloud`, `zscalerbeta`, `zscalergov`, `zscalerten`, and
 `zspreview`. Each name resolves to a fixed Zscaler API origin; unknown values
-are rejected before any credentials are sent.
+are rejected before secret providers are resolved or credentials are sent.
+The legacy credential client also refuses HTTP redirects so a 307/308 response
+cannot replay its authentication body to another origin.
 
 Inline `ZSCALERCTL_ZIA_PASSWORD` and `ZSCALERCTL_ZIA_API_KEY` are supported for
 short-lived local smoke tests, but file-based secret delivery is preferred.

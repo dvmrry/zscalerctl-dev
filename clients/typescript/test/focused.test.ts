@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   decodeClientFrame,
+  decodeServerFrame,
   decodeCanonicalBase64,
   encodeClientFrame,
   encodeJson,
@@ -112,6 +113,28 @@ test("rejects cyclic dynamic records in typed server frames", () => {
     } as never),
     (error: unknown) => errorKind(error) === ERROR_KINDS.INVALID_FRAME,
   );
+});
+
+test("rejects every Unicode 15 format rune in dynamic server keys", () => {
+  let formatRunes = 0;
+  for (let codePoint = 0; codePoint <= 0x10ffff; codePoint += 1) {
+    const character = String.fromCodePoint(codePoint);
+    if (!/\p{Cf}/u.test(character)) continue;
+    formatRunes += 1;
+    const frame = encoder.encode(JSON.stringify({
+      type: "item",
+      id: 1,
+      seq: 1,
+      kind: "projected_record",
+      item: {product: "zia", resource: "locations", record: {[`key${character}`]: "value"}},
+    }));
+    assert.throws(
+      () => decodeServerFrame(frame),
+      (error: unknown) => errorKind(error) === ERROR_KINDS.INVALID_FRAME,
+      `decodeServerFrame accepted Unicode Cf U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`,
+    );
+  }
+  assert.equal(formatRunes, 170, "JavaScript Unicode Cf count must match Go 1.26 Unicode 15");
 });
 
 test("rejects duplicate keys in ordered JSON input", () => {

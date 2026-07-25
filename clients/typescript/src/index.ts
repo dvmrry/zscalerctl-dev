@@ -6,3 +6,4 @@ export * from "./types.ts";
 export * from "./codec.ts";
 export * from "./client.ts";
 export * from "./process.ts";
+export * from "./unicode.ts";

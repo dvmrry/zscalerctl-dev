@@ -19,6 +19,7 @@ import {
   V1_VERSION,
 } from "./constants.ts";
 import { ERROR_KINDS, fail } from "./errors.ts";
+import { isUnicodeFormatCodePoint } from "./unicode.ts";
 import {
   encodeOrderedJson,
   isWireNumber,
@@ -200,23 +201,6 @@ function typedInteger(value: unknown, positive = false): number {
   return value;
 }
 
-const FORMAT_RANGES: readonly (readonly [number, number])[] = [
-  [0x00ad, 0x00ad], [0x0600, 0x0605], [0x061c, 0x061c], [0x06dd, 0x06dd],
-  [0x070f, 0x070f], [0x0890, 0x0891], [0x08e2, 0x08e2], [0x180e, 0x180e],
-  [0x200b, 0x200f], [0x202a, 0x202e], [0x2060, 0x2064], [0x2066, 0x206f],
-  [0xfff9, 0xfffb], [0xfeff, 0xfeff], [0x1bca0, 0x1bca3], [0x1d173, 0x1d17a],
-  [0xe0001, 0xe0001], [0xe0020, 0xe007f],
-];
-
-function isFormatRune(codePoint: number): boolean {
-  for (const [start, end] of FORMAT_RANGES) {
-    if (codePoint >= start && codePoint <= end) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function utf8Length(value: string): number {
   let bytes = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -256,7 +240,7 @@ function structuralString(value: unknown, minimumRunes: number, maximumRunes: nu
       index += 1;
     }
     runes += 1;
-    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f) || isFormatRune(codePoint)) {
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f) || isUnicodeFormatCodePoint(codePoint)) {
       fail(ERROR_KINDS.INVALID_FRAME, "string contains a forbidden control or format rune");
     }
   }
