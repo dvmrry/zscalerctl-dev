@@ -722,6 +722,71 @@ func TestNewLegacyZIAConfigurationDoesNotUseSDKDiscoveryOrProxy(t *testing.T) {
 	}
 }
 
+func TestLegacyZIABaseURLUsesReviewedExactOrigins(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		cloud string
+		want  string
+	}{
+		{name: "primary", cloud: "zscaler", want: "https://zsapi.zscaler.net"},
+		{name: "one", cloud: "zscalerone", want: "https://zsapi.zscalerone.net"},
+		{name: "two", cloud: "zscalertwo", want: "https://zsapi.zscalertwo.net"},
+		{name: "three normalized", cloud: " ZSCALERTHREE ", want: "https://zsapi.zscalerthree.net"},
+		{name: "cloud", cloud: "zscloud", want: "https://zsapi.zscloud.net"},
+		{name: "beta", cloud: "zscalerbeta", want: "https://zsapi.zscalerbeta.net"},
+		{name: "government", cloud: "zscalergov", want: "https://zsapi.zscalergov.net"},
+		{name: "ten", cloud: "zscalerten", want: "https://zsapi.zscalerten.net"},
+		{name: "preview exception", cloud: "zspreview", want: "https://admin.zspreview.net"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := legacyZIABaseURL(tt.cloud)
+			if err != nil {
+				t.Fatalf("legacyZIABaseURL(%q) error = %v, want nil", tt.cloud, err)
+			}
+			if got.String() != tt.want {
+				t.Fatalf("legacyZIABaseURL(%q) = %q, want %q", tt.cloud, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLegacyZIABaseURLRejectsUnreviewedClouds(t *testing.T) {
+	t.Parallel()
+
+	for _, cloud := range []string{"", "example", "zscaler.evil", "zscaler-four"} {
+		cloud := cloud
+		t.Run(cloud, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := legacyZIABaseURL(cloud)
+			if got != nil {
+				t.Errorf("legacyZIABaseURL(%q) URL = %q, want nil", cloud, got)
+			}
+			if !errors.Is(err, ErrMissingCredentials) {
+				t.Fatalf("legacyZIABaseURL(%q) error = %v, want ErrMissingCredentials", cloud, err)
+			}
+			if cloud != "" && strings.Contains(err.Error(), cloud) {
+				t.Errorf("legacyZIABaseURL(%q) error = %q, want value-free rejection", cloud, err)
+			}
+		})
+	}
+}
+
+func TestNewReaderRejectsUnreviewedLegacyZIACloud(t *testing.T) {
+	t.Parallel()
+
+	cfg := validLegacyReaderConfig()
+	cfg.ZIALegacy.Cloud = "example"
+	if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("NewReader(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	}
+}
+
 func TestNewLegacyZIAConfigurationCanUseExplicitEnvironmentProxy(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:8080")
 	t.Setenv("HTTP_PROXY", "")

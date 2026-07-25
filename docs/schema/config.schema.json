@@ -67,7 +67,7 @@
         },
         "zia_cloud": {
           "type": "string",
-          "description": "ZIA cloud name for legacy auth (e.g. `zscaler`, `zscalertwo`). Overridden by `ZSCALERCTL_ZIA_CLOUD`."
+          "description": "Reviewed ZIA cloud name for legacy auth: `zscaler`, `zscalerone`, `zscalertwo`, `zscalerthree`, `zscloud`, `zscalerbeta`, `zscalergov`, `zscalerten`, or `zspreview` (case-insensitive). Unknown values are rejected before credentials are sent. Overridden by `ZSCALERCTL_ZIA_CLOUD`."
         },
         "redaction": {
           "type": "string",

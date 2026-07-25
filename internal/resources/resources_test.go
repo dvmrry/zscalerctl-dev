@@ -666,7 +666,7 @@ func TestFilterProjectedRecordsPreservesDefensiveBoundaries(t *testing.T) {
 	}
 }
 
-func TestFormatProjectedValueMatchesTextCellSemantics(t *testing.T) {
+func TestProjectedValueMatchingAndPresentationTextStaySeparate(t *testing.T) {
 	t.Parallel()
 
 	if got := resources.FormatProjectedValue("a\nb"); got != "a b" {
@@ -674,6 +674,14 @@ func TestFormatProjectedValueMatchesTextCellSemantics(t *testing.T) {
 	}
 	if got := resources.FormatProjectedValue([]any{"x\ty", "z"}); got != "x y,z" {
 		t.Fatalf("FormatProjectedValue([]any) = %q, want %q", got, "x y,z")
+	}
+	const formatText = "a\u200bb\u202ec"
+	if got := resources.FormatProjectedValue(formatText); got != formatText {
+		t.Fatalf("FormatProjectedValue(format text) = %q, want matching text unchanged", got)
+	}
+	const rawText = "a\nb\u200bc"
+	if got := resources.ProjectedValueText(rawText); got != rawText {
+		t.Fatalf("ProjectedValueText(raw text) = %q, want lossless flattened text", got)
 	}
 }
 

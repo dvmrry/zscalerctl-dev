@@ -484,11 +484,18 @@ func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, se
 	return false
 }
 
-// FormatProjectedValue renders a projected value for matching and text cells.
-// It collapses control characters so matching semantics align with table-style
-// renderers without importing presentation packages.
+// FormatProjectedValue renders a projected value for filter and search
+// matching. It keeps the established matching normalization independent from
+// terminal presentation escaping.
 func FormatProjectedValue(value any) string {
 	return sanitizeProjectedValue(rawProjectedValue(value))
+}
+
+// ProjectedValueText flattens a projected value without modifying its text.
+// Presentation callers must apply their sink-specific encoder before writing
+// the result; matching callers should use FormatProjectedValue instead.
+func ProjectedValueText(value any) string {
+	return rawProjectedValue(value)
 }
 
 func rawProjectedValue(value any) string {

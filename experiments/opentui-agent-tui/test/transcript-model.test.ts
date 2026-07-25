@@ -80,6 +80,13 @@ describe("transcript presentation model", () => {
     expect(evidence?.items[0]?.label).toBe("unsafe�[31m�");
   });
 
+  test("sanitizes fallback collection labels at the transcript metric leaf", () => {
+    const blocks = resultTranscriptBlocks([], {"unsafe\u200bCollection": []} as WireValue);
+    const metrics = blocks.find(block => block.kind === "metrics");
+
+    expect(metrics?.items).toEqual([{label: "Unsafe�collection", value: "0"}]);
+  });
+
   test("keeps plain text entries as typed blocks", () => {
     expect(textTranscriptBlocks(["hello", "world"])).toEqual([
       {id: "content", kind: "text", lines: ["hello", "world"]}

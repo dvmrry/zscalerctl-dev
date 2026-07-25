@@ -155,7 +155,7 @@ function metricsFor(
     }
   }
   if (collection !== undefined && (context?.countLabel === undefined || collection.items.length !== context.records)) {
-    metrics.push({label: humanizeField(collection.label), value: String(collection.items.length)});
+    metrics.push({label: safeInlineText(humanizeField(collection.label), 40), value: String(collection.items.length)});
   } else if (context === undefined) {
     const object = wireObject(value);
     if (object !== undefined) metrics.push({label: "Fields", value: String(Object.keys(object).length)});

@@ -182,6 +182,10 @@ Framing and parsing rules:
 - Structural strings reject C0/C1 controls, Unicode format runes, NUL, invalid
   UTF-8, and values beyond their byte limits. Paths are accepted only as input
   and never echoed.
+- Dynamic object keys at every nesting depth reject the same C0/C1 controls and
+  Unicode format runes. Dynamic values remain lossless, untrusted data: clients
+  must apply sink-specific escaping at terminal, HTML, log, and similar
+  presentation boundaries rather than altering the wire value.
 
 Dynamic projected/diff JSON numbers retain their exact RFC 8259 decimal lexeme.
 They are not coerced through `float64`. Go uses `json.Number`; TypeScript uses a

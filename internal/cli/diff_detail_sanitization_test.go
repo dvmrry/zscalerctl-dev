@@ -22,7 +22,7 @@ func TestWriteDiffDetailRowsEscapesTerminalControls(t *testing.T) {
 		},
 		Changed: []dumpdiff.RecordChange{
 			{
-				Key: "changed\nhidden\tfakecol\u202e",
+				Key: "changed\nhidden\tfakecol\u202e\u200b\u200d\u2060\ufeff\U000e0041",
 				Changes: []dumpdiff.FieldChange{
 					{Field: "ansi\x1b[2J"},
 					{Field: "osc\x1b]0;owned\x07"},
@@ -39,7 +39,7 @@ func TestWriteDiffDetailRowsEscapesTerminalControls(t *testing.T) {
 		`zia/locations\x1b[2J`,
 		`added\x1b[2J`,
 		`removed\x1b]0;owned\x07`,
-		`changed\nhidden\tfakecol\u202e`,
+		`changed\nhidden\tfakecol\u202e\u200b\u200d\u2060\ufeff\U000e0041`,
 		`ansi\x1b[2J`,
 		`osc\x1b]0;owned\x07`,
 		`line\nhidden`,
@@ -53,8 +53,10 @@ func TestWriteDiffDetailRowsEscapesTerminalControls(t *testing.T) {
 	if strings.ContainsRune(got, '\x1b') {
 		t.Fatalf("writeDiffDetailRows() = %q, want no raw ESC bytes", got)
 	}
-	if strings.ContainsRune(got, '\u202e') {
-		t.Fatalf("writeDiffDetailRows() = %q, want no raw bidi override", got)
+	for _, forbidden := range []rune{'\u202e', '\u200b', '\u200d', '\u2060', '\ufeff', '\U000e0041'} {
+		if strings.ContainsRune(got, forbidden) {
+			t.Fatalf("writeDiffDetailRows() = %q, want no raw format rune %#U", got, forbidden)
+		}
 	}
 	for _, r := range got {
 		if r < 0x20 && r != '\t' && r != '\n' {
@@ -77,8 +79,28 @@ func TestTerminalCellPreservesPrintableText(t *testing.T) {
 	t.Parallel()
 
 	const value = "zia/locations branch-01_name"
-	if got := terminalCell(value); got != value {
-		t.Fatalf("terminalCell(%q) = %q, want unchanged", value, got)
+	if got := output.TerminalCell(value); got != value {
+		t.Fatalf("output.TerminalCell(%q) = %q, want unchanged", value, got)
+	}
+}
+
+func TestRenderDiffTableEscapesSummaryCells(t *testing.T) {
+	t.Parallel()
+
+	got := renderDiffTable(dumpdiff.Report{Resources: []dumpdiff.ResourceDiff{{
+		Product:  "zia\u200b",
+		Resource: "locations\u202e",
+		Identity: dumpdiff.Identity{Mode: "field", Field: "name\u2060"},
+	}}}, false, output.Style{}).String()
+	for _, want := range []string{`zia\u200b/locations\u202e`, `field:name\u2060`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("renderDiffTable() = %q, want visible escape %q", got, want)
+		}
+	}
+	for _, forbidden := range []rune{'\u200b', '\u202e', '\u2060'} {
+		if strings.ContainsRune(got, forbidden) {
+			t.Errorf("renderDiffTable() = %q, want no raw format rune %#U", got, forbidden)
+		}
 	}
 }
 
@@ -101,7 +123,7 @@ func TestDiffReportJSONKeepsRawControlValues(t *testing.T) {
 		t.Fatalf("json.Unmarshal(diffControlReport()) error = %v, want nil", err)
 	}
 	change := decoded.Resources[0].Changed[0]
-	if want := "changed\nhidden\tfakecol\u202e"; change.Key != want {
+	if want := "changed\nhidden\tfakecol\u202e\u200b\u200d\u2060\ufeff\U000e0041"; change.Key != want {
 		t.Fatalf("json round-trip changed key = %q, want %q", change.Key, want)
 	}
 	if want := "ansi\x1b[2J"; change.Changes[0].Field != want {
@@ -127,7 +149,7 @@ func diffControlReport() dumpdiff.Report {
 				},
 				Changed: []dumpdiff.RecordChange{
 					{
-						Key: "changed\nhidden\tfakecol\u202e",
+						Key: "changed\nhidden\tfakecol\u202e\u200b\u200d\u2060\ufeff\U000e0041",
 						Changes: []dumpdiff.FieldChange{
 							{Field: "ansi\x1b[2J"},
 							{Field: "osc\x1b]0;owned\x07"},

@@ -1307,7 +1307,7 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 	ziaCfg.ZIA.Client.ZIAUsername = cfg.ZIALegacy.Username.Reveal()
 	ziaCfg.ZIA.Client.ZIAPassword = cfg.ZIALegacy.Password.Reveal()
 	ziaCfg.ZIA.Client.ZIAApiKey = cfg.ZIALegacy.APIKey.Reveal()
-	ziaCfg.ZIA.Client.ZIACloud = cfg.ZIALegacy.Cloud
+	ziaCfg.ZIA.Client.ZIACloud = strings.ToLower(strings.TrimSpace(cfg.ZIALegacy.Cloud))
 	ziaCfg.ZIA.Client.RequestTimeout = timeout
 	ziaCfg.ZIA.Client.RateLimit.MaxRetries = 2
 	ziaCfg.ZIA.Client.RateLimit.RetryWaitMin = time.Second
@@ -1317,19 +1317,37 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 }
 
 func legacyZIABaseURL(cloud string) (*url.URL, error) {
-	cloud = strings.TrimSpace(cloud)
+	cloud = strings.ToLower(strings.TrimSpace(cloud))
 	if cloud == "" {
 		return nil, fmt.Errorf("%w: ZSCALERCTL_ZIA_CLOUD is required", ErrMissingCredentials)
 	}
-	hostPrefix := "zsapi"
-	if strings.EqualFold(cloud, "zspreview") {
-		hostPrefix = "admin"
+	// Keep legacy credential destinations closed and reviewable. Never derive
+	// this origin from operator-controlled text, even when it is a valid DNS
+	// label: the SDK sends legacy username/password material to this host.
+	host := ""
+	switch cloud {
+	case "zscaler":
+		host = "zsapi.zscaler.net"
+	case "zscalerone":
+		host = "zsapi.zscalerone.net"
+	case "zscalertwo":
+		host = "zsapi.zscalertwo.net"
+	case "zscalerthree":
+		host = "zsapi.zscalerthree.net"
+	case "zscloud":
+		host = "zsapi.zscloud.net"
+	case "zscalerbeta":
+		host = "zsapi.zscalerbeta.net"
+	case "zscalergov":
+		host = "zsapi.zscalergov.net"
+	case "zscalerten":
+		host = "zsapi.zscalerten.net"
+	case "zspreview":
+		host = "admin.zspreview.net"
+	default:
+		return nil, fmt.Errorf("%w: ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud", ErrMissingCredentials)
 	}
-	baseURL, err := url.Parse(fmt.Sprintf("https://%s.%s.net", hostPrefix, cloud))
-	if err != nil {
-		return nil, fmt.Errorf("parse ZIA legacy cloud: %w", err)
-	}
-	return baseURL, nil
+	return &url.URL{Scheme: "https", Host: host}, nil
 }
 
 func effectiveContext(ctx context.Context) context.Context {
@@ -1429,6 +1447,9 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		}
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
+		}
+		if _, err := legacyZIABaseURL(cfg.ZIALegacy.Cloud); err != nil {
+			return err
 		}
 		return nil
 	case AuthModeOneAPI:
