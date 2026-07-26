@@ -1,7 +1,7 @@
 import {MacOSScrollAccel, TextAttributes, type MouseEvent, type ScrollBoxRenderable} from "@opentui/core";
 import {useEffect, useMemo, useRef} from "react";
 
-import {fitCellText, safeInlineText} from "../text.ts";
+import {fitCellText, safeInlineText, type SafeString} from "../text.ts";
 import type {Palette} from "../theme.ts";
 import {placeFloatingWindow} from "../overlay.ts";
 import {FloatingWindow} from "./Overlay.tsx";
@@ -11,27 +11,27 @@ export type PickerInputMethod = "keyboard" | "mouse";
 export interface PickerItem<T> {
   readonly id: string;
   readonly value: T;
-  readonly title: string;
-  readonly description?: string;
-  readonly category?: string;
+  readonly title: SafeString;
+  readonly description?: SafeString;
+  readonly category?: SafeString;
   readonly categoryId?: string;
-  readonly badge?: string;
+  readonly badge?: SafeString;
   readonly disabled?: boolean;
 }
 
 export interface PickerAction<T> {
   readonly id: string;
-  readonly shortcut: string;
-  readonly compactShortcut?: string;
-  readonly label: string;
-  readonly compactLabel?: string;
+  readonly shortcut: SafeString;
+  readonly compactShortcut?: SafeString;
+  readonly label: SafeString;
+  readonly compactLabel?: SafeString;
   readonly disabled?: (item: PickerItem<T> | undefined) => boolean;
   readonly onTrigger: (item: PickerItem<T> | undefined) => void;
 }
 
 export interface PickerScope {
   readonly id?: string;
-  readonly label: string;
+  readonly label: SafeString;
   readonly count: number;
 }
 
@@ -40,19 +40,19 @@ export interface PickerWindowProps<T> {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
   readonly preferredWidth: number;
-  readonly title: string;
+  readonly title: SafeString;
   readonly query: string;
-  readonly placeholder: string;
+  readonly placeholder: SafeString;
   readonly focused: boolean;
   readonly items: readonly PickerItem<T>[];
   readonly selectedId?: string;
   readonly truncated?: boolean;
-  readonly instruction: string;
-  readonly emptyMessage: string;
+  readonly instruction: SafeString;
+  readonly emptyMessage: SafeString;
   readonly inputMethod: PickerInputMethod;
   readonly showItemsWithoutQuery?: boolean;
   readonly actions?: readonly PickerAction<T>[];
-  readonly scopeLabel?: string;
+  readonly scopeLabel?: SafeString;
   readonly scopes?: readonly PickerScope[];
   readonly activeScopeId?: string;
   readonly onInput: (value: string) => void;
@@ -71,18 +71,18 @@ function categoryKey<T>(item: PickerItem<T>): string | undefined {
 
 export const fitPickerCellText = fitCellText;
 
-export function pickerScopeText(scope: PickerScope, availableWidth: number): string {
+export function pickerScopeText(scope: PickerScope, availableWidth: number): SafeString {
   const width = Math.max(1, Math.floor(availableWidth));
   const label = safeInlineText(scope.label, 80);
   const count = String(scope.count);
   const padded = ` ${label} ${count} `;
-  if (Bun.stringWidth(padded) <= width) return padded;
+  if (Bun.stringWidth(padded) <= width) return safeInlineText(padded, 120);
   const compact = `${label} ${count}`;
-  if (Bun.stringWidth(compact) <= width) return compact;
+  if (Bun.stringWidth(compact) <= width) return safeInlineText(compact, 120);
   const suffix = ` ${count}`;
   const suffixWidth = Bun.stringWidth(suffix);
   if (suffixWidth >= width) return fitPickerCellText(compact, width);
-  return `${fitPickerCellText(label, width - suffixWidth)}${suffix}`;
+  return safeInlineText(`${fitPickerCellText(label, width - suffixWidth)}${suffix}`, 120);
 }
 
 export function pickerScopeRowCount(scopes: readonly PickerScope[], label: string, availableWidth: number): number {
@@ -170,7 +170,10 @@ export function PickerWindow<T>(props: PickerWindowProps<T>) {
       ? "no matches"
       : `${selectedIndex + 1}/${total}${props.truncated === true ? "+" : ""}`;
   const activeScope = visibleScopes.find(scope => scope.id === props.activeScopeId);
-  const scopedStatus = showScopeBar && activeScope !== undefined ? `${activeScope.label} · ${status}` : status;
+  const scopedStatus = safeInlineText(
+    showScopeBar && activeScope !== undefined ? `${activeScope.label} · ${status}` : status,
+    160
+  );
   const visibleActions = compactWidth
     ? (props.actions ?? []).slice(0, veryCompactWidth ? 1 : 2)
     : props.actions ?? [];

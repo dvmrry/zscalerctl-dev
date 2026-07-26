@@ -1,13 +1,29 @@
 import type {WireValue} from "../../../clients/typescript/src/index.ts";
 
 import {DEMO_DATA} from "./fixture.ts";
-import type {CommandDescriptor, ContextState, Tone, TranscriptFacet, TranscriptMetric} from "./model.ts";
-import {safeInlineText} from "./text.ts";
+import type {CommandDescriptor, ContextState, Tone} from "./model.ts";
+import {safeInlineText, type SafeString} from "./text.ts";
 
 export interface WorkspaceSummary {
-  readonly metrics?: readonly TranscriptMetric[];
-  readonly facets?: readonly TranscriptFacet[];
+  readonly metrics?: readonly WorkspaceMetric[];
+  readonly facets?: readonly WorkspaceFacet[];
   readonly notes?: readonly string[];
+}
+
+export interface WorkspaceMetric {
+  readonly label: string;
+  readonly value: string;
+  readonly tone?: Tone;
+}
+
+export interface WorkspaceFacetValue {
+  readonly label: string;
+  readonly count: number;
+}
+
+export interface WorkspaceFacet {
+  readonly label: string;
+  readonly values: readonly WorkspaceFacetValue[];
 }
 
 export interface WorkspaceAnnouncement {
@@ -64,6 +80,30 @@ export interface WorkspacePicker {
   readonly initialQuery?: string;
 }
 
+export interface SafeWorkspacePickerItem extends Omit<WorkspacePickerItem,
+  "title" | "description" | "category" | "badge"> {
+  readonly title: SafeString;
+  readonly description: SafeString;
+  readonly category: SafeString;
+  readonly badge?: SafeString;
+}
+
+export interface SafeWorkspacePickerScope extends Omit<WorkspacePickerScope, "label"> {
+  readonly label: SafeString;
+}
+
+export interface SafeWorkspacePicker extends Omit<WorkspacePicker,
+  "title" | "placeholder" | "instruction" | "emptyMessage" | "items" | "scopes" | "scopeLabel" | "initialQuery"> {
+  readonly title: SafeString;
+  readonly placeholder: SafeString;
+  readonly instruction: SafeString;
+  readonly emptyMessage: SafeString;
+  readonly items: readonly SafeWorkspacePickerItem[];
+  readonly scopes?: readonly SafeWorkspacePickerScope[];
+  readonly scopeLabel?: SafeString;
+  readonly initialQuery?: SafeString;
+}
+
 export interface WorkspaceResult {
   readonly announcement: WorkspaceAnnouncement;
   readonly data?: WireValue;
@@ -103,20 +143,23 @@ export class WorkspaceCommandError extends Error {
   }
 }
 
-export interface FilteredWorkspacePicker {
-  readonly items: readonly WorkspacePickerItem[];
+export interface FilteredWorkspacePicker<T extends WorkspacePickerItem = WorkspacePickerItem> {
+  readonly items: readonly T[];
   readonly truncated: boolean;
 }
 
-export function normalizeWorkspacePicker(picker: WorkspacePicker): WorkspacePicker {
-  const items = picker.items.map(item => ({
-    ...item,
-    title: safeInlineText(item.title, 240),
-    description: safeInlineText(item.description, 500),
-    category: safeInlineText(item.category, 120),
-    ...(item.badge === undefined ? {} : {badge: safeInlineText(item.badge, 80)}),
-    ...(item.searchText === undefined ? {} : {searchText: safeInlineText(item.searchText, 4_096)})
-  }));
+export function normalizeWorkspacePicker(picker: WorkspacePicker): SafeWorkspacePicker {
+  const items = picker.items.map((item): SafeWorkspacePickerItem => {
+    const {title, description, category, badge, searchText, ...identity} = item;
+    return {
+      ...identity,
+      title: safeInlineText(title, 240),
+      description: safeInlineText(description, 500),
+      category: safeInlineText(category, 120),
+      ...(badge === undefined ? {} : {badge: safeInlineText(badge, 80)}),
+      ...(searchText === undefined ? {} : {searchText: safeInlineText(searchText, 4_096)})
+    };
+  });
   const scopeCounts = new Map<string, number>();
   for (const item of items) {
     if (item.scopeId !== undefined) scopeCounts.set(item.scopeId, (scopeCounts.get(item.scopeId) ?? 0) + 1);
@@ -144,11 +187,11 @@ export function normalizeWorkspacePicker(picker: WorkspacePicker): WorkspacePick
   };
 }
 
-export function filterWorkspacePicker(
-  items: readonly WorkspacePickerItem[],
+export function filterWorkspacePicker<T extends WorkspacePickerItem>(
+  items: readonly T[],
   query: string,
   options: number | {readonly limit?: number; readonly scopeId?: string} = {}
-): FilteredWorkspacePicker {
+): FilteredWorkspacePicker<T> {
   const limit = typeof options === "number" ? options : options.limit ?? 80;
   const scopeId = typeof options === "number" ? undefined : options.scopeId;
   const scoped = scopeId === undefined ? items : items.filter(item => item.scopeId === scopeId);

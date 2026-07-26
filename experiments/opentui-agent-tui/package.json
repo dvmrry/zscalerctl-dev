@@ -4,9 +4,9 @@
   "private": true,
   "description": "Unsupported OpenTUI experiment for a conversation-first zscalerctl workspace.",
   "type": "module",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.0-canary.1",
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.0-canary.1"
   },
   "scripts": {
     "start": "bun run src/main.tsx",

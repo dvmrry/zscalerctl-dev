@@ -80,13 +80,15 @@ data are the primary concepts.
 
 ## Requirements
 
-- Bun 1.4 or newer.
+- Bun 1.4 canary or newer. Until Bun 1.4 has a stable release, the experiment
+  identifies its runtime line as `1.4.0-canary.1`; CI pins an official Bun
+  container by immutable OCI digest and verifies the exact runtime revision.
 - An interactive terminal with mouse reporting and Unicode support.
 - For engine mode, a locally built `zscalerctl-engine` executable at an
   absolute path.
 
-The initial verification used the Rust-based Bun build
-`1.4.0-canary.1+88403d981`.
+The initial local verification used the Rust-based Bun build
+`1.4.0-canary.1+88403d981`. CI uses `1.4.0-canary.1+ae4b17de6`.
 
 ## Run it
 
@@ -192,8 +194,10 @@ go build -o /tmp/zscalerctl-engine ./cmd/zscalerctl-engine
 ZSCALERCTL_ENGINE_TEST_BINARY=/tmp/zscalerctl-engine bun run check
 ```
 
-The experiment has its own dependency lock and checks. It remains outside the
-repository's supported release surface and root Go gate suite.
+The experiment has its own dependency lock and checks. A path-filtered GitHub
+workflow runs them whenever this experiment, its shared TypeScript engine
+client, or that workflow changes. It remains outside the repository's
+supported release surface and root Go gate suite.
 
 ## Current boundaries
 
@@ -208,7 +212,11 @@ repository's supported release surface and root Go gate suite.
   engine's projection or recover dropped fields. Approximate matching is
   intentionally limited to record names and field names; scalar values require
   an exact substring so a fuzzy search cannot produce surprising data hits.
-- Display strings strip terminal controls and bidirectional formatting marks.
+- Tenant-derived tree, transcript, picker, and toast presentation values cross
+  `safeInlineText` into a nominal `SafeString` before their component models
+  accept them. The type checker rejects an ordinary `string` at those leaves;
+  the runtime conversion visibly replaces terminal controls and every Unicode
+  format rune before display.
 - Engine mode requires an absolute executable path, launches without a shell,
   drains but never presents child stderr, and renders normalized failure
   categories rather than backend error prose. Only validated missing

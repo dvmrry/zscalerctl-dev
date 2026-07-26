@@ -92,7 +92,7 @@ describe("workspace resource picker", () => {
         {id: "third", title: "third", description: "third", category: "Second", scopeId: "dup", command: "/third"}
       ]
     });
-    expect(normalized.scopes).toEqual([
+    expect<unknown>(normalized.scopes).toEqual([
       {id: "__all__", label: "First", count: 1},
       {id: "dup", label: "Kept", count: 2}
     ]);

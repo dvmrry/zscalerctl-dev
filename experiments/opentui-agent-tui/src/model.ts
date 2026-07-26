@@ -5,44 +5,45 @@ import {
   type SlashCommandDescriptor
 } from "./commands.ts";
 import type {JsonPath, TreeKind} from "./tree.ts";
+import type {SafeString} from "./text.ts";
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 export type FocusTarget = "composer" | "tree" | "transcript" | "search" | "picker";
 
 export interface TranscriptMetric {
-  readonly label: string;
-  readonly value: string;
+  readonly label: SafeString;
+  readonly value: SafeString;
   readonly tone?: Tone;
 }
 
 export interface TranscriptFacetValue {
-  readonly label: string;
+  readonly label: SafeString;
   readonly count: number;
 }
 
 export interface TranscriptFacet {
-  readonly label: string;
+  readonly label: SafeString;
   readonly values: readonly TranscriptFacetValue[];
 }
 
 export interface TranscriptEvidence {
   readonly path: JsonPath;
-  readonly label: string;
-  readonly detail: string;
+  readonly label: SafeString;
+  readonly detail: SafeString;
   readonly kind: TreeKind;
-  readonly preview: string;
+  readonly preview: SafeString;
 }
 
 export type TranscriptActionID = "inspect" | "find";
 
 export interface TranscriptAction {
   readonly id: TranscriptActionID;
-  readonly label: string;
-  readonly hint?: string;
+  readonly label: SafeString;
+  readonly hint?: SafeString;
 }
 
 export type TranscriptBlock =
-  | {readonly id: string; readonly kind: "text"; readonly lines: readonly string[]}
+  | {readonly id: string; readonly kind: "text"; readonly lines: readonly SafeString[]}
   | {readonly id: string; readonly kind: "metrics"; readonly items: readonly TranscriptMetric[]}
   | {readonly id: string; readonly kind: "facets"; readonly items: readonly TranscriptFacet[]}
   | {readonly id: string; readonly kind: "evidence"; readonly items: readonly TranscriptEvidence[]}
@@ -51,7 +52,7 @@ export type TranscriptBlock =
 export interface TranscriptEntry {
   readonly id: number;
   readonly role: "user" | "assistant" | "system";
-  readonly title?: string;
+  readonly title?: SafeString;
   readonly blocks: readonly TranscriptBlock[];
   readonly tone?: Tone;
   readonly resultId?: number;

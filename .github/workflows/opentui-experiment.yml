@@ -1,0 +1,40 @@
+name: opentui-experiment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/opentui-experiment.yml'
+      - 'clients/typescript/**'
+      - 'experiments/opentui-agent-tui/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/opentui-experiment.yml'
+      - 'clients/typescript/**'
+      - 'experiments/opentui-agent-tui/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opentui-experiment-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: docker.io/oven/bun@sha256:cd289be0e129201fa9d9bb8a5d0d2b9299ddad49733b29b4e34f4a15d35be06f
+    defaults:
+      run:
+        working-directory: experiments/opentui-agent-tui
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Verify pinned Bun runtime
+        run: test "$(bun --revision)" = "1.4.0-canary.1+ae4b17de6"
+      - run: bun install --frozen-lockfile
+      - run: bun run check

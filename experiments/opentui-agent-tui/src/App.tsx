@@ -76,6 +76,7 @@ import {
   normalizeWorkspacePicker,
   type WorkspaceAdapter,
   type WorkspaceExecutionContext,
+  type SafeWorkspacePicker,
   type WorkspacePicker,
   type WorkspaceResult
 } from "./workspace.ts";
@@ -223,7 +224,7 @@ export function App(props: {
   const quittingRef = useRef(false);
   const submitRef = useRef<(input: string) => void>(() => undefined);
   const workspacePickerPurposeRef = useRef<WorkspacePickerPurpose>("workspace");
-  const [workspacePicker, setWorkspacePicker] = useState<WorkspacePicker | undefined>();
+  const [workspacePicker, setWorkspacePicker] = useState<SafeWorkspacePicker | undefined>();
   const [workspacePickerQuery, setWorkspacePickerQuery] = useState("");
   const workspacePickerQueryRef = useRef("");
   const [workspacePickerScopeId, setWorkspacePickerScopeId] = useState<string | undefined>();
@@ -394,7 +395,7 @@ export function App(props: {
     }
     append({
       role: "assistant",
-      title: result.announcement.title,
+      title: safeInlineText(result.announcement.title, 180),
       blocks: resultTranscriptBlocks(
         result.announcement.body,
         committedData,
@@ -442,7 +443,7 @@ export function App(props: {
     }));
     append({
       role: "assistant",
-      title: failure.title,
+      title: safeInlineText(failure.title, 180),
       blocks: textTranscriptBlocks([failure.message, ...failure.details]),
       tone: failure.tone
     });
@@ -583,7 +584,7 @@ export function App(props: {
     setWelcomeMotionActive(false);
     append({
       role: "assistant",
-      title: "Motion changed",
+      title: safeInlineText("Motion changed"),
       blocks: textTranscriptBlocks([`Now using ${mode} motion · ${motionDescription(mode)}.`]),
       tone: "success"
     });
@@ -603,7 +604,7 @@ export function App(props: {
       setThemeName(item.id);
       append({
         role: "assistant",
-        title: "Theme changed",
+        title: safeInlineText("Theme changed"),
         blocks: textTranscriptBlocks([`Now using ${item.id} · ${themeMode}.`]),
         tone: "success"
       });
@@ -1199,7 +1200,7 @@ export function App(props: {
   const assistant = (title: string, body: readonly string[], tone: Tone = "neutral") => {
     append({
       role: "assistant",
-      title,
+      title: safeInlineText(title, 180),
       blocks: textTranscriptBlocks(body),
       tone
     });

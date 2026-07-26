@@ -1,5 +1,6 @@
 import type {Palette} from "../theme.ts";
-import type {WorkspacePicker, WorkspacePickerItem} from "../workspace.ts";
+import {safeInlineText} from "../text.ts";
+import type {SafeWorkspacePicker, SafeWorkspacePickerItem} from "../workspace.ts";
 import {
   PickerWindow,
   pickerScopeBarVisible,
@@ -11,13 +12,13 @@ function preferredPickerWidth(viewportWidth: number): number {
   return Math.max(42, Math.min(86, viewportWidth - 2));
 }
 
-export function workspacePickerScopes(picker: WorkspacePicker): readonly PickerScope[] {
+export function workspacePickerScopes(picker: SafeWorkspacePicker): readonly PickerScope[] {
   if (picker.scopes === undefined || picker.scopes.length <= 1) return [];
-  return [{label: "ALL", count: picker.items.length}, ...picker.scopes];
+  return [{label: safeInlineText("ALL"), count: picker.items.length}, ...picker.scopes];
 }
 
 export function workspacePickerScopeBarVisible(
-  picker: WorkspacePicker,
+  picker: SafeWorkspacePicker,
   viewportWidth: number,
   viewportHeight: number
 ): boolean {
@@ -34,9 +35,9 @@ export function WorkspacePickerWindow(props: {
   readonly colors: Palette;
   readonly viewportWidth: number;
   readonly viewportHeight: number;
-  readonly picker: WorkspacePicker;
+  readonly picker: SafeWorkspacePicker;
   readonly query: string;
-  readonly items: readonly WorkspacePickerItem[];
+  readonly items: readonly SafeWorkspacePickerItem[];
   readonly activeScopeId?: string;
   readonly selectedId?: string;
   readonly truncated: boolean;

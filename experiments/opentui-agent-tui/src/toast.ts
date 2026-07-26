@@ -1,9 +1,11 @@
+import {safeInlineText, type SafeString} from "./text.ts";
+
 export type ToastTone = "success" | "info" | "warning";
 export type ToastColorRole = "success" | "accent" | "warning";
 
 export interface ToastState {
   readonly id: number;
-  readonly message: string;
+  readonly message: SafeString;
   readonly tone: ToastTone;
 }
 
@@ -64,7 +66,7 @@ export class LatestToastController {
     if (this.#timer !== undefined) this.#timers.clearTimeout(this.#timer);
     const id = ++this.#generation;
     this.#activeID = id;
-    this.#publish({id, message, tone});
+    this.#publish({id, message: safeInlineText(message, 500), tone});
     const timer = this.#timers.setTimeout(() => {
       if (this.#activeID !== id || this.#timer !== timer) return;
       this.#activeID = undefined;

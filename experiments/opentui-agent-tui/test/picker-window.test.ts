@@ -9,15 +9,16 @@ import {
   pickerScopeText,
   type PickerScope
 } from "../src/components/PickerWindow.tsx";
+import {safeInlineText} from "../src/text.ts";
 import {paletteFor} from "../src/theme.ts";
 
 const SCOPES: readonly PickerScope[] = [
-  {label: "ALL", count: 165},
-  {id: "zia", label: "ZIA", count: 102},
-  {id: "zpa", label: "ZPA", count: 28},
-  {id: "zcc", label: "ZCC", count: 11},
-  {id: "ztw", label: "ZTW", count: 21},
-  {id: "zidentity", label: "ZIDENTITY", count: 3}
+  {label: safeInlineText("ALL"), count: 165},
+  {id: "zia", label: safeInlineText("ZIA"), count: 102},
+  {id: "zpa", label: safeInlineText("ZPA"), count: 28},
+  {id: "zcc", label: safeInlineText("ZCC"), count: 11},
+  {id: "ztw", label: safeInlineText("ZTW"), count: 21},
+  {id: "zidentity", label: safeInlineText("ZIDENTITY"), count: 3}
 ];
 const renderers: Array<{destroy(): void}> = [];
 
@@ -36,25 +37,25 @@ async function renderPicker(width: number, height: number, options: {
     viewportWidth: width,
     viewportHeight: height,
     preferredWidth: 86,
-    title: "Zscaler resource map",
+    title: safeInlineText("Zscaler resource map"),
     query: "",
-    placeholder: "Search resources",
+    placeholder: safeInlineText("Search resources"),
     focused: true,
     items: [{
       id: "zia/locations",
       value: null,
-      title: "locations",
-      description: "list · get · 73 projected fields",
-      category: "ZIA · Internet Access",
+      title: safeInlineText("locations"),
+      description: safeInlineText("list · get · 73 projected fields"),
+      category: safeInlineText("ZIA · Internet Access"),
       categoryId: "zia",
-      badge: "list"
+      badge: safeInlineText("list")
     }],
     selectedId: "zia/locations",
-    instruction: "Choose a resource",
-    emptyMessage: "No resources",
+    instruction: safeInlineText("Choose a resource"),
+    emptyMessage: safeInlineText("No resources"),
     inputMethod: "keyboard",
     showItemsWithoutQuery: true,
-    scopeLabel: "Product",
+    scopeLabel: safeInlineText("Product"),
     scopes: options.scopes ?? SCOPES,
     onInput: () => undefined,
     onFocus: () => undefined,
@@ -76,11 +77,11 @@ describe("picker scope layout", () => {
   });
 
   test("uses terminal cell width for Hangul labels", () => {
-    expect(pickerScopeRowCount([{id: "product", label: "제품", count: 1}], "범위", 9)).toBe(2);
+    expect(pickerScopeRowCount([{id: "product", label: safeInlineText("제품"), count: 1}], "범위", 9)).toBe(2);
   });
 
   test("fits an individually overwide pill without wrapping into resource rows", async () => {
-    expect(pickerScopeText(SCOPES.at(-1)!, 10)).toBe("ZIDENTI… 3");
+    expect(String(pickerScopeText(SCOPES.at(-1)!, 10))).toBe("ZIDENTI… 3");
     expect(pickerScopeRowCount(SCOPES, "PRODUCT", 10)).toBe(7);
     const setup = await renderPicker(16, 30);
     const frame = setup.captureCharFrame();
@@ -135,9 +136,9 @@ describe("picker scope layout", () => {
     const selected: Array<string | undefined> = [];
     const setup = await renderPicker(80, 24, {
       scopes: [
-        {label: "ALL", count: 2},
-        {id: "__all__", label: "FIRST", count: 1},
-        {id: "other", label: "SECOND", count: 1}
+        {label: safeInlineText("ALL"), count: 2},
+        {id: "__all__", label: safeInlineText("FIRST"), count: 1},
+        {id: "other", label: safeInlineText("SECOND"), count: 1}
       ],
       onScopeChange: id => { selected.push(id); }
     });

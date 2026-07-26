@@ -8,8 +8,8 @@ import type {
   Operation
 } from "../../../../clients/typescript/src/index.ts";
 
-import type {TranscriptFacet, TranscriptMetric} from "../model.ts";
-import type {WorkspaceSummary} from "../workspace.ts";
+import type {Tone} from "../model.ts";
+import type {WorkspaceFacet, WorkspaceMetric, WorkspaceSummary} from "../workspace.ts";
 
 const PRODUCT_ORDER: readonly CatalogResource["product"][] = ["zia", "zpa", "zcc", "ztw", "zidentity"];
 const PRODUCT_LABELS: Readonly<Record<CatalogResource["product"], string>> = {
@@ -45,7 +45,7 @@ function countValues<T extends string>(
   values: readonly T[],
   order: readonly T[],
   label: (value: T) => string
-): TranscriptFacet["values"] {
+): WorkspaceFacet["values"] {
   const counts = new Map<T, number>();
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   return order.flatMap(value => {
@@ -54,7 +54,7 @@ function countValues<T extends string>(
   });
 }
 
-function metric(label: string, value: string | number, tone?: TranscriptMetric["tone"]): TranscriptMetric {
+function metric(label: string, value: string | number, tone?: Tone): WorkspaceMetric {
   return {label, value: String(value), ...(tone === undefined ? {} : {tone})};
 }
 
@@ -67,10 +67,10 @@ export function summarizeCatalog(
   totalResources: number,
   capabilityCount?: number
 ): WorkspaceSummary {
-  const metrics: TranscriptMetric[] = [];
+  const metrics: WorkspaceMetric[] = [];
   if (resources.length !== totalResources) metrics.push(metric("Available", totalResources));
   if (capabilityCount !== undefined) metrics.push(metric("Capabilities", capabilityCount));
-  const facets: TranscriptFacet[] = [
+  const facets: WorkspaceFacet[] = [
     {
       label: "Products",
       values: countValues(resources.map(resource => resource.product), PRODUCT_ORDER, product => PRODUCT_LABELS[product])
@@ -114,7 +114,7 @@ export function summarizeRead(options: {
   readonly filterCount?: number;
   readonly hasSearch?: boolean;
 }): WorkspaceSummary {
-  const metrics: TranscriptMetric[] = [
+  const metrics: WorkspaceMetric[] = [
     metric("Operation", options.operation),
     metric("Fields", options.fields.length === 0 ? "default" : options.fields.length)
   ];

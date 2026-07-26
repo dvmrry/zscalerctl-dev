@@ -1,14 +1,14 @@
 import {TextAttributes} from "@opentui/core";
 
 import {OVERLAY_Z_INDEX} from "../overlay.ts";
-import {safeInlineText} from "../text.ts";
+import {fitCellText, type SafeString} from "../text.ts";
 import type {Palette} from "../theme.ts";
 import {toastColorRole, toastMarker, type ToastTone} from "../toast.ts";
 
 export interface ToastProps {
   readonly colors: Palette;
   readonly viewportWidth: number;
-  readonly message: string;
+  readonly message: SafeString;
   readonly tone: ToastTone;
 }
 
@@ -33,7 +33,7 @@ export function Toast(props: ToastProps) {
       borderColor={color}
     >
       <text fg={color} attributes={TextAttributes.BOLD}>{toastMarker(props.tone)}</text>
-      <text fg={props.colors.text} wrapMode="none">{safeInlineText(props.message, Math.max(1, width - 5))}</text>
+      <text fg={props.colors.text} wrapMode="none">{fitCellText(props.message, Math.max(1, width - 5))}</text>
     </box>
   );
 }
