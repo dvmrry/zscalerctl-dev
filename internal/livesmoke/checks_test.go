@@ -42,6 +42,7 @@ func TestFindDeniedKeys(t *testing.T) {
 			nil,
 		},
 		{"GRE destination metadata at wrong path", "gre-tunnels", `[{"id":10,"metadata":{"primaryDestVip":{"city":"Raleigh"}}}]`, []string{"city", "primaryDestVip"}},
+		{"secondary GRE destination metadata at wrong path", "gre-tunnels", `[{"id":10,"metadata":{"secondaryDestVip":{"city":"Charlotte"}}}]`, []string{"city", "secondaryDestVip"}},
 		{
 			"reviewed SSL rule certificate reference metadata",
 			"ssl-inspection-rules",
@@ -55,6 +56,8 @@ func TestFindDeniedKeys(t *testing.T) {
 			[]string{"certificate"},
 		},
 		{"SSL certificate reference at wrong path", "ssl-inspection-rules", `[{"id":11,"sslInterceptionCert":{"name":"Rollout CA"}}]`, []string{"sslInterceptionCert"}},
+		{"decrypt server certificate policy at wrong path", "ssl-inspection-rules", `[{"id":11,"action":{"decryptSubActions":{"metadata":{"serverCertificates":"ALLOW"}}}}]`, []string{"serverCertificates"}},
+		{"do-not-decrypt server certificate policy at wrong path", "ssl-inspection-rules", `[{"id":11,"action":{"metadata":{"doNotDecryptSubActions":{"serverCertificates":"BLOCK"}}}}]`, []string{"serverCertificates"}},
 		{"locations not denied outside location-groups", "url-filtering-rules", `[{"id":6,"name":"r","locations":[{"id":1,"name":"HQ"}]}]`, nil},
 	}
 	for _, tc := range cases {
