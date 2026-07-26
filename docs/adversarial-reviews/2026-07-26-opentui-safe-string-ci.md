@@ -11,12 +11,13 @@ experiment and its shared TypeScript engine client.
 
 Base commit: `eea0d30e2fbe29bbfa18737489da0b2ed859a9d1`
 
-Reviewed head: `ede7904d01086d12c941c8685bcd16ae0cf9d6b4`
+Reviewed head: `91aed70ae599284cbb8f05ab16447e0052983ab5`
 
 ## Files Changed
 
 - `.github/workflows/opentui-experiment.yml`
 - `experiments/opentui-agent-tui/README.md`
+- `experiments/opentui-agent-tui/package.json`
 - OpenTUI text, presentation-model, workspace-normalization, tree/transcript,
   picker, toast, and component files under
   `experiments/opentui-agent-tui/src/`
@@ -29,10 +30,12 @@ Reviewed head: `ede7904d01086d12c941c8685bcd16ae0cf9d6b4`
 - Existing OpenTUI runtime sanitizer and all tree, transcript, picker, and toast
   construction paths
 - Existing workflow action pins and policy scripts
-- The upstream `oven-sh/setup-bun` GitHub release/tag API
+- The upstream Bun GitHub release API and official `docker.io/oven/bun` OCI
+  index
 
-The upstream `v2.2.0` tag resolves to
-`0c5077e51419868618aeaa5fe8019c62421857d6`.
+The official image digest
+`sha256:cd289be0e129201fa9d9bb8a5d0d2b9299ddad49733b29b4e34f4a15d35be06f`
+reports Bun revision `1.4.0-canary.1+ae4b17de6`.
 
 ## Generated Artifacts
 
@@ -48,8 +51,9 @@ None.
 - Raw workspace adapter summaries and picker sources remain ordinary strings
   until their existing normalization or presentation boundary.
 - CI runs only when the workflow, shared TypeScript client, or OpenTUI
-  experiment changes, installs Bun 1.4.0 from a frozen lockfile, and runs the
-  experiment check.
+  experiment changes, runs in an official Bun 1.4 canary container pinned by
+  immutable OCI digest, verifies its exact revision, installs from the frozen
+  lockfile, and runs the experiment check.
 
 ## Invariants Claimed
 
@@ -66,11 +70,16 @@ None.
 - Workflow actions are full-SHA pinned, checkout credentials are not
   persisted, live credentials are not referenced, and permissions are
   `contents: read` only.
+- The workflow never executes the moving Bun canary tag: its job container is
+  selected by immutable OCI digest and its expected runtime revision is checked
+  before dependency installation.
 
 ## Tests Run
 
 - `bun install --frozen-lockfile`
 - `bun run check` (123 pass, 1 optional integration skip, 0 fail)
+- The same frozen install and check inside
+  `docker.io/oven/bun@sha256:cd289be0e129201fa9d9bb8a5d0d2b9299ddad49733b29b4e34f4a15d35be06f`
 - `bash scripts/verify-actions-pinned.sh`
 - `bash scripts/test-verify-actions-pinned.sh`
 - `bash scripts/verify-ci-no-live-creds.sh`
@@ -98,8 +107,8 @@ All commands passed.
   ordinary strings.
 - Check preservation of wire values, search semantics, opaque identifiers,
   commands, and clipboard values.
-- Audit workflow path coverage, action pins, permissions, credentials, Bun
-  version, and frozen-lock behavior.
+- Audit workflow path coverage, action and container pins, permissions,
+  credentials, Bun version, and frozen-lock behavior.
 - Reject README claims broader than the actual branded surfaces and explicit
   context/operation deferral.
 
@@ -109,7 +118,7 @@ Fresh-context reviewer: Harvey (`019f9f04-393a-7363-90ea-a12b81a5696e`)
 
 Reviewed base: `eea0d30e2fbe29bbfa18737489da0b2ed859a9d1`
 
-Reviewed head: `ede7904d01086d12c941c8685bcd16ae0cf9d6b4`
+Reviewed head: `91aed70ae599284cbb8f05ab16447e0052983ab5`
 
 ## Blocking Findings
 
@@ -130,10 +139,12 @@ boundary.
 
 ## Safety Review
 
-The new workflow uses complete validated action SHAs, grants only
+The new workflow uses a complete validated checkout action SHA, grants only
 `contents: read`, disables checkout credential persistence, references no live
-credentials, covers the experiment, shared TypeScript client, lockfile, tests,
-and workflow path, and uses Bun 1.4.0 with a frozen-lockfile install.
+credentials, and covers the experiment, shared TypeScript client, lockfile,
+tests, and workflow path. Its official Bun container is selected by immutable
+OCI digest, resolves to the documented Bun source image, reports exact revision
+`1.4.0-canary.1+ae4b17de6`, and performs a frozen-lockfile install.
 
 ## Generated Artifact Review
 
@@ -141,9 +152,11 @@ No generated artifact changed.
 
 ## Independent Verification
 
-At exact clean head `ede7904d01086d12c941c8685bcd16ae0cf9d6b4`, the reviewer passed
-the Bun typecheck and test suite (123 pass, 1 optional integration skip), action
-pin, credential, and experiment-boundary policy tests, frozen-lockfile install,
-and diff/head cleanliness checks.
+At exact clean head `91aed70ae599284cbb8f05ab16447e0052983ab5`, the reviewer resolved
+the OCI digest and runtime revision, confirmed checkout's Git-less REST fallback
+inside the container, and passed the containerized Bun typecheck and test suite
+(123 pass, 1 optional integration skip). The reviewer also passed action-pin,
+credential, and experiment-boundary policy tests plus diff/head cleanliness
+checks. SafeString production code was unchanged by the CI correction.
 
 Verdict: approve
