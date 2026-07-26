@@ -242,6 +242,7 @@ func TestWireValueDirectDecodeUsesStrictJSON(t *testing.T) {
 		{"duplicate", []byte(`{"a":1,"\u0061":2}`), ErrDuplicateKey},
 		{"unpaired surrogate", []byte(`"\ud800"`), ErrInvalidJSON},
 		{"invalid UTF-8", []byte{'"', 0xff, '"'}, ErrInvalidUTF8},
+		{"nested forbidden key", []byte(`{"outer":{"bad\u200bkey":1}}`), ErrInvalidFrame},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -250,6 +251,26 @@ func TestWireValueDirectDecodeUsesStrictJSON(t *testing.T) {
 			err := json.Unmarshal(tt.body, &value)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("json.Unmarshal(WireValue) error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestWireValueRejectsForbiddenDynamicKeysAtEveryDepth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "nested object", value: map[string]any{"outer": map[string]any{"bad\u200bkey": "value"}}},
+		{name: "object inside array", value: []any{map[string]any{"bad\u0085key": "value"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := NewWireValue(tt.value); !errors.Is(err, ErrInvalidFrame) {
+				t.Fatalf("NewWireValue(%s) error = %v, want %v", tt.name, err, ErrInvalidFrame)
 			}
 		})
 	}

@@ -120,6 +120,13 @@ mechanism. Classification decides which fields render; every renderer still
 passes the final bytes through redaction and secret scanning to catch
 secret-shaped values pasted into otherwise-safe fields.
 
+Human terminal sinks visibly escape C0/DEL/C1 controls and Unicode format
+runes after matching and projection, so tenant-controlled text cannot reshape
+rows or spoof their visual order. Machine JSON and stdio-engine values remain
+lossless. Every engine consumer must therefore apply sink-specific escaping at
+its terminal, HTML, log, or comparable presentation boundary; changing the wire
+value is not a substitute for securing the sink.
+
 ## Secret Handling
 
 Secrets must not be accepted as ordinary CLI arguments because arguments can

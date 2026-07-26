@@ -12,6 +12,7 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/config"
 	"github.com/dvmrry/zscalerctl/internal/machine"
+	"github.com/dvmrry/zscalerctl/internal/output"
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/spf13/cobra"
@@ -554,26 +555,46 @@ func TestRunProductGetRoutesThroughMachineExecutorWithoutDirectReaderGet(t *test
 	}
 }
 
-func TestSanitizeCellValueCollapsesControlChars(t *testing.T) {
-	t.Parallel()
-
-	got := sanitizeCellValue("line one\nline two\twith tab\rend")
-	if strings.ContainsAny(got, "\n\t\r") {
-		t.Errorf("sanitizeCellValue = %q, want no control chars", got)
-	}
-	if got != "line one line two with tab end" {
-		t.Errorf("sanitizeCellValue = %q, want control chars collapsed to spaces", got)
-	}
-}
-
 func TestFormatTableValueSanitizesNestedAndScalarValues(t *testing.T) {
 	t.Parallel()
 
-	if got := formatTableValue("a\nb"); got != "a b" {
-		t.Errorf("formatTableValue(string with newline) = %q, want %q", got, "a b")
+	if got := formatTableValue("a\nb"); got != `a\nb` {
+		t.Errorf("formatTableValue(string with newline) = %q, want %q", got, `a\nb`)
 	}
-	if got := formatTableValue([]any{"x\ty", "z"}); got != "x y,z" {
-		t.Errorf("formatTableValue([]any with tab) = %q, want %q", got, "x y,z")
+	if got := formatTableValue([]any{"x\ty", "z"}); got != `x\ty,z` {
+		t.Errorf("formatTableValue([]any with tab) = %q, want %q", got, `x\ty,z`)
+	}
+	if got := formatTableValue("a\u0085b\u200bc\u200dd\u2060e\ufefff\U000e0041g"); got != `a\u0085b\u200bc\u200dd\u2060e\ufefff\U000e0041g` {
+		t.Errorf("formatTableValue(string with C1/Cf) = %q, want visible escapes", got)
+	}
+}
+
+func TestResourceTableAndPrettyRenderersEscapeTerminalFormatRunes(t *testing.T) {
+	t.Parallel()
+
+	records := resources.NewProjectedRecordsFromProjectedFields([]map[string]any{{
+		"name": "branch\u200b\u202e\U000e0041",
+	}})
+	style := output.NewStyle(false, false)
+	style.Width = 120
+	for name, rendered := range map[string]string{
+		"table":  renderRecordsTable([]string{"name"}, records, style).String(),
+		"pretty": renderRecordsPretty([]string{"name"}, records, style).String(),
+	} {
+		rendered := rendered
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, want := range []string{`\u200b`, `\u202e`, `\U000e0041`} {
+				if !strings.Contains(rendered, want) {
+					t.Errorf("%s output = %q, want visible escape %q", name, rendered, want)
+				}
+			}
+			for _, forbidden := range []rune{'\u200b', '\u202e', '\U000e0041'} {
+				if strings.ContainsRune(rendered, forbidden) {
+					t.Errorf("%s output = %q, want no raw format rune %#U", name, rendered, forbidden)
+				}
+			}
+		})
 	}
 }
 

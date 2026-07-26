@@ -319,8 +319,8 @@ func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) ou
 		fmt.Fprintf(
 			&body,
 			"%s\t%s\t%d\t%d\t%d\n",
-			resourceName,
-			diffIdentityLabel(resource.Identity),
+			output.TerminalCell(resourceName),
+			output.TerminalCell(diffIdentityLabel(resource.Identity)),
 			len(resource.Added),
 			len(resource.Removed),
 			len(resource.Changed),
@@ -345,15 +345,15 @@ func renderDiffTable(report dumpdiff.Report, detail bool, style output.Style) ou
 }
 
 func writeDiffDetailRows(body *strings.Builder, resourceName string, resource dumpdiff.ResourceDiff) {
-	resourceName = terminalCell(resourceName)
+	resourceName = output.TerminalCell(resourceName)
 	for _, added := range resource.Added {
-		fmt.Fprintf(body, "%s\t+\t%s\t-\t-\n", resourceName, terminalCell(diffRecordRefLabel(added)))
+		fmt.Fprintf(body, "%s\t+\t%s\t-\t-\n", resourceName, output.TerminalCell(diffRecordRefLabel(added)))
 	}
 	for _, removed := range resource.Removed {
-		fmt.Fprintf(body, "%s\t-\t%s\t-\t-\n", resourceName, terminalCell(diffRecordRefLabel(removed)))
+		fmt.Fprintf(body, "%s\t-\t%s\t-\t-\n", resourceName, output.TerminalCell(diffRecordRefLabel(removed)))
 	}
 	for _, changed := range resource.Changed {
-		fmt.Fprintf(body, "%s\t~\t%s\t%s\t-\n", resourceName, terminalCell(changed.Key), diffFieldNames(changed.Changes))
+		fmt.Fprintf(body, "%s\t~\t%s\t%s\t-\n", resourceName, output.TerminalCell(changed.Key), diffFieldNames(changed.Changes))
 	}
 }
 
@@ -377,36 +377,9 @@ func diffRecordRefLabel(ref dumpdiff.RecordRef) string {
 func diffFieldNames(changes []dumpdiff.FieldChange) string {
 	fields := make([]string, len(changes))
 	for i, change := range changes {
-		fields[i] = terminalCell(change.Field)
+		fields[i] = output.TerminalCell(change.Field)
 	}
 	return strings.Join(fields, ",")
-}
-
-func terminalCell(value string) string {
-	var out strings.Builder
-	for _, r := range value {
-		switch {
-		case r == '\n':
-			out.WriteString(`\n`)
-		case r == '\r':
-			out.WriteString(`\r`)
-		case r == '\t':
-			out.WriteString(`\t`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&out, `\x%02x`, r)
-		case r >= 0x80 && r <= 0x9f:
-			fmt.Fprintf(&out, `\u%04x`, r)
-		case isBidiControl(r):
-			fmt.Fprintf(&out, `\u%04x`, r)
-		default:
-			out.WriteRune(r)
-		}
-	}
-	return out.String()
-}
-
-func isBidiControl(r rune) bool {
-	return (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
 func parseProducts(value string, catalog resources.ResourceCatalog) (map[resources.Product]bool, error) {

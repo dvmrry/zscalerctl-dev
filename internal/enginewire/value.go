@@ -160,8 +160,8 @@ func cloneWireReflect(value reflect.Value, active map[wireVisit]bool, depth int)
 		iterator := value.MapRange()
 		for iterator.Next() {
 			key := iterator.Key().String()
-			if !utf8.ValidString(key) {
-				return nil, fmt.Errorf("%w: dynamic object key is not valid UTF-8", ErrInvalidFrame)
+			if err := validateDynamicKey(key); err != nil {
+				return nil, err
 			}
 			cloned, err := cloneWireReflect(iterator.Value(), active, depth+1)
 			if err != nil {

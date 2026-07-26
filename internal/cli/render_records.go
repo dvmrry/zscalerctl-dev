@@ -206,19 +206,10 @@ func renderRecordPretty(
 	return output.RenderRecordPretty(rows, style)
 }
 
-// formatTableValue renders a value for the text-based renderers (table, pretty,
-// key-value). It sanitizes control characters so a value containing a newline or
-// tab cannot break the tab-separated or border-delimited layout; the JSON
-// renderer uses a separate path and keeps raw values.
+// formatTableValue renders a value for the terminal-oriented table, pretty, and
+// key-value sinks. Machine JSON uses a separate lossless path.
 func formatTableValue(value any) string {
-	return resources.FormatProjectedValue(value)
-}
-
-// sanitizeCellValue collapses control characters (newline, tab, carriage return,
-// and other C0/DEL bytes) to single spaces so multi-line or tabbed values render
-// on one logical cell instead of corrupting row or column boundaries.
-func sanitizeCellValue(s string) string {
-	return resources.FormatProjectedValue(s)
+	return output.TerminalCell(resources.ProjectedValueText(value))
 }
 
 func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {

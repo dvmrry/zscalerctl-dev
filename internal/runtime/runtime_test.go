@@ -200,6 +200,7 @@ func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
 		ZIALegacy: config.ZIALegacyCredentials{
 			Password: legacyPassword,
 			APIKey:   legacyAPIKey,
+			Cloud:    "zscaler",
 		},
 	}
 
@@ -230,6 +231,41 @@ func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
 			"readerConfigFromConfig(zia-legacy).ZIALegacy.APIKey = %q, want legacy-api-key",
 			got.ZIALegacy.APIKey.Reveal(),
 		)
+	}
+}
+
+func TestNewReaderFromConfigRejectsLegacyCloudBeforeResolvingSecrets(t *testing.T) {
+	t.Parallel()
+
+	providerErr := errors.New("provider must not run")
+	password := &runtimeRecordingSecretSource{err: providerErr}
+	apiKey := &runtimeRecordingSecretSource{err: providerErr}
+	cfg := config.Config{
+		AuthMode: config.AuthModeZIALegacy,
+		ZIALegacy: config.ZIALegacyCredentials{
+			Username: secret.New("legacy-user"),
+			Password: password,
+			APIKey:   apiKey,
+			Cloud:    "example",
+		},
+	}
+
+	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	}
+	if errors.Is(err, providerErr) {
+		t.Errorf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want cloud rejection before provider error", err)
+	}
+	if password.calls != 0 || apiKey.calls != 0 {
+		t.Errorf(
+			"newReaderFromConfig(unreviewed legacy cloud) provider calls = password:%d api_key:%d, want 0/0",
+			password.calls,
+			apiKey.calls,
+		)
+	}
+	if strings.Contains(err.Error(), cfg.ZIALegacy.Cloud) {
+		t.Errorf("newReaderFromConfig(unreviewed legacy cloud) error = %q, want value-free rejection", err)
 	}
 }
 
@@ -273,7 +309,7 @@ func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T
 				Username: secret.New("legacy-user"),
 				Password: password,
 				APIKey:   apiKey,
-				Cloud:    "legacy-cloud",
+				Cloud:    "zscaler",
 			},
 		}, Options{})
 		if err != nil {
@@ -331,7 +367,7 @@ func TestNewReaderFromConfigRejectsNilActiveSecretSources(t *testing.T) {
 				ZIALegacy: config.ZIALegacyCredentials{
 					Username: secret.New("legacy-user"),
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
-					Cloud:    "legacy-cloud",
+					Cloud:    "zscaler",
 				},
 			},
 		},
@@ -343,7 +379,7 @@ func TestNewReaderFromConfigRejectsNilActiveSecretSources(t *testing.T) {
 					Username: secret.New("legacy-user"),
 					Password: typedNil,
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
-					Cloud:    "legacy-cloud",
+					Cloud:    "zscaler",
 				},
 			},
 		},
@@ -353,7 +389,7 @@ func TestNewReaderFromConfigRejectsNilActiveSecretSources(t *testing.T) {
 				ZIALegacy: config.ZIALegacyCredentials{
 					Username: secret.New("legacy-user"),
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
-					Cloud:    "legacy-cloud",
+					Cloud:    "zscaler",
 				},
 			},
 		},
@@ -396,6 +432,7 @@ func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T
 				ZIALegacy: config.ZIALegacyCredentials{
 					Password: &runtimeRecordingSecretSource{err: context.DeadlineExceeded},
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
+					Cloud:    "zscaler",
 				},
 			},
 			wantErr: context.DeadlineExceeded,
