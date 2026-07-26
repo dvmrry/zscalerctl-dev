@@ -150,6 +150,21 @@ run_verify() {
 		--release-workflow "$fixture/.github/workflows/release.yml"
 }
 
+ci_prerequisites=(
+	mod-integrity
+	unit
+	typescript-client
+	node-policy
+	race-cli
+	race-resources
+	race-rest
+	verify-gates
+	windows-config
+	static-analysis
+	secret-scan
+	surface-manifest
+)
+
 for variable in \
 	ZSCALERCTL_REPO_ROOT \
 	ZSCALERCTL_NODE_VERSION_FILE \
@@ -625,6 +640,32 @@ for prerequisite in \
 	grep -q "required dependent job.*required.*must need reviewed job.*$prerequisite" "$tmpdir/missing-prerequisite-$prerequisite.err"
 done
 
+for prerequisite in "${ci_prerequisites[@]}"; do
+	job_suppression="$tmpdir/job-suppression-$prerequisite"
+	make_fixture "$job_suppression"
+	PREREQUISITE="$prerequisite" perl -0pi -e '
+		$job = quotemeta($ENV{PREREQUISITE});
+		s/(^  $job:\n)/$1    continue-on-error: true\n/m;
+	' "$job_suppression/.github/workflows/ci.yml"
+	if run_verify "$job_suppression" >"$tmpdir/job-suppression-$prerequisite.out" 2>"$tmpdir/job-suppression-$prerequisite.err"; then
+		echo "verify-node-toolchain accepted job-level failure suppression on $prerequisite" >&2
+		exit 1
+	fi
+	grep -q "CI prerequisite job.*$prerequisite.*must not set continue-on-error" "$tmpdir/job-suppression-$prerequisite.err"
+
+	step_suppression="$tmpdir/step-suppression-$prerequisite"
+	make_fixture "$step_suppression"
+	PREREQUISITE="$prerequisite" perl -0pi -e '
+		$job = quotemeta($ENV{PREREQUISITE});
+		s/(^  $job:\n(?:(?!^  \S).)*?^      - (?:run|uses): [^\n]+)/$1\n        continue-on-error: true/ms;
+	' "$step_suppression/.github/workflows/ci.yml"
+	if run_verify "$step_suppression" >"$tmpdir/step-suppression-$prerequisite.out" 2>"$tmpdir/step-suppression-$prerequisite.err"; then
+		echo "verify-node-toolchain accepted step-level failure suppression on $prerequisite" >&2
+		exit 1
+	fi
+	grep -q 'CI prerequisite workflow step must not set continue-on-error' "$tmpdir/step-suppression-$prerequisite.err"
+done
+
 detached_typescript_consumer="$tmpdir/detached-typescript-consumer"
 make_fixture "$detached_typescript_consumer"
 perl -0pi -e 's/  typescript-client:\n/  typescript-unrequired:\n/' "$detached_typescript_consumer/.github/workflows/ci.yml"
@@ -646,6 +687,70 @@ if run_verify "$misnamed_typescript_consumer" >"$tmpdir/misnamed-typescript-cons
 	exit 1
 fi
 grep -q 'required Node consumer.*verify-typescript-client.*must appear exactly once.*typescript-client.*found 0' "$tmpdir/misnamed-typescript-consumer.err"
+
+reusable_consumer_scope="$tmpdir/reusable-consumer-scope"
+make_fixture "$reusable_consumer_scope"
+perl -0pi -e 's/  typescript-client:\n/  typescript-real:\n/' "$reusable_consumer_scope/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:/  typescript-client:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \/bin\/true\n  typescript-reusable:\n    uses: .\/.github\/workflows\/nested-consumer.yml\n  node-policy:/' "$reusable_consumer_scope/.github/workflows/ci.yml"
+perl -0pi -e 's/      - typescript-client\n/      - typescript-client\n      - typescript-real\n      - typescript-reusable\n/' "$reusable_consumer_scope/.github/workflows/ci.yml"
+cat >"$reusable_consumer_scope/.github/workflows/nested-consumer.yml" <<'YAML'
+name: nested consumer
+on:
+  workflow_call:
+jobs:
+  typescript-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version: '1.26.5'
+          cache: true
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: '.node-version'
+          package-manager-cache: false
+      - run: /bin/bash scripts/verify-active-node-toolchain.sh
+      - run: /bin/bash scripts/verify-typescript-client.sh
+  required:
+    if: ${{ always() }}
+    needs: typescript-client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - run: /bin/bash scripts/require-ci-jobs.sh "${{ join(needs.*.result, ' ') }}"
+YAML
+if run_verify "$reusable_consumer_scope" >"$tmpdir/reusable-consumer-scope.out" 2>"$tmpdir/reusable-consumer-scope.err"; then
+	echo "verify-node-toolchain accepted a required consumer laundered through a local reusable workflow" >&2
+	exit 1
+fi
+grep -q 'required Node consumer.*verify-typescript-client.*must appear exactly once.*typescript-client.*found 0' "$tmpdir/reusable-consumer-scope.err"
+
+local_action_suppression="$tmpdir/local-action-suppression"
+make_fixture "$local_action_suppression"
+mkdir -p "$local_action_suppression/.github/actions/unit-check"
+PREREQUISITE=unit perl -0pi -e '
+	$job = quotemeta($ENV{PREREQUISITE});
+	s/(^  $job:\n(?:(?!^  \S).)*?^      - )run: \/bin\/true/$1uses: .\/.github\/actions\/unit-check/ms;
+' "$local_action_suppression/.github/workflows/ci.yml"
+cat >"$local_action_suppression/.github/actions/unit-check/action.yml" <<'YAML'
+name: unit check
+runs:
+  using: composite
+  steps:
+    - run: /bin/false
+      shell: bash
+      continue-on-error: true
+YAML
+if run_verify "$local_action_suppression" >"$tmpdir/local-action-suppression.out" 2>"$tmpdir/local-action-suppression.err"; then
+	echo "verify-node-toolchain accepted failure suppression inside a required local action" >&2
+	exit 1
+fi
+grep -q 'CI prerequisite local-action step must not set continue-on-error' "$tmpdir/local-action-suppression.err"
 
 wrong_ci_dependency_condition="$tmpdir/wrong-ci-dependency-condition"
 make_fixture "$wrong_ci_dependency_condition"

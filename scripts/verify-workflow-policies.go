@@ -712,6 +712,9 @@ func (v *verifier) scanJob(file, jobName string, job *yaml.Node) {
 	if !ok {
 		return
 	}
+	if continuation, found := entryValue(entries, "continue-on-error"); found && v.requiredDepAll {
+		v.addNodeError(file, continuation, "CI prerequisite job %q must not set continue-on-error", jobName)
+	}
 	uses, hasUses := entryValue(entries, "uses")
 	steps, hasSteps := entryValue(entries, "steps")
 	if hasUses && hasSteps {
@@ -820,6 +823,9 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 		state.runtimeReady = false
 		return state, false
 	}
+	if continuation, found := entryValue(entries, "continue-on-error"); found && v.requiredDepAll {
+		v.addNodeError(file, continuation, "CI prerequisite workflow step must not set continue-on-error")
+	}
 	uses, hasUses := entryValue(entries, "uses")
 	run, hasRun := entryValue(entries, "run")
 	if hasUses && hasRun {
@@ -841,6 +847,7 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 		action := actionName(ref)
 		if action != "actions/setup-node" {
 			if !policyJob {
+				v.inspectStepUses(file, step, entries, uses, "")
 				return state, false
 			}
 			if !state.setupSeen {
@@ -959,7 +966,7 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 	}
 	if consumer {
 		v.nodeConsumerCount++
-		if command == v.requiredConsumer && jobName == v.requiredConsumerJob {
+		if filepath.Clean(file) == v.requiredRunFile && command == v.requiredConsumer && jobName == v.requiredConsumerJob {
 			v.requiredConsumerCount++
 		}
 		if !state.setupSeen {
@@ -1214,6 +1221,9 @@ func (v *verifier) scanStep(file string, step *yaml.Node, inheritedComment strin
 	entries, ok := v.executableEntries(file, step, "workflow step")
 	if !ok {
 		return
+	}
+	if continuation, found := entryValue(entries, "continue-on-error"); found && v.requiredDepAll {
+		v.addNodeError(file, continuation, "CI prerequisite local-action step must not set continue-on-error")
 	}
 	uses, found := entryValue(entries, "uses")
 	if !found {
