@@ -288,6 +288,7 @@ func TestStatusInspectorNormalizesTerminalControlAndFormatRunes(t *testing.T) {
 	t.Parallel()
 
 	const injected = "safe\nFORGED\x1b[31m\u0085\u202e"
+	const normalized = "safe FORGED [31m  "
 	provider := &statusProviderSecret{scheme: "cmd:" + injected}
 	cfg := config.Config{
 		Profile: "profile:" + injected,
@@ -313,11 +314,32 @@ func TestStatusInspectorNormalizesTerminalControlAndFormatRunes(t *testing.T) {
 		var value any
 		switch operation {
 		case machine.OperationDoctor:
-			value, _ = result.Doctor()
+			status, ok := result.Doctor()
+			if !ok {
+				t.Fatalf("StatusInspector.Inspect(%s).Doctor() ok = false, want true", operation)
+			}
+			if want := "profile:" + normalized; status.Profile != want {
+				t.Errorf("StatusInspector.Inspect(%s).Profile = %q, want normalized %q", operation, status.Profile, want)
+			}
+			value = status
 		case machine.OperationAuthStatus:
-			value, _ = result.Auth()
+			status, ok := result.Auth()
+			if !ok {
+				t.Fatalf("StatusInspector.Inspect(%s).Auth() ok = false, want true", operation)
+			}
+			value = status
 		case machine.OperationConfigStatus:
-			value, _ = result.Config()
+			status, ok := result.Config()
+			if !ok {
+				t.Fatalf("StatusInspector.Inspect(%s).Config() ok = false, want true", operation)
+			}
+			if want := "profile:" + normalized; status.Profile != want {
+				t.Errorf("StatusInspector.Inspect(%s).Profile = %q, want normalized %q", operation, status.Profile, want)
+			}
+			if want := "cloud:" + normalized; status.Cloud != want {
+				t.Errorf("StatusInspector.Inspect(%s).Cloud = %q, want normalized %q", operation, status.Cloud, want)
+			}
+			value = status
 		}
 		assertNoUnsafeStatusRunes(t, operation, value)
 	}
