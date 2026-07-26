@@ -1,0 +1,39 @@
+name: opentui-experiment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/opentui-experiment.yml'
+      - 'clients/typescript/**'
+      - 'experiments/opentui-agent-tui/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/opentui-experiment.yml'
+      - 'clients/typescript/**'
+      - 'experiments/opentui-agent-tui/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opentui-experiment-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/opentui-agent-tui
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      - run: bun run check

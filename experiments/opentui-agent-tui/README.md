@@ -192,8 +192,10 @@ go build -o /tmp/zscalerctl-engine ./cmd/zscalerctl-engine
 ZSCALERCTL_ENGINE_TEST_BINARY=/tmp/zscalerctl-engine bun run check
 ```
 
-The experiment has its own dependency lock and checks. It remains outside the
-repository's supported release surface and root Go gate suite.
+The experiment has its own dependency lock and checks. A path-filtered GitHub
+workflow runs them whenever this experiment, its shared TypeScript engine
+client, or that workflow changes. It remains outside the repository's
+supported release surface and root Go gate suite.
 
 ## Current boundaries
 
@@ -208,7 +210,11 @@ repository's supported release surface and root Go gate suite.
   engine's projection or recover dropped fields. Approximate matching is
   intentionally limited to record names and field names; scalar values require
   an exact substring so a fuzzy search cannot produce surprising data hits.
-- Display strings strip terminal controls and bidirectional formatting marks.
+- Tenant-derived tree, transcript, picker, and toast presentation values cross
+  `safeInlineText` into a nominal `SafeString` before their component models
+  accept them. The type checker rejects an ordinary `string` at those leaves;
+  the runtime conversion visibly replaces terminal controls and every Unicode
+  format rune before display.
 - Engine mode requires an absolute executable path, launches without a shell,
   drains but never presents child stderr, and renders normalized failure
   categories rather than backend error prose. Only validated missing

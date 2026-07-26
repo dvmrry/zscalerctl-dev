@@ -32,7 +32,7 @@ describe("transcript presentation model", () => {
     const evidence = blocks.find(block => block.kind === "evidence");
     const actions = blocks.find(block => block.kind === "actions");
 
-    expect(metrics).toEqual({
+    expect<unknown>(metrics).toEqual({
       id: "metrics",
       kind: "metrics",
       items: [
@@ -40,7 +40,7 @@ describe("transcript presentation model", () => {
         {label: "Records", value: "2", tone: "success"}
       ]
     });
-    expect(facets).toEqual({
+    expect<unknown>(facets).toEqual({
       id: "facets",
       kind: "facets",
       items: [{label: "Active", values: [{label: "true", count: 2}]}]
@@ -74,21 +74,21 @@ describe("transcript presentation model", () => {
     const text = blocks.find(block => block.kind === "text");
     const evidence = blocks.find(block => block.kind === "evidence");
 
-    expect(text?.lines[0]).toBe("line��");
+    expect(String(text?.lines[0])).toBe("line��");
     expect(blocks.some(block => block.kind === "facets")).toBe(false);
     expect(evidence?.items).toHaveLength(3);
-    expect(evidence?.items[0]?.label).toBe("unsafe�[31m�");
+    expect(String(evidence?.items[0]?.label)).toBe("unsafe�[31m�");
   });
 
   test("sanitizes fallback collection labels at the transcript metric leaf", () => {
     const blocks = resultTranscriptBlocks([], {"unsafe\u200bCollection": []} as WireValue);
     const metrics = blocks.find(block => block.kind === "metrics");
 
-    expect(metrics?.items).toEqual([{label: "Unsafe�collection", value: "0"}]);
+    expect<unknown>(metrics?.items).toEqual([{label: "Unsafe�collection", value: "0"}]);
   });
 
   test("keeps plain text entries as typed blocks", () => {
-    expect(textTranscriptBlocks(["hello", "world"])).toEqual([
+    expect<unknown>(textTranscriptBlocks(["hello", "world"])).toEqual([
       {id: "content", kind: "text", lines: ["hello", "world"]}
     ]);
     expect(textTranscriptBlocks([])).toEqual([]);
@@ -122,7 +122,7 @@ describe("transcript presentation model", () => {
       countLabel: "Resources"
     });
     const metrics = blocks.find(block => block.kind === "metrics");
-    expect(metrics?.items.map(item => [item.label, item.value])).toEqual([
+    expect<unknown>(metrics?.items.map(item => [item.label, item.value])).toEqual([
       ["Scope", "catalog"],
       ["Resources", "3"]
     ]);

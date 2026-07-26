@@ -1,5 +1,5 @@
 import {isWireNumber, type WireValue} from "../../../clients/typescript/src/index.ts";
-import {safeInlineText} from "./text.ts";
+import {safeInlineText, type SafeString} from "./text.ts";
 
 export type PathSegment = string | number;
 export type JsonPath = readonly PathSegment[];
@@ -10,9 +10,9 @@ export interface TreeRow {
   readonly id: string;
   readonly path: JsonPath;
   readonly depth: number;
-  readonly label: string;
+  readonly label: SafeString;
   readonly kind: TreeKind;
-  readonly preview: string;
+  readonly preview: SafeString;
   readonly expandable: boolean;
   readonly expanded: boolean;
   readonly value: WireValue;
@@ -29,12 +29,12 @@ export interface TreeSearchMatch {
   readonly id: string;
   readonly groupId: string;
   readonly path: JsonPath;
-  readonly label: string;
+  readonly label: SafeString;
   readonly kind: TreeKind;
-  readonly preview: string;
-  readonly title: string;
-  readonly context: string;
-  readonly detail: string;
+  readonly preview: SafeString;
+  readonly title: SafeString;
+  readonly context: SafeString;
+  readonly detail: SafeString;
   readonly reason: TreeSearchMatchReason;
   readonly copyText?: string;
 }
@@ -86,15 +86,15 @@ export function valueKind(value: WireValue): TreeKind {
   return "boolean";
 }
 
-function preview(value: WireValue): string {
+function preview(value: WireValue): SafeString {
   const kind = valueKind(value);
   switch (kind) {
-    case "null": return "null";
-    case "number": return isWireNumber(value) ? value.lexeme : String(value);
-    case "boolean": return String(value);
-    case "string": return JSON.stringify(safeInlineText(value as string, 72));
-    case "array": return `[${(value as readonly WireValue[]).length}]`;
-    case "object": return `{${Object.keys(value as Readonly<Record<string, WireValue>>).length}}`;
+    case "null": return safeInlineText("null");
+    case "number": return safeInlineText(isWireNumber(value) ? value.lexeme : String(value));
+    case "boolean": return safeInlineText(String(value));
+    case "string": return safeInlineText(JSON.stringify(safeInlineText(value as string, 72)), 160);
+    case "array": return safeInlineText(`[${(value as readonly WireValue[]).length}]`);
+    case "object": return safeInlineText(`{${Object.keys(value as Readonly<Record<string, WireValue>>).length}}`);
   }
 }
 
@@ -238,7 +238,9 @@ export function flattenTree(
       depth,
       label: safeInlineText(label, 80),
       kind: valueKind(current),
-      preview: sourceIndex === undefined ? valuePreview : `${valuePreview} · index ${sourceIndex}`,
+      preview: sourceIndex === undefined
+        ? valuePreview
+        : safeInlineText(`${valuePreview} · index ${sourceIndex}`, 160),
       expandable,
       expanded,
       value: current,
@@ -444,9 +446,9 @@ export function searchTree(value: WireValue, query: string, options: TreeSearchO
           label: safeLabel,
           kind,
           preview: valuePreview,
-          title,
-          context,
-          detail: describeValue(current),
+          title: safeInlineText(title, 120),
+          context: safeInlineText(context, 240),
+          detail: safeInlineText(describeValue(current), 240),
           reason,
           ...(copyText === undefined ? {} : {copyText})
         }

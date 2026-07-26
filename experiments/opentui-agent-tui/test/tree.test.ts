@@ -22,9 +22,9 @@ describe("JSON tree model", () => {
     const id = rows.find(row => formatPath(row.path) === "$.records[0].id");
     const firstRecord = rows.find(row => formatPath(row.path) === "$.records[0]");
     expect(id?.kind).toBe("number");
-    expect(id?.preview).toBe("9007199254740993");
-    expect(firstRecord?.label).toBe("Raleigh Headquarters");
-    expect(firstRecord?.preview).toBe("{7} · index 0");
+    expect(String(id?.preview)).toBe("9007199254740993");
+    expect(String(firstRecord?.label)).toBe("Raleigh Headquarters");
+    expect(String(firstRecord?.preview)).toBe("{7} · index 0");
   });
 
   test("orders named array objects without changing their source paths", () => {
@@ -37,7 +37,7 @@ describe("JSON tree model", () => {
     const expanded = new Set([pathKey([]), pathKey(["items"])]);
     const labels = (order: "index" | "name") => flattenTree(value, expanded, {arrayOrder: order})
       .filter(row => row.path.length === 2)
-      .map(row => ({label: row.label, path: row.path, sourceIndex: row.sourceIndex}));
+      .map(row => ({label: String(row.label), path: row.path, sourceIndex: row.sourceIndex}));
 
     expect(labels("index").map(row => row.label)).toEqual(["Zulu", "Alpha"]);
     expect(labels("name").map(row => row.label)).toEqual(["Alpha", "Zulu"]);
@@ -134,7 +134,7 @@ describe("JSON tree model", () => {
     const fuzzyValue = searchTree(DEMO_DATA, "prodction");
 
     expect(fuzzyName.matches[0]).toMatchObject({title: "Seoul Branch", context: "Record", reason: "identity"});
-    expect(fuzzyField.matches.map(match => match.context)).toEqual([
+    expect(fuzzyField.matches.map(match => String(match.context))).toEqual([
       "Network › Bandwidth › Download Mbps",
       "Network › Bandwidth › Download Mbps"
     ]);
@@ -156,7 +156,7 @@ describe("JSON tree model", () => {
 
   test("keeps matches from the same logical record contiguous and exposes safe copy text", () => {
     const grouped = searchTree(DEMO_DATA, "500");
-    expect(grouped.matches.map(match => match.title)).toEqual([
+    expect(grouped.matches.map(match => String(match.title))).toEqual([
       "Raleigh Headquarters",
       "Seoul Branch",
       "Seoul Branch"

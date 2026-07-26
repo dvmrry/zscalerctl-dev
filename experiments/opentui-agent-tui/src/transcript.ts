@@ -7,7 +7,7 @@ import type {
   TranscriptFacet,
   TranscriptMetric
 } from "./model.ts";
-import {safeInlineText} from "./text.ts";
+import {safeInlineText, type SafeString} from "./text.ts";
 import {type JsonPath, type PathSegment, valueKind} from "./tree.ts";
 import type {WorkspaceSummary} from "./workspace.ts";
 
@@ -47,19 +47,19 @@ function humanizeField(value: string): string {
     : word.toLowerCase()).join(" ");
 }
 
-function scalarText(value: WireValue, maximumCharacters = 72): string | undefined {
+function scalarText(value: WireValue, maximumCharacters = 72): SafeString | undefined {
   if (typeof value === "string") return safeInlineText(value, maximumCharacters);
-  if (typeof value === "boolean") return String(value);
+  if (typeof value === "boolean") return safeInlineText(String(value));
   if (isWireNumber(value)) return safeInlineText(value.lexeme, maximumCharacters);
-  if (value === null) return "null";
+  if (value === null) return safeInlineText("null");
   return undefined;
 }
 
-function valuePreview(value: WireValue): string {
-  if (Array.isArray(value)) return `[${value.length}]`;
+function valuePreview(value: WireValue): SafeString {
+  if (Array.isArray(value)) return safeInlineText(`[${value.length}]`);
   const object = wireObject(value);
-  if (object !== undefined) return `{${Object.keys(object).length}}`;
-  return scalarText(value, 72) ?? "value";
+  if (object !== undefined) return safeInlineText(`{${Object.keys(object).length}}`);
+  return scalarText(value, 72) ?? safeInlineText("value");
 }
 
 function collectionView(value: WireValue): CollectionView | undefined {
@@ -88,14 +88,14 @@ function identityFor(value: WireValue, fallback: string): string {
   return fallback;
 }
 
-function evidenceDetail(value: WireValue): string {
+function evidenceDetail(value: WireValue): SafeString {
   const object = wireObject(value);
   if (object !== undefined) {
     const fields = Object.keys(object).length;
-    return `${fields} ${fields === 1 ? "field" : "fields"}`;
+    return safeInlineText(`${fields} ${fields === 1 ? "field" : "fields"}`);
   }
   if (Array.isArray(value)) {
-    return `${value.length} ${value.length === 1 ? "item" : "items"}`;
+    return safeInlineText(`${value.length} ${value.length === 1 ? "item" : "items"}`);
   }
   return valuePreview(value);
 }
@@ -145,20 +145,20 @@ function metricsFor(
 ): readonly TranscriptMetric[] {
   const metrics: TranscriptMetric[] = [];
   if (context !== undefined) {
-    metrics.push({label: "Scope", value: safeInlineText(context.scope, 80), tone: "info"});
+    metrics.push({label: safeInlineText("Scope"), value: safeInlineText(context.scope, 80), tone: "info"});
     if (context.countLabel !== undefined) {
       metrics.push({
         label: safeInlineText(context.countLabel, 40),
-        value: String(context.records),
+        value: safeInlineText(String(context.records)),
         tone: context.records === 0 ? "neutral" : "success"
       });
     }
   }
   if (collection !== undefined && (context?.countLabel === undefined || collection.items.length !== context.records)) {
-    metrics.push({label: safeInlineText(humanizeField(collection.label), 40), value: String(collection.items.length)});
+    metrics.push({label: safeInlineText(humanizeField(collection.label), 40), value: safeInlineText(String(collection.items.length))});
   } else if (context === undefined) {
     const object = wireObject(value);
-    if (object !== undefined) metrics.push({label: "Fields", value: String(Object.keys(object).length)});
+    if (object !== undefined) metrics.push({label: safeInlineText("Fields"), value: safeInlineText(String(Object.keys(object).length))});
   }
   for (const metric of summary?.metrics ?? []) {
     if (metrics.some(existing => normalizedField(existing.label) === normalizedField(metric.label))) continue;
@@ -203,8 +203,8 @@ export function resultTranscriptBlocks(
     id: "actions",
     kind: "actions",
     items: [
-      {id: "inspect", label: "Inspect", hint: "Ctrl+O"},
-      {id: "find", label: "Find", hint: "/find"}
+      {id: "inspect", label: safeInlineText("Inspect"), hint: safeInlineText("Ctrl+O")},
+      {id: "find", label: safeInlineText("Find"), hint: safeInlineText("/find")}
     ]
   });
   return blocks;
