@@ -369,6 +369,14 @@ func (v *verifier) scanWorkflow(file string, root *yaml.Node) {
 	if !ok {
 		return
 	}
+	if v.mode == modeNode {
+		if defaults, found := entryValue(entries, "defaults"); found {
+			v.addNodeError(file, defaults, "Node policy workflows must not override run defaults")
+		}
+		if environment, found := entryValue(entries, "env"); found {
+			v.addNodeError(file, environment, "Node policy workflows must not define workflow-level environment overrides")
+		}
+	}
 	jobs, found := entryValue(entries, "jobs")
 	if !found {
 		v.addNodeError(file, root, "workflow is missing jobs mapping")
@@ -410,6 +418,12 @@ func (v *verifier) scanJob(file, jobName string, job *yaml.Node) {
 				}
 				if continuation, found := entryValue(entries, "continue-on-error"); found {
 					v.addNodeError(file, continuation, "job %q containing Node policy steps must not set continue-on-error", jobName)
+				}
+				if defaults, found := entryValue(entries, "defaults"); found {
+					v.addNodeError(file, defaults, "job %q containing Node policy steps must not override run defaults", jobName)
+				}
+				if environment, found := entryValue(entries, "env"); found {
+					v.addNodeError(file, environment, "job %q containing Node policy steps must not define environment overrides", jobName)
 				}
 			}
 			return
@@ -482,9 +496,13 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 		return setupReady, false
 	}
 
-	relevant := false
-	if isNodeConsumerCommand(command) {
-		relevant = true
+	consumer := isNodeConsumerCommand(command)
+	required := filepath.Clean(file) == v.requiredRunFile && command == v.requiredRun
+	relevant := consumer || required
+	if relevant {
+		v.checkRunExecutionContext(file, entries, command)
+	}
+	if consumer {
 		v.nodeConsumerCount++
 		if !setupReady {
 			v.addNodeError(
@@ -497,10 +515,9 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 		v.checkNodeConsumerStep(file, entries, run, command)
 	}
 
-	if filepath.Clean(file) != v.requiredRunFile || command != v.requiredRun {
+	if !required {
 		return setupReady, relevant
 	}
-	relevant = true
 	if jobName != v.requiredRunJob {
 		v.addNodeError(file, run, "required run %q must be in workflow job %q", command, v.requiredRunJob)
 		return setupReady, relevant
@@ -515,7 +532,7 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 		v.addNodeError(file, condition, "required run %q must use the literal condition %q", command, v.requiredRunIf)
 		return setupReady, relevant
 	}
-	if continuation, found := entryValue(entries, "continue-on-error"); found {
+	if continuation, found := entryValue(entries, "continue-on-error"); found && !consumer {
 		v.addNodeError(file, continuation, "required run %q must not set continue-on-error", command)
 		return setupReady, relevant
 	}
@@ -553,6 +570,18 @@ func (v *verifier) checkNodeConsumerStep(file string, entries []mapEntry, run *y
 	}
 	if condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != releaseCheckCondition {
 		v.addNodeError(file, condition, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
+	}
+}
+
+func (v *verifier) checkRunExecutionContext(file string, entries []mapEntry, command string) {
+	if shell, found := entryValue(entries, "shell"); found {
+		v.addNodeError(file, shell, "Node policy run %q must use the runner's default shell", command)
+	}
+	if directory, found := entryValue(entries, "working-directory"); found {
+		v.addNodeError(file, directory, "Node policy run %q must use the repository root working directory", command)
+	}
+	if environment, found := entryValue(entries, "env"); found {
+		v.addNodeError(file, environment, "Node policy run %q must not define environment overrides", command)
 	}
 }
 

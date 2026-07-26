@@ -279,6 +279,78 @@ if run_verify "$conditional_ci_consumer" >"$tmpdir/conditional-ci-consumer.out" 
 fi
 grep -q 'Node consumer.*verify-typescript-client.*must be unconditional' "$tmpdir/conditional-ci-consumer.err"
 
+release_custom_shell="$tmpdir/release-custom-shell"
+make_fixture "$release_custom_shell"
+perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        shell: \/bin\/true \{0\}/" "$release_custom_shell/.github/workflows/release.yml"
+if run_verify "$release_custom_shell" >"$tmpdir/release-custom-shell.out" 2>"$tmpdir/release-custom-shell.err"; then
+	echo "verify-node-toolchain accepted a no-op custom shell on make release-check" >&2
+	exit 1
+fi
+grep -q 'Node policy run.*make release-check.*must use the runner.*default shell' "$tmpdir/release-custom-shell.err"
+
+ci_custom_shell="$tmpdir/ci-custom-shell"
+make_fixture "$ci_custom_shell"
+perl -0pi -e 's/- run: make verify-node-toolchain/- run: make verify-node-toolchain\n        shell: \/bin\/true \{0\}/' "$ci_custom_shell/.github/workflows/ci.yml"
+if run_verify "$ci_custom_shell" >"$tmpdir/ci-custom-shell.out" 2>"$tmpdir/ci-custom-shell.err"; then
+	echo "verify-node-toolchain accepted a no-op custom shell on its CI self-check" >&2
+	exit 1
+fi
+grep -q 'Node policy run.*make verify-node-toolchain.*must use the runner.*default shell' "$tmpdir/ci-custom-shell.err"
+
+workflow_run_defaults="$tmpdir/workflow-run-defaults"
+make_fixture "$workflow_run_defaults"
+perl -0pi -e 's/on: \[push\]\n/on: [push]\ndefaults:\n  run:\n    shell: \/bin\/true \{0\}\n/' "$workflow_run_defaults/.github/workflows/release.yml"
+if run_verify "$workflow_run_defaults" >"$tmpdir/workflow-run-defaults.out" 2>"$tmpdir/workflow-run-defaults.err"; then
+	echo "verify-node-toolchain accepted a workflow-level no-op default shell" >&2
+	exit 1
+fi
+grep -q 'Node policy workflows must not override run defaults' "$tmpdir/workflow-run-defaults.err"
+
+job_run_defaults="$tmpdir/job-run-defaults"
+make_fixture "$job_run_defaults"
+perl -0pi -e 's/    runs-on: ubuntu-latest\n/    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: \/bin\/true \{0\}\n/' "$job_run_defaults/.github/workflows/release.yml"
+if run_verify "$job_run_defaults" >"$tmpdir/job-run-defaults.out" 2>"$tmpdir/job-run-defaults.err"; then
+	echo "verify-node-toolchain accepted a job-level no-op default shell" >&2
+	exit 1
+fi
+grep -q 'job.*release.*must not override run defaults' "$tmpdir/job-run-defaults.err"
+
+alternate_working_directory="$tmpdir/alternate-working-directory"
+make_fixture "$alternate_working_directory"
+perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        working-directory: clients\/typescript/" "$alternate_working_directory/.github/workflows/release.yml"
+if run_verify "$alternate_working_directory" >"$tmpdir/alternate-working-directory.out" 2>"$tmpdir/alternate-working-directory.err"; then
+	echo "verify-node-toolchain accepted an alternate release-gate working directory" >&2
+	exit 1
+fi
+grep -q 'Node policy run.*make release-check.*must use the repository root working directory' "$tmpdir/alternate-working-directory.err"
+
+step_environment="$tmpdir/step-environment"
+make_fixture "$step_environment"
+perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        env:\n          PATH: \/tmp\/decoy/" "$step_environment/.github/workflows/release.yml"
+if run_verify "$step_environment" >"$tmpdir/step-environment.out" 2>"$tmpdir/step-environment.err"; then
+	echo "verify-node-toolchain accepted a release-gate step environment override" >&2
+	exit 1
+fi
+grep -q 'Node policy run.*make release-check.*must not define environment overrides' "$tmpdir/step-environment.err"
+
+workflow_environment="$tmpdir/workflow-environment"
+make_fixture "$workflow_environment"
+perl -0pi -e 's/on: \[push\]\n/on: [push]\nenv:\n  PATH: \/tmp\/decoy\n/' "$workflow_environment/.github/workflows/release.yml"
+if run_verify "$workflow_environment" >"$tmpdir/workflow-environment.out" 2>"$tmpdir/workflow-environment.err"; then
+	echo "verify-node-toolchain accepted a workflow-level environment override" >&2
+	exit 1
+fi
+grep -q 'Node policy workflows must not define workflow-level environment overrides' "$tmpdir/workflow-environment.err"
+
+job_environment="$tmpdir/job-environment"
+make_fixture "$job_environment"
+perl -0pi -e 's/    runs-on: ubuntu-latest\n/    runs-on: ubuntu-latest\n    env:\n      PATH: \/tmp\/decoy\n/' "$job_environment/.github/workflows/release.yml"
+if run_verify "$job_environment" >"$tmpdir/job-environment.out" 2>"$tmpdir/job-environment.err"; then
+	echo "verify-node-toolchain accepted a job-level environment override" >&2
+	exit 1
+fi
+grep -q 'job.*release.*must not define environment overrides' "$tmpdir/job-environment.err"
+
 environment_redirect="$tmpdir/environment-redirect"
 make_fixture "$environment_redirect"
 cat >"$environment_redirect/.github/workflows/release.yml" <<'YAML'
