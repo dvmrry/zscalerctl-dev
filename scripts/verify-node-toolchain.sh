@@ -80,8 +80,10 @@ verify_workflow \
 	"$ci_workflow" \
 	--required-run "/usr/bin/make verify-node-toolchain" \
 	--required-run-job "node-policy" \
+	--required-consumer "/bin/bash scripts/verify-typescript-client.sh" \
+	--required-consumer-job "typescript-client" \
 	--required-dependent-job "required" \
-	--required-dependent-needs "node-policy,typescript-client" \
+	--required-dependent-needs-all-jobs \
 	--required-dependent-job-if '${{ always() }}' \
 	--required-dependent-run "$required_ci_aggregator_run"
 verify_workflow \

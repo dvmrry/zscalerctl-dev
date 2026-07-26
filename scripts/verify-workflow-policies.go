@@ -47,29 +47,33 @@ var retiredRuntimeActions = map[string]struct{}{
 }
 
 type verifier struct {
-	mode            string
-	goMinimum       string
-	nodeFile        string
-	requiredRun     string
-	requiredRunJob  string
-	requiredRunIf   string
-	requiredDepJob  string
-	requiredDepIf   string
-	requiredDepRun  string
-	requiredDepNeed map[string]struct{}
-	requiredJobs    map[string]struct{}
-	requiredRunFile string
-	rootReal        string
+	mode                string
+	goMinimum           string
+	nodeFile            string
+	requiredRun         string
+	requiredRunJob      string
+	requiredRunIf       string
+	requiredDepJob      string
+	requiredDepIf       string
+	requiredDepRun      string
+	requiredDepNeed     map[string]struct{}
+	requiredDepAll      bool
+	requiredConsumer    string
+	requiredConsumerJob string
+	requiredJobs        map[string]struct{}
+	requiredRunFile     string
+	rootReal            string
 
 	active  map[string]bool
 	visited map[visitKey]bool
 	stack   []string
 	errors  []string
 
-	setupGoCount      int
-	setupNodeCount    int
-	nodeConsumerCount int
-	requiredRunCount  int
+	setupGoCount          int
+	setupNodeCount        int
+	nodeConsumerCount     int
+	requiredConsumerCount int
+	requiredRunCount      int
 }
 
 type mapEntry struct {
@@ -106,6 +110,9 @@ func main() {
 	requiredDepIf := flag.String("required-dependent-job-if", "", "required literal if condition for --required-dependent-job")
 	requiredDepRun := flag.String("required-dependent-run", "", "required sole run command for --required-dependent-job")
 	requiredDepNeeds := flag.String("required-dependent-needs", "", "comma-separated jobs that --required-dependent-job must need")
+	requiredDepAll := flag.Bool("required-dependent-needs-all-jobs", false, "require --required-dependent-job to need every other workflow job exactly once")
+	requiredConsumer := flag.String("required-consumer", "", "recognized Node consumer command required in --required-consumer-job")
+	requiredConsumerJob := flag.String("required-consumer-job", "", "workflow job that must contain --required-consumer")
 	requiredJobSet := flag.String("required-job-set", "", "comma-separated exact workflow job set in setup-node mode")
 	flag.Parse()
 
@@ -121,7 +128,7 @@ func main() {
 	if *mode == modeNode && *nodeFile == "" {
 		failUsage("--node-version-file is required in setup-node mode")
 	}
-	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "" || *requiredRunIf != "" || *requiredDepJob != "" || *requiredDepIf != "" || *requiredDepRun != "" || *requiredDepNeeds != "" || *requiredJobSet != "") {
+	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "" || *requiredRunIf != "" || *requiredDepJob != "" || *requiredDepIf != "" || *requiredDepRun != "" || *requiredDepNeeds != "" || *requiredDepAll || *requiredConsumer != "" || *requiredConsumerJob != "" || *requiredJobSet != "") {
 		failUsage("required-run and required-dependent-job flags are valid only in setup-node mode")
 	}
 	if (*requiredRun == "") != (*requiredRunJob == "") {
@@ -142,6 +149,18 @@ func main() {
 	if *requiredDepNeeds != "" && *requiredDepJob == "" {
 		failUsage("--required-dependent-needs requires --required-dependent-job")
 	}
+	if *requiredDepAll && *requiredDepJob == "" {
+		failUsage("--required-dependent-needs-all-jobs requires --required-dependent-job")
+	}
+	if *requiredDepAll && *requiredDepNeeds != "" {
+		failUsage("--required-dependent-needs-all-jobs and --required-dependent-needs are mutually exclusive")
+	}
+	if (*requiredConsumer == "") != (*requiredConsumerJob == "") {
+		failUsage("--required-consumer and --required-consumer-job must be provided together")
+	}
+	if *requiredConsumer != "" && !isNodeConsumerCommand(*requiredConsumer) {
+		failUsage("--required-consumer must name a recognized Node consumer command")
+	}
 	if *mode == modeNode && *goMinimum == "" {
 		failUsage("--go-minimum is required in setup-node mode")
 	}
@@ -154,7 +173,10 @@ func main() {
 	v.requiredDepJob = *requiredDepJob
 	v.requiredDepIf = *requiredDepIf
 	v.requiredDepRun = *requiredDepRun
-	if *requiredDepNeeds == "" && *requiredDepJob != "" {
+	v.requiredDepAll = *requiredDepAll
+	v.requiredConsumer = *requiredConsumer
+	v.requiredConsumerJob = *requiredConsumerJob
+	if *requiredDepNeeds == "" && *requiredDepJob != "" && !*requiredDepAll {
 		v.requiredDepNeed = map[string]struct{}{*requiredRunJob: {}}
 	} else if *requiredDepNeeds != "" {
 		v.requiredDepNeed, err = parseRequiredJobSet("--required-dependent-needs", *requiredDepNeeds)
@@ -205,6 +227,17 @@ func main() {
 		if v.nodeConsumerCount == 0 {
 			v.addError(*scanDir, 1, 1, "no recognized direct Node consumer steps found")
 		}
+		if v.requiredConsumer != "" && v.requiredConsumerCount != 1 {
+			v.addError(
+				*scanDir,
+				1,
+				1,
+				"required Node consumer %q must appear exactly once in workflow job %q; found %d",
+				v.requiredConsumer,
+				v.requiredConsumerJob,
+				v.requiredConsumerCount,
+			)
+		}
 		if v.requiredRun != "" && v.requiredRunCount == 0 {
 			v.addError(
 				*scanDir,
@@ -227,7 +260,7 @@ func main() {
 
 func failUsage(message string) {
 	fmt.Fprintf(os.Stderr, "verify-workflow-policies: %s\n", message)
-	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB [--required-run-if CONDITION] [--required-dependent-job JOB [--required-dependent-job-if CONDITION] [--required-dependent-run COMMAND] [--required-dependent-needs JOB,...]]] [--required-job-set JOB,...]")
+	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB [--required-run-if CONDITION] [--required-dependent-job JOB [--required-dependent-job-if CONDITION] [--required-dependent-run COMMAND] [--required-dependent-needs JOB,... | --required-dependent-needs-all-jobs]]] [--required-consumer COMMAND --required-consumer-job JOB] [--required-job-set JOB,...]")
 	os.Exit(2)
 }
 
@@ -526,9 +559,28 @@ func (v *verifier) checkRequiredDependentJob(file string, jobs []mapEntry) {
 	if !found {
 		v.addNodeError(file, needs, "required dependent job %q must declare reviewed dependencies", v.requiredDepJob)
 	} else {
-		for required := range v.requiredDepNeed {
-			if !literalNeedsIncludes(needs, required) {
-				v.addNodeError(file, needs, "required dependent job %q must need reviewed job %q", v.requiredDepJob, required)
+		expected := v.requiredDepNeed
+		if v.requiredDepAll {
+			expected = make(map[string]struct{}, len(jobs)-1)
+			for _, job := range jobs {
+				if job.key.Value != v.requiredDepJob {
+					expected[job.key.Value] = struct{}{}
+				}
+			}
+		}
+		actual, valid := literalNeedsSet(needs)
+		if !valid {
+			v.addNodeError(file, needs, "required dependent job %q must declare literal, unique reviewed dependencies", v.requiredDepJob)
+		} else {
+			for required := range expected {
+				if _, included := actual[required]; !included {
+					v.addNodeError(file, needs, "required dependent job %q must need reviewed job %q", v.requiredDepJob, required)
+				}
+			}
+			for dependency := range actual {
+				if _, reviewed := expected[dependency]; !reviewed {
+					v.addNodeError(file, needs, "required dependent job %q must not need unreviewed job %q", v.requiredDepJob, dependency)
+				}
 			}
 		}
 	}
@@ -628,26 +680,31 @@ func (v *verifier) checkRequiredDependentRun(file string, entries []mapEntry) {
 	}
 }
 
-func literalNeedsIncludes(node *yaml.Node, required string) bool {
+func literalNeedsSet(node *yaml.Node) (map[string]struct{}, bool) {
 	if node == nil {
-		return false
+		return nil, false
 	}
+	result := make(map[string]struct{})
 	switch node.Kind {
 	case yaml.ScalarNode:
-		return node.Tag == "!!str" && node.Value == required
-	case yaml.SequenceNode:
-		found := false
-		for _, item := range node.Content {
-			if item.Kind != yaml.ScalarNode || item.Tag != "!!str" {
-				return false
-			}
-			if item.Value == required {
-				found = true
-			}
+		if node.Tag != "!!str" || node.Value == "" {
+			return nil, false
 		}
-		return found
+		result[node.Value] = struct{}{}
+		return result, true
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode || item.Tag != "!!str" || item.Value == "" {
+				return nil, false
+			}
+			if _, duplicate := result[item.Value]; duplicate {
+				return nil, false
+			}
+			result[item.Value] = struct{}{}
+		}
+		return result, len(result) != 0
 	}
-	return false
+	return nil, false
 }
 
 func (v *verifier) scanJob(file, jobName string, job *yaml.Node) {
@@ -902,6 +959,9 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 	}
 	if consumer {
 		v.nodeConsumerCount++
+		if command == v.requiredConsumer && jobName == v.requiredConsumerJob {
+			v.requiredConsumerCount++
+		}
 		if !state.setupSeen {
 			v.addNodeError(
 				file,

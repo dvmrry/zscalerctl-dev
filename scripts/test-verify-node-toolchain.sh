@@ -15,6 +15,10 @@ make_fixture() {
 name: ci
 on: [push]
 jobs:
+  mod-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
   typescript-client:
     runs-on: ubuntu-latest
     steps:
@@ -42,11 +46,57 @@ jobs:
           go-version: '1.26.5'
           cache: true
       - run: /usr/bin/make verify-node-toolchain
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  race-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  race-resources:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  race-rest:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  verify-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  windows-config:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
+  surface-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true
   required:
     if: ${{ always() }}
     needs:
+      - mod-integrity
       - node-policy
       - typescript-client
+      - unit
+      - race-cli
+      - race-resources
+      - race-rest
+      - verify-gates
+      - windows-config
+      - static-analysis
+      - secret-scan
+      - surface-manifest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -538,7 +588,7 @@ grep -q 'required dependent job.*release.*must be unconditional' "$tmpdir/condit
 
 missing_ci_dependency="$tmpdir/missing-ci-dependency"
 make_fixture "$missing_ci_dependency"
-perl -0pi -e 's/      - node-policy/      - unit/' "$missing_ci_dependency/.github/workflows/ci.yml"
+perl -0pi -e 's/      - node-policy\n//' "$missing_ci_dependency/.github/workflows/ci.yml"
 if run_verify "$missing_ci_dependency" >"$tmpdir/missing-ci-dependency.out" 2>"$tmpdir/missing-ci-dependency.err"; then
 	echo "verify-node-toolchain accepted a stable CI result detached from node-policy" >&2
 	exit 1
@@ -553,6 +603,49 @@ if run_verify "$missing_typescript_dependency" >"$tmpdir/missing-typescript-depe
 	exit 1
 fi
 grep -q 'required dependent job.*required.*must need reviewed job.*typescript-client' "$tmpdir/missing-typescript-dependency.err"
+
+for prerequisite in \
+	mod-integrity \
+	unit \
+	race-cli \
+	race-resources \
+	race-rest \
+	verify-gates \
+	windows-config \
+	static-analysis \
+	secret-scan \
+	surface-manifest; do
+	missing_prerequisite="$tmpdir/missing-prerequisite-$prerequisite"
+	make_fixture "$missing_prerequisite"
+	PREREQUISITE="$prerequisite" perl -0pi -e 's/^      - \Q$ENV{PREREQUISITE}\E\n//m' "$missing_prerequisite/.github/workflows/ci.yml"
+	if run_verify "$missing_prerequisite" >"$tmpdir/missing-prerequisite-$prerequisite.out" 2>"$tmpdir/missing-prerequisite-$prerequisite.err"; then
+		echo "verify-node-toolchain accepted a stable CI result detached from $prerequisite" >&2
+		exit 1
+	fi
+	grep -q "required dependent job.*required.*must need reviewed job.*$prerequisite" "$tmpdir/missing-prerequisite-$prerequisite.err"
+done
+
+detached_typescript_consumer="$tmpdir/detached-typescript-consumer"
+make_fixture "$detached_typescript_consumer"
+perl -0pi -e 's/  typescript-client:\n/  typescript-unrequired:\n/' "$detached_typescript_consumer/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:/  typescript-client:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \/bin\/true\n  node-policy:/' "$detached_typescript_consumer/.github/workflows/ci.yml"
+if run_verify "$detached_typescript_consumer" >"$tmpdir/detached-typescript-consumer.out" 2>"$tmpdir/detached-typescript-consumer.err"; then
+	echo "verify-node-toolchain accepted TypeScript validation detached from the stable CI sink" >&2
+	exit 1
+fi
+grep -q 'required dependent job.*required.*must need reviewed job.*typescript-unrequired' "$tmpdir/detached-typescript-consumer.err"
+grep -q 'required Node consumer.*verify-typescript-client.*must appear exactly once.*typescript-client.*found 0' "$tmpdir/detached-typescript-consumer.err"
+
+misnamed_typescript_consumer="$tmpdir/misnamed-typescript-consumer"
+make_fixture "$misnamed_typescript_consumer"
+perl -0pi -e 's/  typescript-client:\n/  typescript-unrequired:\n/' "$misnamed_typescript_consumer/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:/  typescript-client:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \/bin\/true\n  node-policy:/' "$misnamed_typescript_consumer/.github/workflows/ci.yml"
+perl -0pi -e 's/      - typescript-client\n/      - typescript-client\n      - typescript-unrequired\n/' "$misnamed_typescript_consumer/.github/workflows/ci.yml"
+if run_verify "$misnamed_typescript_consumer" >"$tmpdir/misnamed-typescript-consumer.out" 2>"$tmpdir/misnamed-typescript-consumer.err"; then
+	echo "verify-node-toolchain accepted protected TypeScript validation in the wrong job" >&2
+	exit 1
+fi
+grep -q 'required Node consumer.*verify-typescript-client.*must appear exactly once.*typescript-client.*found 0' "$tmpdir/misnamed-typescript-consumer.err"
 
 wrong_ci_dependency_condition="$tmpdir/wrong-ci-dependency-condition"
 make_fixture "$wrong_ci_dependency_condition"
