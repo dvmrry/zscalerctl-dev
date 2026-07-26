@@ -24,14 +24,30 @@ var (
 	deniedResourceExactKeys = map[string][]string{
 		"location-groups": {"extensions", "lastModUser"},
 	}
+	// Keep exceptions scoped to exact, catalog-reviewed presentation paths.
+	// Adding a key here must not exempt the same key at another resource or path.
 	allowedResourceDeniedPaths = map[string][]string{
-		"atp-malware-policy":           {"blockPasswordProtectedArchiveFiles"},
+		"application-profiles": {"refreshKerberosToken"},
+		"atp-malware-policy":   {"blockPasswordProtectedArchiveFiles"},
+		"company-info":         {"zpaClientCertExpInDays"},
+		"gre-tunnels": {
+			"primaryDestVip",
+			"primaryDestVip.city",
+			"secondaryDestVip",
+			"secondaryDestVip.city",
+		},
+		"intermediate-ca-certificates": {"certStartDate", "certExpDate", "defaultCertificate"},
 		"location-groups":              {"dynamicLocationGroupCriteria.city", "dynamicLocationGroupCriteria.managedBy"},
 		"mobile-threat-settings":       {"blockAppsSendingUnencryptedUserCredentials"},
 		"org-information":              {"city"},
-		"intermediate-ca-certificates": {"certStartDate", "certExpDate", "defaultCertificate"},
-		"application-profiles":         {"refreshKerberosToken"},
-		"company-info":                 {"zpaClientCertExpInDays"},
+		"ssl-inspection-rules": {
+			"action.overrideDefaultCertificate",
+			"action.sslInterceptionCert",
+			"action.sslInterceptionCert.defaultCertificate",
+			"action.decryptSubActions.serverCertificates",
+			"action.doNotDecryptSubActions.serverCertificates",
+		},
+		"static-ips": {"city"},
 	}
 	deniedKeyPattern = regexp.MustCompile(`(?i)(password|secret|token|api[_-]?key|preSharedKey|credential|cert|fingerprint)`)
 )

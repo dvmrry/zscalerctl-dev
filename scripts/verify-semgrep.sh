@@ -6,6 +6,10 @@ RULES="${ROOT}/semgrep/rules/zscalerctl.yml"
 SEMGREP_VERSION="${SEMGREP_VERSION:-1.166.0}"
 
 semgrep_cmd() {
+  if [[ -n "${HOME:-}" && -x "$HOME/.local/bin/semgrep" ]]; then
+    "$HOME/.local/bin/semgrep" "$@"
+    return
+  fi
   if command -v semgrep >/dev/null 2>&1; then
     semgrep "$@"
     return

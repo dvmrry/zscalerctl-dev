@@ -33,6 +33,31 @@ func TestFindDeniedKeys(t *testing.T) {
 		{"allowed city for org-info", "org-information", `{"name":"t","city":"NY"}`, nil},
 		{"allowed atp password field", "atp-malware-policy", `{"blockPasswordProtectedArchiveFiles":true,"blockUnscannableFiles":false}`, nil},
 		{"allowed cert metadata", "intermediate-ca-certificates", `[{"id":8,"name":"CA","defaultCertificate":true,"certStartDate":1,"certExpDate":2}]`, nil},
+		{"reviewed static IP city reference", "static-ips", `[{"id":9,"city":{"id":4,"name":"Raleigh"}}]`, nil},
+		{"static IP city at wrong path", "static-ips", `[{"id":9,"metadata":{"city":"Raleigh"}}]`, []string{"city"}},
+		{
+			"reviewed GRE destination metadata",
+			"gre-tunnels",
+			`[{"id":10,"primaryDestVip":{"id":1,"city":"Raleigh"},"secondaryDestVip":{"id":2,"city":"Charlotte"}}]`,
+			nil,
+		},
+		{"GRE destination metadata at wrong path", "gre-tunnels", `[{"id":10,"metadata":{"primaryDestVip":{"city":"Raleigh"}}}]`, []string{"city", "primaryDestVip"}},
+		{"secondary GRE destination metadata at wrong path", "gre-tunnels", `[{"id":10,"metadata":{"secondaryDestVip":{"city":"Charlotte"}}}]`, []string{"city", "secondaryDestVip"}},
+		{
+			"reviewed SSL rule certificate reference metadata",
+			"ssl-inspection-rules",
+			`[{"id":11,"action":{"overrideDefaultCertificate":true,"sslInterceptionCert":{"id":3,"name":"Rollout CA","defaultCertificate":false},"decryptSubActions":{"serverCertificates":"ALLOW"},"doNotDecryptSubActions":{"serverCertificates":"BLOCK"}}}]`,
+			nil,
+		},
+		{
+			"SSL rule certificate material remains denied",
+			"ssl-inspection-rules",
+			`[{"id":11,"action":{"sslInterceptionCert":{"id":3,"name":"Rollout CA","certificate":"-----BEGIN CERTIFICATE-----"}}}]`,
+			[]string{"certificate"},
+		},
+		{"SSL certificate reference at wrong path", "ssl-inspection-rules", `[{"id":11,"sslInterceptionCert":{"name":"Rollout CA"}}]`, []string{"sslInterceptionCert"}},
+		{"decrypt server certificate policy at wrong path", "ssl-inspection-rules", `[{"id":11,"action":{"decryptSubActions":{"metadata":{"serverCertificates":"ALLOW"}}}}]`, []string{"serverCertificates"}},
+		{"do-not-decrypt server certificate policy at wrong path", "ssl-inspection-rules", `[{"id":11,"action":{"metadata":{"doNotDecryptSubActions":{"serverCertificates":"BLOCK"}}}}]`, []string{"serverCertificates"}},
 		{"locations not denied outside location-groups", "url-filtering-rules", `[{"id":6,"name":"r","locations":[{"id":1,"name":"HQ"}]}]`, nil},
 	}
 	for _, tc := range cases {
@@ -41,7 +66,7 @@ func TestFindDeniedKeys(t *testing.T) {
 			t.Parallel()
 			got := findDeniedKeys(tc.resource, mustJSON(t, tc.json))
 			if !reflect.DeepEqual(emptyToNil(got), tc.want) {
-				t.Errorf("findDeniedKeys = %v, want %v", got, tc.want)
+				t.Errorf("findDeniedKeys(%q, %s) = %v, want %v", tc.resource, tc.json, got, tc.want)
 			}
 		})
 	}

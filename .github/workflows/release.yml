@@ -26,7 +26,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.26.5'
+          cache: true
+
+      - name: Install Semgrep
+        run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.node-version'
+          package-manager-cache: false
+
+      - name: Verify active Node toolchain
+        run: /bin/bash scripts/verify-active-node-toolchain.sh
+
+      - name: Release gate
+        run: /usr/bin/make release-check
+
   release:
+    needs: release-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -43,12 +71,6 @@ jobs:
         with:
           go-version: '1.26.5'
           cache: true
-
-      - name: Install Semgrep
-        run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
-
-      - name: Add user Python bin to PATH
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Determine release version
         id: version
@@ -79,10 +101,6 @@ jobs:
           echo "release=true" >>"$GITHUB_OUTPUT"
           echo "version=$next_version" >>"$GITHUB_OUTPUT"
           echo "version_no_v=${next_version#v}" >>"$GITHUB_OUTPUT"
-
-      - name: Release gate
-        if: steps.version.outputs.release == 'true'
-        run: make release-check
 
       - name: Secret scan
         if: steps.version.outputs.release == 'true'

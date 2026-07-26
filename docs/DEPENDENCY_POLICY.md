@@ -124,8 +124,18 @@ stable built-in erasable-TypeScript support and intentionally has no runtime,
 optional, or peer dependencies. It requires no package installation and runs no
 install scripts. `make verify-typescript-client` enforces that boundary and
 runs its shared-corpus and process-integration tests. CI provisions an exact
-Node release through a full-SHA-pinned `actions/setup-node` step with package
-caching disabled.
+Node release from the shared `.node-version` pin through a full-SHA-pinned
+`actions/setup-node` step with package caching disabled. The release workflow
+uses the same source in a dedicated, unconditional release-gate job. CI and
+release each verify that the active `node` executable and `.node-version` still
+equal the exact reviewed pin immediately before their Node consumer. Protected
+commands use runner-absolute shell or Make paths, the release publisher depends
+on the isolated gate, and the YAML-aware policy rejects unreviewed steps in the
+policy jobs. It also requires the exact reviewed checkout/setup action SHAs,
+one canonical current-repository checkout, one canonical setup-go step, an
+exact stable-CI aggregation sink, and the exact two-job release topology;
+`make verify-node-toolchain` enforces that structure so release and PR gates
+cannot drift independently or validate different source than they publish.
 
 Adding a package dependency, transpiler, runtime loader, lockfile, or package
 manager cache requires a deliberate dependency and threat review; it must not
