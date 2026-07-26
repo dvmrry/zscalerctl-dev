@@ -27,11 +27,14 @@ if [[ "$node_version" != "$required_version" ]]; then
 	exit 1
 fi
 
-for workflow in "$ci_workflow" "$release_workflow"; do
+verify_workflow() {
+	local workflow="$1"
+	shift
 	if [[ ! -f "$workflow" ]]; then
 		echo "$workflow: required Node workflow not found" >&2
 		exit 1
 	fi
+	local workflow_path
 	workflow_path="$(cd "$(dirname "$workflow")" && pwd -P)/$(basename "$workflow")"
 	(
 		cd "$script_root"
@@ -39,6 +42,13 @@ for workflow in "$ci_workflow" "$release_workflow"; do
 			--mode setup-node \
 			--scan-dir "$workflow_path" \
 			--repo-root "$repo_root" \
-			--node-version-file "$node_version_ref"
+			--node-version-file "$node_version_ref" \
+			"$@"
 	)
-done
+}
+
+verify_workflow \
+	"$ci_workflow" \
+	--required-run "make verify-node-toolchain" \
+	--required-run-job "verify-gates"
+verify_workflow "$release_workflow"

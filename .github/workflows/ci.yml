@@ -125,6 +125,7 @@ jobs:
       - run: bash scripts/test-verify-cli-docs.sh
       - run: make verify-gitleaks-allowlist
       - run: make verify-go-toolchain
+      - run: make verify-node-toolchain
       # These verifiers run in `make check` but were absent from PR CI, so a
       # break in release automation, artifacts, the catalog draft, the resource
       # scaffold, the SDK-surface inventory, or the script registry only
