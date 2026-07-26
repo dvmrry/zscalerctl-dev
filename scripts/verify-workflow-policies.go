@@ -1,8 +1,8 @@
 //go:build ignore
 
 // verify-workflow-policies validates the static GitHub Actions policy shared by
-// the action-pin and Go-toolchain shell gates. It is deliberately a development
-// helper, not part of the zscalerctl binary.
+// the action-pin, Go-toolchain, and Node-toolchain shell gates. It is
+// deliberately a development helper, not part of the zscalerctl binary.
 package main
 
 import (
@@ -23,6 +23,7 @@ import (
 const (
 	modeActions = "actions"
 	modeGo      = "setup-go"
+	modeNode    = "setup-node"
 )
 
 type fileKind uint8
@@ -45,6 +46,7 @@ var retiredRuntimeActions = map[string]struct{}{
 type verifier struct {
 	mode      string
 	goMinimum string
+	nodeFile  string
 	rootReal  string
 
 	active  map[string]bool
@@ -52,7 +54,8 @@ type verifier struct {
 	stack   []string
 	errors  []string
 
-	setupGoCount int
+	setupGoCount   int
+	setupNodeCount int
 }
 
 type mapEntry struct {
@@ -66,14 +69,15 @@ type visitKey struct {
 }
 
 func main() {
-	mode := flag.String("mode", "", "policy to check: actions or setup-go")
+	mode := flag.String("mode", "", "policy to check: actions, setup-go, or setup-node")
 	scanDir := flag.String("scan-dir", "", "directory containing workflow YAML files")
 	repoRoot := flag.String("repo-root", "", "repository root used for local reference resolution")
 	goMinimum := flag.String("go-minimum", "", "required literal setup-go version in setup-go mode")
+	nodeFile := flag.String("node-version-file", "", "required repository-relative setup-node version file in setup-node mode")
 	flag.Parse()
 
-	if *mode != modeActions && *mode != modeGo {
-		failUsage("--mode must be actions or setup-go")
+	if *mode != modeActions && *mode != modeGo && *mode != modeNode {
+		failUsage("--mode must be actions, setup-go, or setup-node")
 	}
 	if *scanDir == "" || *repoRoot == "" {
 		failUsage("--scan-dir and --repo-root are required")
@@ -81,8 +85,11 @@ func main() {
 	if *mode == modeGo && *goMinimum == "" {
 		failUsage("--go-minimum is required in setup-go mode")
 	}
+	if *mode == modeNode && *nodeFile == "" {
+		failUsage("--node-version-file is required in setup-node mode")
+	}
 
-	v, err := newVerifier(*mode, *repoRoot, *goMinimum)
+	v, err := newVerifier(*mode, *repoRoot, *goMinimum, *nodeFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verify-workflow-policies: %v\n", err)
 		os.Exit(1)
@@ -110,6 +117,9 @@ func main() {
 	if *mode == modeGo && v.setupGoCount == 0 && len(v.errors) == 0 {
 		v.addError(*scanDir, 1, 1, "no setup-go steps found")
 	}
+	if *mode == modeNode && v.setupNodeCount == 0 && len(v.errors) == 0 {
+		v.addError(*scanDir, 1, 1, "no setup-node steps found")
+	}
 
 	for _, message := range v.errors {
 		fmt.Fprintln(os.Stderr, message)
@@ -121,11 +131,11 @@ func main() {
 
 func failUsage(message string) {
 	fmt.Fprintf(os.Stderr, "verify-workflow-policies: %s\n", message)
-	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go --scan-dir DIR --repo-root DIR [--go-minimum VERSION]")
+	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH]")
 	os.Exit(2)
 }
 
-func newVerifier(mode, repoRoot, goMinimum string) (*verifier, error) {
+func newVerifier(mode, repoRoot, goMinimum, nodeFile string) (*verifier, error) {
 	absRoot, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolve repository root %q: %w", repoRoot, err)
@@ -144,6 +154,7 @@ func newVerifier(mode, repoRoot, goMinimum string) (*verifier, error) {
 	return &verifier{
 		mode:      mode,
 		goMinimum: goMinimum,
+		nodeFile:  nodeFile,
 		rootReal:  rootReal,
 		active:    map[string]bool{},
 		visited:   map[visitKey]bool{},
@@ -438,6 +449,10 @@ func (v *verifier) inspectStepUses(file string, step *yaml.Node, stepEntries []m
 		v.setupGoCount++
 		v.checkSetupGo(file, stepEntries, value)
 	}
+	if v.mode == modeNode && strings.EqualFold(actionName(ref), "actions/setup-node") {
+		v.setupNodeCount++
+		v.checkSetupNode(file, stepEntries, value)
+	}
 }
 
 func (v *verifier) inspectJobUses(file string, job, value *yaml.Node) {
@@ -538,6 +553,39 @@ func (v *verifier) checkSetupGo(file string, stepEntries []mapEntry, uses *yaml.
 	}
 	if version.Value != v.goMinimum {
 		v.addNodeError(file, version, "go-version %s does not match root security minimum %s", version.Value, v.goMinimum)
+	}
+}
+
+func (v *verifier) checkSetupNode(file string, stepEntries []mapEntry, uses *yaml.Node) {
+	with, found := entryValue(stepEntries, "with")
+	if !found || (with.Kind == yaml.ScalarNode && with.Tag == "!!null") {
+		v.addNodeError(file, uses, "setup-node step is missing with.node-version-file: %s", v.nodeFile)
+		return
+	}
+	withEntries, ok := v.executableEntries(file, with, "setup-node with")
+	if !ok {
+		return
+	}
+	versionFile, found := entryValue(withEntries, "node-version-file")
+	if !found {
+		v.addNodeError(file, uses, "setup-node step is missing with.node-version-file: %s", v.nodeFile)
+		return
+	}
+	if versionFile.Kind != yaml.ScalarNode || versionFile.Tag != "!!str" || strings.ContainsAny(versionFile.Value, "${}") {
+		v.addNodeError(file, versionFile, "setup-node node-version-file must be the literal %s", v.nodeFile)
+		return
+	}
+	if versionFile.Value != v.nodeFile {
+		v.addNodeError(file, versionFile, "node-version-file %s does not match shared Node version file %s", versionFile.Value, v.nodeFile)
+	}
+
+	cache, found := entryValue(withEntries, "package-manager-cache")
+	if !found {
+		v.addNodeError(file, uses, "setup-node step is missing with.package-manager-cache: false")
+		return
+	}
+	if cache.Kind != yaml.ScalarNode || cache.Tag != "!!bool" || cache.Value != "false" {
+		v.addNodeError(file, cache, "setup-node package-manager-cache must be the literal boolean false")
 	}
 }
 

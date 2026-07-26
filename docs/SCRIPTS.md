@@ -21,6 +21,7 @@ registered path exists.
 | `scripts/test-gitleaks-allowlist.sh` | test | `make verify-gitleaks-allowlist`; `.github/workflows/ci.yml` | Generates an ephemeral key and proves private-key fixture exceptions cannot suppress it |
 | `scripts/test-verify-gitleaks-history-policy.sh` | test | `make verify-gitleaks-allowlist`; `.github/workflows/ci.yml` | Negative fixtures for shallow history and non-exact Gitleaks ignore fingerprints |
 | `scripts/test-verify-go-toolchain.sh` | test | `make verify-go-toolchain`; `.github/workflows/ci.yml` | Negative fixtures for stale module and workflow Go security minimums |
+| `scripts/test-verify-node-toolchain.sh` | test | `make verify-node-toolchain`; `.github/workflows/ci.yml` | Negative fixtures for missing, stale, divergent, cached, or comment-spoofed setup-node policy |
 | `scripts/test-next-version.sh` | test | `make verify-release-automation` | Self-contained release-helper test |
 | `scripts/test-pr-labels-for-commit.sh` | test | `make verify-release-automation` | Self-contained release-helper test |
 | `scripts/test-scaffold-resource.sh` | test | `make verify-resource-scaffold` | Self-contained scaffold test |
@@ -48,6 +49,7 @@ registered path exists.
 | `scripts/verify-experiment-boundaries.sh` | verify | `make verify-experiment-boundaries`; `.github/workflows/ci.yml` | `scripts/test-verify-experiment-boundaries.sh` |
 | `scripts/verify-gitleaks-history-policy.sh` | verify | `scripts/test-gitleaks-allowlist.sh`; `make verify-gitleaks-allowlist` | Requires full history and exact commit-bound Gitleaks ignore fingerprints |
 | `scripts/verify-go-toolchain.sh` | verify | `make verify-go-toolchain`; `.github/workflows/ci.yml` | Keeps every module and workflow on the root patch-level Go security minimum |
+| `scripts/verify-node-toolchain.sh` | verify | `make verify-node-toolchain`; `.github/workflows/ci.yml` | Keeps CI and release on the shared exact Node runtime pin with package-manager caching disabled |
 | `scripts/verify-typescript-client.sh` | verify | `make verify-typescript-client`; `.github/workflows/ci.yml` | Enforces the dependency-free Node floor, builds the candidate Go host, and runs corpus, stateful-client, and real-process tests |
 | `scripts/verify-licenses.sh` | verify | `make verify-licenses`; `.github/workflows/ci.yml` | `go-licenses` allow-list check for the shipped binary |
 | `scripts/verify-machine-manifest-schema.go` | verify | `scripts/verify-machine-contract.sh` | `scripts/test-verify-machine-contract.sh` |
@@ -60,7 +62,7 @@ registered path exists.
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
 | `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |
-| `scripts/verify-workflow-policies.go` | verify | `scripts/verify-actions-pinned.sh`; `scripts/verify-go-toolchain.sh` | Shared YAML-aware action and setup-go policy traversal |
+| `scripts/verify-workflow-policies.go` | verify | `scripts/verify-actions-pinned.sh`; `scripts/verify-go-toolchain.sh`; `scripts/verify-node-toolchain.sh` | Shared YAML-aware action, setup-go, and setup-node policy traversal |
 
 The testdata directory under `scripts/` holds fixtures for script tests and is
 intentionally not a registry entry because the verifier tracks top-level script
