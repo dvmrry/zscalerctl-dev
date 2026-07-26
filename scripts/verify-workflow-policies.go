@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	modeActions = "actions"
-	modeGo      = "setup-go"
-	modeNode    = "setup-node"
+	modeActions           = "actions"
+	modeGo                = "setup-go"
+	modeNode              = "setup-node"
+	releaseCheckCondition = "steps.version.outputs.release == 'true'"
 )
 
 type fileKind uint8
@@ -487,9 +488,7 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 				command,
 			)
 		}
-		if continuation, found := entryValue(entries, "continue-on-error"); found {
-			v.addNodeError(file, continuation, "Node consumer %q must not set continue-on-error", command)
-		}
+		v.checkNodeConsumerStep(file, entries, run, command)
 	}
 
 	if filepath.Clean(file) != v.requiredRunFile || command != v.requiredRun {
@@ -521,6 +520,27 @@ func isNodeConsumerCommand(command string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (v *verifier) checkNodeConsumerStep(file string, entries []mapEntry, run *yaml.Node, command string) {
+	if continuation, found := entryValue(entries, "continue-on-error"); found {
+		v.addNodeError(file, continuation, "Node consumer %q must not set continue-on-error", command)
+	}
+
+	condition, conditional := entryValue(entries, "if")
+	if command != "make release-check" {
+		if conditional {
+			v.addNodeError(file, condition, "Node consumer %q must be unconditional", command)
+		}
+		return
+	}
+	if !conditional {
+		v.addNodeError(file, run, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
+		return
+	}
+	if condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != releaseCheckCondition {
+		v.addNodeError(file, condition, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
 	}
 }
 

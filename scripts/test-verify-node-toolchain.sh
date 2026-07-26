@@ -40,6 +40,7 @@ jobs:
           node-version-file: '.node-version'
           package-manager-cache: false
       - run: make release-check
+        if: steps.version.outputs.release == 'true'
 YAML
 }
 
@@ -84,6 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
+        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$missing_release_setup" >"$tmpdir/missing.out" 2>"$tmpdir/missing.err"; then
 	echo "verify-node-toolchain accepted a release workflow without setup-node" >&2
@@ -155,6 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
+        if: steps.version.outputs.release == 'true'
       - uses: actions/setup-node@example
         with:
           node-version-file: '.node-version'
@@ -183,6 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
+        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$different_job" >"$tmpdir/different-job.out" 2>"$tmpdir/different-job.err"; then
 	echo "verify-node-toolchain accepted setup-node in a different job from the release consumer" >&2
@@ -207,6 +211,24 @@ if run_verify "$ignored_consumer_failure" >"$tmpdir/ignored-consumer-failure.out
 	exit 1
 fi
 grep -q 'Node consumer.*make release-check.*must not set continue-on-error' "$tmpdir/ignored-consumer-failure.err"
+
+skipped_release_gate="$tmpdir/skipped-release-gate"
+make_fixture "$skipped_release_gate"
+perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: false/" "$skipped_release_gate/.github/workflows/release.yml"
+if run_verify "$skipped_release_gate" >"$tmpdir/skipped-release-gate.out" 2>"$tmpdir/skipped-release-gate.err"; then
+	echo "verify-node-toolchain accepted a skipped release-check consumer" >&2
+	exit 1
+fi
+grep -q 'Node consumer.*make release-check.*must use the literal release condition' "$tmpdir/skipped-release-gate.err"
+
+conditional_ci_consumer="$tmpdir/conditional-ci-consumer"
+make_fixture "$conditional_ci_consumer"
+perl -0pi -e 's/- run: bash scripts\/verify-typescript-client\.sh/- run: bash scripts\/verify-typescript-client.sh\n        if: false/' "$conditional_ci_consumer/.github/workflows/ci.yml"
+if run_verify "$conditional_ci_consumer" >"$tmpdir/conditional-ci-consumer.out" 2>"$tmpdir/conditional-ci-consumer.err"; then
+	echo "verify-node-toolchain accepted a conditional TypeScript consumer" >&2
+	exit 1
+fi
+grep -q 'Node consumer.*verify-typescript-client.*must be unconditional' "$tmpdir/conditional-ci-consumer.err"
 
 missing_ci_wiring="$tmpdir/missing-ci-wiring"
 make_fixture "$missing_ci_wiring"
@@ -256,6 +278,7 @@ jobs:
       # - uses: actions/setup-node@example
       #   with: {node-version-file: '.node-version', package-manager-cache: false}
       - run: make release-check
+        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$comment_spoof" >"$tmpdir/comment.out" 2>"$tmpdir/comment.err"; then
 	echo "verify-node-toolchain accepted a commented-out release setup-node step" >&2
