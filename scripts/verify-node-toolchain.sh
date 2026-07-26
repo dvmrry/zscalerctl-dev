@@ -75,10 +75,12 @@ verify_workflow() {
 
 verify_workflow \
 	"$ci_workflow" \
-	--required-run "make verify-node-toolchain" \
-	--required-run-job "verify-gates"
+	--required-run "/usr/bin/make verify-node-toolchain" \
+	--required-run-job "node-policy" \
+	--required-dependent-job "required" \
+	--required-dependent-job-if '${{ always() }}'
 verify_workflow \
 	"$release_workflow" \
-	--required-run "make release-check" \
-	--required-run-job "release" \
-	--required-run-if "steps.version.outputs.release == 'true'"
+	--required-run "/usr/bin/make release-check" \
+	--required-run-job "release-gate" \
+	--required-dependent-job "release"

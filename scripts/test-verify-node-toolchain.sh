@@ -22,28 +22,37 @@ jobs:
         with:
           node-version-file: '.node-version'
           package-manager-cache: false
-      - run: make verify-active-node-toolchain
-      - run: bash scripts/verify-typescript-client.sh
-  verify-gates:
+      - run: /bin/bash scripts/verify-active-node-toolchain.sh
+      - run: /bin/bash scripts/verify-typescript-client.sh
+  node-policy:
     runs-on: ubuntu-latest
     steps:
-      - run: make verify-node-toolchain
+      - run: /usr/bin/make verify-node-toolchain
+  required:
+    if: ${{ always() }}
+    needs: node-policy
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo required
 YAML
 	cat >"$dir/.github/workflows/release.yml" <<'YAML'
 name: release
 on: [push]
 jobs:
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@example
         with:
           node-version-file: '.node-version'
           package-manager-cache: false
-      - run: make verify-active-node-toolchain
-        if: steps.version.outputs.release == 'true'
-      - run: make release-check
-        if: steps.version.outputs.release == 'true'
+      - run: /bin/bash scripts/verify-active-node-toolchain.sh
+      - run: /usr/bin/make release-check
+  release:
+    needs: release-gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo publish
 YAML
 }
 
@@ -97,11 +106,10 @@ cat >"$missing_release_setup/.github/workflows/release.yml" <<'YAML'
 name: release
 on: [push]
 jobs:
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
-        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$missing_release_setup" >"$tmpdir/missing.out" 2>"$tmpdir/missing.err"; then
 	echo "verify-node-toolchain accepted a release workflow without setup-node" >&2
@@ -196,11 +204,10 @@ cat >"$late_setup/.github/workflows/release.yml" <<'YAML'
 name: release
 on: [push]
 jobs:
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
-        if: steps.version.outputs.release == 'true'
       - uses: actions/setup-node@example
         with:
           node-version-file: '.node-version'
@@ -225,11 +232,10 @@ jobs:
         with:
           node-version-file: '.node-version'
           package-manager-cache: false
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
-        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$different_job" >"$tmpdir/different-job.out" 2>"$tmpdir/different-job.err"; then
 	echo "verify-node-toolchain accepted setup-node in a different job from the release consumer" >&2
@@ -239,16 +245,16 @@ grep -q 'must follow a valid unconditional direct setup-node step in the same jo
 
 conditional_release_job="$tmpdir/conditional-release-job"
 make_fixture "$conditional_release_job"
-perl -0pi -e 's/  release:\n    runs-on:/  release:\n    if: false\n    runs-on:/' "$conditional_release_job/.github/workflows/release.yml"
+perl -0pi -e 's/  release-gate:\n    runs-on:/  release-gate:\n    if: false\n    runs-on:/' "$conditional_release_job/.github/workflows/release.yml"
 if run_verify "$conditional_release_job" >"$tmpdir/conditional-release-job.out" 2>"$tmpdir/conditional-release-job.err"; then
 	echo "verify-node-toolchain accepted a conditional release job" >&2
 	exit 1
 fi
-grep -q 'job.*release.*containing Node policy steps must be unconditional' "$tmpdir/conditional-release-job.err"
+grep -q 'job.*release-gate.*containing Node policy steps must be unconditional' "$tmpdir/conditional-release-job.err"
 
 ignored_consumer_failure="$tmpdir/ignored-consumer-failure"
 make_fixture "$ignored_consumer_failure"
-perl -0pi -e 's/- run: make release-check/- run: make release-check\n        continue-on-error: true/' "$ignored_consumer_failure/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: \/usr\/bin\/make release-check\n        continue-on-error: true/' "$ignored_consumer_failure/.github/workflows/release.yml"
 if run_verify "$ignored_consumer_failure" >"$tmpdir/ignored-consumer-failure.out" 2>"$tmpdir/ignored-consumer-failure.err"; then
 	echo "verify-node-toolchain accepted release-check with continue-on-error" >&2
 	exit 1
@@ -257,16 +263,16 @@ grep -q 'Node consumer.*make release-check.*must not set continue-on-error' "$tm
 
 skipped_release_gate="$tmpdir/skipped-release-gate"
 make_fixture "$skipped_release_gate"
-perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: false/" "$skipped_release_gate/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: \/usr\/bin\/make release-check\n        if: false/' "$skipped_release_gate/.github/workflows/release.yml"
 if run_verify "$skipped_release_gate" >"$tmpdir/skipped-release-gate.out" 2>"$tmpdir/skipped-release-gate.err"; then
 	echo "verify-node-toolchain accepted a skipped release-check consumer" >&2
 	exit 1
 fi
-grep -q 'Node consumer.*make release-check.*must use the literal release condition' "$tmpdir/skipped-release-gate.err"
+grep -q 'Node consumer.*make release-check.*must be unconditional' "$tmpdir/skipped-release-gate.err"
 
 wrong_release_consumer="$tmpdir/wrong-release-consumer"
 make_fixture "$wrong_release_consumer"
-perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make verify-typescript-client/" "$wrong_release_consumer/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: make verify-typescript-client/' "$wrong_release_consumer/.github/workflows/release.yml"
 if run_verify "$wrong_release_consumer" >"$tmpdir/wrong-release-consumer.out" 2>"$tmpdir/wrong-release-consumer.err"; then
 	echo "verify-node-toolchain accepted a release workflow without make release-check" >&2
 	exit 1
@@ -275,7 +281,7 @@ grep -q 'required run.*make release-check.*was not found' "$tmpdir/wrong-release
 
 conditional_ci_consumer="$tmpdir/conditional-ci-consumer"
 make_fixture "$conditional_ci_consumer"
-perl -0pi -e 's/- run: bash scripts\/verify-typescript-client\.sh/- run: bash scripts\/verify-typescript-client.sh\n        if: false/' "$conditional_ci_consumer/.github/workflows/ci.yml"
+perl -0pi -e 's/- run: \/bin\/bash scripts\/verify-typescript-client\.sh/- run: \/bin\/bash scripts\/verify-typescript-client.sh\n        if: false/' "$conditional_ci_consumer/.github/workflows/ci.yml"
 if run_verify "$conditional_ci_consumer" >"$tmpdir/conditional-ci-consumer.out" 2>"$tmpdir/conditional-ci-consumer.err"; then
 	echo "verify-node-toolchain accepted a conditional TypeScript consumer" >&2
 	exit 1
@@ -284,7 +290,7 @@ grep -q 'Node consumer.*verify-typescript-client.*must be unconditional' "$tmpdi
 
 release_custom_shell="$tmpdir/release-custom-shell"
 make_fixture "$release_custom_shell"
-perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        shell: \/bin\/true \{0\}/" "$release_custom_shell/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: \/usr\/bin\/make release-check\n        shell: \/bin\/true \{0\}/' "$release_custom_shell/.github/workflows/release.yml"
 if run_verify "$release_custom_shell" >"$tmpdir/release-custom-shell.out" 2>"$tmpdir/release-custom-shell.err"; then
 	echo "verify-node-toolchain accepted a no-op custom shell on make release-check" >&2
 	exit 1
@@ -293,7 +299,7 @@ grep -q 'Node policy run.*make release-check.*must use the runner.*default shell
 
 ci_custom_shell="$tmpdir/ci-custom-shell"
 make_fixture "$ci_custom_shell"
-perl -0pi -e 's/- run: make verify-node-toolchain/- run: make verify-node-toolchain\n        shell: \/bin\/true \{0\}/' "$ci_custom_shell/.github/workflows/ci.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make verify-node-toolchain/- run: \/usr\/bin\/make verify-node-toolchain\n        shell: \/bin\/true \{0\}/' "$ci_custom_shell/.github/workflows/ci.yml"
 if run_verify "$ci_custom_shell" >"$tmpdir/ci-custom-shell.out" 2>"$tmpdir/ci-custom-shell.err"; then
 	echo "verify-node-toolchain accepted a no-op custom shell on its CI self-check" >&2
 	exit 1
@@ -320,7 +326,7 @@ grep -q 'job.*release.*must not override run defaults' "$tmpdir/job-run-defaults
 
 alternate_working_directory="$tmpdir/alternate-working-directory"
 make_fixture "$alternate_working_directory"
-perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        working-directory: clients\/typescript/" "$alternate_working_directory/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: \/usr\/bin\/make release-check\n        working-directory: clients\/typescript/' "$alternate_working_directory/.github/workflows/release.yml"
 if run_verify "$alternate_working_directory" >"$tmpdir/alternate-working-directory.out" 2>"$tmpdir/alternate-working-directory.err"; then
 	echo "verify-node-toolchain accepted an alternate release-gate working directory" >&2
 	exit 1
@@ -329,7 +335,7 @@ grep -q 'Node policy run.*make release-check.*must use the repository root worki
 
 step_environment="$tmpdir/step-environment"
 make_fixture "$step_environment"
-perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        env:\n          PATH: \/tmp\/decoy/" "$step_environment/.github/workflows/release.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make release-check/- run: \/usr\/bin\/make release-check\n        env:\n          PATH: \/tmp\/decoy/' "$step_environment/.github/workflows/release.yml"
 if run_verify "$step_environment" >"$tmpdir/step-environment.out" 2>"$tmpdir/step-environment.err"; then
 	echo "verify-node-toolchain accepted a release-gate step environment override" >&2
 	exit 1
@@ -365,12 +371,12 @@ grep -q 'job.*release.*key.*container.*is not allowed' "$tmpdir/release-containe
 
 ci_gate_container="$tmpdir/ci-gate-container"
 make_fixture "$ci_gate_container"
-perl -0pi -e 's/  verify-gates:\n    runs-on: ubuntu-latest\n/  verify-gates:\n    runs-on: ubuntu-latest\n    container:\n      image: ghcr.io\/example\/noop:latest\n/' "$ci_gate_container/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:\n    runs-on: ubuntu-latest\n/  node-policy:\n    runs-on: ubuntu-latest\n    container:\n      image: ghcr.io\/example\/noop:latest\n/' "$ci_gate_container/.github/workflows/ci.yml"
 if run_verify "$ci_gate_container" >"$tmpdir/ci-gate-container.out" 2>"$tmpdir/ci-gate-container.err"; then
 	echo "verify-node-toolchain accepted a container on its CI self-check job" >&2
 	exit 1
 fi
-grep -q 'job.*verify-gates.*key.*container.*is not allowed' "$tmpdir/ci-gate-container.err"
+grep -q 'job.*node-policy.*key.*container.*is not allowed' "$tmpdir/ci-gate-container.err"
 
 alternate_runner="$tmpdir/alternate-runner"
 make_fixture "$alternate_runner"
@@ -402,7 +408,7 @@ grep -q 'setup-node input.*mirror.*is not in the reviewed allowlist' "$tmpdir/se
 staged_pin_downgrade="$tmpdir/staged-pin-downgrade"
 make_fixture "$staged_pin_downgrade"
 perl -0pi -e "s/      - uses: actions\/setup-node@example/      - run: echo 24.12.0 > .node-version\n      - uses: actions\/setup-node@example/" "$staged_pin_downgrade/.github/workflows/release.yml"
-perl -0pi -e 's/      - run: make verify-active-node-toolchain/      - run: git checkout -- .node-version\n      - run: make verify-active-node-toolchain/' "$staged_pin_downgrade/.github/workflows/release.yml"
+perl -0pi -e 's/      - run: \/bin\/bash scripts\/verify-active-node-toolchain\.sh/      - run: git checkout -- .node-version\n      - run: \/bin\/bash scripts\/verify-active-node-toolchain.sh/' "$staged_pin_downgrade/.github/workflows/release.yml"
 if run_verify "$staged_pin_downgrade" >"$tmpdir/staged-pin-downgrade.out" 2>"$tmpdir/staged-pin-downgrade.err"; then
 	echo "verify-node-toolchain accepted a staged Node downgrade restored after setup" >&2
 	exit 1
@@ -411,7 +417,7 @@ grep -q 'active Node verification must follow a valid direct setup-node step in 
 
 missing_active_check="$tmpdir/missing-active-check"
 make_fixture "$missing_active_check"
-perl -0pi -e "s/      - run: make verify-active-node-toolchain\n        if: steps\.version\.outputs\.release == 'true'\n//" "$missing_active_check/.github/workflows/release.yml"
+perl -0pi -e 's/      - run: \/bin\/bash scripts\/verify-active-node-toolchain\.sh\n//' "$missing_active_check/.github/workflows/release.yml"
 if run_verify "$missing_active_check" >"$tmpdir/missing-active-check.out" 2>"$tmpdir/missing-active-check.err"; then
 	echo "verify-node-toolchain accepted a release consumer without active Node verification" >&2
 	exit 1
@@ -420,12 +426,30 @@ grep -q 'Node consumer.*make release-check.*must immediately follow exact active
 
 post_check_mutation="$tmpdir/post-check-mutation"
 make_fixture "$post_check_mutation"
-perl -0pi -e "s/      - run: make release-check/      - run: echo 24.12.0 > .node-version\n      - run: make release-check/" "$post_check_mutation/.github/workflows/release.yml"
+perl -0pi -e "s/      - run: \/usr\/bin\/make release-check/      - run: echo 24.12.0 > .node-version\n      - run: \/usr\/bin\/make release-check/" "$post_check_mutation/.github/workflows/release.yml"
 if run_verify "$post_check_mutation" >"$tmpdir/post-check-mutation.out" 2>"$tmpdir/post-check-mutation.err"; then
 	echo "verify-node-toolchain accepted an intervening step after active Node verification" >&2
 	exit 1
 fi
 grep -q 'Node consumer.*make release-check.*must immediately follow exact active Node verification' "$tmpdir/post-check-mutation.err"
+
+persistent_path_mutant="$tmpdir/persistent-path-mutant"
+make_fixture "$persistent_path_mutant"
+perl -0pi -e 's/      - uses: actions\/setup-node@example/      - run: echo \/tmp\/no-op-bin >> "\$GITHUB_PATH"\n      - uses: actions\/setup-node@example/' "$persistent_path_mutant/.github/workflows/release.yml"
+if run_verify "$persistent_path_mutant" >"$tmpdir/persistent-path-mutant.out" 2>"$tmpdir/persistent-path-mutant.err"; then
+	echo "verify-node-toolchain accepted a pre-setup persistent PATH mutation" >&2
+	exit 1
+fi
+grep -q 'unreviewed step may not precede setup-node in a Node policy job' "$tmpdir/persistent-path-mutant.err"
+
+duplicate_proof_mutant="$tmpdir/duplicate-proof-mutant"
+make_fixture "$duplicate_proof_mutant"
+perl -0pi -e 's/      - run: \/usr\/bin\/make release-check/      - run: echo \/tmp\/no-op-bin >> "\$GITHUB_PATH"\n      - run: \/bin\/bash scripts\/verify-active-node-toolchain.sh\n      - run: \/usr\/bin\/make release-check/' "$duplicate_proof_mutant/.github/workflows/release.yml"
+if run_verify "$duplicate_proof_mutant" >"$tmpdir/duplicate-proof-mutant.out" 2>"$tmpdir/duplicate-proof-mutant.err"; then
+	echo "verify-node-toolchain accepted a duplicate proof after a persistent PATH mutation" >&2
+	exit 1
+fi
+grep -q 'active Node verification must follow a valid direct setup-node step in the same job' "$tmpdir/duplicate-proof-mutant.err"
 
 environment_redirect="$tmpdir/environment-redirect"
 make_fixture "$environment_redirect"
@@ -433,11 +457,10 @@ cat >"$environment_redirect/.github/workflows/release.yml" <<'YAML'
 name: release
 on: [push]
 jobs:
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - run: make release-check
-        if: steps.version.outputs.release == 'true'
 YAML
 if ZSCALERCTL_REPO_ROOT="$good" \
 	ZSCALERCTL_NODE_VERSION_FILE="$good/.node-version" \
@@ -461,9 +484,45 @@ if ZSCALERCTL_NODE_VERSION_FILE="$environment_pin_redirect/.decoy-node-version" 
 fi
 grep -q 'does not match the reviewed runtime pin' "$tmpdir/environment-pin-redirect.err"
 
+missing_release_dependency="$tmpdir/missing-release-dependency"
+make_fixture "$missing_release_dependency"
+perl -0pi -e 's/needs: release-gate/needs: unrelated-job/' "$missing_release_dependency/.github/workflows/release.yml"
+if run_verify "$missing_release_dependency" >"$tmpdir/missing-release-dependency.out" 2>"$tmpdir/missing-release-dependency.err"; then
+	echo "verify-node-toolchain accepted a publisher detached from the release gate" >&2
+	exit 1
+fi
+grep -q 'required dependent job.*release.*must need policy job.*release-gate' "$tmpdir/missing-release-dependency.err"
+
+conditional_release_publisher="$tmpdir/conditional-release-publisher"
+make_fixture "$conditional_release_publisher"
+perl -0pi -e 's/  release:\n    needs:/  release:\n    if: always()\n    needs:/' "$conditional_release_publisher/.github/workflows/release.yml"
+if run_verify "$conditional_release_publisher" >"$tmpdir/conditional-release-publisher.out" 2>"$tmpdir/conditional-release-publisher.err"; then
+	echo "verify-node-toolchain accepted a conditional publisher that could bypass a failed release gate" >&2
+	exit 1
+fi
+grep -q 'required dependent job.*release.*must be unconditional' "$tmpdir/conditional-release-publisher.err"
+
+missing_ci_dependency="$tmpdir/missing-ci-dependency"
+make_fixture "$missing_ci_dependency"
+perl -0pi -e 's/needs: node-policy/needs: unit/' "$missing_ci_dependency/.github/workflows/ci.yml"
+if run_verify "$missing_ci_dependency" >"$tmpdir/missing-ci-dependency.out" 2>"$tmpdir/missing-ci-dependency.err"; then
+	echo "verify-node-toolchain accepted a stable CI result detached from node-policy" >&2
+	exit 1
+fi
+grep -q 'required dependent job.*required.*must need policy job.*node-policy' "$tmpdir/missing-ci-dependency.err"
+
+wrong_ci_dependency_condition="$tmpdir/wrong-ci-dependency-condition"
+make_fixture "$wrong_ci_dependency_condition"
+perl -0pi -e 's/    if: \$\{\{ always\(\) \}\}/    if: false/' "$wrong_ci_dependency_condition/.github/workflows/ci.yml"
+if run_verify "$wrong_ci_dependency_condition" >"$tmpdir/wrong-ci-dependency-condition.out" 2>"$tmpdir/wrong-ci-dependency-condition.err"; then
+	echo "verify-node-toolchain accepted a stable CI result with the wrong aggregation condition" >&2
+	exit 1
+fi
+grep -q 'required dependent job.*required.*must use the literal condition' "$tmpdir/wrong-ci-dependency-condition.err"
+
 missing_ci_wiring="$tmpdir/missing-ci-wiring"
 make_fixture "$missing_ci_wiring"
-perl -0pi -e 's/  verify-gates:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make verify-node-toolchain\n//' "$missing_ci_wiring/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \/usr\/bin\/make verify-node-toolchain\n//' "$missing_ci_wiring/.github/workflows/ci.yml"
 if run_verify "$missing_ci_wiring" >"$tmpdir/missing-ci-wiring.out" 2>"$tmpdir/missing-ci-wiring.err"; then
 	echo "verify-node-toolchain accepted CI without invoking its own gate" >&2
 	exit 1
@@ -472,16 +531,16 @@ grep -q 'required run.*make verify-node-toolchain.*was not found' "$tmpdir/missi
 
 wrong_ci_job="$tmpdir/wrong-ci-job"
 make_fixture "$wrong_ci_job"
-perl -0pi -e 's/  verify-gates:/  policy-gates:/' "$wrong_ci_job/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:/  policy-gates:/' "$wrong_ci_job/.github/workflows/ci.yml"
 if run_verify "$wrong_ci_job" >"$tmpdir/wrong-ci-job.out" 2>"$tmpdir/wrong-ci-job.err"; then
 	echo "verify-node-toolchain accepted its CI invocation in the wrong job" >&2
 	exit 1
 fi
-grep -q 'must be in workflow job.*verify-gates' "$tmpdir/wrong-ci-job.err"
+grep -q 'must be in workflow job.*node-policy' "$tmpdir/wrong-ci-job.err"
 
 conditional_ci_wiring="$tmpdir/conditional-ci-wiring"
 make_fixture "$conditional_ci_wiring"
-perl -0pi -e 's/- run: make verify-node-toolchain/- run: make verify-node-toolchain\n        if: false/' "$conditional_ci_wiring/.github/workflows/ci.yml"
+perl -0pi -e 's/- run: \/usr\/bin\/make verify-node-toolchain/- run: \/usr\/bin\/make verify-node-toolchain\n        if: false/' "$conditional_ci_wiring/.github/workflows/ci.yml"
 if run_verify "$conditional_ci_wiring" >"$tmpdir/conditional-ci-wiring.out" 2>"$tmpdir/conditional-ci-wiring.err"; then
 	echo "verify-node-toolchain accepted a conditional CI invocation of its own gate" >&2
 	exit 1
@@ -490,12 +549,12 @@ grep -q 'required run.*make verify-node-toolchain.*must be unconditional' "$tmpd
 
 conditional_ci_job="$tmpdir/conditional-ci-job"
 make_fixture "$conditional_ci_job"
-perl -0pi -e 's/  verify-gates:\n    runs-on:/  verify-gates:\n    if: false\n    runs-on:/' "$conditional_ci_job/.github/workflows/ci.yml"
+perl -0pi -e 's/  node-policy:\n    runs-on:/  node-policy:\n    if: false\n    runs-on:/' "$conditional_ci_job/.github/workflows/ci.yml"
 if run_verify "$conditional_ci_job" >"$tmpdir/conditional-ci-job.out" 2>"$tmpdir/conditional-ci-job.err"; then
 	echo "verify-node-toolchain accepted a conditional CI gate job" >&2
 	exit 1
 fi
-grep -q 'job.*verify-gates.*containing Node policy steps must be unconditional' "$tmpdir/conditional-ci-job.err"
+grep -q 'job.*node-policy.*containing Node policy steps must be unconditional' "$tmpdir/conditional-ci-job.err"
 
 comment_spoof="$tmpdir/comment-spoof"
 make_fixture "$comment_spoof"
@@ -503,13 +562,12 @@ cat >"$comment_spoof/.github/workflows/release.yml" <<'YAML'
 name: release
 on: [push]
 jobs:
-  release:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       # - uses: actions/setup-node@example
       #   with: {node-version-file: '.node-version', package-manager-cache: false}
       - run: make release-check
-        if: steps.version.outputs.release == 'true'
 YAML
 if run_verify "$comment_spoof" >"$tmpdir/comment.out" 2>"$tmpdir/comment.err"; then
 	echo "verify-node-toolchain accepted a commented-out release setup-node step" >&2

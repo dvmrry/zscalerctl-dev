@@ -62,7 +62,7 @@ registered path exists.
 | `scripts/verify-surface-changes-manifest.sh` | verify | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Requires changed CLI surface goldens to update `surface_changes.md`; self-tested by `scripts/test-verify-surface-changes-manifest.sh` |
 | `scripts/verify-pty-escape-clean.py` | dev | `scripts/verify-pty-escape-clean.sh` | PTY helper for escape-sequence regression check |
 | `scripts/verify-pty-escape-clean.sh` | verify | `make verify-pty-escape-clean` | Regression check: normal CLI output is clean in a PTY |
-| `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; `.github/workflows/ci.yml` | Semgrep rule fixtures under `semgrep/tests` |
+| `scripts/verify-semgrep.sh` | verify | `make semgrep-check`; CI and release workflows | Semgrep rule fixtures under `semgrep/tests`; resolves the owner user-bin install, a PATH install, or pinned `uvx` fallback |
 | `scripts/verify-semver-label.sh` | verify | `.github/workflows/semver-label.yml`; `.github/workflows/release.yml` | `scripts/test-verify-semver-label.sh` |
 | `scripts/verify-workflow-policies.go` | verify | `scripts/verify-actions-pinned.sh`; `scripts/verify-go-toolchain.sh`; `scripts/verify-node-toolchain.sh` | Shared YAML-aware action, setup-go, and setup-node policy traversal |
 

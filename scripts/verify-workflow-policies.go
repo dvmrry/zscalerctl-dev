@@ -21,10 +21,9 @@ import (
 )
 
 const (
-	modeActions           = "actions"
-	modeGo                = "setup-go"
-	modeNode              = "setup-node"
-	releaseCheckCondition = "steps.version.outputs.release == 'true'"
+	modeActions = "actions"
+	modeGo      = "setup-go"
+	modeNode    = "setup-node"
 )
 
 type fileKind uint8
@@ -51,6 +50,8 @@ type verifier struct {
 	requiredRun     string
 	requiredRunJob  string
 	requiredRunIf   string
+	requiredDepJob  string
+	requiredDepIf   string
 	requiredRunFile string
 	rootReal        string
 
@@ -79,6 +80,8 @@ type nodeJobState struct {
 	setupReady          bool
 	runtimeReady        bool
 	runtimeCheckPending bool
+	setupSeen           bool
+	unreviewedBeforeSet []*yaml.Node
 }
 
 func main() {
@@ -90,6 +93,8 @@ func main() {
 	requiredRun := flag.String("required-run", "", "required literal run command in setup-node mode")
 	requiredRunJob := flag.String("required-run-job", "", "workflow job that must contain --required-run in setup-node mode")
 	requiredRunIf := flag.String("required-run-if", "", "required literal if condition for --required-run in setup-node mode")
+	requiredDepJob := flag.String("required-dependent-job", "", "workflow job that must depend on --required-run-job in setup-node mode")
+	requiredDepIf := flag.String("required-dependent-job-if", "", "required literal if condition for --required-dependent-job")
 	flag.Parse()
 
 	if *mode != modeActions && *mode != modeGo && *mode != modeNode {
@@ -104,8 +109,8 @@ func main() {
 	if *mode == modeNode && *nodeFile == "" {
 		failUsage("--node-version-file is required in setup-node mode")
 	}
-	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "" || *requiredRunIf != "") {
-		failUsage("--required-run, --required-run-job, and --required-run-if are valid only in setup-node mode")
+	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "" || *requiredRunIf != "" || *requiredDepJob != "" || *requiredDepIf != "") {
+		failUsage("required-run and required-dependent-job flags are valid only in setup-node mode")
 	}
 	if (*requiredRun == "") != (*requiredRunJob == "") {
 		failUsage("--required-run and --required-run-job must be provided together")
@@ -113,12 +118,20 @@ func main() {
 	if *requiredRunIf != "" && *requiredRun == "" {
 		failUsage("--required-run-if requires --required-run and --required-run-job")
 	}
+	if *requiredDepJob != "" && *requiredRun == "" {
+		failUsage("--required-dependent-job requires --required-run and --required-run-job")
+	}
+	if *requiredDepIf != "" && *requiredDepJob == "" {
+		failUsage("--required-dependent-job-if requires --required-dependent-job")
+	}
 
 	v, err := newVerifier(*mode, *repoRoot, *goMinimum, *nodeFile, *requiredRun, *requiredRunJob, *requiredRunIf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verify-workflow-policies: %v\n", err)
 		os.Exit(1)
 	}
+	v.requiredDepJob = *requiredDepJob
+	v.requiredDepIf = *requiredDepIf
 
 	files, err := yamlFiles(*scanDir, v.rootReal)
 	if err != nil {
@@ -178,7 +191,7 @@ func main() {
 
 func failUsage(message string) {
 	fmt.Fprintf(os.Stderr, "verify-workflow-policies: %s\n", message)
-	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB [--required-run-if CONDITION]]")
+	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB [--required-run-if CONDITION] [--required-dependent-job JOB [--required-dependent-job-if CONDITION]]]")
 	os.Exit(2)
 }
 
@@ -392,6 +405,9 @@ func (v *verifier) scanWorkflow(file string, root *yaml.Node) {
 	if !ok {
 		return
 	}
+	if v.mode == modeNode && v.requiredDepJob != "" {
+		v.checkRequiredDependentJob(file, jobEntries)
+	}
 	for _, job := range jobEntries {
 		if job.value.Kind != yaml.MappingNode {
 			v.addNodeError(file, job.value, "workflow job %q must be a YAML mapping", job.key.Value)
@@ -399,6 +415,60 @@ func (v *verifier) scanWorkflow(file string, root *yaml.Node) {
 		}
 		v.scanJob(file, job.key.Value, job.value)
 	}
+}
+
+func (v *verifier) checkRequiredDependentJob(file string, jobs []mapEntry) {
+	var dependent *yaml.Node
+	for _, job := range jobs {
+		if job.key.Value == v.requiredDepJob {
+			dependent = job.value
+			break
+		}
+	}
+	if dependent == nil {
+		v.addNodeError(file, nil, "required dependent job %q was not found", v.requiredDepJob)
+		return
+	}
+	entries, ok := v.executableEntries(file, dependent, "required dependent job")
+	if !ok {
+		return
+	}
+	needs, found := entryValue(entries, "needs")
+	if !found || !literalNeedsIncludes(needs, v.requiredRunJob) {
+		v.addNodeError(file, needs, "required dependent job %q must need policy job %q", v.requiredDepJob, v.requiredRunJob)
+	}
+	condition, conditional := entryValue(entries, "if")
+	if v.requiredDepIf == "" {
+		if conditional {
+			v.addNodeError(file, condition, "required dependent job %q must be unconditional", v.requiredDepJob)
+		}
+		return
+	}
+	if !conditional || condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != v.requiredDepIf {
+		v.addNodeError(file, condition, "required dependent job %q must use the literal condition %q", v.requiredDepJob, v.requiredDepIf)
+	}
+}
+
+func literalNeedsIncludes(node *yaml.Node, required string) bool {
+	if node == nil {
+		return false
+	}
+	switch node.Kind {
+	case yaml.ScalarNode:
+		return node.Tag == "!!str" && node.Value == required
+	case yaml.SequenceNode:
+		found := false
+		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode || item.Tag != "!!str" {
+				return false
+			}
+			if item.Value == required {
+				found = true
+			}
+		}
+		return found
+	}
+	return false
 }
 
 func (v *verifier) scanJob(file, jobName string, job *yaml.Node) {
@@ -463,6 +533,11 @@ func (v *verifier) scanNodeSteps(file, jobName string, steps *yaml.Node) bool {
 		state, stepRelevant = v.scanNodeStep(file, jobName, step, state)
 		relevant = relevant || stepRelevant
 	}
+	if relevant {
+		for _, unreviewed := range state.unreviewedBeforeSet {
+			v.addNodeError(file, unreviewed, "unreviewed step is not allowed in a Node policy job")
+		}
+	}
 	return relevant
 }
 
@@ -489,18 +564,40 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 	}
 
 	if hasUses {
-		if state.runtimeCheckPending {
+		ref, ok := v.literalReference(file, uses, "step uses")
+		if !ok {
+			state.runtimeReady = false
+			return state, false
+		}
+		if !strings.EqualFold(actionName(ref), "actions/setup-node") {
+			if !state.setupSeen {
+				if isAllowedNodeBootstrapAction(ref) {
+					v.checkNodeBootstrapAction(file, entries, ref)
+				} else {
+					state.unreviewedBeforeSet = append(state.unreviewedBeforeSet, uses)
+				}
+				return state, false
+			}
+			v.addNodeError(file, uses, "unreviewed action %q is not allowed after setup-node in a Node policy job", ref)
 			state.setupReady = false
 			state.runtimeCheckPending = false
-		}
-		state.runtimeReady = false
-		ref, ok := v.literalReference(file, uses, "step uses")
-		if !ok || !strings.EqualFold(actionName(ref), "actions/setup-node") {
+			state.runtimeReady = false
 			return state, false
 		}
 
+		for _, unreviewed := range state.unreviewedBeforeSet {
+			v.addNodeError(file, unreviewed, "unreviewed step may not precede setup-node in a Node policy job")
+		}
+		state.unreviewedBeforeSet = nil
+		duplicateSetup := state.setupSeen
+		if duplicateSetup {
+			v.addNodeError(file, uses, "setup-node may appear only once in a Node policy job")
+		}
+		state.setupSeen = true
+		state.runtimeReady = false
+
 		v.setupNodeCount++
-		valid := true
+		valid := !duplicateSetup
 		if !v.checkSetupNodeStepKeys(file, entries) {
 			valid = false
 		}
@@ -535,9 +632,20 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 	}
 
 	consumer := isNodeConsumerCommand(command)
-	runtimeCheck := command == "make verify-active-node-toolchain"
+	runtimeCheck := command == "/bin/bash scripts/verify-active-node-toolchain.sh" ||
+		command == "make verify-active-node-toolchain"
 	required := filepath.Clean(file) == v.requiredRunFile && command == v.requiredRun
 	relevant := consumer || runtimeCheck || required
+	if !state.setupSeen && !consumer && !runtimeCheck && !required {
+		if isAllowedNodeBootstrapRun(command) {
+			v.checkNodeBootstrapRun(file, entries, command)
+		} else {
+			state.unreviewedBeforeSet = append(state.unreviewedBeforeSet, run)
+		}
+	}
+	if state.setupSeen && !consumer && !runtimeCheck {
+		v.addNodeError(file, run, "unreviewed run %q is not allowed after setup-node in a Node policy job", command)
+	}
 	if state.runtimeCheckPending && !runtimeCheck {
 		state.setupReady = false
 		state.runtimeCheckPending = false
@@ -557,12 +665,13 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 			valid = false
 		}
 		state.runtimeCheckPending = false
+		state.setupReady = false
 		state.runtimeReady = valid
 		return state, true
 	}
 	if consumer {
 		v.nodeConsumerCount++
-		if !state.setupReady {
+		if !state.setupSeen {
 			v.addNodeError(
 				file,
 				run,
@@ -573,7 +682,9 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 		if !state.runtimeReady {
 			v.addNodeError(file, run, "Node consumer %q must immediately follow exact active Node verification", command)
 		}
-		v.checkNodeConsumerStep(file, entries, run, command)
+		v.checkNodeConsumerStep(file, entries, command)
+		state.setupReady = false
+		state.runtimeReady = false
 	}
 
 	if !required {
@@ -603,34 +714,61 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nod
 
 func isNodeConsumerCommand(command string) bool {
 	switch command {
-	case "bash scripts/verify-typescript-client.sh",
-		"make check",
-		"make release-check",
-		"make verify-typescript-client":
+	case "/bin/bash scripts/verify-typescript-client.sh",
+		"/usr/bin/make release-check",
+		"bash scripts/verify-typescript-client.sh",
+		"make release-check":
 		return true
 	default:
 		return false
 	}
 }
 
-func (v *verifier) checkNodeConsumerStep(file string, entries []mapEntry, run *yaml.Node, command string) {
+func (v *verifier) checkNodeConsumerStep(file string, entries []mapEntry, command string) {
 	if continuation, found := entryValue(entries, "continue-on-error"); found {
 		v.addNodeError(file, continuation, "Node consumer %q must not set continue-on-error", command)
 	}
 
-	condition, conditional := entryValue(entries, "if")
-	if command != "make release-check" {
-		if conditional {
-			v.addNodeError(file, condition, "Node consumer %q must be unconditional", command)
+	if condition, conditional := entryValue(entries, "if"); conditional {
+		v.addNodeError(file, condition, "Node consumer %q must be unconditional", command)
+	}
+}
+
+func isAllowedNodeBootstrapAction(ref string) bool {
+	switch strings.ToLower(actionName(ref)) {
+	case "actions/checkout", "actions/setup-go":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedNodeBootstrapRun(command string) bool {
+	switch command {
+	case "python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt":
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *verifier) checkNodeBootstrapAction(file string, entries []mapEntry, ref string) {
+	for _, entry := range entries {
+		switch entry.key.Value {
+		case "name", "uses", "with":
+		default:
+			v.addNodeError(file, entry.key, "bootstrap action %q step key %q is not allowed", ref, entry.key.Value)
 		}
-		return
 	}
-	if !conditional {
-		v.addNodeError(file, run, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
-		return
-	}
-	if condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != releaseCheckCondition {
-		v.addNodeError(file, condition, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
+}
+
+func (v *verifier) checkNodeBootstrapRun(file string, entries []mapEntry, command string) {
+	for _, entry := range entries {
+		switch entry.key.Value {
+		case "name", "run":
+		default:
+			v.addNodeError(file, entry.key, "bootstrap run %q step key %q is not allowed", command, entry.key.Value)
+		}
 	}
 }
 
