@@ -2,14 +2,40 @@
 set -euo pipefail
 
 script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-repo_root="${ZSCALERCTL_REPO_ROOT:-$script_root}"
+repo_root="$script_root"
+node_version_file=".node-version"
+node_version_ref=".node-version"
+ci_workflow=".github/workflows/ci.yml"
+release_workflow=".github/workflows/release.yml"
+
+# Path flags exist only so the regression script can validate isolated fixture
+# repositories. The production Make target passes no arguments, and environment
+# variables cannot redirect the repository, pin, or workflow paths.
+
+usage() {
+	echo "usage: $0 [--repo-root DIR] [--node-version-file PATH] [--node-version-ref PATH] [--ci-workflow PATH] [--release-workflow PATH]" >&2
+	exit 2
+}
+
+while (( $# > 0 )); do
+	case "$1" in
+	--repo-root | --node-version-file | --node-version-ref | --ci-workflow | --release-workflow)
+		(( $# >= 2 )) || usage
+		case "$1" in
+		--repo-root) repo_root="$2" ;;
+		--node-version-file) node_version_file="$2" ;;
+		--node-version-ref) node_version_ref="$2" ;;
+		--ci-workflow) ci_workflow="$2" ;;
+		--release-workflow) release_workflow="$2" ;;
+		esac
+		shift 2
+		;;
+	*) usage ;;
+	esac
+done
+
 repo_root="$(cd "$repo_root" && pwd -P)"
 cd "$repo_root"
-
-node_version_file="${ZSCALERCTL_NODE_VERSION_FILE:-.node-version}"
-node_version_ref="${ZSCALERCTL_NODE_VERSION_REF:-.node-version}"
-ci_workflow="${ZSCALERCTL_CI_WORKFLOW:-.github/workflows/ci.yml}"
-release_workflow="${ZSCALERCTL_RELEASE_WORKFLOW:-.github/workflows/release.yml}"
 
 # Exact reviewed runtime pin. The TypeScript client separately enforces its
 # feature floor (Node >=24.12); keeping the CI/release pin here prevents a
@@ -51,4 +77,8 @@ verify_workflow \
 	"$ci_workflow" \
 	--required-run "make verify-node-toolchain" \
 	--required-run-job "verify-gates"
-verify_workflow "$release_workflow"
+verify_workflow \
+	"$release_workflow" \
+	--required-run "make release-check" \
+	--required-run-job "release" \
+	--required-run-if "steps.version.outputs.release == 'true'"

@@ -50,6 +50,7 @@ type verifier struct {
 	nodeFile        string
 	requiredRun     string
 	requiredRunJob  string
+	requiredRunIf   string
 	requiredRunFile string
 	rootReal        string
 
@@ -80,8 +81,9 @@ func main() {
 	repoRoot := flag.String("repo-root", "", "repository root used for local reference resolution")
 	goMinimum := flag.String("go-minimum", "", "required literal setup-go version in setup-go mode")
 	nodeFile := flag.String("node-version-file", "", "required repository-relative setup-node version file in setup-node mode")
-	requiredRun := flag.String("required-run", "", "required unconditional literal run command in setup-node mode")
+	requiredRun := flag.String("required-run", "", "required literal run command in setup-node mode")
 	requiredRunJob := flag.String("required-run-job", "", "workflow job that must contain --required-run in setup-node mode")
+	requiredRunIf := flag.String("required-run-if", "", "required literal if condition for --required-run in setup-node mode")
 	flag.Parse()
 
 	if *mode != modeActions && *mode != modeGo && *mode != modeNode {
@@ -96,14 +98,17 @@ func main() {
 	if *mode == modeNode && *nodeFile == "" {
 		failUsage("--node-version-file is required in setup-node mode")
 	}
-	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "") {
-		failUsage("--required-run and --required-run-job are valid only in setup-node mode")
+	if *mode != modeNode && (*requiredRun != "" || *requiredRunJob != "" || *requiredRunIf != "") {
+		failUsage("--required-run, --required-run-job, and --required-run-if are valid only in setup-node mode")
 	}
 	if (*requiredRun == "") != (*requiredRunJob == "") {
 		failUsage("--required-run and --required-run-job must be provided together")
 	}
+	if *requiredRunIf != "" && *requiredRun == "" {
+		failUsage("--required-run-if requires --required-run and --required-run-job")
+	}
 
-	v, err := newVerifier(*mode, *repoRoot, *goMinimum, *nodeFile, *requiredRun, *requiredRunJob)
+	v, err := newVerifier(*mode, *repoRoot, *goMinimum, *nodeFile, *requiredRun, *requiredRunJob, *requiredRunIf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verify-workflow-policies: %v\n", err)
 		os.Exit(1)
@@ -150,7 +155,7 @@ func main() {
 				*scanDir,
 				1,
 				1,
-				"required unconditional run %q was not found in workflow job %q",
+				"required run %q was not found with the mandated condition in workflow job %q",
 				v.requiredRun,
 				v.requiredRunJob,
 			)
@@ -167,11 +172,11 @@ func main() {
 
 func failUsage(message string) {
 	fmt.Fprintf(os.Stderr, "verify-workflow-policies: %s\n", message)
-	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB]")
+	fmt.Fprintln(os.Stderr, "usage: go run ./scripts/verify-workflow-policies.go --mode actions|setup-go|setup-node --scan-dir DIR --repo-root DIR [--go-minimum VERSION] [--node-version-file PATH] [--required-run COMMAND --required-run-job JOB [--required-run-if CONDITION]]")
 	os.Exit(2)
 }
 
-func newVerifier(mode, repoRoot, goMinimum, nodeFile, requiredRun, requiredRunJob string) (*verifier, error) {
+func newVerifier(mode, repoRoot, goMinimum, nodeFile, requiredRun, requiredRunJob, requiredRunIf string) (*verifier, error) {
 	absRoot, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolve repository root %q: %w", repoRoot, err)
@@ -193,6 +198,7 @@ func newVerifier(mode, repoRoot, goMinimum, nodeFile, requiredRun, requiredRunJo
 		nodeFile:       nodeFile,
 		requiredRun:    requiredRun,
 		requiredRunJob: requiredRunJob,
+		requiredRunIf:  requiredRunIf,
 		rootReal:       rootReal,
 		active:         map[string]bool{},
 		visited:        map[visitKey]bool{},
@@ -499,8 +505,14 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 		v.addNodeError(file, run, "required run %q must be in workflow job %q", command, v.requiredRunJob)
 		return setupReady, relevant
 	}
-	if condition, conditional := entryValue(entries, "if"); conditional {
-		v.addNodeError(file, condition, "required run %q must be unconditional", command)
+	condition, conditional := entryValue(entries, "if")
+	if v.requiredRunIf == "" {
+		if conditional {
+			v.addNodeError(file, condition, "required run %q must be unconditional", command)
+			return setupReady, relevant
+		}
+	} else if !conditional || condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != v.requiredRunIf {
+		v.addNodeError(file, condition, "required run %q must use the literal condition %q", command, v.requiredRunIf)
 		return setupReady, relevant
 	}
 	if continuation, found := entryValue(entries, "continue-on-error"); found {
@@ -754,11 +766,7 @@ func (v *verifier) checkSetupNode(file string, stepEntries []mapEntry, uses *yam
 	if !ok {
 		return false
 	}
-	valid := true
-	if version, found := entryValue(withEntries, "node-version"); found {
-		v.addNodeError(file, version, "setup-node node-version must not override the shared node-version-file")
-		valid = false
-	}
+	valid := v.checkSetupNodeInputNames(file, withEntries)
 	versionFile, found := entryValue(withEntries, "node-version-file")
 	if !found {
 		v.addNodeError(file, uses, "setup-node step is missing with.node-version-file: %s", v.nodeFile)
@@ -778,6 +786,25 @@ func (v *verifier) checkSetupNode(file string, stepEntries []mapEntry, uses *yam
 	} else if cache.Kind != yaml.ScalarNode || cache.Tag != "!!bool" || cache.Value != "false" {
 		v.addNodeError(file, cache, "setup-node package-manager-cache must be the literal boolean false")
 		valid = false
+	}
+	return valid
+}
+
+func (v *verifier) checkSetupNodeInputNames(file string, entries []mapEntry) bool {
+	valid := true
+	for _, entry := range entries {
+		name := entry.key.Value
+		switch {
+		case strings.EqualFold(name, "node-version"):
+			v.addNodeError(file, entry.key, "setup-node input %q must not override the shared node-version-file", name)
+			valid = false
+		case strings.EqualFold(name, "node-version-file") && name != "node-version-file":
+			v.addNodeError(file, entry.key, "setup-node input %q must use the exact lowercase key node-version-file", name)
+			valid = false
+		case strings.EqualFold(name, "package-manager-cache") && name != "package-manager-cache":
+			v.addNodeError(file, entry.key, "setup-node input %q must use the exact lowercase key package-manager-cache", name)
+			valid = false
+		}
 	}
 	return valid
 }

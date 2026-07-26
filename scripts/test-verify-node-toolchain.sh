@@ -46,12 +46,25 @@ YAML
 
 run_verify() {
 	local fixture="$1"
-	ZSCALERCTL_REPO_ROOT="$fixture" \
-	ZSCALERCTL_NODE_VERSION_FILE="$fixture/.node-version" \
-	ZSCALERCTL_CI_WORKFLOW="$fixture/.github/workflows/ci.yml" \
-	ZSCALERCTL_RELEASE_WORKFLOW="$fixture/.github/workflows/release.yml" \
-		"$verifier"
+	"$verifier" \
+		--repo-root "$fixture" \
+		--node-version-file "$fixture/.node-version" \
+		--node-version-ref '.node-version' \
+		--ci-workflow "$fixture/.github/workflows/ci.yml" \
+		--release-workflow "$fixture/.github/workflows/release.yml"
 }
+
+for variable in \
+	ZSCALERCTL_REPO_ROOT \
+	ZSCALERCTL_NODE_VERSION_FILE \
+	ZSCALERCTL_NODE_VERSION_REF \
+	ZSCALERCTL_CI_WORKFLOW \
+	ZSCALERCTL_RELEASE_WORKFLOW; do
+	if grep -q "$variable" "$verifier"; then
+		echo "verify-node-toolchain reads production path override $variable" >&2
+		exit 1
+	fi
+done
 
 good="$tmpdir/good"
 make_fixture "$good"
@@ -127,7 +140,34 @@ if run_verify "$override_version" >"$tmpdir/override.out" 2>"$tmpdir/override.er
 	echo "verify-node-toolchain accepted node-version overriding node-version-file" >&2
 	exit 1
 fi
-grep -q 'node-version must not override the shared node-version-file' "$tmpdir/override.err"
+grep -q 'input.*node-version.*must not override the shared node-version-file' "$tmpdir/override.err"
+
+mixed_case_version="$tmpdir/mixed-case-version"
+make_fixture "$mixed_case_version"
+perl -0pi -e "s/node-version-file: '\.node-version'/node-version-file: '.node-version'\n          Node-Version: '22.23.1'/" "$mixed_case_version/.github/workflows/release.yml"
+if run_verify "$mixed_case_version" >"$tmpdir/mixed-case-version.out" 2>"$tmpdir/mixed-case-version.err"; then
+	echo "verify-node-toolchain accepted a mixed-case node-version override" >&2
+	exit 1
+fi
+grep -q 'input.*Node-Version.*must not override' "$tmpdir/mixed-case-version.err"
+
+mixed_case_version_file="$tmpdir/mixed-case-version-file"
+make_fixture "$mixed_case_version_file"
+perl -0pi -e "s/node-version-file: '\.node-version'/node-version-file: '.node-version'\n          Node-Version-File: '.decoy-node-version'/" "$mixed_case_version_file/.github/workflows/release.yml"
+if run_verify "$mixed_case_version_file" >"$tmpdir/mixed-case-version-file.out" 2>"$tmpdir/mixed-case-version-file.err"; then
+	echo "verify-node-toolchain accepted a case-colliding node-version-file input" >&2
+	exit 1
+fi
+grep -q 'input.*Node-Version-File.*must use the exact lowercase key node-version-file' "$tmpdir/mixed-case-version-file.err"
+
+mixed_case_cache="$tmpdir/mixed-case-cache"
+make_fixture "$mixed_case_cache"
+perl -0pi -e 's/package-manager-cache: false/package-manager-cache: false\n          Package-Manager-Cache: true/' "$mixed_case_cache/.github/workflows/release.yml"
+if run_verify "$mixed_case_cache" >"$tmpdir/mixed-case-cache.out" 2>"$tmpdir/mixed-case-cache.err"; then
+	echo "verify-node-toolchain accepted a case-colliding package-manager-cache input" >&2
+	exit 1
+fi
+grep -q 'input.*Package-Manager-Cache.*must use the exact lowercase key package-manager-cache' "$tmpdir/mixed-case-cache.err"
 
 conditional_setup="$tmpdir/conditional-setup"
 make_fixture "$conditional_setup"
@@ -221,6 +261,15 @@ if run_verify "$skipped_release_gate" >"$tmpdir/skipped-release-gate.out" 2>"$tm
 fi
 grep -q 'Node consumer.*make release-check.*must use the literal release condition' "$tmpdir/skipped-release-gate.err"
 
+wrong_release_consumer="$tmpdir/wrong-release-consumer"
+make_fixture "$wrong_release_consumer"
+perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make verify-typescript-client/" "$wrong_release_consumer/.github/workflows/release.yml"
+if run_verify "$wrong_release_consumer" >"$tmpdir/wrong-release-consumer.out" 2>"$tmpdir/wrong-release-consumer.err"; then
+	echo "verify-node-toolchain accepted a release workflow without make release-check" >&2
+	exit 1
+fi
+grep -q 'required run.*make release-check.*was not found' "$tmpdir/wrong-release-consumer.err"
+
 conditional_ci_consumer="$tmpdir/conditional-ci-consumer"
 make_fixture "$conditional_ci_consumer"
 perl -0pi -e 's/- run: bash scripts\/verify-typescript-client\.sh/- run: bash scripts\/verify-typescript-client.sh\n        if: false/' "$conditional_ci_consumer/.github/workflows/ci.yml"
@@ -230,6 +279,40 @@ if run_verify "$conditional_ci_consumer" >"$tmpdir/conditional-ci-consumer.out" 
 fi
 grep -q 'Node consumer.*verify-typescript-client.*must be unconditional' "$tmpdir/conditional-ci-consumer.err"
 
+environment_redirect="$tmpdir/environment-redirect"
+make_fixture "$environment_redirect"
+cat >"$environment_redirect/.github/workflows/release.yml" <<'YAML'
+name: release
+on: [push]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make release-check
+        if: steps.version.outputs.release == 'true'
+YAML
+if ZSCALERCTL_REPO_ROOT="$good" \
+	ZSCALERCTL_NODE_VERSION_FILE="$good/.node-version" \
+	ZSCALERCTL_NODE_VERSION_REF='.node-version' \
+	ZSCALERCTL_CI_WORKFLOW="$good/.github/workflows/ci.yml" \
+	ZSCALERCTL_RELEASE_WORKFLOW="$good/.github/workflows/release.yml" \
+	run_verify "$environment_redirect" >"$tmpdir/environment-redirect.out" 2>"$tmpdir/environment-redirect.err"; then
+	echo "verify-node-toolchain allowed environment variables to redirect validation to decoy files" >&2
+	exit 1
+fi
+grep -q 'no direct setup-node steps found' "$tmpdir/environment-redirect.err"
+
+environment_pin_redirect="$tmpdir/environment-pin-redirect"
+make_fixture "$environment_pin_redirect"
+printf '22.23.1\n' >"$environment_pin_redirect/.node-version"
+printf '24.15.0\n' >"$environment_pin_redirect/.decoy-node-version"
+if ZSCALERCTL_NODE_VERSION_FILE="$environment_pin_redirect/.decoy-node-version" \
+	run_verify "$environment_pin_redirect" >"$tmpdir/environment-pin-redirect.out" 2>"$tmpdir/environment-pin-redirect.err"; then
+	echo "verify-node-toolchain allowed an environment variable to redirect the reviewed Node pin" >&2
+	exit 1
+fi
+grep -q 'does not match the reviewed runtime pin' "$tmpdir/environment-pin-redirect.err"
+
 missing_ci_wiring="$tmpdir/missing-ci-wiring"
 make_fixture "$missing_ci_wiring"
 perl -0pi -e 's/  verify-gates:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make verify-node-toolchain\n//' "$missing_ci_wiring/.github/workflows/ci.yml"
@@ -237,7 +320,7 @@ if run_verify "$missing_ci_wiring" >"$tmpdir/missing-ci-wiring.out" 2>"$tmpdir/m
 	echo "verify-node-toolchain accepted CI without invoking its own gate" >&2
 	exit 1
 fi
-grep -q 'required unconditional run.*make verify-node-toolchain.*was not found' "$tmpdir/missing-ci-wiring.err"
+grep -q 'required run.*make verify-node-toolchain.*was not found' "$tmpdir/missing-ci-wiring.err"
 
 wrong_ci_job="$tmpdir/wrong-ci-job"
 make_fixture "$wrong_ci_job"
