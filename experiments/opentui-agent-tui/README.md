@@ -80,13 +80,15 @@ data are the primary concepts.
 
 ## Requirements
 
-- Bun 1.4 or newer.
+- Bun 1.4 canary or newer. Until Bun 1.4 has a stable release, the experiment
+  identifies its runtime line as `1.4.0-canary.1`; CI pins an official Bun
+  container by immutable OCI digest and verifies the exact runtime revision.
 - An interactive terminal with mouse reporting and Unicode support.
 - For engine mode, a locally built `zscalerctl-engine` executable at an
   absolute path.
 
-The initial verification used the Rust-based Bun build
-`1.4.0-canary.1+88403d981`.
+The initial local verification used the Rust-based Bun build
+`1.4.0-canary.1+88403d981`. CI uses `1.4.0-canary.1+ae4b17de6`.
 
 ## Run it
 
