@@ -287,8 +287,8 @@ func TestStatusInspectorSanitizesStringsBeforeReturning(t *testing.T) {
 func TestStatusInspectorNormalizesTerminalControlAndFormatRunes(t *testing.T) {
 	t.Parallel()
 
-	const injected = "safe\nFORGED\x1b[31m\u0085\u202e"
-	const normalized = "safe FORGED [31m  "
+	const injected = "safe\nFORGED\x1b[31m\x7f\u0085\u202e"
+	const normalized = "safe FORGED [31m   "
 	provider := &statusProviderSecret{scheme: "cmd:" + injected}
 	cfg := config.Config{
 		Profile: "profile:" + injected,
@@ -338,6 +338,14 @@ func TestStatusInspectorNormalizesTerminalControlAndFormatRunes(t *testing.T) {
 			}
 			if want := "cloud:" + normalized; status.Cloud != want {
 				t.Errorf("StatusInspector.Inspect(%s).Cloud = %q, want normalized %q", operation, status.Cloud, want)
+			}
+			if want := "cmd:" + normalized; status.Credentials.ClientSecretScheme != want {
+				t.Errorf(
+					"StatusInspector.Inspect(%s).Credentials.ClientSecretScheme = %q, want normalized %q",
+					operation,
+					status.Credentials.ClientSecretScheme,
+					want,
+				)
 			}
 			value = status
 		}
