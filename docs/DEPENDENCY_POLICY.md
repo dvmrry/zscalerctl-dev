@@ -131,8 +131,11 @@ release each verify that the active `node` executable and `.node-version` still
 equal the exact reviewed pin immediately before their Node consumer. Protected
 commands use runner-absolute shell or Make paths, the release publisher depends
 on the isolated gate, and the YAML-aware policy rejects unreviewed steps in the
-policy jobs; `make verify-node-toolchain` enforces that topology so release and
-PR gates cannot drift independently.
+policy jobs. It also requires the exact reviewed checkout/setup action SHAs,
+one canonical current-repository checkout, one canonical setup-go step, an
+exact stable-CI aggregation sink, and the exact two-job release topology;
+`make verify-node-toolchain` enforces that structure so release and PR gates
+cannot drift independently or validate different source than they publish.
 
 Adding a package dependency, transpiler, runtime loader, lockfile, or package
 manager cache requires a deliberate dependency and threat review; it must not

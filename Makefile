@@ -51,6 +51,7 @@ verify-node-toolchain:
 	bash scripts/verify-node-toolchain.sh
 	bash scripts/test-verify-node-toolchain.sh
 	bash scripts/test-verify-active-node-toolchain.sh
+	bash scripts/test-require-ci-jobs.sh
 
 verify-active-node-toolchain:
 	bash scripts/verify-active-node-toolchain.sh

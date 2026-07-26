@@ -41,6 +41,8 @@ cd "$repo_root"
 # feature floor (Node >=24.12); keeping the CI/release pin here prevents a
 # synchronized workflow downgrade from approving itself.
 required_version="24.15.0"
+required_go_version="1.26.5"
+required_ci_aggregator_run="/bin/bash scripts/require-ci-jobs.sh \"\${{ join(needs.*.result, ' ') }}\""
 
 if [[ ! -f "$node_version_file" ]]; then
 	echo "$node_version_file: shared Node version file not found" >&2
@@ -68,6 +70,7 @@ verify_workflow() {
 			--mode setup-node \
 			--scan-dir "$workflow_path" \
 			--repo-root "$repo_root" \
+			--go-minimum "$required_go_version" \
 			--node-version-file "$node_version_ref" \
 			"$@"
 	)
@@ -78,9 +81,13 @@ verify_workflow \
 	--required-run "/usr/bin/make verify-node-toolchain" \
 	--required-run-job "node-policy" \
 	--required-dependent-job "required" \
-	--required-dependent-job-if '${{ always() }}'
+	--required-dependent-needs "node-policy,typescript-client" \
+	--required-dependent-job-if '${{ always() }}' \
+	--required-dependent-run "$required_ci_aggregator_run"
 verify_workflow \
 	"$release_workflow" \
 	--required-run "/usr/bin/make release-check" \
 	--required-run-job "release-gate" \
-	--required-dependent-job "release"
+	--required-dependent-job "release" \
+	--required-dependent-needs "release-gate" \
+	--required-job-set "release-gate,release"
