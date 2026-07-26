@@ -120,12 +120,23 @@ mechanism. Classification decides which fields render; every renderer still
 passes the final bytes through redaction and secret scanning to catch
 secret-shaped values pasted into otherwise-safe fields.
 
-Human terminal sinks visibly escape C0/DEL/C1 controls and Unicode format
-runes after matching and projection, so tenant-controlled text cannot reshape
-rows or spoof their visual order. Machine JSON and stdio-engine values remain
-lossless. Every engine consumer must therefore apply sink-specific escaping at
-its terminal, HTML, log, or comparable presentation boundary; changing the wire
-value is not a substitute for securing the sink.
+After projection and redaction, retained dynamic resource and diff values are
+not modified by terminal presentation escaping in machine JSON or the stdio
+engine. Filtering and search use a separate normalized comparison
+representation without rewriting those retained values. Human terminal
+renderers visibly escape C0/DEL/C1 controls and Unicode format runes only at the
+presentation sink, so injection through those rune classes cannot reshape rows
+or spoof their visual order. Every engine consumer must likewise apply
+sink-specific escaping at its terminal, HTML, log, or comparable presentation
+boundary; changing the wire value is not a substitute for securing the sink.
+
+Status metadata follows a deliberately different contract. `doctor`,
+`auth status`, and `config show` construct secret-safe typed views that replace
+C0/DEL/C1 controls and Unicode format runes with spaces before either machine or
+human rendering. Those diagnostic values are therefore normalized rather than
+lossless. Human status renderers consume only these typed, normalized fields
+plus closed static labels derived from validated state; they do not render raw
+configuration strings.
 
 ## Secret Handling
 
