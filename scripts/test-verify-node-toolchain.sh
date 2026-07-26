@@ -351,6 +351,51 @@ if run_verify "$job_environment" >"$tmpdir/job-environment.out" 2>"$tmpdir/job-e
 fi
 grep -q 'job.*release.*must not define environment overrides' "$tmpdir/job-environment.err"
 
+release_container="$tmpdir/release-container"
+make_fixture "$release_container"
+perl -0pi -e 's/    runs-on: ubuntu-latest\n/    runs-on: ubuntu-latest\n    container:\n      image: ghcr.io\/example\/noop:latest\n      env:\n        PATH: \/opt\/decoy:\/usr\/bin:\/bin\n/' "$release_container/.github/workflows/release.yml"
+if run_verify "$release_container" >"$tmpdir/release-container.out" 2>"$tmpdir/release-container.err"; then
+	echo "verify-node-toolchain accepted a container on the release policy job" >&2
+	exit 1
+fi
+grep -q 'job.*release.*key.*container.*is not allowed' "$tmpdir/release-container.err"
+
+ci_gate_container="$tmpdir/ci-gate-container"
+make_fixture "$ci_gate_container"
+perl -0pi -e 's/  verify-gates:\n    runs-on: ubuntu-latest\n/  verify-gates:\n    runs-on: ubuntu-latest\n    container:\n      image: ghcr.io\/example\/noop:latest\n/' "$ci_gate_container/.github/workflows/ci.yml"
+if run_verify "$ci_gate_container" >"$tmpdir/ci-gate-container.out" 2>"$tmpdir/ci-gate-container.err"; then
+	echo "verify-node-toolchain accepted a container on its CI self-check job" >&2
+	exit 1
+fi
+grep -q 'job.*verify-gates.*key.*container.*is not allowed' "$tmpdir/ci-gate-container.err"
+
+alternate_runner="$tmpdir/alternate-runner"
+make_fixture "$alternate_runner"
+perl -0pi -e 's/runs-on: ubuntu-latest/runs-on: self-hosted/' "$alternate_runner/.github/workflows/release.yml"
+if run_verify "$alternate_runner" >"$tmpdir/alternate-runner.out" 2>"$tmpdir/alternate-runner.err"; then
+	echo "verify-node-toolchain accepted a non-reviewed release runner" >&2
+	exit 1
+fi
+grep -q 'job.*release.*must use the literal runner ubuntu-latest' "$tmpdir/alternate-runner.err"
+
+setup_environment="$tmpdir/setup-environment"
+make_fixture "$setup_environment"
+perl -0pi -e 's/- uses: actions\/setup-node@example/- uses: actions\/setup-node@example\n        env:\n          RUNNER_TOOL_CACHE: \/tmp\/decoy-cache/' "$setup_environment/.github/workflows/release.yml"
+if run_verify "$setup_environment" >"$tmpdir/setup-environment.out" 2>"$tmpdir/setup-environment.err"; then
+	echo "verify-node-toolchain accepted a setup-node environment override" >&2
+	exit 1
+fi
+grep -q 'setup-node step key.*env.*is not allowed' "$tmpdir/setup-environment.err"
+
+setup_mirror="$tmpdir/setup-mirror"
+make_fixture "$setup_mirror"
+perl -0pi -e 's/node-version-file: '\''\.node-version'\''/node-version-file: '\''.node-version'\''\n          mirror: https:\/\/example.invalid\/node/' "$setup_mirror/.github/workflows/release.yml"
+if run_verify "$setup_mirror" >"$tmpdir/setup-mirror.out" 2>"$tmpdir/setup-mirror.err"; then
+	echo "verify-node-toolchain accepted an unreviewed setup-node mirror" >&2
+	exit 1
+fi
+grep -q 'setup-node input.*mirror.*is not in the reviewed allowlist' "$tmpdir/setup-mirror.err"
+
 environment_redirect="$tmpdir/environment-redirect"
 make_fixture "$environment_redirect"
 cat >"$environment_redirect/.github/workflows/release.yml" <<'YAML'

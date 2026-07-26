@@ -413,6 +413,7 @@ func (v *verifier) scanJob(file, jobName string, job *yaml.Node) {
 	if hasSteps {
 		if v.mode == modeNode {
 			if relevant := v.scanNodeSteps(file, jobName, steps); relevant {
+				v.checkNodePolicyJob(file, jobName, entries)
 				if condition, conditional := entryValue(entries, "if"); conditional {
 					v.addNodeError(file, condition, "job %q containing Node policy steps must be unconditional", jobName)
 				}
@@ -474,6 +475,9 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 
 		v.setupNodeCount++
 		valid := true
+		if !v.checkSetupNodeStepKeys(file, entries) {
+			valid = false
+		}
 		if condition, conditional := entryValue(entries, "if"); conditional {
 			v.addNodeError(file, condition, "setup-node must be unconditional; remove the step-level if condition")
 			valid = false
@@ -583,6 +587,33 @@ func (v *verifier) checkRunExecutionContext(file string, entries []mapEntry, com
 	if environment, found := entryValue(entries, "env"); found {
 		v.addNodeError(file, environment, "Node policy run %q must not define environment overrides", command)
 	}
+}
+
+func (v *verifier) checkNodePolicyJob(file, jobName string, entries []mapEntry) {
+	for _, entry := range entries {
+		switch entry.key.Value {
+		case "name", "permissions", "runs-on", "steps":
+		default:
+			v.addNodeError(file, entry.key, "job %q key %q is not allowed on a Node policy job", jobName, entry.key.Value)
+		}
+	}
+	runner, found := entryValue(entries, "runs-on")
+	if !found || runner.Kind != yaml.ScalarNode || runner.Tag != "!!str" || runner.Value != "ubuntu-latest" {
+		v.addNodeError(file, runner, "job %q must use the literal runner ubuntu-latest", jobName)
+	}
+}
+
+func (v *verifier) checkSetupNodeStepKeys(file string, entries []mapEntry) bool {
+	valid := true
+	for _, entry := range entries {
+		switch entry.key.Value {
+		case "id", "name", "uses", "with":
+		default:
+			v.addNodeError(file, entry.key, "setup-node step key %q is not allowed", entry.key.Value)
+			valid = false
+		}
+	}
+	return valid
 }
 
 func (v *verifier) literalRunCommand(file string, run *yaml.Node) (string, bool) {
@@ -824,6 +855,8 @@ func (v *verifier) checkSetupNodeInputNames(file string, entries []mapEntry) boo
 	for _, entry := range entries {
 		name := entry.key.Value
 		switch {
+		case name == "node-version-file", name == "package-manager-cache":
+			continue
 		case strings.EqualFold(name, "node-version"):
 			v.addNodeError(file, entry.key, "setup-node input %q must not override the shared node-version-file", name)
 			valid = false
@@ -832,6 +865,9 @@ func (v *verifier) checkSetupNodeInputNames(file string, entries []mapEntry) boo
 			valid = false
 		case strings.EqualFold(name, "package-manager-cache") && name != "package-manager-cache":
 			v.addNodeError(file, entry.key, "setup-node input %q must use the exact lowercase key package-manager-cache", name)
+			valid = false
+		default:
+			v.addNodeError(file, entry.key, "setup-node input %q is not in the reviewed allowlist", name)
 			valid = false
 		}
 	}
