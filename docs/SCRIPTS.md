@@ -28,6 +28,7 @@ registered path exists.
 | `scripts/test-sdk-surface-inventory.sh` | test | `make verify-sdk-surface-inventory` | Self-contained inventory test |
 | `scripts/test-sync-agents-skill.sh` | test | `make verify-agents-skill` | Self-contained generated-copy drift test |
 | `scripts/test-verify-actions-pinned.sh` | test | `make verify-actions-pinned`; `.github/workflows/ci.yml` | Self-contained verifier test |
+| `scripts/test-verify-active-node-toolchain.sh` | test | `make verify-node-toolchain` | Isolated exact active-runtime and shared-pin fixtures for the CI/release Node proof |
 | `scripts/test-verify-adversarial-review.sh` | test | `make verify-adversarial-review`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-ci-no-live-creds.sh` | test | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | Self-contained verifier test |
 | `scripts/test-verify-core-boundaries.sh` | test | `make verify-core-boundaries`; `.github/workflows/ci.yml` | Self-contained verifier test |
@@ -39,6 +40,7 @@ registered path exists.
 | `scripts/test-verify-semver-label.sh` | test | `make verify-release-automation` | Self-contained verifier test |
 | `scripts/test-verify-surface-changes-manifest.sh` | test | `make verify-surface-changes-manifest`; `.github/workflows/ci.yml` | Self-contained verifier test for golden/manifest pairing |
 | `scripts/verify-actions-pinned.sh` | verify | `make verify-actions-pinned`; `.github/workflows/ci.yml` | `scripts/test-verify-actions-pinned.sh` |
+| `scripts/verify-active-node-toolchain.sh` | verify | `make verify-active-node-toolchain`; CI and release workflows; `make release-check` | Requires the active Node executable and `.node-version` to match the exact reviewed runtime pin |
 | `scripts/verify-adversarial-review.sh` | verify | `make verify-adversarial-review`; `.github/workflows/ci.yml` | Requires high-risk changes to commit an approved fresh-context review artifact |
 | `scripts/verify-ci-no-live-creds.sh` | verify | `make verify-ci-no-live-creds`; `.github/workflows/ci.yml` | `scripts/test-verify-ci-no-live-creds.sh` |
 | `scripts/gen-cli-docs.go` | dev | `make gen-cli-docs`; manual CLI-reference regeneration | `scripts/verify-cli-docs.sh` |

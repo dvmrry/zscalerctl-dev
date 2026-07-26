@@ -75,6 +75,12 @@ type visitKey struct {
 	kind fileKind
 }
 
+type nodeJobState struct {
+	setupReady          bool
+	runtimeReady        bool
+	runtimeCheckPending bool
+}
+
 func main() {
 	mode := flag.String("mode", "", "policy to check: actions, setup-go, or setup-node")
 	scanDir := flag.String("scan-dir", "", "directory containing workflow YAML files")
@@ -441,36 +447,56 @@ func (v *verifier) scanNodeSteps(file, jobName string, steps *yaml.Node) bool {
 		return false
 	}
 
-	setupReady := false
+	state := nodeJobState{}
 	relevant := false
 	for _, step := range steps.Content {
 		if step.Kind != yaml.MappingNode {
 			v.addNodeError(file, step, "unsupported workflow step structure; each step must be a YAML mapping")
+			if state.runtimeCheckPending {
+				state.setupReady = false
+				state.runtimeCheckPending = false
+			}
+			state.runtimeReady = false
 			continue
 		}
 		var stepRelevant bool
-		setupReady, stepRelevant = v.scanNodeStep(file, jobName, step, setupReady)
+		state, stepRelevant = v.scanNodeStep(file, jobName, step, state)
 		relevant = relevant || stepRelevant
 	}
 	return relevant
 }
 
-func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupReady bool) (bool, bool) {
+func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, state nodeJobState) (nodeJobState, bool) {
 	entries, ok := v.executableEntries(file, step, "workflow step")
 	if !ok {
-		return setupReady, false
+		if state.runtimeCheckPending {
+			state.setupReady = false
+			state.runtimeCheckPending = false
+		}
+		state.runtimeReady = false
+		return state, false
 	}
 	uses, hasUses := entryValue(entries, "uses")
 	run, hasRun := entryValue(entries, "run")
 	if hasUses && hasRun {
 		v.addNodeError(file, step, "workflow step cannot define both uses and run")
-		return setupReady, false
+		if state.runtimeCheckPending {
+			state.setupReady = false
+			state.runtimeCheckPending = false
+		}
+		state.runtimeReady = false
+		return state, false
 	}
 
 	if hasUses {
+		if state.runtimeCheckPending {
+			state.setupReady = false
+			state.runtimeCheckPending = false
+		}
+		state.runtimeReady = false
 		ref, ok := v.literalReference(file, uses, "step uses")
 		if !ok || !strings.EqualFold(actionName(ref), "actions/setup-node") {
-			return setupReady, false
+			return state, false
 		}
 
 		v.setupNodeCount++
@@ -489,26 +515,54 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 		if !v.checkSetupNode(file, entries, uses) {
 			valid = false
 		}
-		return setupReady || valid, true
+		state.setupReady = valid
+		state.runtimeCheckPending = valid
+		return state, true
 	}
 
 	if !hasRun {
-		return setupReady, false
+		if state.runtimeCheckPending {
+			state.setupReady = false
+			state.runtimeCheckPending = false
+		}
+		state.runtimeReady = false
+		return state, false
 	}
 	command, ok := v.literalRunCommand(file, run)
 	if !ok {
-		return setupReady, false
+		state.runtimeReady = false
+		return state, false
 	}
 
 	consumer := isNodeConsumerCommand(command)
+	runtimeCheck := command == "make verify-active-node-toolchain"
 	required := filepath.Clean(file) == v.requiredRunFile && command == v.requiredRun
-	relevant := consumer || required
+	relevant := consumer || runtimeCheck || required
+	if state.runtimeCheckPending && !runtimeCheck {
+		state.setupReady = false
+		state.runtimeCheckPending = false
+	}
+	if state.runtimeReady && !consumer {
+		state.runtimeReady = false
+	}
 	if relevant {
 		v.checkRunExecutionContext(file, entries, command)
 	}
+	if runtimeCheck {
+		valid := state.setupReady
+		if !state.setupReady {
+			v.addNodeError(file, run, "active Node verification must follow a valid direct setup-node step in the same job")
+		}
+		if !v.checkNodeRuntimeCondition(file, entries, command) {
+			valid = false
+		}
+		state.runtimeCheckPending = false
+		state.runtimeReady = valid
+		return state, true
+	}
 	if consumer {
 		v.nodeConsumerCount++
-		if !setupReady {
+		if !state.setupReady {
 			v.addNodeError(
 				file,
 				run,
@@ -516,32 +570,35 @@ func (v *verifier) scanNodeStep(file, jobName string, step *yaml.Node, setupRead
 				command,
 			)
 		}
+		if !state.runtimeReady {
+			v.addNodeError(file, run, "Node consumer %q must immediately follow exact active Node verification", command)
+		}
 		v.checkNodeConsumerStep(file, entries, run, command)
 	}
 
 	if !required {
-		return setupReady, relevant
+		return state, relevant
 	}
 	if jobName != v.requiredRunJob {
 		v.addNodeError(file, run, "required run %q must be in workflow job %q", command, v.requiredRunJob)
-		return setupReady, relevant
+		return state, relevant
 	}
 	condition, conditional := entryValue(entries, "if")
 	if v.requiredRunIf == "" {
 		if conditional {
 			v.addNodeError(file, condition, "required run %q must be unconditional", command)
-			return setupReady, relevant
+			return state, relevant
 		}
 	} else if !conditional || condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != v.requiredRunIf {
 		v.addNodeError(file, condition, "required run %q must use the literal condition %q", command, v.requiredRunIf)
-		return setupReady, relevant
+		return state, relevant
 	}
 	if continuation, found := entryValue(entries, "continue-on-error"); found && !consumer {
 		v.addNodeError(file, continuation, "required run %q must not set continue-on-error", command)
-		return setupReady, relevant
+		return state, relevant
 	}
 	v.requiredRunCount++
-	return setupReady, relevant
+	return state, relevant
 }
 
 func isNodeConsumerCommand(command string) bool {
@@ -575,6 +632,25 @@ func (v *verifier) checkNodeConsumerStep(file string, entries []mapEntry, run *y
 	if condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != releaseCheckCondition {
 		v.addNodeError(file, condition, "Node consumer %q must use the literal release condition %q", command, releaseCheckCondition)
 	}
+}
+
+func (v *verifier) checkNodeRuntimeCondition(file string, entries []mapEntry, command string) bool {
+	valid := true
+	condition, conditional := entryValue(entries, "if")
+	if v.requiredRunIf == "" {
+		if conditional {
+			v.addNodeError(file, condition, "active Node verification %q must be unconditional", command)
+			valid = false
+		}
+	} else if !conditional || condition.Kind != yaml.ScalarNode || condition.Tag != "!!str" || condition.Value != v.requiredRunIf {
+		v.addNodeError(file, condition, "active Node verification %q must use the literal condition %q", command, v.requiredRunIf)
+		valid = false
+	}
+	if continuation, found := entryValue(entries, "continue-on-error"); found {
+		v.addNodeError(file, continuation, "active Node verification %q must not set continue-on-error", command)
+		valid = false
+	}
+	return valid
 }
 
 func (v *verifier) checkRunExecutionContext(file string, entries []mapEntry, command string) {

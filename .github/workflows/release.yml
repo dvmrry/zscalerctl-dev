@@ -44,11 +44,6 @@ jobs:
           go-version: '1.26.5'
           cache: true
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: '.node-version'
-          package-manager-cache: false
-
       - name: Install Semgrep
         run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
 
@@ -84,6 +79,15 @@ jobs:
           echo "release=true" >>"$GITHUB_OUTPUT"
           echo "version=$next_version" >>"$GITHUB_OUTPUT"
           echo "version_no_v=${next_version#v}" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.node-version'
+          package-manager-cache: false
+
+      - name: Verify active Node toolchain
+        if: steps.version.outputs.release == 'true'
+        run: make verify-active-node-toolchain
 
       - name: Release gate
         if: steps.version.outputs.release == 'true'

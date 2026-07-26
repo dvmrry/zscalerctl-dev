@@ -22,6 +22,7 @@ jobs:
         with:
           node-version-file: '.node-version'
           package-manager-cache: false
+      - run: make verify-active-node-toolchain
       - run: bash scripts/verify-typescript-client.sh
   verify-gates:
     runs-on: ubuntu-latest
@@ -39,6 +40,8 @@ jobs:
         with:
           node-version-file: '.node-version'
           package-manager-cache: false
+      - run: make verify-active-node-toolchain
+        if: steps.version.outputs.release == 'true'
       - run: make release-check
         if: steps.version.outputs.release == 'true'
 YAML
@@ -254,7 +257,7 @@ grep -q 'Node consumer.*make release-check.*must not set continue-on-error' "$tm
 
 skipped_release_gate="$tmpdir/skipped-release-gate"
 make_fixture "$skipped_release_gate"
-perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: false/" "$skipped_release_gate/.github/workflows/release.yml"
+perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: false/" "$skipped_release_gate/.github/workflows/release.yml"
 if run_verify "$skipped_release_gate" >"$tmpdir/skipped-release-gate.out" 2>"$tmpdir/skipped-release-gate.err"; then
 	echo "verify-node-toolchain accepted a skipped release-check consumer" >&2
 	exit 1
@@ -281,7 +284,7 @@ grep -q 'Node consumer.*verify-typescript-client.*must be unconditional' "$tmpdi
 
 release_custom_shell="$tmpdir/release-custom-shell"
 make_fixture "$release_custom_shell"
-perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        shell: \/bin\/true \{0\}/" "$release_custom_shell/.github/workflows/release.yml"
+perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        shell: \/bin\/true \{0\}/" "$release_custom_shell/.github/workflows/release.yml"
 if run_verify "$release_custom_shell" >"$tmpdir/release-custom-shell.out" 2>"$tmpdir/release-custom-shell.err"; then
 	echo "verify-node-toolchain accepted a no-op custom shell on make release-check" >&2
 	exit 1
@@ -317,7 +320,7 @@ grep -q 'job.*release.*must not override run defaults' "$tmpdir/job-run-defaults
 
 alternate_working_directory="$tmpdir/alternate-working-directory"
 make_fixture "$alternate_working_directory"
-perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        working-directory: clients\/typescript/" "$alternate_working_directory/.github/workflows/release.yml"
+perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        working-directory: clients\/typescript/" "$alternate_working_directory/.github/workflows/release.yml"
 if run_verify "$alternate_working_directory" >"$tmpdir/alternate-working-directory.out" 2>"$tmpdir/alternate-working-directory.err"; then
 	echo "verify-node-toolchain accepted an alternate release-gate working directory" >&2
 	exit 1
@@ -326,7 +329,7 @@ grep -q 'Node policy run.*make release-check.*must use the repository root worki
 
 step_environment="$tmpdir/step-environment"
 make_fixture "$step_environment"
-perl -0pi -e "s/if: steps\.version\.outputs\.release == 'true'/if: steps.version.outputs.release == 'true'\n        env:\n          PATH: \/tmp\/decoy/" "$step_environment/.github/workflows/release.yml"
+perl -0pi -e "s/- run: make release-check\n        if: steps\.version\.outputs\.release == 'true'/- run: make release-check\n        if: steps.version.outputs.release == 'true'\n        env:\n          PATH: \/tmp\/decoy/" "$step_environment/.github/workflows/release.yml"
 if run_verify "$step_environment" >"$tmpdir/step-environment.out" 2>"$tmpdir/step-environment.err"; then
 	echo "verify-node-toolchain accepted a release-gate step environment override" >&2
 	exit 1
@@ -395,6 +398,34 @@ if run_verify "$setup_mirror" >"$tmpdir/setup-mirror.out" 2>"$tmpdir/setup-mirro
 	exit 1
 fi
 grep -q 'setup-node input.*mirror.*is not in the reviewed allowlist' "$tmpdir/setup-mirror.err"
+
+staged_pin_downgrade="$tmpdir/staged-pin-downgrade"
+make_fixture "$staged_pin_downgrade"
+perl -0pi -e "s/      - uses: actions\/setup-node@example/      - run: echo 24.12.0 > .node-version\n      - uses: actions\/setup-node@example/" "$staged_pin_downgrade/.github/workflows/release.yml"
+perl -0pi -e 's/      - run: make verify-active-node-toolchain/      - run: git checkout -- .node-version\n      - run: make verify-active-node-toolchain/' "$staged_pin_downgrade/.github/workflows/release.yml"
+if run_verify "$staged_pin_downgrade" >"$tmpdir/staged-pin-downgrade.out" 2>"$tmpdir/staged-pin-downgrade.err"; then
+	echo "verify-node-toolchain accepted a staged Node downgrade restored after setup" >&2
+	exit 1
+fi
+grep -q 'active Node verification must follow a valid direct setup-node step in the same job' "$tmpdir/staged-pin-downgrade.err"
+
+missing_active_check="$tmpdir/missing-active-check"
+make_fixture "$missing_active_check"
+perl -0pi -e "s/      - run: make verify-active-node-toolchain\n        if: steps\.version\.outputs\.release == 'true'\n//" "$missing_active_check/.github/workflows/release.yml"
+if run_verify "$missing_active_check" >"$tmpdir/missing-active-check.out" 2>"$tmpdir/missing-active-check.err"; then
+	echo "verify-node-toolchain accepted a release consumer without active Node verification" >&2
+	exit 1
+fi
+grep -q 'Node consumer.*make release-check.*must immediately follow exact active Node verification' "$tmpdir/missing-active-check.err"
+
+post_check_mutation="$tmpdir/post-check-mutation"
+make_fixture "$post_check_mutation"
+perl -0pi -e "s/      - run: make release-check/      - run: echo 24.12.0 > .node-version\n      - run: make release-check/" "$post_check_mutation/.github/workflows/release.yml"
+if run_verify "$post_check_mutation" >"$tmpdir/post-check-mutation.out" 2>"$tmpdir/post-check-mutation.err"; then
+	echo "verify-node-toolchain accepted an intervening step after active Node verification" >&2
+	exit 1
+fi
+grep -q 'Node consumer.*make release-check.*must immediately follow exact active Node verification' "$tmpdir/post-check-mutation.err"
 
 environment_redirect="$tmpdir/environment-redirect"
 make_fixture "$environment_redirect"

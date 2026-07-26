@@ -126,9 +126,11 @@ install scripts. `make verify-typescript-client` enforces that boundary and
 runs its shared-corpus and process-integration tests. CI provisions an exact
 Node release from the shared `.node-version` pin through a full-SHA-pinned
 `actions/setup-node` step with package caching disabled. The release workflow
-uses the same source before `make release-check`; `make verify-node-toolchain`
-requires both workflows to retain that setup so release and PR gates cannot
-drift independently.
+uses the same source immediately before `make release-check`. Both workflows
+verify that the active `node` executable and `.node-version` still equal the
+exact reviewed pin immediately before their Node consumer;
+`make verify-node-toolchain` requires that ordered proof so release and PR gates
+cannot drift independently.
 
 Adding a package dependency, transpiler, runtime loader, lockfile, or package
 manager cache requires a deliberate dependency and threat review; it must not
