@@ -89,6 +89,11 @@ export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id>          # ZPA resources onl
 export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id>   # optional, ZPA microtenants
 ```
 
+`ZPATWO` (case-insensitive) is accepted as a compatibility value for operators
+migrating legacy ZPA configuration, but OneAPI requests use the production
+endpoints. New OneAPI configuration should use
+`ZSCALERCTL_CLOUD=PRODUCTION`.
+
 ZIA legacy credentials are supported for ZIA resources. Legacy, profile, proxy, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Environment variables remain the highest-precedence configuration path; optional owner-only profiles are for local operator convenience. Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
 
 ## Automation contract

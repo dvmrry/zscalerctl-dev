@@ -194,8 +194,9 @@ Authentication mode: \fBoneapi\fR (the default) or \fBzia-legacy\fR. There is no
 flag equivalent.
 .TP
 .B ZSCALERCTL_CLOUD
-OneAPI cloud to target (for example \fBPRODUCTION\fR). Environment-only; there is
-no flag equivalent.
+OneAPI cloud to target (for example \fBPRODUCTION\fR). The legacy value
+\fBZPATWO\fR is accepted case-insensitively as a compatibility input and uses
+the production OneAPI endpoints. Environment-only; there is no flag equivalent.
 .TP
 .B ZSCALERCTL_PROXY_URL, ZSCALERCTL_PROXY_FROM_ENV
 Explicit proxy settings; ambient HTTP_PROXY/HTTPS_PROXY discovery is off by

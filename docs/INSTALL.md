@@ -106,6 +106,10 @@ export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id> # required for ZPA resources
 export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id> # optional
 ```
 
+`ZPATWO` (case-insensitive) is accepted as a compatibility value when migrating
+legacy ZPA configuration, but it is normalized to the production OneAPI cloud.
+Prefer `ZSCALERCTL_CLOUD=PRODUCTION` for new OneAPI configuration.
+
 The secret file must be readable only by the current user. Inline
 `ZSCALERCTL_CLIENT_SECRET` is supported for automation systems that already
 provide protected environment variables, but file-based secret delivery is safer
