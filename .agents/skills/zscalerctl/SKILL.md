@@ -18,15 +18,11 @@ force/overwrite modes can replace existing local data.
 1. **CLI missing?** If `zscalerctl` is not on `PATH`, ask the operator to
    install it — do not fall back to raw Zscaler APIs or SDK environment
    variables.
-2. **Never guess resource names.** Start with the config-free machine
-   capability manifest: `zscalerctl --format json machine manifest`. It lists
-   the `resources.read` product/resource pairs, supported `list`/`get`/`show`
-   operations, projected-record schema refs, and read-only metadata without
-   loading config, resolving credentials, constructing SDK clients, or
-   contacting Zscaler. Use `zscalerctl --format json introspect` when you need
-   the full CLI command/flag/effect surface, `zscalerctl --format json schema list` when you need
-   catalog field metadata, and `zscalerctl <product> --help` only as a syntax
-   fallback after discovery.
+2. **Never guess resource names.** Discover them with the config-free machine
+   capability manifest — see [Discovery ladder](#discovery-ladder) below for
+   the exact commands, their output sizes, and the three things not to try.
+   Nothing in that section loads config, resolves credentials, constructs an
+   SDK client, or contacts Zscaler.
 3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
    Profiles and secret providers (`env:`, `file:`, `keyring:`, `cmd:`) are
    operator ergonomics for interactive local workflows; env vars are the right
@@ -43,6 +39,56 @@ force/overwrite modes can replace existing local data.
    e.g. `zscalerctl --format json zia locations list`. Pass `--format json`
    explicitly rather than relying on piped auto-JSON; use `--format ndjson`
    for streaming resource `list`/`get`/`show` reads when useful.
+
+## Discovery ladder
+
+165 resources across `zia`, `zpa`, `ztw`, `zcc`, `zidentity`. Every rung is
+config-free and never contacts Zscaler. Climb only as far as the task needs —
+the raw discovery documents are large, so do not read one whole when a lower
+rung answers the question.
+
+**Rung 1 — what exists (~5 KB).** The whole catalogue, one line per resource,
+reduced from the 92 KB manifest:
+
+```sh
+zscalerctl --format json machine manifest \
+  | jq -r '.capabilities[] | select(.name == "resources.read")
+           | "\(.meta.product)/\(.meta.resource)\t\(.operations | join(","))"'
+```
+
+Without `jq` (same 165 resources, operations omitted):
+
+```sh
+zscalerctl --format json machine manifest \
+  | grep -E '"(product|resource)": ' | sed -E 's/.*": "([^"]*)".*/\1/' \
+  | paste -d/ - - | sort -u
+```
+
+**Rung 2 — one product.** Filter rung 1, e.g. `... | grep '^zia/'` (102 `zia`
+resources).
+
+**Rung 3 — fields for one resource (~1 KB).** `schema list` is 732 KB whole;
+select the one resource instead of reading it:
+
+```sh
+zscalerctl --format json schema list \
+  | jq -r '.[] | select(.product == "zia" and .name == "locations")
+           | .fields[].name'
+```
+
+**Rung 4 — full CLI surface (474 KB).** `zscalerctl --format json introspect`
+for commands, flags, `effects`, and exit codes. Needed before delegating a
+command whose effects matter; never a first move.
+
+Do not:
+
+- Use `<product> --help` to find resources. It lists subcommands only —
+  `zia --help` shows `url-lookup`, not the 102 `zia` resources.
+- Pass `--fields`, `--filter`, or `--search` to `machine manifest`,
+  `schema list`, or `introspect`. They apply to resource reads only and exit 2
+  with a usage envelope.
+- Request `--format table|pretty|ndjson` from `machine manifest`. Discovery
+  output is JSON only.
 
 ## Contract
 
