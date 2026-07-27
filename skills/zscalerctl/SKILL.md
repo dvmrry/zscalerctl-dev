@@ -19,9 +19,10 @@ force/overwrite modes can replace existing local data.
    variables.
 2. **Never guess resource names.** Discover them with the config-free machine
    capability manifest — see [Discovery ladder](#discovery-ladder) below for
-   the exact commands, their output sizes, and the three things not to try.
-   Nothing in that section loads config, resolves credentials, constructs an
-   SDK client, or contacts Zscaler.
+   the exact commands, their output sizes, and the things not to try. No rung
+   resolves credentials, constructs an SDK client, or contacts Zscaler, but
+   they differ on config: `machine manifest` and `introspect` are config-free,
+   while `schema list` loads config when one is configured.
 3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
    Profiles and secret providers (`env:`, `file:`, `keyring:`, `cmd:`) are
    operator ergonomics for interactive local workflows; env vars are the right
@@ -41,10 +42,17 @@ force/overwrite modes can replace existing local data.
 
 ## Discovery ladder
 
-165 resources across `zia`, `zpa`, `ztw`, `zcc`, `zidentity`. Every rung is
-config-free and never contacts Zscaler. Climb only as far as the task needs —
-the raw discovery documents are large, so do not read one whole when a lower
-rung answers the question.
+Five products — `zia`, `zpa`, `ztw`, `zcc`, `zidentity` — and, at the time of
+writing, 165 resources. Treat every count and size below as approximate; the
+catalog grows. Climb only as far as the task needs: the raw discovery
+documents are large, so do not read one whole when a lower rung answers the
+question.
+
+No rung resolves credentials, constructs an SDK client, or contacts Zscaler.
+They differ on config: rungs 1, 2, and 4 are config-free, but rung 3
+(`schema list`) declares `local_filesystem_read@configuration_dependent` and
+loads config when one is configured — with `--config` or a profile pointing at
+a missing file it exits 2 with `invalid_config` rather than returning schema.
 
 **Rung 1 — what exists (~5 KB).** The whole catalogue, one line per resource,
 reduced from the 92 KB manifest:
@@ -55,19 +63,26 @@ zscalerctl --format json machine manifest \
            | "\(.meta.product)/\(.meta.resource)\t\(.operations | join(","))"'
 ```
 
-Without `jq` (same 165 resources, operations omitted):
+Without `jq`, use a real JSON parser so a failed read is not mistaken for an
+empty catalog. Do not substitute `grep`/`sed` over the pretty-printed text: it
+silently yields nothing on compact JSON and reports success when the command
+upstream of it failed.
 
 ```sh
-zscalerctl --format json machine manifest \
-  | grep -E '"(product|resource)": ' | sed -E 's/.*": "([^"]*)".*/\1/' \
-  | paste -d/ - - | sort -u
+set -o pipefail
+zscalerctl --format json machine manifest | python3 -c '
+import json, sys
+for c in json.load(sys.stdin)["capabilities"]:
+    if c["name"] == "resources.read":
+        print(c["meta"]["product"] + "/" + c["meta"]["resource"])'
 ```
 
-**Rung 2 — one product.** Filter rung 1, e.g. `... | grep '^zia/'` (102 `zia`
+**Rung 2 — one product.** Filter rung 1, e.g. `... | grep "^zia/"` (102 `zia`
 resources).
 
 **Rung 3 — fields for one resource (~1 KB).** `schema list` is 732 KB whole;
-select the one resource instead of reading it:
+select the one resource instead of reading it. This prints top-level field
+names only:
 
 ```sh
 zscalerctl --format json schema list \
@@ -75,9 +90,23 @@ zscalerctl --format json schema list \
            | .fields[].name'
 ```
 
+When classifications, redaction modes, or nested subfields matter, take the
+whole resource object instead of the name list:
+
+```sh
+zscalerctl --format json schema list \
+  | jq '.[] | select(.product == "zia" and .name == "locations")'
+```
+
 **Rung 4 — full CLI surface (474 KB).** `zscalerctl --format json introspect`
-for commands, flags, `effects`, and exit codes. Needed before delegating a
-command whose effects matter; never a first move.
+carries commands, flags, `effects`, and exit codes. Never a first move, and
+select the one command rather than reading the document — this is the check to
+run before delegating a command whose effects matter:
+
+```sh
+zscalerctl --format json introspect \
+  | jq '.commands[] | select(.path == "dump") | {path, effects}'
+```
 
 Do not:
 
@@ -86,8 +115,9 @@ Do not:
 - Pass `--fields`, `--filter`, or `--search` to `machine manifest`,
   `schema list`, or `introspect`. They apply to resource reads only and exit 2
   with a usage envelope.
-- Request `--format table|pretty|ndjson` from `machine manifest`. Discovery
-  output is JSON only.
+- Request `--format table|pretty|ndjson` from `machine manifest`; its output is
+  JSON only. (`schema list` and `introspect` do accept `table` and `pretty`,
+  but machine consumers should stay on JSON.)
 
 ## Contract
 
