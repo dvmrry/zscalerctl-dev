@@ -90,13 +90,49 @@ zscalerctl --format json schema list \
            | .fields[].name'
 ```
 
-When classifications, redaction modes, or nested subfields matter, take the
-whole resource object instead of the name list:
+Records nest, and nested shape is where agents guess most. Flatten the whole
+field tree to dotted paths with the redaction modes each survives — for a
+deeply nested resource this is ~2 KB against ~12 KB for the raw object:
 
 ```sh
-zscalerctl --format json schema list \
-  | jq '.[] | select(.product == "zia" and .name == "locations")'
+zscalerctl --format json schema list | jq -r '
+  def fieldpaths($prefix):
+    .[] as $f
+    | ($prefix + $f.name) as $p
+    | "\($p)\t\($f.allowed_modes // [] | join(","))",
+      ($f.fields // [] | fieldpaths($p + "."));
+  .[] | select(.product == "zia" and .name == "ssl-inspection-rules")
+  | .fields | fieldpaths("")'
 ```
+
+```
+action.decryptSubActions	standard,share
+action.decryptSubActions.serverCertificates	standard,share
+```
+
+Those dotted paths describe shape and redaction; they are **not** `--fields`
+arguments. `--fields` matches top-level names only and rejects a dotted path as
+an unknown field. To narrow to something nested, select its top-level parent
+and extract with `jq`. A field with no mode listed never renders — do not try
+to recover it.
+
+**Which resources support `get <id>`, and by which key:**
+
+```sh
+zscalerctl --format json schema list | jq -r '
+  .[] | select(.product == "zia")
+  | "\(.name)\t\([.operations[].name] | join(","))\t\(.get_key // "-")"'
+```
+
+A `-` in the third column means no ID key: the resource is `list`- or
+`show`-only. Note `operations` is an array of objects here but an array of
+strings in `machine manifest`; the two discovery surfaces differ.
+
+Some resources are parent/child and the catalog does not link them. The known
+case: `zia locations list` returns **parent locations only** — child locations
+are the separate `zia/sublocations` resource, correlated by its `parentId`
+field. If a location you expect is missing, check `sublocations` before
+concluding it is absent.
 
 **Rung 4 — full CLI surface (474 KB).** `zscalerctl --format json introspect`
 carries commands, flags, `effects`, and exit codes. Never a first move, and
