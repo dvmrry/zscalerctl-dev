@@ -31,7 +31,7 @@ Markdown output so generated inventory cannot be mistaken for validation data.
 
 ## Current Findings
 
-As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.38`:
+As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.43`:
 
 - ZIA and ZPA have broad high-level service package trees.
 - ZTW has the next strongest config-like service tree and is the best candidate
@@ -49,6 +49,23 @@ As of the module-cache SDK `github.com/zscaler/zscaler-sdk-go/v3@v3.8.38`:
 - ZWA is exposed under `zscaler/zwa/services/...`; treat customer audit and DLP
   incident surfaces as out of pre-`v1.0.0` scope unless Zscaler exposes
   deterministic configuration APIs.
+- Releases `v3.8.39` through `v3.8.41` add 23 service packages relative to
+  `v3.8.38`: 22 under ZIA and one ZPA private-cloud package. The most useful
+  dependency-shaped candidates are DNS application groups and the two HTTP
+  header profile families. Existing packages also gained IPS-category and EUN
+  template/status reads. Endpoint DLP, UEBA, device, integration, EUN message,
+  and token configuration surfaces require separate privacy/secret and
+  command-shape review; see
+  [Resource Queue](RESOURCE_QUEUE.md#sdk-v3841-addition-triage).
+- Releases `v3.8.42` and `v3.8.43` add no service package. Their relevant
+  change is client behavior: v3.8.43 preserves structured API errors and avoids
+  retrying deterministic 5xx API verdicts while retaining retries for transient
+  infrastructure failures.
+- OneAPI recognizes `GOV` and `GOVUS` OAuth and product-gateway hosts. v3.8.43
+  corrects the documented GOVUS OAuth contract to the SDK's existing,
+  resolvable `zidentitygov.us` host. Mocked tests cover OAuth and ZIA product
+  routing. GOV/GOVUS Zidentity `/admin` routing is not claimed because the SDK
+  supplies no matching host test and no live government tenant was available.
 
 These findings are SDK-shape evidence only. They do not prove entitlement,
 tenant availability, pagination behavior, or real response shape.

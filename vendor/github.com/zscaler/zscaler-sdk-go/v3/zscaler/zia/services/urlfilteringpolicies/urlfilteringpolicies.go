@@ -131,6 +131,12 @@ type URLFilteringRule struct {
 	// Name-ID pairs of time interval during which rule must be enforced.
 	TimeWindows []common.IDNameExtensions `json:"timeWindows,omitempty"`
 
+	// Name-ID pairs HTTP header profile to which the rule applies
+	HTTPHeaderProfiles []common.IDNameExtensions `json:"httpHeaderProfiles,omitempty"`
+
+	// Name-ID pairs HTTP header insertion profile to apply to this rule.
+	HTTPHeaderActionProfiles []common.IDNameExtensions `json:"httpHeaderActionProfiles,omitempty"`
+
 	// The list of preconfigured workload groups to which the policy must be applied.
 	WorkloadGroups []common.IDName `json:"workloadGroups,omitempty"`
 
@@ -309,9 +315,7 @@ func Delete(ctx context.Context, service *zscaler.Service, ruleID int) (*http.Re
 func GetAll(ctx context.Context, service *zscaler.Service) ([]URLFilteringRule, error) {
 	var rules []URLFilteringRule
 
-	// Use service.Client.Read directly since the API doesn't support pagination
-	// The API returns all results in a single response
-	err := service.Client.Read(ctx, urlFilteringPoliciesEndpoint, &rules)
+	err := common.ReadAllPages(ctx, service.Client, urlFilteringPoliciesEndpoint, &rules)
 	return rules, err
 }
 

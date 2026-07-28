@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
-	github.com/zscaler/zscaler-sdk-go/v3 v3.8.38
+	github.com/zscaler/zscaler-sdk-go/v3 v3.8.43
 	golang.org/x/sys v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
