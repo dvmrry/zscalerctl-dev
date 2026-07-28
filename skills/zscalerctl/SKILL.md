@@ -131,8 +131,18 @@ strings in `machine manifest`; the two discovery surfaces differ.
 Some resources are parent/child and the catalog does not link them. The known
 case: `zia locations list` returns **parent locations only** — child locations
 are the separate `zia/sublocations` resource, correlated by its `parentId`
-field. If a location you expect is missing, check `sublocations` before
-concluding it is absent.
+field.
+
+`--filter` and `--search` do not cross that boundary either: they narrow the
+records the resource already returned, so a sublocation never matches a query
+against `zia locations`. The result is an empty array and **exit 0**, which
+reads as "no such location" rather than "wrong resource". Query both before
+concluding something is absent:
+
+```sh
+zscalerctl --format json zia locations list --search branch
+zscalerctl --format json zia sublocations list --search branch
+```
 
 **Rung 4 — full CLI surface (474 KB).** `zscalerctl --format json introspect`
 carries commands, flags, `effects`, and exit codes. Never a first move, and
