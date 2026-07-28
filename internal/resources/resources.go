@@ -1302,6 +1302,40 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 	}
 }
 
+// endpointApplicationsField models the compact policy-reference shape emitted
+// by the ZIA reader. The upstream SDK object also carries descriptions,
+// filenames, bundle identifiers, version/signature metadata, and modification
+// metadata; those are deliberately excluded before projection because a policy
+// association only needs the stable resource ID and identifying type/name.
+func endpointApplicationsField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   standardOnlyMode(),
+		Fields: []FieldSpec{
+			operationalField("resourceId", allModes()),
+			tenantConfigField("applicationName", standardShareModes()),
+			tenantConfigField("osType", standardShareModes()),
+			tenantConfigField("applicationType", standardShareModes()),
+		},
+	}
+}
+
+// endpointApplicationGroupsField models a policy's endpoint-application group
+// reference. Group descriptions, modification metadata, and nested application
+// inventories are intentionally not copied into the source record.
+func endpointApplicationGroupsField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   standardOnlyMode(),
+		Fields: []FieldSpec{
+			operationalField("groupId", allModes()),
+			tenantConfigField("name", standardShareModes()),
+		},
+	}
+}
+
 // extranetRefField models a common.IDCustom reference to an extranet
 // configuration object (id + name only). The reference is tenant configuration
 // (which extranet resource is assigned), standard+share at the parent: the id

@@ -114,7 +114,7 @@ github.com/spf13/pflag
 # github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 ## explicit; go 1.19
 github.com/xo/terminfo
-# github.com/zscaler/zscaler-sdk-go/v3 v3.8.38
+# github.com/zscaler/zscaler-sdk-go/v3 v3.8.43
 ## explicit; go 1.25.8
 github.com/zscaler/zscaler-sdk-go/v3/cache
 github.com/zscaler/zscaler-sdk-go/v3/logger

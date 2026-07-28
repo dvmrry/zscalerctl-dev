@@ -313,13 +313,18 @@ Fields:
 | `order`, `rank` | Operational metadata | `standard`, `share`, `paranoid` | Rule ordering metadata. |
 | `urlCategories` | Tenant configuration | `standard`, `share` | URL category identifiers referenced by the rule. |
 | `platforms`, `cloudApplications` | Tenant configuration | `standard`, `share` | Selected non-principal criteria lists. |
+| `action.showEUN`, `action.showEUNATP`, `action.overrideDefaultCertificate`, `action.decryptSubActions.*`, `action.doNotDecryptSubActions.*` | Tenant configuration | `standard`, `share` | SSL action behavior, certificate handling, TLS floors, OCSP/SNI, and HTTP/2 controls. |
+| `action.sslInterceptionCert.id`, `action.sslInterceptionCert.name`, `action.sslInterceptionCert.defaultCertificate` | Tenant configuration reference | `standard`, `share` | Certificate reference metadata only; certificate contents and key material are never emitted. |
+| `accessControl`, `roadWarriorForKerberos` | Operational metadata | varies | RBA access enum and remote-user Kerberos applicability. |
 | `lastModifiedTime` | Operational metadata | `standard`, `share` | SDK timestamp value. |
 | `defaultRule`, `predefined` | Operational metadata | `standard`, `share`, `paranoid` | Whether the rule is a default or predefined rule. |
+| `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Compact reviewed references. |
+| Scope references such as `locations`, `groups`, `devices`, `proxyGateways`, `zpaAppSegments`, and `workloadGroups` | Tenant configuration | `standard` | Local-only rule targeting references. |
+| `endPointApplications`, `endPointApplicationGroups` | Tenant configuration | `standard` | Compact endpoint-policy dependencies: application resource ID/name/OS/type or group ID/name only. Filenames, bundles, descriptions, versions, signature metadata, and nested inventories are omitted before projection. |
+| `lastModifiedBy` | Secret | never | Admin identity reference is dropped in every mode. |
 
-The SDK also returns users, groups, departments, locations, device references,
-labels, time windows, certificates, sub-actions, and admin references. The
-reader maps these structures, but the catalog does not allow them to render in
-this first surface.
+All rendered nested structures are explicit allow-lists. SDK fields not named
+above remain fail-closed.
 
 ## ZIA Url Categories
 
@@ -379,12 +384,16 @@ Fields:
 | `action`, `protocols`, `requestMethods`, `urlCategories`, `urlCategories2`, `userRiskScoreLevels`, `userAgentTypes` | Tenant configuration | `standard`, `share` | Primary rule criteria and action fields. |
 | `sourceCountries`, `lastModifiedTime`, `enforceTimeValidity`, `validityStartTime`, `validityEndTime`, `validityTimeZoneId`, `blockOverride`, `timeQuota`, `sizeQuota`, `ciparule` | Operational metadata | varies | Reviewed non-principal rule metadata. |
 | `endUserNotificationUrl`, `cbiProfileId` | Sensitive identifier | `standard` | Local-only URL/browser isolation references. |
+| `browserEunTemplateId` | Sensitive identifier | `standard` | Local-only browser EUN template reference. |
+| `cbiProfile.id`, `cbiProfile.name`, `cbiProfile.profileSeq` | Tenant configuration | `standard` | Browser-isolation dependency metadata; the profile URL is secret and never emitted. |
 | `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Nested references render reviewed `id`/`name` fields only. |
-| `locations`, `locationGroups`, `sourceIpGroups`, `workloadGroups` | Tenant configuration | `standard` | Local-only scope references. Nested unreviewed fields are dropped. |
+| `locations`, `locationGroups`, `sourceIpGroups`, `departments`, `groups`, `users`, `deviceGroups`, `devices`, `overrideUsers`, `overrideGroups`, `workloadGroups` | Tenant configuration | `standard` | Local-only scope and principal references. Nested unreviewed fields are dropped. |
+| `httpHeaderProfiles`, `httpHeaderActionProfiles` | Tenant configuration | `standard` | Compact ID/name dependencies for HTTP header matching and insertion profiles. |
+| `lastModifiedBy` | Secret | never | Admin identity reference is dropped in every mode. |
 
-The SDK also returns admin, user, device, department, override, and CBI profile
-objects. The reader maps those structures, but the catalog keeps them out of
-rendered output until they are separately modeled.
+For ISOLATE rules, `get <id>` compensates for an API response that can omit the
+CBI profile by using the same bounded all-pages reader as `list`. If that
+optional enrichment fails, the successful direct rule response is preserved.
 
 ## ZIA Firewall Filtering Rules
 
@@ -403,15 +412,15 @@ Fields:
 | `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `state`, `order`, `rank`, `enableFullLogging`, `defaultRule`, `predefined`, `excludeSrcCountries` | Operational metadata | `standard`, `share`, `paranoid` | Rule state, logging, ordering, and default/predefined flags. |
-| `action`, `accessControl`, `nwApplications`, `deviceTrustLevels` | Tenant configuration | `standard`, `share` | Reviewed rule action and criteria metadata. |
+| `action`, `accessControl`, `nwApplications`, `deviceTrustLevels`, `isEunEnabled`, `eunTemplateId`, `excludeContextShieldEndPoint` | Tenant configuration | `standard`, `share` | Reviewed action, EUN/context-shield behavior, and criteria metadata. |
 | `sourceCountries`, `destCountries`, `lastModifiedTime` | Operational metadata | `standard`, `share` | Non-principal rule metadata. |
 | `srcIps`, `destAddresses`, `destIpCategories` | Sensitive identifier | `standard` | Local-only IP and destination category criteria. |
 | `labels`, `timeWindows` | Tenant configuration | `standard`, `share` | Nested references render reviewed `id`/`name` fields only. |
-| `locations`, `locationGroups`, `srcIpGroups`, `destIpGroups`, `nwServices`, `nwServiceGroups`, `nwApplicationGroups`, `appServices`, `appServiceGroups`, `workloadGroups` | Tenant configuration | `standard` | Local-only scope and service references. Nested unreviewed fields are dropped. |
+| `locations`, `locationGroups`, `departments`, `groups`, `users`, `deviceGroups`, `devices`, `srcIpGroups`, `destIpGroups`, `nwServices`, `nwServiceGroups`, `nwApplicationGroups`, `appServices`, `appServiceGroups`, `zpaAppSegments`, `workloadGroups` | Tenant configuration | `standard` | Local-only scope and service references. Nested unreviewed fields are dropped. |
+| `endPointApplications`, `endPointApplicationGroups` | Tenant configuration | `standard` | Compact endpoint-policy dependencies only; inventory detail is omitted before projection. |
+| `lastModifiedBy` | Secret | never | Admin identity reference is dropped in every mode. |
 
-The SDK also returns admin, user, group, department, device, and ZPA segment
-references. The reader maps those structures, but the catalog keeps them out of
-rendered output until they are separately modeled.
+SDK fields not explicitly modeled remain fail-closed.
 
 ## ZIA Forwarding Rules
 
@@ -1405,10 +1414,11 @@ Fields:
 | Field | Classification | Modes | Notes |
 | --- | --- | --- | --- |
 | `id`, `order`, `rank`, `accessControl`, `state`, `lastModifiedTime`, `defaultRule`, `capturePCAP`, `predefined`, `isWebEunEnabled`, `defaultDnsRuleNameUsed` | Operational metadata | varies | Rule identity, ordering, status, and predefined/default metadata. |
-| `name`, `action`, `blockResponseCode`, `applications`, `dnsRuleRequestTypes`, `protocols` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `name`, `action`, `blockResponseCode`, `applications`, `dnsRuleRequestTypes`, `protocols`, `isEunEnabled`, `eunTemplateId`, `excludeContextShieldEndPoint` | Tenant configuration | `standard`, `share` | Rule behavior and matching configuration; strings are scanned for pasted secret-shaped values. |
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `redirectIp`, `srcIps`, `destAddresses`, `destIpCategories`, `resCategories` | Sensitive identifier | `standard` | Local-only DNS and network targeting data. |
 | Scope references such as `locations`, `groups`, `dnsGateway`, and IP groups | Tenant configuration | `standard` | Local-only rule target references render reviewed `id`/`name` fields only. |
+| `endPointApplications`, `endPointApplicationGroups` | Tenant configuration | `standard` | Compact endpoint-policy dependencies only; inventory detail is omitted before projection. |
 | `lastModifiedBy` | Secret | never | Admin reference is mapped into source records but dropped by projection. |
 
 ## ZIA Custom File Types

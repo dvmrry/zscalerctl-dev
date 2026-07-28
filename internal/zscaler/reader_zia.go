@@ -331,6 +331,63 @@ func getZIAURLFilteringRulesAllPages(ctx context.Context, service *zsdk.Service)
 	})
 }
 
+// getZIAURLFilteringRuleByID preserves the SDK's workaround for an API defect:
+// GET by ID can omit cbiProfile on ISOLATE rules even when cbiProfileId is set.
+// The upstream SDK fills that object from GetAll, but its GetAll now uses an
+// unbounded paginator. Use the local bounded page walk instead and otherwise
+// retain the upstream behavior: a failed enrichment does not discard the
+// successfully fetched rule.
+func getZIAURLFilteringRuleByID(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
+	var rule urlfilteringpolicies.URLFilteringRule
+	if err := service.Client.Read(ctx, fmt.Sprintf("/zia/api/v1/urlFilteringRules/%d", id), &rule); err != nil {
+		return nil, err
+	}
+	if rule.Action != "ISOLATE" || rule.CBIProfile != nil || rule.CBIProfileID == 0 {
+		return &rule, nil
+	}
+
+	allRules, err := getZIAURLFilteringRulesAllPages(ctx, service)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		// Enrichment is best-effort: preserve the direct GET result when the
+		// list endpoint alone is unavailable, matching the SDK behavior.
+		return &rule, nil
+	}
+	rule.CBIProfile = consistentZIAURLFilteringCBIProfile(rule, allRules)
+	return &rule, nil
+}
+
+// consistentZIAURLFilteringCBIProfile prevents the two non-transactional reads
+// used for optional enrichment from being combined into a rule revision that
+// never existed. Ignore stale list records whose profile ID differs from the
+// direct result, and fail closed when duplicate matching records disagree.
+func consistentZIAURLFilteringCBIProfile(
+	rule urlfilteringpolicies.URLFilteringRule,
+	allRules []urlfilteringpolicies.URLFilteringRule,
+) *ziacommon.CBIProfile {
+	var matched *ziacommon.CBIProfile
+	for i := range allRules {
+		listed := allRules[i]
+		if listed.ID != rule.ID || listed.CBIProfileID != rule.CBIProfileID || listed.CBIProfile == nil {
+			continue
+		}
+		profile := *listed.CBIProfile
+		if matched == nil {
+			matched = &profile
+			continue
+		}
+		if *matched != profile {
+			return nil
+		}
+	}
+	return matched
+}
+
 // getZIAURLCategoriesAll reads /zia/api/v1/urlCategories. This endpoint does not
 // paginate (the SDK's GetAll issues a single Read), so it follows the
 // networkApplications pattern instead of ziaPaginate: read one large bounded
@@ -447,7 +504,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return getZIAURLFilteringRulesAllPages(ctx, service)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
-				return urlfilteringpolicies.Get(ctx, service, id)
+				return getZIAURLFilteringRuleByID(ctx, service, id)
 			}),
 			urlFilteringRuleSourceRecord,
 		),

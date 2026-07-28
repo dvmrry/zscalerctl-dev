@@ -1,0 +1,2 @@
+id	isEunEnabled	eunTemplateId	excludeContextShieldEndPoint	endPointApplications	endPointApplicationGroups
+9103	true	771	true	map[applicationName:Managed Browser applicationType:BROWSER osType:WINDOWS resourceId:901]	map[groupId:902 name:Approved Browsers]

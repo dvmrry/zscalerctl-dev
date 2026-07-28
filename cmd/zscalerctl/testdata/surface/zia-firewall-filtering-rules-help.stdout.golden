@@ -1,0 +1,24 @@
+usage: zscalerctl zia firewall-filtering-rules list|get
+fields:
+  id                            deviceTrustLevels
+  name                          labels
+  description                   timeWindows
+  state                         locations
+  order                         locationGroups
+  rank                          departments
+  action                        groups
+  accessControl                 users
+  enableFullLogging             srcIpGroups
+  defaultRule                   destIpGroups
+  predefined                    nwServices
+  lastModifiedTime              nwServiceGroups
+  sourceCountries               nwApplicationGroups
+  destCountries                 appServices
+  excludeSrcCountries           appServiceGroups
+  excludeContextShieldEndPoint  deviceGroups
+  nwApplications                devices
+  isEunEnabled                  zpaAppSegments
+  eunTemplateId                 workloadGroups
+  srcIps                        endPointApplications
+  destAddresses                 endPointApplicationGroups
+  destIpCategories

@@ -1,0 +1,2 @@
+id	endPointApplications	endPointApplicationGroups
+9101	map[applicationName:Managed Browser applicationType:BROWSER osType:WINDOWS resourceId:901]	map[groupId:902 name:Approved Browsers]
