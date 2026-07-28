@@ -70,13 +70,17 @@ silently yields nothing on compact JSON and reports success when the command
 upstream of it failed.
 
 ```sh
-set -o pipefail
-zscalerctl --format json machine manifest | python3 -c '
+manifest=$(zscalerctl --format json machine manifest) || exit 1
+printf '%s' "$manifest" | python3 -c '
 import json, sys
 for c in json.load(sys.stdin)["capabilities"]:
     if c["name"] == "resources.read":
         print(c["meta"]["product"] + "/" + c["meta"]["resource"])'
 ```
+
+Capture before parsing rather than piping under `set -o pipefail`: `dash` —
+`/bin/sh` on Debian and Ubuntu — rejects `pipefail`, and this fallback exists
+for exactly the constrained environments most likely to run it.
 
 **Rung 2 — one product.** Filter rung 1, e.g. `... | grep "^zia/"` (102 `zia`
 resources).
@@ -114,8 +118,10 @@ action.decryptSubActions.serverCertificates	standard,share
 Those dotted paths describe shape and redaction; they are **not** `--fields`
 arguments. `--fields` matches top-level names only and rejects a dotted path as
 an unknown field. To narrow to something nested, select its top-level parent
-and extract with `jq`. A field with no mode listed never renders — do not try
-to recover it.
+and extract with `jq`. A path with an empty mode column renders in no mode and
+is unreachable: every such field in the catalog is `classification: secret`,
+listed for coverage accounting rather than retrieval. Do not try to recover it
+and do not report it as a bug.
 
 **Which resources support `get <id>`, and by which key:**
 
