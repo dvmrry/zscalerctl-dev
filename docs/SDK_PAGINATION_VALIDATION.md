@@ -107,9 +107,9 @@ On a tenant whose console contains more than 20 URL and TLD categories, run:
 ```sh
 ./zscalerctl --timeout 30s --format json zia url-categories list |
   jq -c '
-    ([.[].id] | length) as $ids_present |
-    {count: length, ids_present: $ids_present,
-     unique_ids: ([.[].id] | unique | length),
+    ([.[] | .id? // empty]) as $ids |
+    {count: length, ids_present: ($ids | length),
+     unique_ids: ($ids | unique | length),
      types: ([.[].type] | unique | sort)}'
 ```
 

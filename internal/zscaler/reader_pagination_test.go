@@ -968,16 +968,19 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 			cfg := validReaderConfig()
 			sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
+			parentListRequests := 0
 			var parentPaths []string
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				body := `{"access_token":"test-token","expires_in":60}`
 				statusCode := http.StatusOK
 				switch request.URL.Path {
 				case "/zia/api/v1/locations":
+					parentListRequests++
 					if request.URL.Query().Get("page") == "1" {
 						body = `[{"id":1,"name":"first"},{"id":2,"name":"second"}]`
 					} else {
-						body = `[]`
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"parent confirmation page unavailable"}`
 					}
 				case "/zia/api/v1/locations/1/sublocations":
 					parentPaths = append(parentPaths, request.URL.Path)
@@ -987,17 +990,16 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 					} else if request.URL.Query().Get("page") == "1" {
 						body = `[{"id":99,"name":"target"}]`
 					} else {
-						body = `[]`
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"confirmation page unavailable"}`
 					}
 				case "/zia/api/v1/locations/2/sublocations":
 					parentPaths = append(parentPaths, request.URL.Path)
 					if test.firstParentFails && request.URL.Query().Get("page") == "1" {
 						body = `[{"id":99,"name":"target"}]`
-					} else if test.firstParentFails {
-						body = `[]`
 					} else {
 						statusCode = http.StatusInternalServerError
-						body = `{"message":"later parent unavailable"}`
+						body = `{"message":"confirmation or later parent unavailable"}`
 					}
 				case "/oauth2/v1/token":
 				default:
@@ -1027,6 +1029,9 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 			if item == nil || item.ID != 99 {
 				t.Fatalf("getZIASublocationByID(99) = %#v, want ID 99", item)
 			}
+			if parentListRequests != 1 {
+				t.Errorf("parent-list request count = %d, want exactly 1", parentListRequests)
+			}
 			firstPath := "/zia/api/v1/locations/1/sublocations"
 			secondPath := "/zia/api/v1/locations/2/sublocations"
 			firstCount := 0
@@ -1039,8 +1044,12 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 					secondCount++
 				}
 			}
-			if firstCount == 0 {
-				t.Errorf("sublocation parent paths = %v, want at least one first-parent request", parentPaths)
+			if test.firstParentFails {
+				if firstCount == 0 {
+					t.Errorf("first-parent request count = 0, want at least 1 (paths %v)", parentPaths)
+				}
+			} else if firstCount != 1 {
+				t.Errorf("first-parent request count = %d, want exactly 1 (paths %v)", firstCount, parentPaths)
 			}
 			if got := secondCount > 0; got != test.wantSecondParent {
 				t.Errorf(
