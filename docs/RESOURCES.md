@@ -330,9 +330,12 @@ zscalerctl zia url-categories list
 zscalerctl zia url-categories get <id>
 ```
 
-The list includes ordinary `URL_CATEGORY` records and `TLD_CATEGORY` records.
-List responses request the API's count-only payload; use `get <id>` when the
-category's members are needed. TLD members use the existing `urls` field.
+The list walks the API's pages with a bounded paginator and includes ordinary
+`URL_CATEGORY` records and `TLD_CATEGORY` records. The paginator accounts for
+the service clamping a requested page size to 20 instead of treating the first
+short response as complete. List responses request the API's count-only
+payload; use `get <id>` when the category's members are needed. TLD members use
+the existing `urls` field.
 
 Fields:
 
