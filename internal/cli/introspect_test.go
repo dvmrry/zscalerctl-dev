@@ -101,6 +101,7 @@ func TestIntrospectTree(t *testing.T) {
 			path: "zia locations list",
 			want: []cli.EffectDoc{
 				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_read", When: "flag_set", Flag: "from-dump"},
 				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
 				{Kind: "network_access", When: "always"},
 				{Kind: "process_execution", When: "configuration_dependent"},
@@ -322,6 +323,7 @@ func TestIntrospectCatalogEffectsAreComplete(t *testing.T) {
 
 	want := []cli.EffectDoc{
 		{Kind: "local_filesystem_read", When: "configuration_dependent"},
+		{Kind: "local_filesystem_read", When: "flag_set", Flag: "from-dump"},
 		{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
 		{Kind: "network_access", When: "always"},
 		{Kind: "process_execution", When: "configuration_dependent"},
@@ -367,15 +369,15 @@ func TestIntrospectEffectCounts(t *testing.T) {
 
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
-		"local_filesystem_read":   279,
-		"local_filesystem_write":  293,
+		"local_filesystem_read":   550,
+		"local_filesystem_write":  294,
 		"network_access":          273,
 		"process_execution":       274,
 	}
 	wantWhen := map[string]int{
 		"always":                  276,
 		"configuration_dependent": 551,
-		"flag_set":                294,
+		"flag_set":                566,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)

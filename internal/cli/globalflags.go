@@ -85,6 +85,13 @@ var globalFlagDefs = []globalFlagDef{
 		usage:      "output format: auto, table, json, ndjson, pretty",
 	},
 	{
+		name:        "from-dump",
+		kind:        "string",
+		defaultVal:  "",
+		usage:       "read resource data from a saved sanitized dump directory",
+		effectKinds: []string{effectKindLocalFilesystemRead},
+	},
+	{
 		name:       "limit",
 		kind:       "int",
 		defaultVal: "0",
@@ -172,6 +179,7 @@ type globalFlagPointers struct {
 	profile     *string
 	configPath  *string
 	format      *string
+	fromDump    *string
 	limit       *int
 	outputPath  *string
 	offset      *int
@@ -207,6 +215,8 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 				p.configPath = ptr
 			case "format":
 				p.format = ptr
+			case "from-dump":
+				p.fromDump = ptr
 			case "output":
 				p.outputPath = ptr
 			case "redaction":

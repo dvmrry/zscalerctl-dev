@@ -377,7 +377,7 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 			default: // list
 				argsPolicy = ArgsDoc{Policy: "none"}
 			}
-			effects := buildCommandEffects(productCmd, inheritedNames)
+			effects := buildResourceCommandEffects(productCmd, inheritedNames)
 			doc := CommandDoc{
 				Path:           path,
 				Short:          op.Name + " " + string(product) + " " + spec.Name,
@@ -404,6 +404,19 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 // "kind@configuration_dependent" when effective configuration, environment,
 // provider choice, or platform may enable the effect.
 func buildCommandEffects(cmd *cobra.Command, inheritedFlags []string) []EffectDoc {
+	return buildCommandEffectsWithOptions(cmd, inheritedFlags, false)
+}
+
+// buildResourceCommandEffects builds effects for the virtual catalog command
+// entries (product/resource/list|get|show). A saved dump is a valid source only
+// for those ordinary resource reads, so --from-dump contributes its conditional
+// local-read effect to these entries while remaining absent from utility
+// commands such as version, diff, schema, and URL lookup.
+func buildResourceCommandEffects(cmd *cobra.Command, inheritedFlags []string) []EffectDoc {
+	return buildCommandEffectsWithOptions(cmd, inheritedFlags, true)
+}
+
+func buildCommandEffectsWithOptions(cmd *cobra.Command, inheritedFlags []string, includeFromDump bool) []EffectDoc {
 	effects := parseEffectAnnotation(cmd)
 	suppressed := parseSuppressedGlobalFlagEffects(cmd)
 	inherited := make(map[string]bool, len(inheritedFlags))
@@ -415,7 +428,7 @@ func buildCommandEffects(cmd *cobra.Command, inheritedFlags []string) []EffectDo
 			panic(fmt.Sprintf("command %q suppresses effect for global flag %q that it does not inherit", cmd.CommandPath(), name))
 		}
 	}
-	effects = append(effects, buildGlobalFlagEffects(inheritedFlags, suppressed)...)
+	effects = append(effects, buildGlobalFlagEffectsForCommand(inheritedFlags, suppressed, includeFromDump)...)
 	effects = normalizeEffects(effects)
 	for _, effect := range effects {
 		validateEffectFlag(cmd, effect)
@@ -492,7 +505,7 @@ func globalFlagHasEffects(name string) bool {
 	return false
 }
 
-func buildGlobalFlagEffects(inheritedFlags []string, suppressed map[string]bool) []EffectDoc {
+func buildGlobalFlagEffectsForCommand(inheritedFlags []string, suppressed map[string]bool, includeFromDump bool) []EffectDoc {
 	inherited := make(map[string]bool, len(inheritedFlags))
 	for _, name := range inheritedFlags {
 		inherited[name] = true
@@ -500,6 +513,9 @@ func buildGlobalFlagEffects(inheritedFlags []string, suppressed map[string]bool)
 
 	var effects []EffectDoc
 	for _, def := range globalFlagDefs {
+		if def.name == "from-dump" && !includeFromDump {
+			continue
+		}
 		if !inherited[def.name] || suppressed[def.name] {
 			continue
 		}

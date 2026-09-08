@@ -298,6 +298,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if err := validatePaginationInvocation(opts, rest, a.resourceCatalog()); err != nil {
 		return err
 	}
+	if err := validateFromDumpInvocation(opts, rest, a.resourceCatalog()); err != nil {
+		return err
+	}
 	// completion does not produce a record stream, so --format ndjson is rejected
 	// here, before execCobra. This check must come
 	// before the Cobra dispatch so the format gate fires even when Cobra owns the
@@ -314,6 +317,55 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	}
 	a.writeUsageForHumans(opts)
 	return UsageError{Message: unknownCommandMessage(rest[0], a.resourceCatalog())}
+}
+
+// validateFromDumpInvocation admits only ordinary catalog resource reads to
+// the saved-dump source. It runs before Cobra dispatch, so malformed command
+// shapes, source conflicts, and unsupported resources cannot cause config or
+// dump filesystem work as a side effect.
+func validateFromDumpInvocation(
+	opts globalOptions,
+	rest []string,
+	catalog resources.ResourceCatalog,
+) error {
+	if !opts.fromDumpSet && strings.TrimSpace(opts.fromDump) == "" {
+		return nil
+	}
+	if opts.profile != "" {
+		return UsageError{Message: "--from-dump cannot be used with --profile"}
+	}
+	if opts.configPath != "" {
+		return UsageError{Message: "--from-dump cannot be used with --config"}
+	}
+	if len(rest) < 3 || !knownProductCommand(rest[0], catalog) {
+		return UsageError{Message: "--from-dump applies only to resource read operations; use it with \"<product> <resource> list|get|show\""}
+	}
+	product := resources.Product(rest[0])
+	resource := rest[1]
+	op := rest[2]
+	switch op {
+	case "list", "show":
+		if len(rest) != 3 {
+			return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s %s %s", product, resource, op)}
+		}
+	case "get":
+		if len(rest) != 4 || strings.TrimSpace(rest[3]) == "" {
+			return UsageError{Message: fmt.Sprintf("usage: zscalerctl %s %s get <id>", product, resource)}
+		}
+	default:
+		return UsageError{Message: "--from-dump applies only to resource read operations; use it with \"<product> <resource> list|get|show\""}
+	}
+	spec, ok := catalog.FindSpec(product, resource)
+	if !ok {
+		return ResourceNotFoundError{Product: product, Resource: resource}
+	}
+	if err := resources.AssertReadOnly(spec); err != nil {
+		return err
+	}
+	if !spec.SupportsReadOperation(op) {
+		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec, 0))}
+	}
+	return nil
 }
 
 // writeUsageForHumans writes the usage block to stderr only when the
@@ -347,6 +399,8 @@ type globalOptions struct {
 	profile            string
 	configPath         string
 	format             output.Format
+	fromDump           string
+	fromDumpSet        bool
 	limit              int
 	limitSet           bool
 	output             string
@@ -431,6 +485,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	profile := gp.profile
 	configPath := gp.configPath
 	format := gp.format
+	fromDump := gp.fromDump
 	limit := gp.limit
 	outputPath := gp.outputPath
 	offset := gp.offset
@@ -449,9 +504,11 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
 	}
-	var limitSet, offsetSet bool
+	var fromDumpSet, limitSet, offsetSet bool
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "from-dump":
+			fromDumpSet = true
 		case "limit":
 			limitSet = true
 		case "offset":
@@ -473,6 +530,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	}
 	if *timeout <= 0 {
 		return globalOptions{}, nil, UsageError{Message: "timeout must be positive"}
+	}
+	if fromDumpSet && strings.TrimSpace(*fromDump) == "" {
+		return globalOptions{}, nil, UsageError{Message: "--from-dump requires a directory"}
 	}
 	colorMode, err := output.ParseColorMode(*colorFlag)
 	if err != nil {
@@ -496,6 +556,8 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		profile:            *profile,
 		configPath:         *configPath,
 		format:             parsedFormat,
+		fromDump:           *fromDump,
+		fromDumpSet:        fromDumpSet,
 		limit:              *limit,
 		limitSet:           limitSet,
 		output:             *outputPath,
@@ -765,6 +827,17 @@ func isCompletionArgs(args []string) bool {
 }
 
 func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOptions, productName string, args []string) error {
+	return a.runProductWithRuntime(ctx, cfg, opts, productName, args, nil)
+}
+
+func (a *App) runProductWithRuntime(
+	ctx context.Context,
+	cfg config.Config,
+	opts globalOptions,
+	productName string,
+	args []string,
+	rt machineRuntime,
+) error {
 	product := resources.Product(productName)
 	resource := ""
 	if len(args) >= 1 {
@@ -816,15 +889,22 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if !spec.SupportsReadOperation(op) {
 		return UsageError{Message: fmt.Sprintf("unsupported operation %s for %s/%s\n%s", op, product, resource, resourceUsage(product, spec, 0))}
 	}
-	rt, err := a.machineRuntime(ctx, cfg, opts)
-	if err != nil {
-		return err
+	if rt == nil {
+		var err error
+		rt, err = a.machineRuntime(ctx, cfg, opts)
+		if err != nil {
+			return err
+		}
 	}
 	recordID := ""
 	if op == "get" {
 		recordID = args[2]
 	}
-	projected, err := callWithSpinner(a, opts, "contacting Zscaler", func() (resources.ProjectedRecords, error) {
+	message := "contacting Zscaler"
+	if opts.fromDumpSet || opts.fromDump != "" {
+		message = "reading saved dump"
+	}
+	projected, err := callWithSpinner(a, opts, message, func() (resources.ProjectedRecords, error) {
 		return a.executeMachineRead(ctx, spec, op, recordID, rt, opts)
 	})
 	if err != nil {

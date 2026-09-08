@@ -1,6 +1,6 @@
 {
   "error": {
     "kind": "usage",
-    "message": "usage: zscalerctl schema list"
+    "message": "usage: zscalerctl schema list | schema describe \u003cproduct\u003e \u003cresource\u003e"
   }
 }

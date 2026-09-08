@@ -14,6 +14,7 @@ These flags are accepted by every command:
 | `--fields` | `string` | `—` | comma-separated output fields to keep (narrows the sanitized output) |
 | `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); repeatable, all must match |
 | `--format` | `string` | `auto` | output format: auto, table, json, ndjson, pretty |
+| `--from-dump` | `string` | `—` | read resource data from a saved sanitized dump directory |
 | `--limit` | `int` | `0` | bound a list result to a JSON page of this many records |
 | `--log-level` | `string` | `off` | diagnostic logging to stderr: off, error, warn, info, debug |
 | `--no-cache` | `bool` | `false` | bypass API cache where supported |
@@ -300,6 +301,14 @@ inspect the resource catalog schema
 
 ```
 zscalerctl schema
+```
+
+#### schema describe
+
+describe reviewed field semantics for one resource (config-free pilot)
+
+```
+zscalerctl schema describe <product> <resource>
 ```
 
 #### schema list

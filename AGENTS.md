@@ -297,3 +297,54 @@ tenant inventory; use ignored scratch paths and do not paste payloads into
 tickets or chats. `diff` only compares dump directories already on disk; it
 does not schedule collection or contact Zscaler. List and array fields are
 compared in order; reordering a list is reported as drift.
+
+## Read an existing collection
+
+When `introspect` advertises `--from-dump`, use an operator-supplied complete
+dump for repeated investigation. The usual resource commands retain their JSON
+shapes, field selection, filters, search and bounded list pages:
+
+```sh
+zscalerctl --format json --from-dump ./scratch-live-dump \
+  --fields id,name --limit 20 zia locations list
+zscalerctl --format json --from-dump ./scratch-live-dump \
+  --fields id,name zia locations get 12345
+zscalerctl --format json --from-dump ./scratch-live-dump \
+  zia advanced-settings show
+```
+
+These commands read local files and bypass configuration, credentials, secret
+providers, SDK construction and network access. `--profile` and `--config`
+cannot be combined with `--from-dump`. The saved redaction mode is the default;
+an explicitly different `--redaction` is rejected. This cannot recover a field
+that was omitted during collection. `--output` still has its advertised local
+write effect.
+
+Only complete, internally consistent artifacts that pass current catalog and
+redaction admission are accepted. A missing resource, failed collection, or
+missing ID is an error; it is not an empty inventory. A present list with zero
+records is a successful empty inventory. Loading is capped at 256 MiB of
+aggregate serialized resource data; decoded memory can be larger. Narrowing
+flags do not reduce this admission work. Each CLI invocation reloads the
+directory, so externally modifying it between calls can change the answers.
+The core collection object stays immutable after loading. Keep the directory
+unchanged for a repeatable investigation and record which collection was used.
+
+## Inspect reviewed field meaning
+
+When `introspect` advertises `schema describe`, request one resource directly:
+
+```sh
+zscalerctl --format json --redaction standard schema describe zia url-filtering-rules
+```
+
+This config-free candidate contract describes selected existing fields for
+`zia/locations`, `zia/url-filtering-rules`, and `zia/rule-labels`. It includes
+SDK-derived types and descriptions, confirmed reference targets, and explicit
+`unknown` collection ordering. It is not a complete field catalog or a policy
+evaluation engine. Check `review_status`: known resources outside the pilot
+return `not_reviewed` with empty `fields`, while unknown resources fail with
+exit 4. Only fields renderable in the requested mode are described; the default
+is `standard`, independent of configuration. Continue using `schema list` to
+validate all available field names. An omitted value never establishes that a
+setting is false, empty, or unconfigured.

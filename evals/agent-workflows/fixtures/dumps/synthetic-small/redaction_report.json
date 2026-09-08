@@ -1,0 +1,24 @@
+{
+  "schema": "zscalerctl.redaction_report.v1",
+  "redaction": "standard",
+  "resources": [
+    {
+      "product": "zia",
+      "name": "locations",
+      "path": "resources/zia/locations.json",
+      "records": 3,
+      "included_fields": ["country", "description", "id", "name"],
+      "dropped_fields": ["credential_hint", "enabled", "region"],
+      "redacted_fields": []
+    },
+    {
+      "product": "zia",
+      "name": "advanced-settings",
+      "path": "resources/zia/advanced-settings.json",
+      "records": 1,
+      "included_fields": ["apiSessionTimeout", "enableOffice365"],
+      "dropped_fields": ["mode", "audit_window_days", "description"],
+      "redacted_fields": []
+    }
+  ]
+}

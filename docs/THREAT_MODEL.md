@@ -282,3 +282,20 @@ exhaustive (see [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md) for the full set).
 - `bash scripts/verify-sdk-boundary.sh`
 - `bash scripts/test-verify-sdk-boundary.sh`
 - the doc, no-live-creds, actions-pinned, and registry verifiers
+
+## Saved collection boundary
+
+`--from-dump` admits a complete existing dump against the current catalog and
+stored redaction mode before serving projected records. It bypasses config,
+credential providers, SDK construction and network access. Admission retains
+existing root containment, artifact inventory, metadata reconciliation and
+projection checks and adds an aggregate serialized-resource byte budget.
+It is not a cryptographic authenticity check or a guarantee that separate CLI
+invocations see an unchanged directory. The in-memory collection is immutable
+after loading. Missing resources and unavailable get identities are explicit
+failures, not empty evidence. A saved artifact cannot restore dropped fields.
+
+Upstream masking does not establish a universal secret boundary: keys may still
+be pasted into descriptions or other otherwise renderable fields. The project
+therefore retains its field allow-list and local value scanners independently
+of upstream behavior.

@@ -82,6 +82,33 @@ Unix. Windows does not have an atomic replacement guarantee; see
 `0600` does not restrict ACLs: use an output directory whose ACL already limits
 access to the intended account. See [platform permissions](docs/INSTALL.md).
 
+## Saved configuration investigations
+
+Use an existing complete dump with normal resource commands:
+
+```sh
+zscalerctl --format json --from-dump ./scratch-live-dump --fields id,name --limit 20 zia locations list
+zscalerctl --format json --from-dump ./scratch-live-dump zia locations get 12345
+zscalerctl --format json schema describe zia url-filtering-rules
+```
+
+`--from-dump` bypasses configuration, credentials, secret providers and network
+access. It preserves the stored redaction mode, rejects partial or invalid
+artifacts, and distinguishes missing resources from empty lists. It cannot be
+combined with `--profile` or `--config`, and an explicitly different redaction
+mode is rejected. Each invocation admits the complete saved collection with a
+256 MiB aggregate serialized-resource limit (not a decoded-memory limit), then
+applies the normal narrowing options. Separate calls reload the directory.
+
+`schema describe <product> <resource>` is a config-free semantics pilot for
+ZIA locations, URL filtering rules and rule labels. It describes selected
+catalog fields and confirmed references; other known resources explicitly
+report `not_reviewed`. It does not change the existing `schema list` contract.
+These development capabilities must be discovered on the installed binary
+before use. See the [agent workflow](docs/cli/agent-machine-workflow.md),
+[implementation scope and follow-on experiments](docs/CORE_INVESTIGATION_SCOPE.md),
+and [synthetic agent evaluation foundation](evals/agent-workflows/README.md).
+
 ## Authentication
 
 OneAPI is the default. The CLI reads only explicit `ZSCALERCTL_*` values:

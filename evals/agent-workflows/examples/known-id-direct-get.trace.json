@@ -1,0 +1,35 @@
+{
+  "contract": "zscalerctl.agent-workflows.trace",
+  "version": 1,
+  "task_id": "known_id_direct_get",
+  "run_id": "synthetic-example-known-get",
+  "agent": {"name": "fixture-example", "version": "1"},
+  "events": [
+    {
+      "seq": 1,
+      "kind": "read",
+      "source": "live",
+      "contacted_live": true,
+      "product": "zia",
+      "resource": "locations",
+      "operation": "get",
+      "request": {"id": "loc-001", "fields": ["id", "name", "country", "enabled"]},
+      "exit_code": 0,
+      "response": {
+        "id": "loc-001",
+        "name": "Northstar Lab",
+        "country": "US",
+        "enabled": true
+      }
+    }
+  ],
+  "answer": {
+    "status": "ok",
+    "result": {
+      "id": "loc-001",
+      "name": "Northstar Lab",
+      "country": "US",
+      "enabled": true
+    }
+  }
+}

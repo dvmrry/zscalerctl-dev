@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/resource-semantics-v1.schema.json",
+  "title": "zscalerctl resource semantics output",
+  "description": "Candidate v1 schema for the config-free, tenant-value-free resource semantics pilot. The pilot currently reviews only zia/locations, zia/url-filtering-rules, and zia/rule-labels; known resources outside the pilot are emitted with review_status not_reviewed and an empty fields array.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "review_status",
+    "redaction_mode",
+    "read_only",
+    "product",
+    "resource",
+    "shape",
+    "operations",
+    "fields"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "zscalerctl.resource-semantics",
+      "description": "Candidate resource semantics document identifier. The published JSON Schema identity is the file $id."
+    },
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Candidate resource semantics contract version."
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["reviewed", "not_reviewed"],
+      "description": "Whether the resource has reviewed field semantics in this bounded pilot."
+    },
+    "redaction_mode": {
+      "type": "string",
+      "enum": ["standard", "share", "paranoid"],
+      "description": "Active catalog redaction mode used to select the field descriptors."
+    },
+    "read_only": {
+      "type": "boolean",
+      "const": true,
+      "description": "True because this metadata describes tenant-read-only catalog resources and performs no tenant access."
+    },
+    "product": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Product family containing the catalog resource."
+    },
+    "resource": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Catalog resource name within the product family."
+    },
+    "shape": {
+      "type": "string",
+      "enum": ["list", "singleton"],
+      "description": "Catalog resource shape."
+    },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" },
+      "description": "Read-only catalog operations advertised for the resource."
+    },
+    "get_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Effective catalog key used by a get operation. Omitted for list-only and singleton show resources."
+    },
+    "fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldSemantics" },
+      "description": "Reviewed, active-mode field descriptors. Empty when review_status is not_reviewed or when the catalog mode omits every reviewed field."
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "capability"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Catalog operation name."
+        },
+        "capability": {
+          "type": "string",
+          "const": "read",
+          "description": "Tenant capability. Resource semantics are read-only."
+        }
+      }
+    },
+    "fieldSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "classification",
+        "allowed_modes",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Existing top-level catalog field name."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "integer",
+            "string",
+            "boolean",
+            "array<string>",
+            "array<integer>",
+            "array<reference>"
+          ],
+          "description": "Known SDK wire shape. This metadata does not assert that a tenant sends the field, sends null, or omits it."
+        },
+        "description": {
+          "type": "string",
+          "description": "Reviewed description sourced from the upstream SDK model."
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "public_project_data",
+            "operational_metadata",
+            "tenant_configuration",
+            "sensitive_identifier",
+            "free_text",
+            "secret"
+          ],
+          "description": "Existing catalog classification copied without introducing a new renderable field or reclassifying it."
+        },
+        "allowed_modes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["standard", "share", "paranoid"]
+          },
+          "description": "Existing catalog mode gates for the field."
+        },
+        "enum": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional closed set, populated only when verified by a primary upstream source."
+        },
+        "collection": {
+          "$ref": "#/$defs/collectionSemantics",
+          "description": "Metadata for a list-valued field."
+        },
+        "reference": {
+          "$ref": "#/$defs/referenceSemantics",
+          "description": "Verified target catalog resource for a reference-valued field."
+        },
+        "source": {
+          "$ref": "#/$defs/semanticSource",
+          "description": "Primary repository source paths used for the field review."
+        }
+      }
+    },
+    "collectionSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordering"],
+      "properties": {
+        "ordering": {
+          "type": "string",
+          "const": "unknown",
+          "description": "No stable collection ordering guarantee was verified. SDK slice order is not treated as an API guarantee."
+        }
+      }
+    },
+    "referenceSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "resource"],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Product family of the verified target catalog resource."
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the verified target catalog resource."
+        }
+      }
+    },
+    "semanticSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sdk_path", "catalog_path"],
+      "properties": {
+        "sdk_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repository path to the vendored upstream SDK model and comments."
+        },
+        "catalog_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repository path to the existing catalog field allow-list and mode gate."
+        }
+      }
+    }
+  }
+}

@@ -40,7 +40,7 @@ jobs:
         with:
           go-version: '1.26.6'
           cache: true
-      - run: go test -mod=vendor ./...
+      - run: make test
 
   typescript-client:
     runs-on: ubuntu-latest

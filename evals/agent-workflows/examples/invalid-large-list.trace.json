@@ -1,0 +1,60 @@
+{
+  "contract": "zscalerctl.agent-workflows.trace",
+  "version": 1,
+  "task_id": "bounded_large_list",
+  "run_id": "synthetic-example-invalid-large-list",
+  "agent": {"name": "fixture-example", "version": "1"},
+  "events": [
+    {
+      "seq": 1,
+      "kind": "read",
+      "source": "live",
+      "contacted_live": true,
+      "product": "zia",
+      "resource": "locations",
+      "operation": "list",
+      "request": {"limit": 5, "offset": 0},
+      "exit_code": 0,
+      "response": {
+        "records": [
+          {"id": "large-0001", "name": "Synthetic Location 0001", "country": "US"},
+          {"id": "large-0002", "name": "Synthetic Location 0002", "country": "US"},
+          {"id": "large-0003", "name": "Synthetic Location 0003", "country": "US"},
+          {"id": "large-0004", "name": "Synthetic Location 0004", "country": "US"},
+          {"id": "large-0005", "name": "Synthetic Location 0005", "country": "US"},
+          {"id": "large-0006", "name": "Synthetic Location 0006", "country": "US"}
+        ],
+        "pagination": {
+          "offset": 0,
+          "limit": 5,
+          "matched_count": 2500,
+          "returned_count": 6,
+          "has_more": true,
+          "next_offset": 5,
+          "collection_complete": true
+        }
+      }
+    }
+  ],
+  "answer": {
+    "status": "ok",
+    "result": {
+      "records": [
+        {"id": "large-0001", "name": "Synthetic Location 0001", "country": "US"},
+        {"id": "large-0002", "name": "Synthetic Location 0002", "country": "US"},
+        {"id": "large-0003", "name": "Synthetic Location 0003", "country": "US"},
+        {"id": "large-0004", "name": "Synthetic Location 0004", "country": "US"},
+        {"id": "large-0005", "name": "Synthetic Location 0005", "country": "US"}
+      ],
+      "pagination": {
+        "offset": 0,
+        "limit": 5,
+        "matched_count": 2500,
+        "returned_count": 5,
+        "has_more": true,
+        "next_offset": 5,
+        "collection_complete": true
+      }
+    }
+  }
+}

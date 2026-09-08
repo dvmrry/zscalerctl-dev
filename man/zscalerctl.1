@@ -60,6 +60,15 @@ Per-request timeout (e.g. 30s). Must be positive. This bounds each HTTP request
 making many requests is not capped end-to-end. Impose a whole-run limit
 externally (for example with \fBtimeout(1)\fR) if you need one.
 .TP
+.BI \-\-from-dump " dir"
+Read a complete saved dump with ordinary resource list/get/show commands.
+Bypasses configuration, credential providers, SDK construction, and network
+access. Cannot be combined with --profile or --config. Uses the stored redaction
+mode and rejects an explicitly different mode. Admission validates all saved
+resources and is capped at 256 MiB of serialized resource data, not decoded
+memory. Each invocation reloads the directory. Missing resources and IDs are
+errors; present empty lists succeed. Narrowing flags do not reduce admission.
+.TP
 .BI \-\-redaction " standard|share|paranoid"
 Redaction mode applied to rendered fields.
 .TP
@@ -155,6 +164,13 @@ drift is reported with exit 0.
 .TP
 .B schema list
 Print the resource catalog (products, resources, operations, field model).
+.TP
+.B schema describe <product> <resource>
+Inspect config-free candidate field semantics for one resource. The pilot
+reviews selected fields of ZIA locations, URL filtering rules, and rule labels.
+Known resources outside the pilot report not_reviewed with empty fields.
+Unknown resources exit 4. The explicit redaction mode filters described fields;
+the default is standard, independent of configuration. JSON is recommended.
 .TP
 .B doctor
 Report configuration readiness and the resolved auth mode without exposing

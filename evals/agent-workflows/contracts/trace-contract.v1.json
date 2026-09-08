@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zscalerctl.agent-workflows.trace.v1",
+  "title": "zscalerctl synthetic agent workflow trace v1",
+  "type": "object",
+  "required": ["contract", "version", "task_id", "events", "answer"],
+  "properties": {
+    "contract": {"const": "zscalerctl.agent-workflows.trace"},
+    "version": {"const": 1},
+    "task_id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+    "run_id": {"type": "string"},
+    "agent": {"type": "object"},
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "answer": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["ok", "refused", "unavailable", "failed"]}
+      }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": [
+        "seq",
+        "kind",
+        "source",
+        "contacted_live",
+        "product",
+        "resource",
+        "operation",
+        "request",
+        "exit_code",
+        "response"
+      ],
+      "properties": {
+        "seq": {"type": "integer", "minimum": 1},
+        "kind": {"const": "read"},
+        "source": {"enum": ["live", "dump", "local"]},
+        "contacted_live": {"type": "boolean"},
+        "from_dump": {"type": "string"},
+        "product": {"type": "string", "minLength": 1},
+        "resource": {"type": "string", "minLength": 1},
+        "operation": {"enum": ["list", "get", "show"]},
+        "request": {"type": "object"},
+        "exit_code": {"type": "integer", "minimum": 0},
+        "response": {},
+        "duration_ms": {"type": "number", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"operation": {"const": "get"}}},
+          "then": {
+            "properties": {
+              "request": {"required": ["id"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"source": {"const": "dump"}}},
+          "then": {
+            "required": ["from_dump"],
+            "properties": {"from_dump": {"minLength": 1}}
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

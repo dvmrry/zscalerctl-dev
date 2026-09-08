@@ -5,6 +5,7 @@ Usage:
   zscalerctl schema [command]
 
 Available Commands:
+  describe    describe reviewed field semantics for one resource (config-free pilot)
   list        list all catalog resources and their supported operations
 
 Flags:
@@ -16,6 +17,7 @@ Global Flags:
       --fields string        comma-separated output fields to keep (narrows the sanitized output)
       --filter stringArray   narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
       --format string        output format: auto, table, json, ndjson, pretty (default "auto")
+      --from-dump string     read resource data from a saved sanitized dump directory
       --limit int            bound a list result to a JSON page of this many records
       --log-level string     diagnostic logging to stderr: off, error, warn, info, debug (default "off")
       --no-cache             bypass API cache where supported
