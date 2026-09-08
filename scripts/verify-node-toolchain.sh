@@ -41,7 +41,7 @@ cd "$repo_root"
 # feature floor (Node >=24.12); keeping the CI/release pin here prevents a
 # synchronized workflow downgrade from approving itself.
 required_version="24.15.0"
-required_go_version="1.26.5"
+required_go_version="1.26.6"
 required_ci_aggregator_run="/bin/bash scripts/require-ci-jobs.sh \"\${{ join(needs.*.result, ' ') }}\""
 
 if [[ ! -f "$node_version_file" ]]; then

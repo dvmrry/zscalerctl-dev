@@ -83,13 +83,15 @@ const (
 func main() {
 	var sdkDir string
 	var modulePath string
+	var sdkVersion string
 	var format string
 	flag.StringVar(&sdkDir, "sdk-dir", "vendor/github.com/zscaler/zscaler-sdk-go/v3", "Zscaler SDK module directory")
 	flag.StringVar(&modulePath, "module-path", "github.com/zscaler/zscaler-sdk-go/v3", "SDK module import path")
+	flag.StringVar(&sdkVersion, "sdk-version", "", "trusted SDK module version for the selected SDK tree")
 	flag.StringVar(&format, "format", "markdown", "output format: markdown or json")
 	flag.Parse()
 
-	report, err := buildInventory(sdkDir, modulePath)
+	report, err := buildInventory(sdkDir, modulePath, sdkVersion)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sdk-surface-inventory: %v\n", err)
 		os.Exit(1)
@@ -111,7 +113,7 @@ func main() {
 	}
 }
 
-func buildInventory(sdkDir, modulePath string) (inventory, error) {
+func buildInventory(sdkDir, modulePath, sdkVersion string) (inventory, error) {
 	surfaces, err := scanSDK(sdkDir, modulePath)
 	if err != nil {
 		return inventory{}, err
@@ -120,14 +122,23 @@ func buildInventory(sdkDir, modulePath string) (inventory, error) {
 		Schema:     inventorySchema,
 		Notice:     inventoryNotice,
 		SDKModule:  modulePath,
-		SDKVersion: moduleVersion(modulePath),
+		SDKVersion: moduleVersion(sdkDir, modulePath, sdkVersion),
 		SDKDir:     filepath.Clean(sdkDir),
 		Surfaces:   surfaces,
 	}, nil
 }
 
-func moduleVersion(modulePath string) string {
-	data, err := os.ReadFile("vendor/modules.txt")
+func moduleVersion(sdkDir, modulePath, explicitVersion string) string {
+	if version := strings.TrimSpace(explicitVersion); version != "" {
+		return version
+	}
+
+	modulesPath := selectedVendorModulesPath(sdkDir, modulePath)
+	if modulesPath == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(modulesPath)
 	if err != nil {
 		return ""
 	}
@@ -138,6 +149,37 @@ func moduleVersion(modulePath string) string {
 			if len(fields) >= 3 {
 				return fields[2]
 			}
+		}
+	}
+	return ""
+}
+
+// selectedVendorModulesPath returns modules.txt only when sdkDir is exactly
+// the requested module below that same vendor directory. In particular, it
+// does not fall back to the caller's working-directory vendor/modules.txt for
+// an external SDK source tree.
+func selectedVendorModulesPath(sdkDir, modulePath string) string {
+	root, err := filepath.Abs(filepath.Clean(sdkDir))
+	if err != nil {
+		return ""
+	}
+	moduleRel := filepath.Clean(filepath.FromSlash(modulePath))
+	if moduleRel == "." || moduleRel == string(filepath.Separator) {
+		return ""
+	}
+
+	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
+		if filepath.Base(dir) == "vendor" && filepath.Join(dir, moduleRel) == root {
+			modulesPath := filepath.Join(dir, "modules.txt")
+			info, err := os.Stat(modulesPath)
+			if err == nil && !info.IsDir() {
+				return modulesPath
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
 		}
 	}
 	return ""

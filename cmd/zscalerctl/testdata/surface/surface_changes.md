@@ -89,3 +89,28 @@ Column definitions:
 3. Confirm each delta is intentional.
 4. Add a row to the table above.
 5. Commit golden files and this file in the same commit as the implementation.
+
+
+## SDK and agent remediation (2026-09-07)
+
+SDK v3.8.48 adds 31 source fields across nine reviewed shapes: 21 classified
+and 10 deliberately excluded, preserving 100% decided coverage across 165
+resources. The DNS `isWebEunEnabled` output key remains as a compatibility
+alias beside the SDK's `isWebEUNEnabled` spelling.
+
+Adversarial-review corrections also make machine validation diagnostics for
+unsupported capabilities, operations, and filter operators static, so invalid
+client text is not reflected in the error message. The two machine error
+fixtures retain their kinds/context and intentionally change only the message.
+Output-file documentation now limits atomic replacement claims to Unix;
+Windows retains replacement support without that guarantee.
+
+| Surface | Before | After | Reason | Classification |
+| --- | --- | --- | --- | --- |
+| Global flag/help/completion/introspection surfaces | No output paging controls | Added `--limit` and `--offset` for JSON resource lists | Let agents request a bounded view of the fully collected, projected, filtered records. Every invocation recollects current data; these flags do not control API page size or provide a snapshot cursor. | `flag-added` |
+| Resource `list --limit N [--offset M]` | Unsupported flags | JSON object with `records` and `pagination` metadata, including counts, nullable continuation offset, and collection completion | Explicit opt-in framing distinguishes a page from the default complete JSON array. The default array and NDJSON framing remain unchanged. | `new-output-shape` |
+| Unknown `--filter` key | Successful empty array plus prose warning after collection | Usage error (exit 2) before config/credentials/live reads | A misspelled field must not look like an empty tenant inventory. Known fields suppressed by projection still cannot match source values. | `behavior-change (exit-code)` |
+| Unknown `--fields` selection | Usage error after collection | Usage error before config/credentials/live reads | Avoid unnecessary collection and prevent missing credentials from masking a catalog typo. | `validation-order` |
+| Catalog-derived resource help and field metadata | SDK v3.8.38 reviewed fields | SDK v3.8.48 fields are explicitly classified or excluded, with updated coverage artifacts | Keep the documented projection contract aligned with the reviewed SDK and custom adapters. | `catalog-fields` |
+| `zia-locations-list-json`, `zia-locations-list-page-json`, `zia-locations-list-last-page-json` | No process-boundary fixtures for these shapes | Freeze default array and first/final page envelopes using the existing offline resource fixture | Protect default compatibility and continuation/null semantics at the CLI boundary. | `new-fixture` |
+| `zia-locations-list-unknown-filter-json`, `zia-locations-list-unknown-field-json` | No credential-free process-boundary fixtures for catalog typos | Freeze JSON usage errors with exit 2 and empty stdout | Assert invalid field requests fail before the hermetic binary needs credentials. | `new-fixture` |

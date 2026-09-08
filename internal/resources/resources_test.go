@@ -576,6 +576,34 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 	}
 }
 
+func TestValidateNarrowOptionsRejectsUnknownFiltersBeforeProjection(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+		Fields: []string{"token"},
+		Filters: []resources.ProjectedFilter{
+			{Field: "country", Value: "US"},
+		},
+	}); err != nil {
+		t.Fatalf("ValidateNarrowOptions(known fields/filter) error = %v, want nil", err)
+	}
+
+	err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+		Filters: []resources.ProjectedFilter{{Field: "notAField", Value: "HQ"}},
+	})
+	var unknown resources.UnknownFilterError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("ValidateNarrowOptions(unknown filter) error = %T %v, want UnknownFilterError", err, err)
+	}
+	if !errors.Is(err, resources.ErrUnknownField) {
+		t.Fatalf("ValidateNarrowOptions(unknown filter) error = %v, want ErrUnknownField", err)
+	}
+	if got, want := err.Error(), `--filter: "notAField" is not a field of zia/locations`; got != want {
+		t.Fatalf("ValidateNarrowOptions(unknown filter) error = %q, want %q", got, want)
+	}
+}
+
 func TestNarrowProjectedRecordsFiltersBeforeFieldSelection(t *testing.T) {
 	t.Parallel()
 
@@ -604,6 +632,19 @@ func TestNarrowProjectedRecordsFiltersBeforeFieldSelection(t *testing.T) {
 	want := map[string]any{"name": "Branch West"}
 	if fields := projected[0].Fields(); !reflect.DeepEqual(fields, want) {
 		t.Fatalf("NarrowProjectedRecords(filter/search/fields) fields = %#v, want %#v", fields, want)
+	}
+}
+
+func TestNarrowProjectedRecordsRejectsUnknownFilter(t *testing.T) {
+	t.Parallel()
+
+	spec := narrowingSpec()
+	records := projectedRecordsFromMaps(t, spec, map[string]any{"id": 1, "name": "HQ"})
+	_, err := resources.NarrowProjectedRecords(spec, redact.ModeStandard, records, resources.NarrowOptions{
+		Filters: []resources.ProjectedFilter{{Field: "notAField", Value: "HQ"}},
+	})
+	if !errors.Is(err, resources.ErrUnknownField) {
+		t.Fatalf("NarrowProjectedRecords(unknown filter) error = %v, want ErrUnknownField", err)
 	}
 }
 

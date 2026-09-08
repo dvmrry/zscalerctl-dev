@@ -99,6 +99,15 @@ Also confirm:
 - vulnerability, dependency, secret, static-analysis, and security scans pass
 - `zscalerctl version` reports the expected injected metadata in candidate
   binaries
+- the skill bundled under `skills/zscalerctl/` matches the selected source
+  commit, and the installed agent skill is refreshed alongside the binary
+- the candidate binary's JSON `machine manifest` and `introspect` advertise
+  every operation and flag used by that bundled skill; test the documented
+  discovery pipelines against the candidate, not a development binary on
+  `PATH`
+- agent-facing changes in pagination, field validation, and JSON framing are
+  listed in the promotion note, including the older binary/skill versions
+  that do not support the new workflow
 - generated docs, help, completion, and golden surfaces match the promotion
   note
 - root `go.mod`, `go.sum`, `vendor/`, and default build paths do not contain

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -80,10 +79,10 @@ func zpaPaginate[T any](
 	fetchPage func(context.Context, int, int) (zpaPage[T], error),
 ) ([]T, *http.Response, error) {
 	var (
-		all           []T
-		expectedPages = -1
-		lastResponse  *http.Response
-		previousPage  []T
+		all              []T
+		expectedPages    = -1
+		lastResponse     *http.Response
+		pageFingerprints = make(map[pageFingerprint]struct{})
 	)
 
 	for pageNumber := 1; ; pageNumber++ {
@@ -135,16 +134,26 @@ func zpaPaginate[T any](
 				expectedPages,
 			)
 		}
-		if pageNumber > 1 && len(page.records) > 0 && reflect.DeepEqual(previousPage, page.records) {
+		// Exact whole-page fingerprints catch repeated pages and non-adjacent
+		// cycles. They do not attempt to identify partial overlap between pages.
+		fingerprint, err := fingerprintPage(page.records)
+		if err != nil {
 			return nil, lastResponse, fmt.Errorf(
-				"zpa pagination repeated page %d while %d pages were declared",
+				"failed to fingerprint zpa page %d: %w",
+				pageNumber,
+				err,
+			)
+		}
+		if _, seen := pageFingerprints[fingerprint]; seen {
+			return nil, lastResponse, fmt.Errorf(
+				"zpa pagination repeated page content at page %d while %d pages were declared",
 				pageNumber,
 				expectedPages,
 			)
 		}
+		pageFingerprints[fingerprint] = struct{}{}
 
 		all = append(all, page.records...)
-		previousPage = page.records
 		if pageNumber >= expectedPages {
 			return all, lastResponse, nil
 		}

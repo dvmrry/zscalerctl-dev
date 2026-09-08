@@ -30,6 +30,9 @@ That enforcement does not apply on Windows: the underlying `os.Chmod` has no
 ACL effect there, so the mode bits are not honored. On Windows, write dumps into
 a directory that is already restricted to your account (for example under your
 user profile), since the dump's own permission tightening is a no-op.
+The same Windows ACL limitation applies to individual files created with
+`--output`: mode `0600` does not restrict their inherited ACLs, so select an
+already restricted destination directory.
 
 Windows can atomically publish a dump when the requested destination does not
 exist. Replacing an existing directory (including `dump --force`) fails closed:
@@ -74,7 +77,7 @@ gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz \
 
 ## Build From A Checkout
 
-Source builds require Go 1.26.5 or newer; the module rejects older patch
+Source builds require Go 1.26.6 or newer; the module rejects older patch
 releases so the shipped binary cannot be built with a standard library that is
 missing required security fixes.
 
@@ -112,6 +115,15 @@ provide protected environment variables, but file-based secret delivery is safer
 for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
 reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
 OneAPI credential set without an extra product customer ID.
+
+Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported
+with SDK v3.8.48. Its Zidentity admin URL builder still uses commercial
+`zslogin` suffixes for those clouds, despite the separate government OAuth
+and gateway routes. The CLI rejects that product/cloud combination before
+OAuth or API requests instead of inventing an admin endpoint. Commercial
+Zidentity and the existing ZPATWO routing remain available; other products
+retain their SDK government routing. Government tenant behavior still needs
+an operator smoke test before release.
 
 Product API access is granted per product on the OneAPI OAuth client, not by
 extra environment variables. ZCC and ZTW resources use the same

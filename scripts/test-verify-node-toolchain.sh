@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: /usr/bin/make verify-node-toolchain
   unit:
@@ -119,7 +119,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: python3 -m pip install --user --require-hashes -r .github/requirements/semgrep.txt
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -706,7 +706,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -836,7 +836,7 @@ grep -q 'actions/checkout must appear exactly once' "$tmpdir/duplicate-checkout.
 
 noncanonical_setup_go="$tmpdir/noncanonical-setup-go"
 make_fixture "$noncanonical_setup_go"
-perl -0pi -e 's/(go-version: '\''1\.26\.5'\''\n          cache: true)/$1\n          cache-dependency-path: attacker\/go.sum/' "$noncanonical_setup_go/.github/workflows/release.yml"
+perl -0pi -e 's/(go-version: '\''1\.26\.6'\''\n          cache: true)/$1\n          cache-dependency-path: attacker\/go.sum/' "$noncanonical_setup_go/.github/workflows/release.yml"
 if run_verify "$noncanonical_setup_go" >"$tmpdir/noncanonical-setup-go.out" 2>"$tmpdir/noncanonical-setup-go.err"; then
 	echo "verify-node-toolchain accepted a noncanonical setup-go input" >&2
 	exit 1
@@ -845,7 +845,7 @@ grep -q 'setup-go input.*cache-dependency-path.*is not in the canonical' "$tmpdi
 
 case_colliding_setup_go="$tmpdir/case-colliding-setup-go"
 make_fixture "$case_colliding_setup_go"
-perl -0pi -e 's/go-version: '\''1\.26\.5'\''/Go-Version: '\''1.26.5'\''/' "$case_colliding_setup_go/.github/workflows/release.yml"
+perl -0pi -e 's/go-version: '\''1\.26\.6'\''/Go-Version: '\''1.26.6'\''/' "$case_colliding_setup_go/.github/workflows/release.yml"
 if run_verify "$case_colliding_setup_go" >"$tmpdir/case-colliding-setup-go.out" 2>"$tmpdir/case-colliding-setup-go.err"; then
 	echo "verify-node-toolchain accepted a case-colliding setup-go input" >&2
 	exit 1

@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-	"fmt"
 	"strings"
 )
 
@@ -113,7 +112,7 @@ func unsupportedResourceReadOperationError(
 ) *MachineError {
 	return &MachineError{
 		Kind:      ErrorKindUnsupportedOperation,
-		Message:   fmt.Sprintf("unsupported operation %q for %s", operation, CapabilityResourcesRead),
+		Message:   unsupportedReadOperationMessage,
 		Operation: operation,
 		Product:   product,
 		Resource:  resource,

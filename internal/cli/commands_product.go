@@ -40,6 +40,9 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 		Short:       "read " + string(product) + " resources",
 		Annotations: map[string]string{effectsAnnotation: credentialedReadEffects},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateProductNarrowing(product, args, catalog, opts); err != nil {
+				return err
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,

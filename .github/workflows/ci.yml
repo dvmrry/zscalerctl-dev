@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go mod verify
       - run: go mod tidy
@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go test -mod=vendor ./...
 
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: /usr/bin/make verify-node-toolchain
 
@@ -81,7 +81,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go test -race -mod=vendor ./internal/cli/...
 
@@ -93,7 +93,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go test -race -mod=vendor ./internal/resources/...
 
@@ -107,7 +107,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: |
           go list -mod=vendor ./... | grep -vE '/internal/(cli|resources)(/|$)' | xargs go test -race -mod=vendor
@@ -121,7 +121,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: make fmt-check
       - run: bash scripts/verify-sdk-boundary.sh
@@ -157,7 +157,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go test -count=1 -mod=vendor ./internal/dump ./internal/fileperm ./internal/secretref
       # Cobra migration (§9): the windows-config gate must exercise the CLI core,
@@ -180,7 +180,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - run: go vet -mod=vendor ./...
       - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0

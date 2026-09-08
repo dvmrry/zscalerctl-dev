@@ -29,12 +29,30 @@ pipelines stay machine-parseable. \fBtable\fR is the tab-separated form;
 \fBpretty\fR is a bordered/aligned overlay of the same sanitized data.
 \fBndjson\fR is newline-delimited JSON \(em one compact record per line \(em for
 streaming/pipeline consumers; it applies to resource \fBlist\fR/\fBget\fR/\fBshow\fR
-output only and is rejected by other commands.
+output only and is rejected by other commands. Collection completes before
+records are emitted, including in ndjson mode.
+.TP
+.BI \-\-limit " count"
+Return at most this positive number of records from a resource list, using
+JSON output only. The result is an object with records and pagination members;
+without this flag the existing JSON array output is unchanged. Collection,
+projection, redaction, and filtering complete before this output page is cut.
+This flag bounds rendered output, not API requests or collection memory.
+.TP
+.BI \-\-offset " count"
+Skip this nonnegative number of matching records before applying the limit.
+Requires \fB\-\-limit\fR; defaults to zero. Each invocation recollects the
+resource, so offsets do not provide a stable snapshot across calls. Pagination
+metadata reports matched_count, returned_count, has_more, and next_offset;
+collection_complete is true only after successful collection.
 .TP
 .BI \-\-output " path"
-Create or atomically replace a restricted regular file with command output
+Create or replace a restricted regular file with command output
 instead of writing to stdout (not valid with dump). This is a local filesystem
 side effect; agents should use it only when that write is explicitly intended.
+Publication uses a same-directory rename and is atomic on Unix. Windows does
+not have an atomic replacement guarantee. On Windows, mode 0600 does not
+restrict ACLs; use a destination directory with an appropriately restricted ACL.
 .TP
 .BI \-\-timeout " duration"
 Per-request timeout (e.g. 30s). Must be positive. This bounds each HTTP request
@@ -64,7 +82,8 @@ and a completion summary with the resource and error counts.
 .BI \-\-fields " a,b,c"
 Comma-separated list of output fields to keep, applied across all formats. It
 can only narrow the already-sanitized output; it cannot reveal a dropped or
-secret field. An unknown field name is a usage error.
+secret field. An unknown field name is a usage error before configuration or
+credentials are loaded.
 .TP
 .BI \-\-filter " key=value | key~value"
 Narrow list results to records whose rendered field value matches:
@@ -74,7 +93,8 @@ substring match. Repeatable; all filters must match (AND). Valid for
 strictly after projection and redaction, so it can only narrow the sanitized
 record set: a filter naming a dropped or secret field matches nothing, and a
 record lacking the key does not match. No matches is success (exit 0) with an
-empty result.
+empty result. An unknown catalog field name is a usage error (exit 2) before
+configuration or credentials are loaded; discover names with schema list.
 .TP
 .BI \-\-search " term"
 Narrow list results to records where any rendered field value contains

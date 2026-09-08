@@ -1,15 +1,15 @@
 package cli
 
-// globalflags.go — single source-of-truth for the 13 global flags.
+// globalflags.go — single source-of-truth for the global flags.
 //
 // Architecture:
-//   - globalFlagDefs is the canonical list of all 13 global flags (name, kind,
+//   - globalFlagDefs is the canonical list of all global flags (name, kind,
 //     default, usage, effects). It is the ONLY place where a global flag is
 //     defined; every other registration derives from it.
-//   - defineGlobalFlags registers all 13 on a stdlib *flag.FlagSet (using
+//   - defineGlobalFlags registers all on a stdlib *flag.FlagSet (using
 //     repeatableFlag for filter) and returns typed pointers so parseGlobal can
 //     read parsed values without duplicating defaults or usage strings.
-//   - registerGlobalPersistentFlags mirrors all 13 onto a pflag.FlagSet for
+//   - registerGlobalPersistentFlags mirrors all onto a pflag.FlagSet for
 //     Cobra (persistent, root-level) so --help, shell completion, and tree
 //     introspection show the correct flags. Cobra NEVER parses these; App.Run
 //     strips globals via splitGlobalArgs before any Cobra dispatch.
@@ -22,6 +22,7 @@ package cli
 
 import (
 	"flag"
+	"strconv"
 	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/output"
@@ -33,7 +34,7 @@ import (
 // on both stdlib flag and pflag. Adding or removing an entry here propagates
 // to registerGlobalPersistentFlags and the drift check simultaneously.
 //
-// kind values: "string" | "bool" | "duration" | "stringArray".
+// kind values: "string" | "bool" | "duration" | "int" | "stringArray".
 // defaultVal is the canonical string representation (pflag stores defaults as
 // strings). effectKinds lists effects that occur when a non-default flag value
 // is supplied; introspection derives flag-conditioned command effects from it.
@@ -45,7 +46,7 @@ type globalFlagDef struct {
 	effectKinds []string
 }
 
-// globalFlagDefs is the canonical definition of all 13 global flags.
+// globalFlagDefs is the canonical definition of all global flags.
 // Order is alphabetical to make drift diffs easy to read.
 var globalFlagDefs = []globalFlagDef{
 	{
@@ -84,6 +85,12 @@ var globalFlagDefs = []globalFlagDef{
 		usage:      "output format: auto, table, json, ndjson, pretty",
 	},
 	{
+		name:       "limit",
+		kind:       "int",
+		defaultVal: "0",
+		usage:      "bound a list result to a JSON page of this many records",
+	},
+	{
 		name:       "log-level",
 		kind:       "string",
 		defaultVal: "off",
@@ -100,6 +107,12 @@ var globalFlagDefs = []globalFlagDef{
 		kind:       "bool",
 		defaultVal: "false",
 		usage:      "disable color output",
+	},
+	{
+		name:       "offset",
+		kind:       "int",
+		defaultVal: "0",
+		usage:      "skip this many records in a bounded JSON list page (requires --limit)",
 	},
 	{
 		name:        "output",
@@ -159,7 +172,9 @@ type globalFlagPointers struct {
 	profile     *string
 	configPath  *string
 	format      *string
+	limit       *int
 	outputPath  *string
+	offset      *int
 	timeout     *time.Duration
 	redaction   *string
 	noCache     *bool
@@ -171,7 +186,7 @@ type globalFlagPointers struct {
 	searchFlag  *string
 }
 
-// defineGlobalFlags registers all 13 global flags on a stdlib flag.FlagSet
+// defineGlobalFlags registers all global flags on a stdlib flag.FlagSet
 // derived from globalFlagDefs and returns typed pointers for use by parseGlobal.
 // The repeatableFlag for --filter is passed in by the caller (parseGlobal creates
 // it; the drift test passes a zero-value sentinel).
@@ -205,6 +220,14 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 			case "search":
 				p.searchFlag = ptr
 			}
+		case "int":
+			ptr := fs.Int(d.name, intFlagDefault(d), d.usage)
+			switch d.name {
+			case "limit":
+				p.limit = ptr
+			case "offset":
+				p.offset = ptr
+			}
 		case "bool":
 			ptr := fs.Bool(d.name, d.defaultVal == "true", d.usage)
 			switch d.name {
@@ -234,7 +257,15 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 	return p
 }
 
-// applyGlobalPersistentFlags registers all 13 global flags as persistent flags
+func intFlagDefault(def globalFlagDef) int {
+	value, err := strconv.Atoi(def.defaultVal)
+	if err != nil {
+		panic("globalFlagDef: bad integer default for " + def.name + ": " + err.Error())
+	}
+	return value
+}
+
+// applyGlobalPersistentFlags registers all global flags as persistent flags
 // on cmd and wires flag-value completion so Cobra's __complete protocol offers
 // the correct enum choices (e.g. --log-level <TAB> → off|error|warn|info|debug).
 // Completion functions are registered AFTER flag registration so the flag already
@@ -280,6 +311,8 @@ func registerGlobalPersistentFlags(fs *pflag.FlagSet) {
 		switch d.kind {
 		case "string":
 			fs.String(d.name, d.defaultVal, d.usage)
+		case "int":
+			fs.Int(d.name, intFlagDefault(d), d.usage)
 		case "bool":
 			fs.Bool(d.name, d.defaultVal == "true", d.usage)
 		case "duration":

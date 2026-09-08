@@ -9,9 +9,11 @@ This project is defensive administration software. It is not an exploitation,
 credential discovery, policy bypass, traffic interception, or offensive
 reconnaissance tool.
 
-Review stamp: last reviewed on 2026-06-16 against
-`github.com/zscaler/zscaler-sdk-go/v3 v3.8.38`. Re-review this threat model on
-every Zscaler SDK version bump.
+Review stamp: last reviewed on 2026-09-07 against
+`github.com/zscaler/zscaler-sdk-go/v3 v3.8.48`. This is a scoped dependency-delta
+review covering SDK response-shape, projection, and adapter changes; it is not a
+full threat-model re-audit. Re-review this threat model on every Zscaler SDK
+version bump.
 
 ## Security Objectives
 

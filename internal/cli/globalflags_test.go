@@ -166,7 +166,7 @@ func TestCobraGlobalsMirrorParseGlobal(t *testing.T) {
 	}
 
 	// Verify the total count as a sanity check.
-	const wantCount = 13
+	wantCount := len(globalFlagDefs)
 	if got := len(allNames); got != wantCount {
 		t.Errorf("total global flag count: got %d, want %d; flags seen: %v", got, wantCount, allNames)
 	}

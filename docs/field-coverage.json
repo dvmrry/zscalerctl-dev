@@ -2,24 +2,35 @@
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
     "resources": 165,
-    "total_fields": 2979,
-    "classified_fields": 2961,
-    "ignored_fields": 18,
-    "deliberate_fields": 18,
+    "total_fields": 3010,
+    "classified_fields": 2982,
+    "ignored_fields": 28,
+    "deliberate_fields": 28,
     "deferred_fields": 0,
-    "coverage_percent": 99.4,
+    "coverage_percent": 99.1,
     "decided_coverage_percent": 100
   },
   "products": [
     {
       "product": "zia",
       "resources": 102,
-      "total_fields": 1681,
-      "classified_fields": 1663,
-      "ignored_fields": 18,
-      "deliberate_fields": 18,
+      "total_fields": 1696,
+      "classified_fields": 1672,
+      "ignored_fields": 24,
+      "deliberate_fields": 24,
       "deferred_fields": 0,
-      "coverage_percent": 98.9,
+      "coverage_percent": 98.6,
+      "decided_coverage_percent": 100
+    },
+    {
+      "product": "zpa",
+      "resources": 28,
+      "total_fields": 654,
+      "classified_fields": 650,
+      "ignored_fields": 4,
+      "deliberate_fields": 4,
+      "deferred_fields": 0,
+      "coverage_percent": 99.4,
       "decided_coverage_percent": 100
     },
     {
@@ -38,17 +49,6 @@
       "resources": 3,
       "total_fields": 43,
       "classified_fields": 43,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100
-    },
-    {
-      "product": "zpa",
-      "resources": 28,
-      "total_fields": 638,
-      "classified_fields": 638,
       "ignored_fields": 0,
       "deliberate_fields": 0,
       "deferred_fields": 0,
@@ -283,6 +283,140 @@
     },
     {
       "product": "zia",
+      "resource": "ssl-inspection-rules",
+      "sdk_types": [
+        "sslinspection.SSLInspectionRules"
+      ],
+      "total_fields": 34,
+      "classified_fields": 32,
+      "ignored_fields": 2,
+      "deliberate_fields": 2,
+      "deferred_fields": 0,
+      "coverage_percent": 94.1,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 9
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 21
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: endpoint application and group selectors carry application/file identifiers and nested version metadata; no reviewed endpoint resource projection exists, so they remain fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "endPointApplicationGroups",
+            "endPointApplications"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
+      "resource": "firewall-filtering-rules",
+      "sdk_types": [
+        "filteringrules.FirewallFilteringRules"
+      ],
+      "total_fields": 44,
+      "classified_fields": 42,
+      "ignored_fields": 2,
+      "deliberate_fields": 2,
+      "deferred_fields": 0,
+      "coverage_percent": 95.5,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 12
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 25
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: endpoint application and group selectors carry application/file identifiers and nested version metadata; no reviewed endpoint resource projection exists, so they remain fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "endPointApplicationGroups",
+            "endPointApplications"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
+      "resource": "firewall-dns-rules",
+      "sdk_types": [
+        "firewalldnscontrolpolicies.FirewallDNSRules"
+      ],
+      "total_fields": 48,
+      "classified_fields": 46,
+      "ignored_fields": 2,
+      "deliberate_fields": 2,
+      "deferred_fields": 0,
+      "coverage_percent": 95.8,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 13
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 5
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 26
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: endpoint application and group selectors carry application/file identifiers and nested version metadata; no reviewed endpoint resource projection exists, so they remain fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "endPointApplicationGroups",
+            "endPointApplications"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
       "resource": "url-categories",
       "sdk_types": [
         "urlcategories.Scopes",
@@ -319,6 +453,186 @@
           "bucket": "deliberate",
           "fields": [
             "val"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zpa",
+      "resource": "browser-access",
+      "sdk_types": [
+        "zpaappsegmentba.BrowserAccess"
+      ],
+      "total_fields": 49,
+      "classified_fields": 48,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 98,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 23
+        },
+        {
+          "class": "secret",
+          "count": 16
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 5
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: guest federation metadata contains partner and federation identifiers across tenant boundaries; no safe subset is currently projected, so it remains fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "guestDetails"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zpa",
+      "resource": "inspection-app-segments",
+      "sdk_types": [
+        "zpaappsegmentinspection.AppSegmentInspection"
+      ],
+      "total_fields": 52,
+      "classified_fields": 51,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 98.1,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 26
+        },
+        {
+          "class": "secret",
+          "count": 16
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 5
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: guest federation metadata contains partner and federation identifiers across tenant boundaries; no safe subset is currently projected, so it remains fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "guestDetails"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zpa",
+      "resource": "pra-app-segments",
+      "sdk_types": [
+        "zpaappsegmentpra.AppSegmentPRA"
+      ],
+      "total_fields": 52,
+      "classified_fields": 51,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 98.1,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 22
+        },
+        {
+          "class": "secret",
+          "count": 20
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 5
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: guest federation metadata contains partner and federation identifiers across tenant boundaries; no safe subset is currently projected, so it remains fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "guestDetails"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zpa",
+      "resource": "application-segments",
+      "sdk_types": [
+        "zpaapplicationsegment.ApplicationSegmentResource"
+      ],
+      "total_fields": 56,
+      "classified_fields": 55,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 98.2,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 23
+        },
+        {
+          "class": "secret",
+          "count": 22
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 6
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: guest federation metadata contains partner and federation identifiers across tenant boundaries; no safe subset is currently projected, so it remains fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "guestDetails"
           ]
         }
       ]
@@ -497,43 +811,6 @@
       "ignored_by_reason": []
     },
     {
-      "product": "zpa",
-      "resource": "application-segments",
-      "sdk_types": [
-        "zpaapplicationsegment.ApplicationSegmentResource"
-      ],
-      "total_fields": 52,
-      "classified_fields": 52,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 22
-        },
-        {
-          "class": "secret",
-          "count": 22
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 4
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
       "product": "zia",
       "resource": "advanced-settings",
       "sdk_types": [
@@ -625,80 +902,6 @@
       "ignored_by_reason": []
     },
     {
-      "product": "zpa",
-      "resource": "inspection-app-segments",
-      "sdk_types": [
-        "zpaappsegmentinspection.AppSegmentInspection"
-      ],
-      "total_fields": 48,
-      "classified_fields": 48,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 25
-        },
-        {
-          "class": "secret",
-          "count": 16
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zpa",
-      "resource": "pra-app-segments",
-      "sdk_types": [
-        "zpaappsegmentpra.AppSegmentPRA"
-      ],
-      "total_fields": 48,
-      "classified_fields": 48,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 21
-        },
-        {
-          "class": "secret",
-          "count": 20
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 3
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
       "product": "zcc",
       "resource": "application-profiles",
       "sdk_types": [
@@ -773,13 +976,13 @@
       "ignored_by_reason": []
     },
     {
-      "product": "zpa",
-      "resource": "browser-access",
+      "product": "zia",
+      "resource": "url-filtering-rules",
       "sdk_types": [
-        "zpaappsegmentba.BrowserAccess"
+        "urlfilteringpolicies.URLFilteringRule"
       ],
-      "total_fields": 45,
-      "classified_fields": 45,
+      "total_fields": 44,
+      "classified_fields": 44,
       "ignored_fields": 0,
       "deliberate_fields": 0,
       "deferred_fields": 0,
@@ -792,11 +995,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 22
+          "count": 14
         },
         {
           "class": "secret",
-          "count": 16
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
@@ -804,7 +1007,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 25
         }
       ],
       "ignored_by_reason": []
@@ -842,80 +1045,6 @@
         {
           "class": "tenant_configuration",
           "count": 10
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "firewall-dns-rules",
-      "sdk_types": [
-        "firewalldnscontrolpolicies.FirewallDNSRules"
-      ],
-      "total_fields": 43,
-      "classified_fields": 43,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 13
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 5
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 23
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "url-filtering-rules",
-      "sdk_types": [
-        "urlfilteringpolicies.URLFilteringRule"
-      ],
-      "total_fields": 42,
-      "classified_fields": 42,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 14
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 23
         }
       ],
       "ignored_by_reason": []
@@ -1037,8 +1166,8 @@
       "sdk_types": [
         "cloudappcontrol.WebApplicationRules"
       ],
-      "total_fields": 39,
-      "classified_fields": 39,
+      "total_fields": 40,
+      "classified_fields": 40,
       "ignored_fields": 0,
       "deliberate_fields": 0,
       "deferred_fields": 0,
@@ -1052,43 +1181,6 @@
         {
           "class": "operational_metadata",
           "count": 17
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 21
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "firewall-filtering-rules",
-      "sdk_types": [
-        "filteringrules.FirewallFilteringRules"
-      ],
-      "total_fields": 39,
-      "classified_fields": 39,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 12
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -1303,39 +1395,6 @@
         {
           "class": "tenant_configuration",
           "count": 18
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "ssl-inspection-rules",
-      "sdk_types": [
-        "sslinspection.SSLInspectionRules"
-      ],
-      "total_fields": 32,
-      "classified_fields": 32,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 9
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 21
         }
       ],
       "ignored_by_reason": []

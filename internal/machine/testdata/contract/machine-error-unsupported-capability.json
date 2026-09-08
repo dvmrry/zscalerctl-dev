@@ -1,6 +1,6 @@
 {
   "kind": "unsupported_capability",
-  "message": "unsupported capability \"inventory.read\"",
+  "message": "unsupported capability",
   "operation": "list",
   "product": "zia",
   "resource": "locations"

@@ -1756,63 +1756,79 @@ func TestResourceListSupportsNDJSON(t *testing.T) {
 	}
 }
 
-func TestResourceListWarnsUnknownFilterKeyButKeepsStdoutClean(t *testing.T) {
+func TestResourceListRejectsUnknownFilterKeyBeforeReader(t *testing.T) {
 	t.Parallel()
 
-	reader := fakeResourceReader{
-		list: []resources.SourceRecord{
-			resources.NewSourceRecord(map[string]any{"id": "1", "name": "HQ"}),
-		},
-	}
 	var out, errOut bytes.Buffer
 	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
-		Reader:  reader,
+		Reader:  failingResourceReader{},
 		Catalog: filterWarningCatalog(),
 	})
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list", "--filter", "naem=HQ"})
-	if err != nil {
-		t.Fatalf("App.Run(list --filter unknown) error = %v, want nil", err)
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(list --filter unknown) error = %v, want ErrUsage", err)
 	}
-	if got := strings.TrimSpace(out.String()); got != "[]" {
-		t.Fatalf("App.Run(list --filter unknown) stdout = %q, want []", out.String())
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatalf("App.Run(list --filter unknown) output = stdout=%q stderr=%q, want empty", out.String(), errOut.String())
 	}
-	if strings.Contains(out.String(), "warning:") {
-		t.Errorf("App.Run(list --filter unknown) stdout = %q, want no warning", out.String())
-	}
-	wantWarning := `warning: --filter key "naem" is not a field of zia/locations`
-	if !strings.Contains(errOut.String(), wantWarning) {
-		t.Errorf("App.Run(list --filter unknown) stderr = %q, want %q", errOut.String(), wantWarning)
+	if !strings.Contains(err.Error(), `--filter: "naem" is not a field of zia/locations`) {
+		t.Errorf("App.Run(list --filter unknown) error = %q, want catalog diagnostic", err.Error())
 	}
 }
 
-func TestResourceListRedactsUnknownFilterKeyWarning(t *testing.T) {
+func TestResourceListRedactsUnknownFilterKeyUsageError(t *testing.T) {
 	t.Parallel()
 
 	const secretKey = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz"
-	reader := fakeResourceReader{
-		list: []resources.SourceRecord{
-			resources.NewSourceRecord(map[string]any{"id": "1", "name": "HQ"}),
-		},
-	}
 	var out, errOut bytes.Buffer
 	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
-		Reader:  reader,
+		Reader:  failingResourceReader{},
 		Catalog: filterWarningCatalog(),
 	})
 
 	err := app.Run(context.Background(), []string{"--format", "json", "zia", "locations", "list", "--filter", secretKey + "=HQ"})
-	if err != nil {
-		t.Fatalf("App.Run(list --filter secret-like unknown key) error = %v, want nil", err)
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(list --filter secret-like unknown key) error = %v, want ErrUsage", err)
 	}
-	if strings.Contains(errOut.String(), "abcdefghijklmnopqrstuvwxyz") {
-		t.Errorf("App.Run(list --filter secret-like unknown key) stderr = %q, want bearer token redacted", errOut.String())
+	if strings.Contains(err.Error(), "abcdefghijklmnopqrstuvwxyz") || strings.Contains(errOut.String(), "abcdefghijklmnopqrstuvwxyz") {
+		t.Errorf("App.Run(list --filter secret-like unknown key) error/output = %q/%q, want bearer token redacted", err.Error(), errOut.String())
 	}
-	if !strings.Contains(errOut.String(), "<REDACTED:SECRET>") {
-		t.Errorf("App.Run(list --filter secret-like unknown key) stderr = %q, want redaction marker", errOut.String())
+	if !strings.Contains(err.Error(), "<REDACTED:SECRET>") {
+		t.Errorf("App.Run(list --filter secret-like unknown key) error = %q, want redaction marker", err.Error())
 	}
-	if strings.Contains(out.String(), "warning:") {
-		t.Errorf("App.Run(list --filter secret-like unknown key) stdout = %q, want no warning", out.String())
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Errorf("App.Run(list --filter secret-like unknown key) output = stdout=%q stderr=%q, want empty", out.String(), errOut.String())
+	}
+}
+
+func TestResourceNarrowingPreflightRunsBeforeConfigAndReader(t *testing.T) {
+	t.Parallel()
+
+	// LoadEnv would try to read this path. A catalog-name usage error must win
+	// before config loading, so no secret file or reader is touched.
+	secretFile := filepath.Join(t.TempDir(), "secret-that-must-not-be-read")
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, []string{
+		config.EnvClientSecretFile + "=" + secretFile,
+	}, cli.Options{
+		Reader:  failingResourceReader{},
+		Catalog: filterWarningCatalog(),
+	})
+
+	err := app.Run(context.Background(), []string{
+		"--format", "json",
+		"--filter", "unknownField=HQ",
+		"zia", "locations", "list",
+	})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(unknown filter with unreadable secret file) error = %v, want ErrUsage", err)
+	}
+	if strings.Contains(err.Error(), secretFile) || strings.Contains(err.Error(), "secret-that-must-not-be-read") {
+		t.Fatalf("App.Run(unknown filter with unreadable secret file) error = %q, want catalog usage error", err.Error())
+	}
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatalf("App.Run(unknown filter with unreadable secret file) output = stdout=%q stderr=%q, want empty", out.String(), errOut.String())
 	}
 }
 

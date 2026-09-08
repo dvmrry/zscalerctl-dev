@@ -409,7 +409,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 		}
 		return nil, normalizeLiveError(ctx, "authenticate", product, "session", err)
 	}
-	client := sdkClient{services: fixedService{sdkService: service}}
+	client := sdkClient{services: fixedService{cfg: r.cfg, sdkService: service}}
 	return &SDKSession{
 		handlers: newResourceHandlers(client),
 		cleanup:  cleanup,
@@ -481,7 +481,7 @@ func listResource(
 	}
 	records, err := handler.List(ctx)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) {
+		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "list", product, name, err)
@@ -533,7 +533,7 @@ func showResource(
 		// Missing credentials are caught upstream at session creation, but keep
 		// the passthrough symmetric with listResource/getResource so a future
 		// per-call surfacing classifies as a credential error, not live access.
-		if errors.Is(err, ErrMissingCredentials) {
+		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
 			return resources.SourceRecord{}, err
 		}
 		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name, err)
@@ -898,65 +898,6 @@ func sdkProductStringGet[T any](
 	}
 }
 
-const (
-	zidentityPageLimit = 1000
-	zidentityMaxPages  = 1000
-)
-
-type zidentityPage[T any] struct {
-	records      []T
-	resultsTotal int
-	pageOffset   int
-	nextLink     string
-}
-
-func zidentityListAll[T any](ctx context.Context, service *zsdk.Service, endpoint string) ([]T, error) {
-	return readAllZidentityPages(ctx, func(ctx context.Context, offset, limit int) (zidentityPage[T], error) {
-		params := zidcommon.NewPaginationQueryParams(limit)
-		params.WithOffset(offset)
-		response, err := zidcommon.ReadPageWithPagination[T](ctx, service.Client, endpoint, &params)
-		if err != nil {
-			return zidentityPage[T]{}, err
-		}
-		return zidentityPage[T]{
-			records:      response.Records,
-			resultsTotal: response.ResultsTotal,
-			pageOffset:   response.PageOffset,
-			nextLink:     response.NextLink,
-		}, nil
-	})
-}
-
-func readAllZidentityPages[T any](
-	ctx context.Context,
-	readPage func(context.Context, int, int) (zidentityPage[T], error),
-) ([]T, error) {
-	var all []T
-	for pageNumber, offset := 0, 0; ; pageNumber++ {
-		if pageNumber >= zidentityMaxPages {
-			return nil, fmt.Errorf("zidentity pagination exceeded %d pages at offset %d", zidentityMaxPages, offset)
-		}
-		page, err := readPage(ctx, offset, zidentityPageLimit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch zidentity page at offset %d: %w", offset, err)
-		}
-		if pageNumber > 0 && page.pageOffset != offset {
-			return nil, fmt.Errorf("zidentity pagination did not advance: requested offset %d, response pageOffset %d", offset, page.pageOffset)
-		}
-		all = append(all, page.records...)
-		if len(page.records) == 0 {
-			return all, nil
-		}
-		if page.resultsTotal > 0 && len(all) >= page.resultsTotal {
-			return all, nil
-		}
-		if len(page.records) < zidentityPageLimit || page.nextLink == "" {
-			return all, nil
-		}
-		offset += len(page.records)
-	}
-}
-
 // zpaSDKList, zpaSDKShow, and zpaSDKStringGet are ZPA-specific adapters. The
 // ZPA SDK returns (T, *http.Response, error) while every other product's SDK
 // returns (T, error); these wrappers discard the unused *http.Response so the
@@ -1117,6 +1058,9 @@ func (s perCallService) service(ctx context.Context, product resources.Product) 
 		}
 		return s.legacyService(ctx)
 	}
+	if err := unsupportedOneAPIZidentityCloud(s.cfg, product); err != nil {
+		return nil, nil, err
+	}
 	if err := validateProductConfig(s.cfg, product); err != nil {
 		return nil, nil, err
 	}
@@ -1174,10 +1118,14 @@ func (s perCallService) legacyService(ctx context.Context) (*zsdk.Service, func(
 }
 
 type fixedService struct {
+	cfg        ReaderConfig
 	sdkService *zsdk.Service
 }
 
-func (s fixedService) service(ctx context.Context, _ resources.Product) (*zsdk.Service, func(), error) {
+func (s fixedService) service(ctx context.Context, product resources.Product) (*zsdk.Service, func(), error) {
+	if err := unsupportedOneAPIZidentityCloud(s.cfg, product); err != nil {
+		return nil, nil, err
+	}
 	if err := effectiveContext(ctx).Err(); err != nil {
 		return nil, nil, err
 	}
@@ -1186,6 +1134,28 @@ func (s fixedService) service(ctx context.Context, _ resources.Product) (*zsdk.S
 	}
 	// The dump session has already authenticated the shared OneAPI service.
 	return s.sdkService, func() {}, nil
+}
+
+// unsupportedOneAPIZidentityCloud keeps the OneAPI Zidentity admin path
+// fail-closed on government clouds. The SDK's government OAuth and product
+// API routes are reviewed, but its /admin/api/v1 host is still derived from
+// the vanity domain without a verified government admin origin. Do not create
+// a client for this product/cloud pair until that endpoint is established.
+func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product) error {
+	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI || product != resources.ProductZidentity {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Cloud)) {
+	case "gov", "govus":
+		return fmt.Errorf(
+			"%w: %s is unsupported for OneAPI cloud %q",
+			ErrUnsupportedResource,
+			product,
+			strings.ToLower(strings.TrimSpace(cfg.Cloud)),
+		)
+	default:
+		return nil
+	}
 }
 
 func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {
@@ -2039,6 +2009,8 @@ func urlFilteringRuleSourceRecord(rule urlfilteringpolicies.URLFilteringRule) re
 	addIDNameExtensionsSlice(fields, "users", rule.Users)
 	addIDNameExtensionsSlice(fields, "sourceIpGroups", rule.SourceIPGroups)
 	addIDNameExtensionsSlice(fields, "timeWindows", rule.TimeWindows)
+	addIDNameExtensionsSlice(fields, "httpHeaderProfiles", rule.HTTPHeaderProfiles)
+	addIDNameExtensionsSlice(fields, "httpHeaderActionProfiles", rule.HTTPHeaderActionProfiles)
 	addIDNameSlice(fields, "workloadGroups", rule.WorkloadGroups)
 	if rule.CBIProfile != nil {
 		fields["cbiProfile"] = cbiProfileSource(rule.CBIProfile)
@@ -2048,19 +2020,22 @@ func urlFilteringRuleSourceRecord(rule urlfilteringpolicies.URLFilteringRule) re
 
 func firewallFilteringRuleSourceRecord(rule filteringrules.FirewallFilteringRules) resources.SourceRecord {
 	fields := map[string]any{
-		"id":                  rule.ID,
-		"name":                rule.Name,
-		"order":               rule.Order,
-		"rank":                rule.Rank,
-		"accessControl":       rule.AccessControl,
-		"enableFullLogging":   rule.EnableFullLogging,
-		"action":              rule.Action,
-		"state":               rule.State,
-		"description":         rule.Description,
-		"lastModifiedTime":    rule.LastModifiedTime,
-		"excludeSrcCountries": rule.ExcludeSrcCountries,
-		"defaultRule":         rule.DefaultRule,
-		"predefined":          rule.Predefined,
+		"id":                           rule.ID,
+		"name":                         rule.Name,
+		"order":                        rule.Order,
+		"rank":                         rule.Rank,
+		"accessControl":                rule.AccessControl,
+		"enableFullLogging":            rule.EnableFullLogging,
+		"action":                       rule.Action,
+		"state":                        rule.State,
+		"description":                  rule.Description,
+		"lastModifiedTime":             rule.LastModifiedTime,
+		"excludeSrcCountries":          rule.ExcludeSrcCountries,
+		"defaultRule":                  rule.DefaultRule,
+		"predefined":                   rule.Predefined,
+		"excludeContextShieldEndPoint": rule.ExcludeContextShieldEndPoint,
+		"isEunEnabled":                 rule.IsEUNEnabled,
+		"eunTemplateId":                rule.EUNTemplateID,
 	}
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
 	addStringSlice(fields, "srcIps", rule.SrcIps)
@@ -3161,22 +3136,27 @@ func sandboxRuleSourceRecord(rule sandboxrules.SandboxRules) resources.SourceRec
 
 func firewallDNSRuleSourceRecord(rule firewalldnscontrolpolicies.FirewallDNSRules) resources.SourceRecord {
 	fields := map[string]any{
-		"id":                     rule.ID,
-		"name":                   rule.Name,
-		"order":                  rule.Order,
-		"rank":                   rule.Rank,
-		"accessControl":          rule.AccessControl,
-		"action":                 rule.Action,
-		"state":                  rule.State,
-		"description":            rule.Description,
-		"redirectIp":             rule.RedirectIP,
-		"blockResponseCode":      rule.BlockResponseCode,
-		"lastModifiedTime":       rule.LastModifiedTime,
-		"defaultRule":            rule.DefaultRule,
-		"capturePCAP":            rule.CapturePCAP,
-		"predefined":             rule.Predefined,
-		"isWebEunEnabled":        rule.IsWebEUNEnabled,
-		"defaultDnsRuleNameUsed": rule.DefaultDNSRuleNameUsed,
+		"id":                rule.ID,
+		"name":              rule.Name,
+		"order":             rule.Order,
+		"rank":              rule.Rank,
+		"accessControl":     rule.AccessControl,
+		"action":            rule.Action,
+		"state":             rule.State,
+		"description":       rule.Description,
+		"redirectIp":        rule.RedirectIP,
+		"blockResponseCode": rule.BlockResponseCode,
+		"lastModifiedTime":  rule.LastModifiedTime,
+		"defaultRule":       rule.DefaultRule,
+		"capturePCAP":       rule.CapturePCAP,
+		"predefined":        rule.Predefined,
+		// Preserve the historical output spelling alongside the v3.8.48 SDK key.
+		"isWebEunEnabled":              rule.IsWebEUNEnabled,
+		"isWebEUNEnabled":              rule.IsWebEUNEnabled,
+		"excludeContextShieldEndPoint": rule.ExcludeContextShieldEndPoint,
+		"isEunEnabled":                 rule.IsEUNEnabled,
+		"eunTemplateId":                rule.EUNTemplateID,
+		"defaultDnsRuleNameUsed":       rule.DefaultDNSRuleNameUsed,
 	}
 	addIDNameExtensionsPtr(fields, "lastModifiedBy", rule.LastModifiedBy)
 	addStringSlice(fields, "srcIps", rule.SrcIps)
@@ -3342,14 +3322,7 @@ func pacFileSourceRecord(file pacfiles.PACFileConfig) resources.SourceRecord {
 		"lastModificationTime":  file.LastModificationTime,
 		"createTime":            file.CreateTime,
 	}
-	if file.LastModifiedBy.ID != 0 || file.LastModifiedBy.Name != "" || file.LastModifiedBy.ExternalID != "" {
-		fields["lastModifiedBy"] = map[string]any{
-			"id":         file.LastModifiedBy.ID,
-			"name":       file.LastModifiedBy.Name,
-			"externalId": file.LastModifiedBy.ExternalID,
-			"extensions": file.LastModifiedBy.Extensions,
-		}
-	}
+	addIDNameExtensionsPtr(fields, "lastModifiedBy", file.LastModifiedBy)
 	return resources.NewSourceRecord(fields)
 }
 
@@ -3734,6 +3707,9 @@ func applicationSegmentSourceRecord(segment zpaapplicationsegment.ApplicationSeg
 		"tcpKeepAlive":              segment.TCPKeepAlive,
 		"useInDrMode":               segment.UseInDrMode,
 		"weightedLoadBalancing":     segment.WeightedLoadBalancing,
+		"hbrEnabled":                segment.HBREnabled,
+		"stickyEntity":              segment.StickyEntity,
+		"stickyGroup":               segment.StickyGroup,
 		"zscalerManaged":            segment.ZscalerManaged,
 	}
 	addStringSlice(fields, "domainNames", segment.DomainNames)
@@ -4741,6 +4717,9 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 			resource,
 			context.Canceled,
 		)
+	}
+	if errors.Is(err, ErrUnsupportedResource) {
+		return err
 	}
 	statusCode := sdkStatusCode(err)
 	// A get-by-ID that 404s means the ID does not exist — a distinct, scriptable

@@ -33,7 +33,7 @@ See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/
 
 Release archives for macOS, Linux, and Windows include checksums, CycloneDX SBOMs, and GitHub provenance attestations. See [docs/INSTALL.md](docs/INSTALL.md) for verification, credentials, proxy, completions, and platform notes.
 
-With Go 1.26.5 or newer (no checkout needed):
+With Go 1.26.6 or newer (no checkout needed):
 
 ```sh
 go install github.com/dvmrry/zscalerctl/cmd/zscalerctl@latest
@@ -72,9 +72,15 @@ zscalerctl dump --products zia --out ./scratch-live-dump
 zscalerctl diff ./scratch-live-dump-old ./scratch-live-dump-new --fail-on-drift
 ```
 
-Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to create or atomically replace a restricted regular file with one command's output; use `dump --out <dir>` for dump directories (the two are intentionally not combined). Dump refuses to overwrite by default; add `--force` only to replace an existing zscalerctl dump directory. Agents should inspect the structured `effects` in `zscalerctl --format json introspect` before authorizing local reads, writes, network access, or configured provider execution.
+Output defaults to `--format auto`: a terminal gets the human-readable `pretty` view, while a pipe, redirect, or `--output` file gets JSON, so automation is the default surface without a flag. Force it either way with `--format json` or `--format pretty` (or `--format table` for the tab-separated form). The `pretty` view is a styled overlay of the same sanitized data — it adds no fields and passes through the same redaction. Use `--output <path>` to create or replace a restricted regular file with one command's output; use `dump --out <dir>` for dump directories (the two are intentionally not combined). Dump refuses to overwrite by default; add `--force` only to replace an existing zscalerctl dump directory. Agents should inspect the structured `effects` in `zscalerctl --format json introspect` before authorizing local reads, writes, network access, or configured provider execution.
 
 The examples above are written for interactive use. Scripts and agents should pass `--format json` explicitly rather than rely on auto-detection — a PTY-based harness can read as a terminal and receive the `pretty` view. Dump directories and diff reports contain sanitized but still confidential tenant inventory; keep them in ignored scratch paths and do not paste payloads into tickets or chats. `diff` compares two dump directories you already collected; use cron, CI, or another external scheduler if you want recurring drift checks. The agent-oriented guide is in [AGENTS.md](AGENTS.md).
+
+For `--output`, publication uses a same-directory rename and is atomic on
+Unix. Windows does not have an atomic replacement guarantee; see
+[Go’s rename contract](https://pkg.go.dev/os#Rename). On Windows, file mode
+`0600` does not restrict ACLs: use an output directory whose ACL already limits
+access to the intended account. See [platform permissions](docs/INSTALL.md).
 
 ## Authentication
 
@@ -90,6 +96,10 @@ export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id>   # optional, ZPA micr
 ```
 
 ZIA legacy credentials are supported for ZIA resources. Legacy, profile, proxy, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Environment variables remain the highest-precedence configuration path; optional owner-only profiles are for local operator convenience. Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
+
+Zidentity on OneAPI `gov`/`govus` clouds is currently unsupported because the
+SDK's admin routing is not correct for those clouds. The CLI rejects those
+reads before authentication or API access. See [cloud limitations](docs/INSTALL.md#configure-credentials).
 
 ## Automation contract
 
@@ -112,11 +122,34 @@ Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`; mac
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
-List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Both apply to `list` operations only (anywhere else is a usage error, exit `2`) and run strictly after projection and redaction, so they can narrow but never widen the sanitized output — a dropped or secret field name simply matches nothing. No matches is success: exit `0` with an empty array/table.
+List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Filters and search apply to `list` only and run after projection and redaction. Unknown `--filter` or `--fields` names fail with usage exit `2` before configuration or credentials are loaded. A known field suppressed by redaction stays omitted or nonmatching; narrowing cannot widen the sanitized output. Discover exact names with `--format json schema list`. No matches is success with an empty result.
 
 ```sh
 zscalerctl zia locations list --filter country=US --filter name~branch
 ```
+
+For agents, use explicit JSON and bounded output when the installed binary
+advertises the page flags:
+
+```sh
+set -euo pipefail
+zscalerctl --format json --fields id,name --limit 20 --offset 0 zia locations list |
+  jq '{records, pagination}'
+```
+
+`--limit` must be positive; `--offset` must be nonnegative and requires
+`--limit`. They apply to JSON resource lists only. The opt-in envelope contains
+`records` and `pagination` with returned/matched counts, `has_more`,
+`next_offset`, and `collection_complete`. Without `--limit`, JSON lists remain
+arrays. Paging happens after complete collection and filtering; it limits
+rendered output, not API work or memory, and separate calls are not a stable
+snapshot. NDJSON likewise emits records after collection completes.
+
+Check `zscalerctl version` and `--format json introspect` before using a skill
+with an older binary. This checkout's updated skill and paging flags are not
+automatically present in a previously published release. The
+[agent workflow](docs/cli/agent-machine-workflow.md) includes targeted discovery,
+active-mode field validation, and compatible JSON summaries for older binaries.
 
 ## Security posture
 

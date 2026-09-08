@@ -6,7 +6,7 @@ and process effects. Commands that load configuration may read config or secret
 files. Live reads may execute an operator-configured `cmd:` provider or platform
 keyring helper before contacting Zscaler. `config init` writes a config file,
 `dump --out` writes a directory (and `--force` can replace a prior validated
-dump), and global `--output` creates or atomically replaces a regular file.
+dump), and global `--output` creates or replaces a regular file.
 Inspect the structured `effects` in `zscalerctl --format json introspect` before
 delegating commands to an agent.
 
@@ -67,8 +67,22 @@ For agent and automation workflows, start with
 
 ## Discover, don't guess
 
-Resource names are not guessable. Start agent read workflows with the
-config-free machine capability manifest:
+Resource names and newer flags are not guessable. Check the installed binary
+before relying on the installed skill:
+
+```sh
+zscalerctl version
+```
+
+The current development workflow has the config-free machine capability
+manifest and bounded JSON list pages. A public `v0.68.1` binary may predate
+`machine manifest` and `--limit/--offset`; if the manifest is unsupported,
+fall back to `introspect` and `schema list`, and do not pass flags those
+surfaces do not advertise. These checkout docs describe capabilities and do
+not imply that a distribution release has been published.
+
+Start a current agent read workflow with the config-free machine capability
+manifest:
 
 ```sh
 zscalerctl --format json machine manifest  # machine read capabilities; no config, credentials,
@@ -85,15 +99,92 @@ zscalerctl zia --help                      # syntax fallback only after discover
 surface map. Use `schema list` when you need catalog field metadata, and use
 help only as a syntax fallback.
 
-Then read with `list`, `get <id>`, or `show` (singletons):
+The manifest and catalog are large. Extract one resource rather than printing
+the complete documents:
 
 ```sh
-zscalerctl --format json zia locations list
-zscalerctl --format json zia locations get 12345
-zscalerctl --format json zia advanced-settings show
-zscalerctl dump --products zia --out ./scratch-live-dump   # sanitized whole-product export
-zscalerctl --format json diff ./old-dump ./new-dump        # compare two existing dumps
+set -euo pipefail
+PRODUCT=zia
+RESOURCE=locations
+zscalerctl --format json machine manifest |
+  jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" '
+    [ .capabilities[]
+      | select(.name == "resources.read"
+               and .input.product == $product
+               and .input.resource == $resource) ] as $matches
+    | if ($matches | length) != 1
+      then error("resource is not advertised by this binary")
+      else $matches[0]
+        | {resource: .input.resource, operations,
+           shape: .meta.shape, get_key: (.meta.get_key // null)}
+      end
+  '
+
+zscalerctl --format json schema list |
+  jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" --arg mode standard '
+    [ .[] | select(.product == $product and .name == $resource) ] as $matches
+    | if ($matches | length) != 1 then error("resource is not in the catalog")
+      else $matches[0]
+        | {product, name, operations, get_key,
+           fields: [.fields[]
+             | select(.classification != "secret")
+             | select(((.allowed_modes // []) | index($mode)) != null)
+             | (.json_name // .name)]}
+      end
+  '
 ```
+
+When the manifest command is unavailable, use the same exact product/resource
+selection against `introspect`:
+
+```sh
+zscalerctl --format json introspect |
+  jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" '
+    [ .commands[]
+      | select(.path == ($product + " " + $resource + " list")) ] as $matches
+    | if ($matches | length) != 1 then error("resource list is not advertised")
+      else $matches[0] | {path, inherited_flags, effects, output_fields}
+      end
+  '
+```
+
+The field query is a catalog preflight. Validate requested fields against the
+active mode's renderable names before a live call; a known field that the mode
+suppresses is accepted by the CLI but omitted. Secret fields never render.
+
+Then read with separate `list`, `get <id>`, or `show` commands (singletons):
+
+```sh
+zscalerctl --format json --timeout 30s zia locations list
+zscalerctl --format json --timeout 30s zia locations get 12345
+zscalerctl --format json --timeout 30s zia advanced-settings show
+zscalerctl dump --products zia --out ./scratch-live-dump
+zscalerctl --format json diff ./old-dump ./new-dump
+```
+
+If the task already supplies a valid ID, use `get` directly. For a list
+result, select a small field set and prefer a bounded JSON page when
+`introspect` advertises `--limit` and `--offset`:
+
+```sh
+set -euo pipefail
+zscalerctl --format json --timeout 30s --fields id,name \
+  --filter 'name~hq' --limit 20 --offset 0 zia locations list |
+  jq -e '{matched_count: .pagination.matched_count,
+          returned_count: .pagination.returned_count,
+          sample: .records, has_more: .pagination.has_more,
+          next_offset: .pagination.next_offset,
+          collection_complete: .pagination.collection_complete}'
+```
+
+`--limit N` is positive and `--offset K` is nonnegative and requires
+`--limit`. They apply to JSON resource `list` only. A page is cut from one
+complete projected/filtered collection, so `collection_complete` is true on
+success; each invocation recollects and offsets do not provide a cross-call
+snapshot. `matched_count` is after projection, redaction, and local filters.
+This output bound does not reduce API calls or collection memory. If page flags
+are unavailable, keep the complete array but pipe it to a count/sample summary
+instead of emitting a bare large list.
 
 A whole-tenant `dump` can run for minutes. Add `--log-level info` to follow it
 on stderr: it emits a start event with the selected resource count, one event
@@ -130,9 +221,10 @@ environment, provider choice, and platform are reviewed and pinned.
 ## Parse output, not prose
 
 - Piped/redirected output is always deterministic JSON (`--format auto` is
-  the default; force with `--format json`). For streaming a large `list` into a
-  pipeline, `--format ndjson` emits one compact record per line (`jq -c`, SIEM
-  ingest); it applies to resource `list`/`get`/`show` only.
+  the default; force with `--format json`). For a complete record stream,
+  `--format ndjson` emits one compact record per line (`jq -c`, SIEM
+  ingest); it applies to resource `list`/`get`/`show` only, after
+  collection and projection have completed.
 - Do not parse `pretty` or `table` output in automation; those are human
   presentation formats.
 - Failures emit a JSON envelope on stderr:
@@ -141,17 +233,31 @@ environment, provider choice, and platform are reviewed and pinned.
   `3` credentials missing/invalid, `4` not found/unsupported (including a
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
   `7` drift detected when `diff --fail-on-drift` is used.
-- Narrow output with `--fields a,b,c` (can only narrow, never widen).
+- Narrow resource `list`, `get`, and `show` output with
+  `--fields a,b,c` (can only narrow, never widen). For a JSON resource
+  `list`, `--limit N` emits a bounded `records`/`pagination` page and
+  requires positive N; `--offset K` is nonnegative and requires `--limit`.
+  These flags are list-only, JSON-only output views over a complete collected
+  result. They do not reduce API calls or memory, and each invocation has no
+  cross-call snapshot.
 - Prefer stdout for agent reads. `--output PATH` is a local filesystem write
-  that creates or atomically replaces a restricted regular file; use it only
+  that creates or replaces a restricted regular file; use it only
   when that side effect is explicitly intended. It is not valid with `dump`.
-- Bound each call with `--timeout 30s` — it caps each HTTP request (not the
-  whole run), so a slow or unreachable tenant can't hang you indefinitely.
+  Publication uses a same-directory rename and is atomic on Unix; Windows
+  does not have an atomic replacement guarantee. On Windows, mode `0600`
+  does not restrict ACLs; choose a destination directory with an appropriately
+  restricted ACL.
+- Bound each request with `--timeout 30s` — it caps each HTTP request, not the
+  whole list or dump run. Use a separate process/orchestrator deadline when
+  the total operation must be bounded.
 
 ## Narrowing results
 
 `list` operations narrow in-process (no `jq` needed); field names come from
-`schema list`:
+`schema list`. Unknown `--filter` and `--fields` names are usage errors (exit
+2) before configuration or live reads. A known field omitted by projection or
+redaction is simply unavailable: it cannot be recovered and does not match a
+filter. An absent field is not false, empty, or unconfigured.
 
 ```sh
 zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive
@@ -159,13 +265,24 @@ zscalerctl zia locations list --filter country=US --filter name~hq  # exact + AN
 zscalerctl zia locations list --search branch                       # any rendered field value
 ```
 
-Both run after projection/redaction (narrow only, never widen; a secret or
-dropped field name matches nothing) and an empty match is exit `0` with `[]`.
-For richer queries, filter the JSON with `jq`:
+Filters and search run after projection/redaction (narrow only, never widen;
+a secret or dropped field name matches nothing), and an empty match is exit
+`0` with `[]`. For richer queries, filter the JSON with `jq`:
 
 ```sh
-zscalerctl zia url-filtering-rules list | jq '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
+set -euo pipefail
+zscalerctl --format json zia url-filtering-rules list |
+  jq -e '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
 ```
+
+When using a bounded page, inspect `pagination.matched_count`,
+`returned_count`, `has_more`, `next_offset`, and
+`collection_complete` before interpreting `records`. Do not treat a page as a
+tenant snapshot.
+
+For NDJSON, remember that `head` does not avoid the full collection. Use a
+nullable-field guard in downstream predicates, such as
+`select((.name // "") | test("hq"; "i"))`.
 
 ## Boundaries
 

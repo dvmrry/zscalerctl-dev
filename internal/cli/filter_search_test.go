@@ -189,8 +189,9 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		args []string
+		name      string
+		args      []string
+		wantUsage bool
 	}{
 		{
 			name: "exact filter on secret field",
@@ -202,7 +203,7 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 		},
 		{
 			name: "filter on unmodeled field",
-			args: []string{"--filter", "notAField~anything"},
+			args: []string{"--filter", "notAField~anything"}, wantUsage: true,
 		},
 		{
 			name: "search for secret value",
@@ -215,10 +216,27 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 			t.Parallel()
 
 			var out, errOut bytes.Buffer
-			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: filterFixtureReader()})
+			reader := cli.ResourceReader(filterFixtureReader())
+			if tt.wantUsage {
+				// The catalog preflight must reject the name before any reader
+				// method is reached; this reader makes a late validation a test
+				// failure rather than a silent success.
+				reader = failingResourceReader{}
+			}
+			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
 			args := append([]string{"--format", "json"}, tt.args...)
 			args = append(args, "zia", "locations", "list")
-			if err := app.Run(context.Background(), args); err != nil {
+			err := app.Run(context.Background(), args)
+			if tt.wantUsage {
+				if !errors.Is(err, cli.ErrUsage) {
+					t.Fatalf("App.Run(%v) error = %v, want ErrUsage", args, err)
+				}
+				if out.Len() != 0 || errOut.Len() != 0 {
+					t.Fatalf("App.Run(%v) output = stdout=%q stderr=%q, want empty", args, out.String(), errOut.String())
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 			}
 			if got := strings.TrimSpace(out.String()); got != "[]" {

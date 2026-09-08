@@ -4,15 +4,17 @@ zscalerctl CLI surface map
   read-only: true
   schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json
 
-Global flags (13):
+Global flags (15):
   --color (string, default "auto")  color output: auto, always, never
   --config (string)  config file path
   --fields (string)  comma-separated output fields to keep (narrows the sanitized output)
   --filter (stringArray)  narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
   --format (string, default "auto")  output format: auto, table, json, ndjson, pretty
+  --limit (int, default "0")  bound a list result to a JSON page of this many records
   --log-level (string, default "off")  diagnostic logging to stderr: off, error, warn, info, debug
   --no-cache (bool, default "false")  bypass API cache where supported
   --no-color (bool, default "false")  disable color output
+  --offset (int, default "0")  skip this many records in a bounded JSON list page (requires --limit)
   --output (string)  create or replace an output file (not valid with dump)
   --profile (string)  profile name
   --redaction (string)  redaction mode: standard, share, paranoid

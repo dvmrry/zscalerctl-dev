@@ -262,6 +262,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 		// error (exit 2) BEFORE the bare-help fallback, so "--filter x" /
 		// "--search x" / "--fields x" with no command is rejected rather than
 		// silently turned into a help display.
+		if err := validatePaginationInvocation(opts, rest, a.resourceCatalog()); err != nil {
+			return err
+		}
 		if name := opts.narrowingFlag(); name != "" {
 			return UsageError{Message: fmt.Sprintf("%s applies to list operations only; use it with \"<product> <resource> list\"", name)}
 		}
@@ -291,6 +294,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	// the dispatch's more specific swallowed-product hint.
 	if len(opts.fields) > 0 && isKnownCommand(rest[0], a.resourceCatalog()) && !isResourceReadInvocation(rest, a.resourceCatalog()) {
 		return UsageError{Message: "--fields applies to resource read operations only; use it with \"<product> <resource> list|get|show\""}
+	}
+	if err := validatePaginationInvocation(opts, rest, a.resourceCatalog()); err != nil {
+		return err
 	}
 	// completion does not produce a record stream, so --format ndjson is rejected
 	// here, before execCobra. This check must come
@@ -341,7 +347,11 @@ type globalOptions struct {
 	profile            string
 	configPath         string
 	format             output.Format
+	limit              int
+	limitSet           bool
 	output             string
+	offset             int
+	offsetSet          bool
 	timeout            time.Duration
 	redaction          redact.Mode
 	redactionSet       bool
@@ -412,7 +422,7 @@ func parseFilterExpr(raw string) (recordFilter, error) {
 func parseGlobal(args []string) (globalOptions, []string, error) {
 	fs := flag.NewFlagSet("zscalerctl", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	// All 13 global flags are registered via defineGlobalFlags (globalflags.go),
+	// All global flags are registered via defineGlobalFlags (globalflags.go),
 	// which derives from globalFlagDefs — the single source of truth. The drift
 	// test calls defineGlobalFlags on a fresh flag.FlagSet to enumerate canonical
 	// names/types; any flag added here must be added to globalFlagDefs first.
@@ -421,7 +431,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	profile := gp.profile
 	configPath := gp.configPath
 	format := gp.format
+	limit := gp.limit
 	outputPath := gp.outputPath
+	offset := gp.offset
 	timeout := gp.timeout
 	redactionFlag := gp.redaction
 	noCache := gp.noCache
@@ -437,6 +449,15 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
 	}
+	var limitSet, offsetSet bool
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "limit":
+			limitSet = true
+		case "offset":
+			offsetSet = true
+		}
+	})
 	parsedFormat, err := output.ParseFormat(*format)
 	if err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
@@ -475,7 +496,11 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		profile:            *profile,
 		configPath:         *configPath,
 		format:             parsedFormat,
+		limit:              *limit,
+		limitSet:           limitSet,
 		output:             *outputPath,
+		offset:             *offset,
+		offsetSet:          offsetSet,
 		timeout:            *timeout,
 		redaction:          parsedRedaction,
 		redactionSet:       redactionSet,
@@ -805,13 +830,6 @@ func (a *App) runProduct(ctx context.Context, cfg config.Config, opts globalOpti
 	if err != nil {
 		return err
 	}
-	if op == "list" {
-		errW := redact.NewWriter(a.err, cfg.Defaults.Redaction)
-		warnUnknownFilterKeys(errW, spec, opts.filters)
-		if err := errW.Close(); err != nil {
-			return err
-		}
-	}
 	renderOpts := opts
 	// The machine/core path has already applied row narrowing. The render path
 	// only keeps fields for text-format presentation order.
@@ -944,16 +962,28 @@ func writeOutputFile(path string, body []byte) error {
 	if strings.TrimSpace(path) == "" {
 		return UsageError{Message: "--output requires a path"}
 	}
-	// Refuse to write through a symlink (keep the no-follow posture), but allow
-	// overwriting a regular file so re-running a pipeline to the same path works.
-	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("write --output: %s is a symlink", path)
+	// Refuse to write through a symlink or replace a non-regular destination,
+	// while allowing an existing regular file to be overwritten. Lstat keeps the
+	// check itself from following a symlink; missing destinations are created by
+	// the same-directory temporary file below.
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return UsageError{Message: fmt.Sprintf("write --output: %s is a symlink", path)}
+		}
+		if !info.Mode().IsRegular() {
+			return UsageError{Message: fmt.Sprintf("write --output: %s is not a regular file", path)}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return UsageError{Message: fmt.Sprintf("--output: cannot inspect %s: %v", path, pathErrorReason(err))}
 	}
-	// Write to a temp file in the same directory, fsync it, then atomically
-	// rename it over the destination, so an interrupted write never leaves a
-	// truncated file at the final path. Overwriting an existing regular file is
-	// still allowed (rename replaces it) so re-running a pipeline to the same
-	// path works; rename targets the path itself, never through a symlink.
+	// On Unix, write to a temp file in the same directory, fsync it, then
+	// atomically rename it over the destination, so an interrupted write never
+	// leaves a truncated file at the final path. Overwriting an existing regular
+	// file is still allowed (rename replaces it) so re-running a pipeline to the
+	// same path works; rename targets the path itself, never through a symlink.
+	// On platforms where os.Rename does not provide replacement/atomicity
+	// guarantees (notably Windows), this same-directory temp file does not claim
+	// atomic replacement.
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
 	if err != nil {
 		// The destination is a user-supplied argument, so an unwritable or

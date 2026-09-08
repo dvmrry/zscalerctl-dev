@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
@@ -331,6 +332,60 @@ func getZIAURLFilteringRulesAllPages(ctx context.Context, service *zsdk.Service)
 	})
 }
 
+// getZIAURLFilteringRule reads one URL filtering rule directly and enriches
+// ISOLATE rules whose detail response has the known omitted cbiProfile object.
+// The SDK's Get helper performs this enrichment through its own GetAll call;
+// keeping the workaround here reuses the bounded list adapter instead.
+func getZIAURLFilteringRule(
+	ctx context.Context,
+	service *zsdk.Service,
+	id int,
+) (*urlfilteringpolicies.URLFilteringRule, error) {
+	var rule urlfilteringpolicies.URLFilteringRule
+	if err := service.Client.Read(ctx, fmt.Sprintf("/zia/api/v1/urlFilteringRules/%d", id), &rule); err != nil {
+		return nil, err
+	}
+
+	// The API omission is specific to ISOLATE rules that identify a profile.
+	// Leave all other detail responses on the direct-read path, including an
+	// ISOLATE response that legitimately has no profile ID to enrich.
+	if rule.Action != "ISOLATE" || rule.CBIProfile != nil || rule.CBIProfileID == 0 {
+		return &rule, nil
+	}
+
+	rules, err := getZIAURLFilteringRulesAllPages(ctx, service)
+	if err != nil {
+		return nil, fmt.Errorf("enrich zia url-filtering rule %d cbiProfile: %w", id, err)
+	}
+	for index := range rules {
+		if rules[index].ID != id {
+			continue
+		}
+		if rules[index].CBIProfile == nil {
+			return nil, fmt.Errorf(
+				"enrich zia url-filtering rule %d cbiProfile: list response omitted profile ID %d",
+				id,
+				rule.CBIProfileID,
+			)
+		}
+		profileID, parseErr := strconv.Atoi(strings.TrimSpace(rules[index].CBIProfile.ID))
+		if parseErr != nil || profileID != rule.CBIProfileID {
+			return nil, fmt.Errorf(
+				"enrich zia url-filtering rule %d cbiProfile: list profile ID does not match detail cbiProfileId %d",
+				id,
+				rule.CBIProfileID,
+			)
+		}
+		rule.CBIProfile = rules[index].CBIProfile
+		return &rule, nil
+	}
+
+	return nil, fmt.Errorf(
+		"enrich zia url-filtering rule %d cbiProfile: list response omitted rule",
+		id,
+	)
+}
+
 // getZIAURLCategoriesAll reads /zia/api/v1/urlCategories. This endpoint does not
 // paginate (the SDK's GetAll issues a single Read), so it follows the
 // networkApplications pattern instead of ziaPaginate: read one large bounded
@@ -447,7 +502,7 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 				return getZIAURLFilteringRulesAllPages(ctx, service)
 			}),
 			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*urlfilteringpolicies.URLFilteringRule, error) {
-				return urlfilteringpolicies.Get(ctx, service, id)
+				return getZIAURLFilteringRule(ctx, service, id)
 			}),
 			urlFilteringRuleSourceRecord,
 		),
@@ -1365,6 +1420,7 @@ func cloudAppControlSourceRecord(rule cloudappcontrol.WebApplicationRules) resou
 		"cascadingEnabled":     rule.CascadingEnabled,
 		"accessControl":        rule.AccessControl,
 		"numberOfApplications": rule.NumberOfApplications,
+		"promptCaptureEnabled": rule.PromptCaptureEnabled,
 		"eunEnabled":           rule.EunEnabled,
 		"eunTemplateId":        rule.EunTemplateID,
 		"browserEunTemplateId": rule.BrowserEunTemplateID,

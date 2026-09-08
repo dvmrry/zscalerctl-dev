@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -66,13 +65,11 @@ func (a *App) writeProjectedRecords(
 	if err != nil {
 		return err
 	}
-	errW := redact.NewWriter(a.err, cfg.Defaults.Redaction)
-	warnUnknownFilterKeys(errW, spec, opts.filters)
-	if err := errW.Close(); err != nil {
-		return err
-	}
 	switch opts.format {
 	case output.FormatJSON:
+		if opts.limitSet {
+			return a.renderer(cfg, opts).WriteJSON(a.out, newListPage(records, opts.offset, opts.limit))
+		}
 		return a.renderer(cfg, opts).WriteJSON(a.out, records)
 	case output.FormatNDJSON:
 		return a.renderer(cfg, opts).WriteNDJSON(a.out, safeJSONRecords(records))
@@ -82,27 +79,6 @@ func (a *App) writeProjectedRecords(
 		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsPretty(fields, records, a.style(opts)))
 	default:
 		return fmt.Errorf("unhandled output format %q for resource list", opts.format)
-	}
-}
-
-func warnUnknownFilterKeys(w io.Writer, spec resources.ResourceSpec, filters []recordFilter) {
-	if len(filters) == 0 {
-		return
-	}
-	catalog := make(map[string]struct{}, len(spec.Fields))
-	for _, field := range spec.Fields {
-		catalog[field.JSONField()] = struct{}{}
-	}
-	warned := make(map[string]struct{}, len(filters))
-	for _, filter := range filters {
-		if _, ok := catalog[filter.key]; ok {
-			continue
-		}
-		if _, ok := warned[filter.key]; ok {
-			continue
-		}
-		warned[filter.key] = struct{}{}
-		fmt.Fprintf(w, "warning: --filter key %q is not a field of %s/%s\n", filter.key, spec.Product, spec.Name)
 	}
 }
 

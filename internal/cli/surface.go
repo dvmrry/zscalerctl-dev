@@ -18,7 +18,7 @@ package cli
 
 // completionFlags is the list of global flag tokens (with "--" prefix) exposed
 // to shell completion, the man-page drift gate, and the agent-docs drift gate.
-// It is derived from globalFlagDefs so it always matches the canonical 13 globals.
+// It is derived from globalFlagDefs so it always matches the canonical globals.
 var completionFlags = func() []string {
 	flags := make([]string, 0, len(globalFlagDefs))
 	for _, d := range globalFlagDefs {

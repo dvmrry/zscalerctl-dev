@@ -15,6 +15,14 @@ import (
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 )
 
+var errZPAPageFingerprint = errors.New("cannot fingerprint zpa page")
+
+type zpaPageFingerprintErrorRecord struct{}
+
+func (zpaPageFingerprintErrorRecord) MarshalJSON() ([]byte, error) {
+	return nil, errZPAPageFingerprint
+}
+
 func TestParseZPATotalPages(t *testing.T) {
 	t.Parallel()
 
@@ -150,6 +158,49 @@ func TestZPAPaginateRejectsRepeatedPage(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("zpaPaginate(repeated page) result = %v, want nil", got)
+	}
+}
+
+func TestZPAPaginateRejectsRepeatedNonAdjacentPage(t *testing.T) {
+	t.Parallel()
+
+	pages := [][]int{{1}, {2}, {1}}
+	calls := 0
+	got, _, err := zpaPaginate(context.Background(), func(_ context.Context, pageNumber, _ int) (zpaPage[int], error) {
+		if pageNumber < 1 || pageNumber > len(pages) {
+			t.Fatalf("zpaPaginate(non-adjacent repeated page) requested page %d, want 1 through %d", pageNumber, len(pages))
+		}
+		calls++
+		return zpaPage[int]{
+			records:    pages[pageNumber-1],
+			totalPages: len(pages),
+		}, nil
+	})
+	if err == nil {
+		t.Fatal("zpaPaginate(non-adjacent repeated page) error = nil, want error")
+	}
+	if got != nil {
+		t.Errorf("zpaPaginate(non-adjacent repeated page) result = %v, want nil", got)
+	}
+	if calls != len(pages) {
+		t.Errorf("zpaPaginate(non-adjacent repeated page) calls = %d, want %d", calls, len(pages))
+	}
+}
+
+func TestZPAPaginatePropagatesPageFingerprintMarshalError(t *testing.T) {
+	t.Parallel()
+
+	got, _, err := zpaPaginate(context.Background(), func(_ context.Context, _, _ int) (zpaPage[zpaPageFingerprintErrorRecord], error) {
+		return zpaPage[zpaPageFingerprintErrorRecord]{
+			records:    []zpaPageFingerprintErrorRecord{{}},
+			totalPages: 1,
+		}, nil
+	})
+	if !errors.Is(err, errZPAPageFingerprint) {
+		t.Fatalf("zpaPaginate(page fingerprint marshal error) error = %v, want %v", err, errZPAPageFingerprint)
+	}
+	if got != nil {
+		t.Errorf("zpaPaginate(page fingerprint marshal error) result = %v, want nil", got)
 	}
 }
 

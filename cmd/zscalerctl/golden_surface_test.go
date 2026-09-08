@@ -550,6 +550,39 @@ func TestGoldenSurface(t *testing.T) {
 			wantCode: 0,
 			note:     "table-resource-list-shape",
 		},
+		{
+			name:     "zia-locations-list-json",
+			args:     []string{"--format", "json", "zia", "locations", "list", "--fields", "id,name"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "complete-list-array-contract",
+		},
+		{
+			name:     "zia-locations-list-page-json",
+			args:     []string{"--format", "json", "zia", "locations", "list", "--fields", "id,name", "--limit", "1"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "bounded-list-continuation-contract",
+		},
+		{
+			name:     "zia-locations-list-last-page-json",
+			args:     []string{"--format", "json", "zia", "locations", "list", "--fields", "id,name", "--limit", "1", "--offset", "1"},
+			fixture:  goldenSurfaceReadFixture,
+			wantCode: 0,
+			note:     "bounded-list-terminal-contract",
+		},
+		{
+			name:     "zia-locations-list-unknown-filter-json",
+			args:     []string{"--format", "json", "zia", "locations", "list", "--filter", "naem=HQ"},
+			wantCode: 2,
+			note:     "unknown-filter-before-credentials",
+		},
+		{
+			name:     "zia-locations-list-unknown-field-json",
+			args:     []string{"--format", "json", "zia", "locations", "list", "--fields", "naem"},
+			wantCode: 2,
+			note:     "unknown-field-before-credentials",
+		},
 		// ── resource get (offline fixture → pretty success) ─────────────────────
 		{
 			name:     "zia-locations-get-pretty",

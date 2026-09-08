@@ -695,6 +695,11 @@ func machineRouteFields() []resources.FieldSpec {
 			Classification: resources.ClassTenantConfig,
 			AllowedModes:   allModes,
 		},
+		{
+			Name:           "country",
+			Classification: resources.ClassTenantConfig,
+			AllowedModes:   allModes,
+		},
 	}
 }
 

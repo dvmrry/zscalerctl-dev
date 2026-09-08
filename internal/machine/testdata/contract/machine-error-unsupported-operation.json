@@ -1,6 +1,6 @@
 {
   "kind": "unsupported_operation",
-  "message": "unsupported operation \"delete\" for resources.read",
+  "message": "unsupported operation for resources.read",
   "operation": "delete",
   "product": "zia",
   "resource": "locations"

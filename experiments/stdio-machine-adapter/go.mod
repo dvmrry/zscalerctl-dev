@@ -1,6 +1,6 @@
 module github.com/dvmrry/zscalerctl/experiments/stdio-machine-adapter
 
-go 1.26.5
+go 1.26.6
 
 require github.com/dvmrry/zscalerctl v0.0.0
 

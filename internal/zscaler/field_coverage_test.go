@@ -532,6 +532,10 @@ func renderFieldCoverageMarkdown(report fieldCoverageReport) []byte {
 	b.WriteString("definitions and the fail-closed output rules. The machine-readable companion\n")
 	b.WriteString("[field-coverage.json](field-coverage.json) lists every ignored field name and\n")
 	b.WriteString("its reason, which feeds field-expansion planning.\n\n")
+	b.WriteString("The ZIA `firewall-dns-rules` resource preserves the historical output key\n")
+	b.WriteString("`isWebEunEnabled` alongside the SDK v3.8.48 spelling `isWebEUNEnabled`; both\n")
+	b.WriteString("keys expose the same read-only flag. The compatibility alias is intentionally\n")
+	b.WriteString("not counted as a second SDK field in the coverage totals.\n\n")
 
 	b.WriteString("## Ignored Fields Are Decided, Not Vague\n\n")
 	b.WriteString("Every ignore reason must begin with one of two prefixes, so each ignored\n")
