@@ -726,6 +726,36 @@ func TestGoldenSurface(t *testing.T) {
 			note:     "bare-parent-usage-error",
 		},
 		// ── schema command group ─────────────────────────────────────────────────
+		{
+			name:     "schema-describe-json",
+			args:     []string{"--format", "json", "schema", "describe", "zia", "rule-labels"},
+			wantCode: 0,
+			note:     "candidate-semantics-contract",
+		},
+		{
+			name:     "schema-describe-unknown",
+			args:     []string{"--format", "json", "schema", "describe", "zia", "missing"},
+			wantCode: 4,
+			note:     "unknown-resource",
+		},
+		{
+			name:     "schema-describe-ndjson",
+			args:     []string{"--format", "ndjson", "schema", "describe", "zia", "locations"},
+			wantCode: 2,
+			note:     "single-document-format",
+		},
+		{
+			name:     "from-dump-locations-page",
+			args:     []string{"--format", "json", "--from-dump", filepath.Join("..", "..", "evals", "agent-workflows", "fixtures", "dumps", "synthetic-small"), "--fields", "id,name", "--limit", "1", "zia", "locations", "list"},
+			wantCode: 0,
+			note:     "offline-saved-page",
+		},
+		{
+			name:     "from-dump-scope-rejected",
+			args:     []string{"--format", "json", "--from-dump", "unused", "version"},
+			wantCode: 2,
+			note:     "saved-source-resource-reads-only",
+		},
 		// schema --help: Cobra parent help.
 		{
 			name:     "schema-help",

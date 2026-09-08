@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "schema describe does not support ndjson output yet"
+  }
+}

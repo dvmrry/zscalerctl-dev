@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "not_found",
+    "message": "not found: resource is not in the catalog; use schema list"
+  }
+}

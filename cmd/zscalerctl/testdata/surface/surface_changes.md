@@ -114,3 +114,23 @@ Windows retains replacement support without that guarantee.
 | Catalog-derived resource help and field metadata | SDK v3.8.38 reviewed fields | SDK v3.8.48 fields are explicitly classified or excluded, with updated coverage artifacts | Keep the documented projection contract aligned with the reviewed SDK and custom adapters. | `catalog-fields` |
 | `zia-locations-list-json`, `zia-locations-list-page-json`, `zia-locations-list-last-page-json` | No process-boundary fixtures for these shapes | Freeze default array and first/final page envelopes using the existing offline resource fixture | Protect default compatibility and continuation/null semantics at the CLI boundary. | `new-fixture` |
 | `zia-locations-list-unknown-filter-json`, `zia-locations-list-unknown-field-json` | No credential-free process-boundary fixtures for catalog typos | Freeze JSON usage errors with exit 2 and empty stdout | Assert invalid field requests fail before the hermetic binary needs credentials. | `new-fixture` |
+
+## 2026-09-08: saved collection and semantics foundation
+
+- Add global `--from-dump DIR` for ordinary resource list/get/show reads from a
+  validated complete local artifact. Global flag inventory grows from 15 to 16;
+  inherited help/completion documents the flag. Live resource command effects
+  remain conservative; supported saved reads advertise the conditional local
+  filesystem read. The flag does not change the default source or existing JSON
+  record/page shapes.
+- Add config-free `schema describe <product> <resource>` and extend schema parent
+  help/usage. The candidate versioned document describes selected fields of three
+  reviewed ZIA resources; existing catalog/manifest serialization is unchanged.
+  New process goldens cover JSON semantics, unknown-resource exit 4, NDJSON
+  refusal exit 2, an offline saved list page, and invalid saved-source scope.
+- Regeneration: `make gen-cli-docs` and
+  `go test ./cmd/zscalerctl -run 'TestGoldenSurface|TestCommandTreeInventory' -update`.
+  Existing exit-code assertions are retained; new assertions are explicit in Go.
+- Invalid numeric tokens in saved resources and diff inputs now use a value-free
+  diagnostic instead of echoing the token from a floating-point parser error.
+  Error envelope shapes and invalid-dump classifications are unchanged.

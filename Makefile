@@ -18,6 +18,7 @@ fmt-check:
 
 test:
 	go test -mod=vendor ./...
+	python3 -B -m unittest discover -s evals/agent-workflows -p 'test_*.py'
 
 race:
 	go test -race -mod=vendor ./...

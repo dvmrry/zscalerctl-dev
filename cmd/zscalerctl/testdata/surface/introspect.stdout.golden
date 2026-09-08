@@ -44,6 +44,11 @@
       ]
     },
     {
+      "name": "from-dump",
+      "type": "string",
+      "usage": "read resource data from a saved sanitized dump directory"
+    },
+    {
       "name": "limit",
       "type": "int",
       "default": "0",
@@ -136,6 +141,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -175,6 +181,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -210,6 +217,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -252,6 +260,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -294,6 +303,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -336,6 +346,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -378,6 +389,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -413,6 +425,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -468,6 +481,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -507,6 +521,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -582,6 +597,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -621,6 +637,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -705,6 +722,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -741,6 +759,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -776,6 +795,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -811,6 +831,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -847,6 +868,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -882,6 +904,44 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
+        "limit",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "offset",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
+      "path": "schema describe",
+      "short": "describe reviewed field semantics for one resource (config-free pilot)",
+      "aliases": [],
+      "hidden": false,
+      "mutating": true,
+      "effects": [
+        {
+          "kind": "local_filesystem_write",
+          "when": "flag_set",
+          "flag": "output"
+        }
+      ],
+      "args": {
+        "policy": "exact",
+        "n": 2
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -921,6 +981,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -956,6 +1017,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -978,6 +1040,11 @@
         {
           "kind": "local_filesystem_read",
           "when": "configuration_dependent"
+        },
+        {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
         },
         {
           "kind": "local_filesystem_write",
@@ -1003,6 +1070,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1028,6 +1096,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1051,6 +1124,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1076,6 +1150,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1099,6 +1178,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1124,6 +1204,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1147,6 +1232,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1172,6 +1258,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1195,6 +1286,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1220,6 +1312,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1243,6 +1340,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1268,6 +1366,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1291,6 +1394,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1316,6 +1420,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1339,6 +1448,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1364,6 +1474,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1387,6 +1502,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1412,6 +1528,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1435,6 +1556,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1460,6 +1582,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1483,6 +1610,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1508,6 +1636,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1531,6 +1664,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1556,6 +1690,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1580,6 +1719,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1605,6 +1745,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1628,6 +1773,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1653,6 +1799,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1677,6 +1828,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1702,6 +1854,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1725,6 +1882,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1750,6 +1908,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1774,6 +1937,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1799,6 +1963,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1822,6 +1991,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1847,6 +2017,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1870,6 +2045,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1895,6 +2071,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1919,6 +2100,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1944,6 +2126,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -1967,6 +2154,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -1992,6 +2180,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2016,6 +2209,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2041,6 +2235,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2064,6 +2263,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2089,6 +2289,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2113,6 +2318,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2138,6 +2344,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2161,6 +2372,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2186,6 +2398,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2210,6 +2427,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2235,6 +2453,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2258,6 +2481,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2283,6 +2507,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2307,6 +2536,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2332,6 +2562,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2355,6 +2590,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2380,6 +2616,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2404,6 +2645,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2429,6 +2671,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2452,6 +2699,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2477,6 +2725,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2501,6 +2754,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2526,6 +2780,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2549,6 +2808,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2574,6 +2834,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2598,6 +2863,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2623,6 +2889,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2646,6 +2917,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2671,6 +2943,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2695,6 +2972,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2720,6 +2998,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2743,6 +3026,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2768,6 +3052,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2792,6 +3081,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2817,6 +3107,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2840,6 +3135,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2865,6 +3161,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2889,6 +3190,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2914,6 +3216,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2937,6 +3244,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -2962,6 +3270,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -2986,6 +3299,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3011,6 +3325,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3034,6 +3353,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3059,6 +3379,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3083,6 +3408,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3108,6 +3434,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3131,6 +3462,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3156,6 +3488,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3180,6 +3517,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3205,6 +3543,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3228,6 +3571,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3253,6 +3597,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3277,6 +3626,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3302,6 +3652,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3325,6 +3680,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3350,6 +3706,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3374,6 +3735,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3399,6 +3761,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3422,6 +3789,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3447,6 +3815,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3471,6 +3844,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3496,6 +3870,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3519,6 +3898,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3544,6 +3924,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3568,6 +3953,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3593,6 +3979,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3616,6 +4007,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3641,6 +4033,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3665,6 +4062,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3690,6 +4088,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3713,6 +4116,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3738,6 +4142,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3762,6 +4171,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3787,6 +4197,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3810,6 +4225,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3835,6 +4251,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3859,6 +4280,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3884,6 +4306,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3907,6 +4334,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3932,6 +4360,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -3956,6 +4389,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -3981,6 +4415,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4004,6 +4443,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4029,6 +4469,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4053,6 +4498,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4078,6 +4524,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4101,6 +4552,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4126,6 +4578,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4150,6 +4607,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4175,6 +4633,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4198,6 +4661,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4223,6 +4687,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4247,6 +4716,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4272,6 +4742,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4295,6 +4770,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4320,6 +4796,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4344,6 +4825,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4369,6 +4851,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4392,6 +4879,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4417,6 +4905,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4441,6 +4934,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4466,6 +4960,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4489,6 +4988,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4514,6 +5014,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4538,6 +5043,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4563,6 +5069,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4586,6 +5097,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4611,6 +5123,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4635,6 +5152,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4660,6 +5178,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4683,6 +5206,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4708,6 +5232,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4732,6 +5261,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4757,6 +5287,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4780,6 +5315,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4805,6 +5341,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4829,6 +5370,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4854,6 +5396,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4877,6 +5424,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4902,6 +5450,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4926,6 +5479,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4951,6 +5505,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -4974,6 +5533,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -4999,6 +5559,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5023,6 +5588,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5048,6 +5614,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5071,6 +5642,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5096,6 +5668,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5120,6 +5697,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5145,6 +5723,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5168,6 +5751,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5193,6 +5777,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5216,6 +5805,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5241,6 +5831,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5264,6 +5859,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5289,6 +5885,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5312,6 +5913,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5337,6 +5939,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5361,6 +5968,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5386,6 +5994,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5409,6 +6022,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5434,6 +6048,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5458,6 +6077,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5483,6 +6103,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5506,6 +6131,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5531,6 +6157,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5555,6 +6186,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5580,6 +6212,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5603,6 +6240,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5628,6 +6266,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5652,6 +6295,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5677,6 +6321,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5700,6 +6349,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5725,6 +6375,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5749,6 +6404,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5774,6 +6430,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5797,6 +6458,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5822,6 +6484,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5846,6 +6513,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5871,6 +6539,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5894,6 +6567,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5919,6 +6593,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5943,6 +6622,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -5968,6 +6648,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -5991,6 +6676,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6016,6 +6702,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6040,6 +6731,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6065,6 +6757,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6088,6 +6785,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6113,6 +6811,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6137,6 +6840,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6162,6 +6866,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6185,6 +6894,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6210,6 +6920,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6234,6 +6949,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6259,6 +6975,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6282,6 +7003,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6307,6 +7029,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6331,6 +7058,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6356,6 +7084,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6379,6 +7112,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6404,6 +7138,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6428,6 +7167,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6453,6 +7193,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6476,6 +7221,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6501,6 +7247,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6525,6 +7276,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6550,6 +7302,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6573,6 +7330,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6598,6 +7356,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6622,6 +7385,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6647,6 +7411,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6670,6 +7439,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6695,6 +7465,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6719,6 +7494,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6744,6 +7520,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6767,6 +7548,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6792,6 +7574,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6816,6 +7603,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6841,6 +7629,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6864,6 +7657,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6889,6 +7683,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6913,6 +7712,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6938,6 +7738,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -6961,6 +7766,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -6986,6 +7792,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7010,6 +7821,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7035,6 +7847,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7058,6 +7875,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7083,6 +7901,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7107,6 +7930,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7132,6 +7956,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7155,6 +7984,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7180,6 +8010,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7204,6 +8039,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7229,6 +8065,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7252,6 +8093,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7277,6 +8119,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7301,6 +8148,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7326,6 +8174,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7349,6 +8202,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7374,6 +8228,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7398,6 +8257,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7423,6 +8283,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7446,6 +8311,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7471,6 +8337,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7495,6 +8366,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7520,6 +8392,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7543,6 +8420,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7568,6 +8446,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7591,6 +8474,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7616,6 +8500,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7639,6 +8528,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7664,6 +8554,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7687,6 +8582,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7712,6 +8608,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7735,6 +8636,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7760,6 +8662,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7783,6 +8690,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7808,6 +8716,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7831,6 +8744,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7856,6 +8770,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7879,6 +8798,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7904,6 +8824,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7927,6 +8852,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -7952,6 +8878,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -7975,6 +8906,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8000,6 +8932,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8023,6 +8960,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8048,6 +8986,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8071,6 +9014,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8096,6 +9040,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8119,6 +9068,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8144,6 +9094,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8167,6 +9122,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8192,6 +9148,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8215,6 +9176,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8240,6 +9202,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8263,6 +9230,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8288,6 +9256,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8311,6 +9284,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8336,6 +9310,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8359,6 +9338,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8384,6 +9364,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8407,6 +9392,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8432,6 +9418,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8455,6 +9446,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8480,6 +9472,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8503,6 +9500,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8528,6 +9526,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8551,6 +9554,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8576,6 +9580,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8600,6 +9609,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8625,6 +9635,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8648,6 +9663,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8673,6 +9689,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8697,6 +9718,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8722,6 +9744,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8745,6 +9772,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8768,6 +9796,11 @@
         {
           "kind": "local_filesystem_read",
           "when": "configuration_dependent"
+        },
+        {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
         },
         {
           "kind": "local_filesystem_write",
@@ -8794,6 +9827,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8819,6 +9853,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8842,6 +9881,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8867,6 +9907,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8890,6 +9935,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8915,6 +9961,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8938,6 +9989,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -8963,6 +10015,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -8986,6 +10043,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9011,6 +10069,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9034,6 +10097,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9059,6 +10123,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9082,6 +10151,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9107,6 +10177,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9130,6 +10205,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9155,6 +10231,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9178,6 +10259,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9203,6 +10285,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9226,6 +10313,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9251,6 +10339,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9274,6 +10367,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9299,6 +10393,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9322,6 +10421,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9347,6 +10447,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9370,6 +10475,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9395,6 +10501,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9418,6 +10529,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9443,6 +10555,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9466,6 +10583,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9515,6 +10633,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9540,6 +10659,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9563,6 +10687,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9588,6 +10713,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9612,6 +10742,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9637,6 +10768,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9660,6 +10796,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9685,6 +10822,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9709,6 +10851,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9734,6 +10877,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9757,6 +10905,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9782,6 +10931,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9806,6 +10960,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9831,6 +10986,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9854,6 +11014,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9879,6 +11040,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9903,6 +11069,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9928,6 +11095,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9951,6 +11123,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -9976,6 +11149,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -9999,6 +11177,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10024,6 +11203,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10047,6 +11231,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10072,6 +11257,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10095,6 +11285,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10120,6 +11311,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10143,6 +11339,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10168,6 +11365,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10191,6 +11393,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10216,6 +11419,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10240,6 +11448,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10265,6 +11474,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10288,6 +11502,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10313,6 +11528,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10337,6 +11557,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10362,6 +11583,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10385,6 +11611,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10410,6 +11637,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10434,6 +11666,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10459,6 +11692,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10482,6 +11720,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10507,6 +11746,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10531,6 +11775,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10556,6 +11801,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10579,6 +11829,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10604,6 +11855,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10628,6 +11884,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10653,6 +11910,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10676,6 +11938,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10701,6 +11964,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10725,6 +11993,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10750,6 +12019,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10773,6 +12047,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10798,6 +12073,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10822,6 +12102,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10847,6 +12128,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10870,6 +12156,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10895,6 +12182,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10919,6 +12211,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10944,6 +12237,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -10967,6 +12265,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -10992,6 +12291,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11016,6 +12320,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11041,6 +12346,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11064,6 +12374,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11089,6 +12400,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11113,6 +12429,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11138,6 +12455,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11161,6 +12483,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11186,6 +12509,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11210,6 +12538,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11235,6 +12564,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11258,6 +12592,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11283,6 +12618,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11307,6 +12647,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11332,6 +12673,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11355,6 +12701,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11380,6 +12727,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11404,6 +12756,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11429,6 +12782,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11452,6 +12810,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11477,6 +12836,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11501,6 +12865,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11526,6 +12891,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11549,6 +12919,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11574,6 +12945,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11598,6 +12974,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11623,6 +13000,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11646,6 +13028,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11671,6 +13054,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11695,6 +13083,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11720,6 +13109,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11743,6 +13137,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11768,6 +13163,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11792,6 +13192,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11817,6 +13218,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11840,6 +13246,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11865,6 +13272,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11888,6 +13300,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11913,6 +13326,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11937,6 +13355,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -11962,6 +13381,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -11985,6 +13409,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12010,6 +13435,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12034,6 +13464,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12059,6 +13490,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12082,6 +13518,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12107,6 +13544,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12131,6 +13573,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12156,6 +13599,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12179,6 +13627,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12204,6 +13653,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12227,6 +13681,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12252,6 +13707,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12275,6 +13735,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12300,6 +13761,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12324,6 +13790,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12349,6 +13816,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12372,6 +13844,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12397,6 +13870,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12421,6 +13899,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12446,6 +13925,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12469,6 +13953,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12494,6 +13979,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12518,6 +14008,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12543,6 +14034,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12566,6 +14062,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12591,6 +14088,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12615,6 +14117,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12640,6 +14143,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12663,6 +14171,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12688,6 +14197,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12712,6 +14226,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12737,6 +14252,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12760,6 +14280,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12785,6 +14306,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12809,6 +14335,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12834,6 +14361,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12857,6 +14389,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12882,6 +14415,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12906,6 +14444,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12931,6 +14470,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -12954,6 +14498,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -12979,6 +14524,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13003,6 +14553,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13028,6 +14579,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13051,6 +14607,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13076,6 +14633,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13100,6 +14662,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13125,6 +14688,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13148,6 +14716,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13173,6 +14742,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13197,6 +14771,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13222,6 +14797,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13245,6 +14825,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13270,6 +14851,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13294,6 +14880,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13319,6 +14906,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13342,6 +14934,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13367,6 +14960,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13391,6 +14989,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13416,6 +15015,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13439,6 +15043,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13464,6 +15069,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13488,6 +15098,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13513,6 +15124,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13536,6 +15152,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13561,6 +15178,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13585,6 +15207,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13610,6 +15233,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13633,6 +15261,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13658,6 +15287,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13682,6 +15316,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13707,6 +15342,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13730,6 +15370,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13755,6 +15396,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13779,6 +15425,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13804,6 +15451,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13827,6 +15479,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13852,6 +15505,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13875,6 +15533,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13900,6 +15559,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13924,6 +15588,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13949,6 +15614,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -13972,6 +15642,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -13997,6 +15668,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -14021,6 +15697,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -14046,6 +15723,11 @@
           "when": "configuration_dependent"
         },
         {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
+        },
+        {
           "kind": "local_filesystem_write",
           "when": "flag_set",
           "flag": "output"
@@ -14069,6 +15751,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",
@@ -14092,6 +15775,11 @@
         {
           "kind": "local_filesystem_read",
           "when": "configuration_dependent"
+        },
+        {
+          "kind": "local_filesystem_read",
+          "when": "flag_set",
+          "flag": "from-dump"
         },
         {
           "kind": "local_filesystem_write",
@@ -14118,6 +15806,7 @@
         "fields",
         "filter",
         "format",
+        "from-dump",
         "limit",
         "log-level",
         "no-cache",

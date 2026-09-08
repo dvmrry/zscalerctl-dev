@@ -1,0 +1,94 @@
+{
+  "$schema": "zscalerctl.resource-semantics",
+  "version": "1",
+  "review_status": "reviewed",
+  "redaction_mode": "standard",
+  "read_only": true,
+  "product": "zia",
+  "resource": "rule-labels",
+  "shape": "list",
+  "operations": [
+    {
+      "name": "list",
+      "capability": "read"
+    },
+    {
+      "name": "get",
+      "capability": "read"
+    }
+  ],
+  "get_key": "id",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "description": "The unique identifier for the rule label.",
+      "classification": "operational_metadata",
+      "allowed_modes": [
+        "standard",
+        "share",
+        "paranoid"
+      ],
+      "source": {
+        "sdk_path": "vendor/github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels/rule_labels.go",
+        "catalog_path": "internal/resources/catalog_zia.go"
+      }
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "description": "The rule label name.",
+      "classification": "tenant_configuration",
+      "allowed_modes": [
+        "standard",
+        "share"
+      ],
+      "source": {
+        "sdk_path": "vendor/github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels/rule_labels.go",
+        "catalog_path": "internal/resources/catalog_zia.go"
+      }
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "description": "The rule label description.",
+      "classification": "free_text",
+      "allowed_modes": [
+        "standard"
+      ],
+      "source": {
+        "sdk_path": "vendor/github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels/rule_labels.go",
+        "catalog_path": "internal/resources/catalog_zia.go"
+      }
+    },
+    {
+      "name": "lastModifiedTime",
+      "type": "integer",
+      "description": "Timestamp when the rule label was last modified.",
+      "classification": "operational_metadata",
+      "allowed_modes": [
+        "standard",
+        "share"
+      ],
+      "source": {
+        "sdk_path": "vendor/github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels/rule_labels.go",
+        "catalog_path": "internal/resources/catalog_zia.go"
+      }
+    },
+    {
+      "name": "referencedRuleCount",
+      "type": "integer",
+      "description": "The number of rules that reference the label.",
+      "classification": "operational_metadata",
+      "allowed_modes": [
+        "standard",
+        "share",
+        "paranoid"
+      ],
+      "source": {
+        "sdk_path": "vendor/github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels/rule_labels.go",
+        "catalog_path": "internal/resources/catalog_zia.go"
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "--from-dump applies only to resource read operations; use it with \"\u003cproduct\u003e \u003cresource\u003e list|get|show\""
+  }
+}

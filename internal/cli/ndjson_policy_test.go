@@ -137,6 +137,7 @@ func ndjsonCommandPolicies() map[string]ndjsonCommandPolicy {
 		"machine manifest": {expect: ndjsonRejectUnsupported, args: args("machine", "manifest")},
 		"schema":           {expect: ndjsonRejectUsage, args: args("schema")},
 		"schema list":      {expect: ndjsonRejectUnsupported, args: args("schema", "list")},
+		"schema describe":  {expect: ndjsonRejectUnsupported, args: args("schema", "describe", "zia", "locations")},
 		"version":          {expect: ndjsonRejectUnsupported, args: args("version")},
 		"zia url-lookup": {
 			expect: ndjsonRejectUnsupported,

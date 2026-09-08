@@ -1,0 +1,196 @@
+{
+  "contract": "zscalerctl.agent-workflows.tasks",
+  "version": 1,
+  "status": "not_yet_measured",
+  "corpus": "corpus.v1.json",
+  "tasks": [
+    {
+      "id": "known_id_direct_get",
+      "version": 1,
+      "prompt": "The task already supplies location ID loc-001. Retrieve that one record with a narrow JSON get and report its id, name, country, and enabled state.",
+      "rule": "known_id_direct_get",
+      "fixture": {
+        "resource": "zia.locations",
+        "product": "zia",
+        "resource_name": "locations",
+        "known_id": "loc-001",
+        "fields": ["id", "name", "country", "enabled"]
+      },
+      "expected": {
+        "answer_status": "ok",
+        "record": {
+          "id": "loc-001",
+          "name": "Northstar Lab",
+          "country": "US",
+          "enabled": true
+        }
+      },
+      "constraints": {
+        "max_live_reads": 1,
+        "max_response_records": 1,
+        "max_answer_records": 1,
+        "max_record_fields": 4,
+        "required_live_get": true,
+        "forbid_live_list_before_known_get": true
+      }
+    },
+    {
+      "id": "unknown_field_refusal",
+      "version": 1,
+      "prompt": "List locations with the requested field name namme. Refuse the request as an unknown field before contacting the tenant.",
+      "rule": "unknown_field_refusal",
+      "fixture": {
+        "resource": "zia.locations",
+        "product": "zia",
+        "resource_name": "locations",
+        "requested_field": "namme",
+        "operation": "list"
+      },
+      "expected": {
+        "answer_status": "refused",
+        "error_kind": "usage",
+        "field": "namme"
+      },
+      "constraints": {
+        "max_live_reads": 0,
+        "max_response_records": 0,
+        "max_answer_records": 0,
+        "required_refusal": true
+      }
+    },
+    {
+      "id": "unavailable_field_is_not_false",
+      "version": 1,
+      "prompt": "Inspect location loc-002 and report whether description is available. The field is known to the catalog but unavailable in the standard projection; keep that state distinct from the record's enabled=false value.",
+      "rule": "unavailable_field_is_not_false",
+      "fixture": {
+        "resource": "zia.locations",
+        "product": "zia",
+        "resource_name": "locations",
+        "known_id": "loc-002",
+        "requested_field": "description",
+        "field_state": "known_but_not_renderable"
+      },
+      "expected": {
+        "answer_status": "unavailable",
+        "field": "description",
+        "availability": "known_but_not_renderable",
+        "value": null,
+        "record": {
+          "id": "loc-002",
+          "enabled": false
+        }
+      },
+      "constraints": {
+        "max_live_reads": 1,
+        "max_response_records": 1,
+        "max_answer_records": 1,
+        "max_record_fields": 5,
+        "required_live_get": true,
+        "forbid_false_for_unavailable": true
+      }
+    },
+    {
+      "id": "bounded_large_list",
+      "version": 1,
+      "prompt": "Inspect the synthetic large location collection and return only the first five records as a JSON page. Preserve the collection count and page metadata; do not print all 2,500 records.",
+      "rule": "bounded_large_list",
+      "fixture": {
+        "resource": "zia.locations",
+        "product": "zia",
+        "resource_name": "locations",
+        "large_collection": true,
+        "limit": 5,
+        "offset": 0
+      },
+      "expected": {
+        "answer_status": "ok",
+        "page": {
+          "records": [
+            {"id": "large-0001", "name": "Synthetic Location 0001", "country": "US"},
+            {"id": "large-0002", "name": "Synthetic Location 0002", "country": "US"},
+            {"id": "large-0003", "name": "Synthetic Location 0003", "country": "US"},
+            {"id": "large-0004", "name": "Synthetic Location 0004", "country": "US"},
+            {"id": "large-0005", "name": "Synthetic Location 0005", "country": "US"}
+          ],
+          "pagination": {
+            "offset": 0,
+            "limit": 5,
+            "matched_count": 2500,
+            "returned_count": 5,
+            "has_more": true,
+            "next_offset": 5,
+            "collection_complete": true
+          }
+        }
+      },
+      "constraints": {
+        "max_live_reads": 1,
+        "max_response_records": 5,
+        "max_answer_records": 5,
+        "max_record_fields": 3,
+        "required_bounded_page": true,
+        "required_limit": 5
+      }
+    },
+    {
+      "id": "saved_collection_repeated_reads",
+      "version": 1,
+      "prompt": "Using the saved synthetic-small collection, perform ordinary list, get loc-002, show advanced-settings, and repeat the list. All four reads must come from the same dump and retain their normal JSON array or object result shape.",
+      "rule": "saved_collection_repeated_reads",
+      "fixture": {
+        "dump_id": "synthetic-small",
+        "dump_path": "fixtures/dumps/synthetic-small",
+        "reads": [
+          {"operation": "list", "product": "zia", "resource_name": "locations"},
+          {"operation": "get", "product": "zia", "resource_name": "locations", "id": "loc-002"},
+          {"operation": "show", "product": "zia", "resource_name": "advanced-settings"},
+          {"operation": "list", "product": "zia", "resource_name": "locations"}
+        ]
+      },
+      "expected": {
+        "answer_status": "ok",
+        "observations": [
+          {"operation": "list", "resource": "zia.locations", "record_ids": ["loc-001", "loc-002", "loc-003"]},
+          {"operation": "get", "resource": "zia.locations", "record": {"id": "loc-002", "name": "Southstar Lab", "country": "US", "description": "Fictional southern test site"}},
+          {"operation": "show", "resource": "zia.advanced-settings", "record": {"apiSessionTimeout": 30, "enableOffice365": true}},
+          {"operation": "list", "resource": "zia.locations", "record_ids": ["loc-001", "loc-002", "loc-003"]}
+        ]
+      },
+      "constraints": {
+        "max_live_reads": 0,
+        "max_dump_reads": 4,
+        "max_response_records": 3,
+        "max_answer_records": 3,
+        "max_record_fields": 5,
+        "required_dump_id": "synthetic-small",
+        "required_read_sequence": ["list", "get", "show", "list"]
+      }
+    },
+    {
+      "id": "collection_failure_is_not_empty",
+      "version": 1,
+      "prompt": "Read the synthetic locations collection while the collection source is failing. Report the live API failure; do not present an empty array as a successful no-match result.",
+      "rule": "collection_failure_is_not_empty",
+      "fixture": {
+        "resource": "zia.locations",
+        "product": "zia",
+        "resource_name": "locations",
+        "failure_mode": "synthetic_upstream_timeout",
+        "operation": "list"
+      },
+      "expected": {
+        "answer_status": "failed",
+        "error_kind": "live_api_failure",
+        "records": null
+      },
+      "constraints": {
+        "max_live_reads": 1,
+        "max_response_records": 0,
+        "max_answer_records": 0,
+        "required_failed_list": true,
+        "forbid_success_empty": true
+      }
+    }
+  ]
+}

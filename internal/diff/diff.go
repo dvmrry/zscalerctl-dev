@@ -26,7 +26,11 @@ import (
 const SchemaID = "zscalerctl.diff.v1"
 
 const (
-	maxResourceBytes         int64 = 512 << 20
+	maxResourceBytes int64 = 512 << 20
+	// maxCollectionBytes bounds the serialized resource data admitted into a
+	// saved in-memory collection. It is deliberately independent of the
+	// per-resource read cap: a collection can contain many resources.
+	maxCollectionBytes       int64 = 256 << 20
 	maxExpandedIdentityBytes       = 8 << 10
 )
 
@@ -35,10 +39,12 @@ var (
 	ErrPartialDumpInput        = errors.New("partial dump input")
 	ErrRedactionMismatch       = errors.New("redaction mode mismatch")
 	ErrCollectionScopeMismatch = errors.New("dump collection scope mismatch")
+	ErrCollectionTooLarge      = errors.New("collection exceeds size limit")
 	ErrInvalidCatalog          = errors.New("invalid catalog")
 	errTrailingJSON            = errors.New("unexpected trailing JSON value")
 	errUnexpectedEndJSON       = errors.New("unexpected end of JSON input")
 	errUnexpectedArrayEnd      = errors.New("unexpected token after resource array")
+	errInvalidJSONNumber       = errors.New("invalid JSON number")
 )
 
 type Options struct {
@@ -594,6 +600,34 @@ func loadDump(
 	catalog map[ResourceKey]resources.ResourceSpec,
 	selected map[ResourceKey]bool,
 ) (loadedDump, error) {
+	return loadDumpWithBudget(ctx, dir, catalog, selected, 0)
+}
+
+// loadDumpWithBudget admits selected resource files through the existing dump
+// validation and projection path. A positive byte budget limits the serialized
+// resource data retained by the caller; zero preserves ordinary diff behavior.
+func loadDumpWithBudget(
+	ctx context.Context,
+	dir string,
+	catalog map[ResourceKey]resources.ResourceSpec,
+	selected map[ResourceKey]bool,
+	byteBudget int64,
+) (loadedDump, error) {
+	return loadDumpWithBudgetOptions(ctx, dir, catalog, selected, byteBudget, false)
+}
+
+// loadDumpWithBudgetOptions is the shared loader with collection-only
+// admission controls. Compare keeps its historical physical-payload handling;
+// saved collections additionally require the JSON shape written by the dump
+// runtime's selected read operation.
+func loadDumpWithBudgetOptions(
+	ctx context.Context,
+	dir string,
+	catalog map[ResourceKey]resources.ResourceSpec,
+	selected map[ResourceKey]bool,
+	byteBudget int64,
+	enforceWriterShape bool,
+) (loadedDump, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
 		return loadedDump{}, err
@@ -648,6 +682,7 @@ func loadDump(
 		states:    make(map[ResourceKey]collectionState),
 	}
 	seen := make(map[ResourceKey]struct{}, len(manifest.Resources))
+	var loadedBytes int64
 	for _, mr := range manifest.Resources {
 		if err := checkContext(ctx); err != nil {
 			return loadedDump{}, err
@@ -676,9 +711,27 @@ func loadDump(
 				return loadedDump{}, fmt.Errorf("%w: resource %s/%s has no path", ErrInvalidDump, spec.Product, spec.Name)
 			}
 			if selected[key] {
-				records, err := readResource(ctx, root, mr, spec)
+				readLimit, tooLargeErr := resourceReadLimit(byteBudget, loadedBytes)
+				if readLimit == 0 {
+					return loadedDump{}, collectionTooLargeError()
+				}
+				records, bytesRead, err := readResourceWithLimit(
+					ctx,
+					root,
+					mr,
+					spec,
+					readLimit,
+					tooLargeErr,
+					enforceWriterShape,
+				)
 				if err != nil {
 					return loadedDump{}, err
+				}
+				if byteBudget > 0 {
+					if bytesRead > byteBudget-loadedBytes {
+						return loadedDump{}, collectionTooLargeError()
+					}
+					loadedBytes += bytesRead
 				}
 				if len(records) != mr.Records {
 					return loadedDump{}, fmt.Errorf("%w: resource %s/%s manifest record count does not match resource file", ErrInvalidDump, spec.Product, spec.Name)
@@ -708,27 +761,55 @@ func loadDump(
 }
 
 func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, spec resources.ResourceSpec) ([]map[string]any, error) {
+	records, _, err := readResourceWithLimit(ctx, root, mr, spec, maxResourceBytes, ErrInvalidDump, false)
+	return records, err
+}
+
+func readResourceWithLimit(
+	ctx context.Context,
+	root *os.Root,
+	mr dump.ManifestResource,
+	spec resources.ResourceSpec,
+	maxBytes int64,
+	tooLargeErr error,
+	enforceWriterShape bool,
+) ([]map[string]any, int64, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	path, err := localResourcePath(mr, spec)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	body, err := readRootFile(ctx, root, path, fmt.Sprintf("resource %s/%s", spec.Product, spec.Name), maxResourceBytes)
+	body, err := readRootFileWithLimit(
+		ctx,
+		root,
+		path,
+		fmt.Sprintf("resource %s/%s", spec.Product, spec.Name),
+		maxBytes,
+		tooLargeErr,
+	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var raw any
 	if err := decodeResourceValue(body, &raw); err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
-			return nil, ctxErr
+			return nil, 0, ctxErr
 		}
-		return nil, fmt.Errorf("%w: parse resource %s/%s: %v", ErrInvalidDump, spec.Product, spec.Name, err)
+		return nil, 0, fmt.Errorf("%w: parse resource %s/%s: %v", ErrInvalidDump, spec.Product, spec.Name, err)
+	}
+	if enforceWriterShape && !writerPayloadShapeMatches(spec, raw) {
+		return nil, 0, fmt.Errorf(
+			"%w: resource %s/%s payload shape does not match dump read operation",
+			ErrInvalidDump,
+			spec.Product,
+			spec.Name,
+		)
 	}
 	if err := checkContext(ctx); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var records []map[string]any
 	switch value := raw.(type) {
@@ -736,20 +817,34 @@ func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, 
 		records = make([]map[string]any, 0, len(value))
 		for _, item := range value {
 			if err := checkContext(ctx); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			record, ok := item.(map[string]any)
 			if !ok {
-				return nil, fmt.Errorf("%w: resource %s/%s contains a non-object record", ErrInvalidDump, spec.Product, spec.Name)
+				return nil, 0, fmt.Errorf("%w: resource %s/%s contains a non-object record", ErrInvalidDump, spec.Product, spec.Name)
 			}
 			records = append(records, record)
 		}
 	case map[string]any:
 		records = []map[string]any{value}
 	default:
-		return nil, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
+		return nil, 0, fmt.Errorf("%w: resource %s/%s payload is not an object or array", ErrInvalidDump, spec.Product, spec.Name)
 	}
-	return records, nil
+	return records, int64(len(body)), nil
+}
+
+// writerPayloadShapeMatches mirrors runtime.DumpCollector's operation choice:
+// show takes precedence and writes one ProjectedRecord object; all other dump
+// reads use list and write ProjectedRecords as an array. In particular, a
+// list-backed ShapeSingleton still has an array payload, while a show-only
+// resource with the default list shape has an object payload.
+func writerPayloadShapeMatches(spec resources.ResourceSpec, raw any) bool {
+	if spec.SupportsReadOperation("show") {
+		_, ok := raw.(map[string]any)
+		return ok
+	}
+	_, ok := raw.([]any)
+	return ok
 }
 
 func decodeResourceValue(body []byte, destination any) error {
@@ -780,7 +875,9 @@ func validateDecodedNumbers(value reflect.Value) error {
 	if value.CanInterface() {
 		if number, ok := value.Interface().(json.Number); ok {
 			if _, err := number.Float64(); err != nil {
-				return err
+				// Do not return strconv's diagnostic: it includes the complete
+				// artifact-authored numeric lexeme.
+				return errInvalidJSONNumber
 			}
 			return nil
 		}
@@ -1057,12 +1154,22 @@ func decodeJSONValue(ctx context.Context, decoder *json.Decoder, value any) erro
 	return err
 }
 
-func readRootFile(ctx context.Context, root *os.Root, name, label string, maxBytes int64) ([]byte, error) {
+// readRootFileWithLimit reads a bounded regular file and lets callers classify
+// a limit reached by an aggregate admission budget separately from the normal
+// invalid-dump limit.
+func readRootFileWithLimit(
+	ctx context.Context,
+	root *os.Root,
+	name string,
+	label string,
+	maxBytes int64,
+	tooLargeErr error,
+) ([]byte, error) {
 	ctx = normalizedContext(ctx)
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
-	file, err := openRootRegularFile(ctx, root, name, label, maxBytes)
+	file, err := openRootRegularFileWithLimit(ctx, root, name, label, maxBytes, tooLargeErr)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +1185,7 @@ func readRootFile(ctx context.Context, root *os.Root, name, label string, maxByt
 		return nil, err
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+		return nil, sizeExceededError(tooLargeErr, label)
 	}
 	return body, nil
 }
@@ -1090,6 +1197,17 @@ func openRootRegularFile(
 	root *os.Root,
 	name, label string,
 	maxBytes int64,
+) (*os.File, error) {
+	return openRootRegularFileWithLimit(ctx, root, name, label, maxBytes, ErrInvalidDump)
+}
+
+func openRootRegularFileWithLimit(
+	ctx context.Context,
+	root *os.Root,
+	name string,
+	label string,
+	maxBytes int64,
+	tooLargeErr error,
 ) (*os.File, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -1115,12 +1233,37 @@ func openRootRegularFile(
 		return nil, closeRootFileOnError(file, label, fmt.Errorf("%w: %s is not a regular file", ErrInvalidDump, label))
 	}
 	if info.Size() > maxBytes {
-		return nil, closeRootFileOnError(file, label, fmt.Errorf("%w: %s is too large", ErrInvalidDump, label))
+		return nil, closeRootFileOnError(file, label, sizeExceededError(tooLargeErr, label))
 	}
 	if err := checkContext(ctx); err != nil {
 		return nil, closeRootFileOnError(file, label, err)
 	}
 	return file, nil
+}
+
+func sizeExceededError(tooLargeErr error, label string) error {
+	if errors.Is(tooLargeErr, ErrCollectionTooLarge) {
+		return fmt.Errorf("%w: %w: %s is too large", ErrCollectionTooLarge, ErrInvalidDump, label)
+	}
+	return fmt.Errorf("%w: %s is too large", ErrInvalidDump, label)
+}
+
+func resourceReadLimit(byteBudget, loadedBytes int64) (int64, error) {
+	if byteBudget <= 0 {
+		return maxResourceBytes, ErrInvalidDump
+	}
+	if loadedBytes >= byteBudget {
+		return 0, ErrCollectionTooLarge
+	}
+	remaining := byteBudget - loadedBytes
+	if remaining < maxResourceBytes {
+		return remaining, ErrCollectionTooLarge
+	}
+	return maxResourceBytes, ErrInvalidDump
+}
+
+func collectionTooLargeError() error {
+	return fmt.Errorf("%w: %w", ErrCollectionTooLarge, ErrInvalidDump)
 }
 
 func closeRootFileOnError(file *os.File, label string, cause error) error {

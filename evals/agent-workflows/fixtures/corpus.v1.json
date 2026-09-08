@@ -1,0 +1,112 @@
+{
+  "contract": "zscalerctl.agent-workflows.corpus",
+  "version": 1,
+  "description": "Fictional records for offline agent workflow evaluation; never a tenant snapshot.",
+  "resources": {
+    "zia.locations": {
+      "kind": "collection",
+      "fields": {
+        "id": {"state": "renderable", "type": "string"},
+        "name": {"state": "renderable", "type": "string"},
+        "country": {"state": "renderable", "type": "string"},
+        "enabled": {"state": "renderable", "type": "boolean"},
+        "region": {"state": "renderable", "type": "string"},
+        "description": {"state": "known_but_not_renderable", "type": "string"},
+        "credential_hint": {"state": "secret", "type": "string"}
+      },
+      "records": [
+        {
+          "id": "loc-001",
+          "name": "Northstar Lab",
+          "country": "US",
+          "enabled": true,
+          "region": "east"
+        },
+        {
+          "id": "loc-002",
+          "name": "Southstar Lab",
+          "country": "US",
+          "enabled": false,
+          "region": "west"
+        },
+        {
+          "id": "loc-003",
+          "name": "Moonbase Lab",
+          "country": "CA",
+          "enabled": true,
+          "region": "north"
+        }
+      ],
+      "dump_records": {
+        "synthetic-small": [
+          {
+            "id": "loc-001",
+            "name": "Northstar Lab",
+            "country": "US",
+            "description": "Fictional northern test site"
+          },
+          {
+            "id": "loc-002",
+            "name": "Southstar Lab",
+            "country": "US",
+            "description": "Fictional southern test site"
+          },
+          {
+            "id": "loc-003",
+            "name": "Moonbase Lab",
+            "country": "CA",
+            "description": "Fictional lunar test site"
+          }
+        ]
+      },
+      "large_collection": {
+        "count": 2500,
+        "id_pattern": "large-{index:04d}",
+        "record_template": {
+          "name": "Synthetic Location {index:04d}",
+          "country": "US",
+          "enabled": true
+        },
+        "first_page_samples": [
+          {"id": "large-0001", "name": "Synthetic Location 0001", "country": "US"},
+          {"id": "large-0002", "name": "Synthetic Location 0002", "country": "US"},
+          {"id": "large-0003", "name": "Synthetic Location 0003", "country": "US"},
+          {"id": "large-0004", "name": "Synthetic Location 0004", "country": "US"},
+          {"id": "large-0005", "name": "Synthetic Location 0005", "country": "US"}
+        ]
+      }
+    },
+    "zia.advanced-settings": {
+      "kind": "singleton",
+      "fields": {
+        "apiSessionTimeout": {"state": "renderable", "type": "integer"},
+        "enableOffice365": {"state": "renderable", "type": "boolean"},
+        "description": {"state": "known_but_not_renderable", "type": "string"}
+      },
+      "record": {
+        "apiSessionTimeout": 30,
+        "enableOffice365": true
+      },
+      "dump_records": {
+        "synthetic-small": [
+          {
+            "apiSessionTimeout": 30,
+            "enableOffice365": true
+          }
+        ]
+      }
+    }
+  },
+  "dumps": {
+    "synthetic-small": {
+      "path": "fixtures/dumps/synthetic-small",
+      "resources": ["zia.locations", "zia.advanced-settings"],
+      "allowed_fields": {
+        "zia.locations": ["id", "name", "country", "description"],
+        "zia.advanced-settings": ["apiSessionTimeout", "enableOffice365"]
+      },
+      "redaction": "standard",
+      "status": "complete"
+    }
+  }
+}

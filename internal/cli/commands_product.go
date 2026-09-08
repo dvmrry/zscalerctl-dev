@@ -43,6 +43,9 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 			if err := validateProductNarrowing(product, args, catalog, opts); err != nil {
 				return err
 			}
+			if opts.fromDumpSet || opts.fromDump != "" {
+				return a.runProductFromDump(cmd.Context(), opts, string(product), args)
+			}
 			cfg, err := config.LoadConfig(a.env, config.LoadOptions{
 				Profile:    opts.profile,
 				ConfigPath: opts.configPath,

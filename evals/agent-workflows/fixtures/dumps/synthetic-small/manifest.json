@@ -1,0 +1,24 @@
+{
+  "schema": "zscalerctl.dump.manifest.v2",
+  "collected_at": "2026-01-01T00:00:00Z",
+  "tool_version": "synthetic-agent-workflows/v1",
+  "redaction": "standard",
+  "warning": "fictional offline evaluation data; not tenant inventory",
+  "status": "complete",
+  "resources": [
+    {
+      "product": "zia",
+      "name": "locations",
+      "status": "ok",
+      "path": "resources/zia/locations.json",
+      "records": 3
+    },
+    {
+      "product": "zia",
+      "name": "advanced-settings",
+      "status": "ok",
+      "path": "resources/zia/advanced-settings.json",
+      "records": 1
+    }
+  ]
+}

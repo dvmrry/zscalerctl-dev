@@ -503,3 +503,21 @@ mode. OneAPI is the expansion path for ZPA, ZTW, and other product families.
 
 `paranoid` mode does not promise stable cross-dump diffability unless a future
 tokenization and key-management design makes that safe.
+
+## Saved collection and semantics pilot
+
+`internal/diff.LoadCollection` reuses strict dump admission and creates an
+immutable projected collection. It implements the browser loader and direct
+projected-get interfaces consumed by `internal/machine.Executor`, allowing
+repeated reads without a live reader. The CLI selects this path before config
+loading when `--from-dump` is supplied. Its serialized resource admission budget
+is 256 MiB; it is not an RSS bound. Existing diff input limits remain unchanged.
+Safe collection provenance includes validated schema, mode, status and counts;
+free-form manifest strings and source paths are not returned as trusted metadata.
+
+`internal/resources.DescribeSemantics` adds a separate candidate metadata
+contract for three reviewed resources. It describes existing renderable fields
+and does not add fields to projection or change catalog serialization. The CLI
+exposes it through config-free `schema describe`. No public Go facade is frozen
+by this internal pilot. See [CORE_INVESTIGATION_SCOPE.md](CORE_INVESTIGATION_SCOPE.md)
+for acceptance criteria and deferred experiments.

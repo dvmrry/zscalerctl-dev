@@ -1,0 +1,20 @@
+[
+  {
+    "id": "loc-001",
+    "name": "Northstar Lab",
+    "country": "US",
+    "description": "Fictional northern test site"
+  },
+  {
+    "id": "loc-002",
+    "name": "Southstar Lab",
+    "country": "US",
+    "description": "Fictional southern test site"
+  },
+  {
+    "id": "loc-003",
+    "name": "Moonbase Lab",
+    "country": "CA",
+    "description": "Fictional lunar test site"
+  }
+]
