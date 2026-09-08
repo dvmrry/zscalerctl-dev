@@ -123,11 +123,12 @@ func TestExecutorExecuteGetCallsGetterAndReturnsProjectedRecord(t *testing.T) {
 }
 
 func TestExecutorRejectsUnsupportedCapabilityBeforeLoader(t *testing.T) {
+	const capabilityCanary = "\x1b[31mcapability-canary-raw\x1b[0m"
 	loader := &fakeBrowserLoader{}
 	executor := machine.Executor{Browser: loader}
 	req := machine.Request{
 		RequestID:  "req-unsupported-capability",
-		Capability: "config.read",
+		Capability: capabilityCanary,
 		Operation:  machine.OperationList,
 		Input:      &machine.Input{Product: "zia", Resource: "locations"},
 	}
@@ -138,18 +139,23 @@ func TestExecutorRejectsUnsupportedCapabilityBeforeLoader(t *testing.T) {
 	}
 	assertMachineError(t, err, machine.ErrorKindUnsupportedCapability, machine.OperationList, "zia", "locations")
 	assertResponseError(t, got, machine.ErrorKindUnsupportedCapability)
+	if got.Error.Message != "unsupported capability" {
+		t.Fatalf("Executor.Execute(unsupported capability) message = %q, want fixed diagnostic", got.Error.Message)
+	}
+	assertNoValidationCanary(t, err.Error(), capabilityCanary)
 	if len(loader.calls) != 0 {
 		t.Fatalf("Executor.Execute(unsupported capability) loader calls = %#v, want none", loader.calls)
 	}
 }
 
 func TestExecutorRejectsUnsupportedOperationBeforeLoader(t *testing.T) {
+	const operationCanary = "\x1b[31moperation-canary-raw\x1b[0m"
 	loader := &fakeBrowserLoader{}
 	executor := machine.Executor{Browser: loader}
 	req := machine.Request{
 		RequestID:  "req-delete",
 		Capability: machine.CapabilityResourcesRead,
-		Operation:  machine.Operation("delete"),
+		Operation:  machine.Operation(operationCanary),
 		Input:      &machine.Input{Product: "zia", Resource: "locations"},
 	}
 
@@ -157,8 +163,12 @@ func TestExecutorRejectsUnsupportedOperationBeforeLoader(t *testing.T) {
 	if err == nil {
 		t.Fatal("Executor.Execute(delete request) error = nil, want MachineError")
 	}
-	assertMachineError(t, err, machine.ErrorKindUnsupportedOperation, machine.Operation("delete"), "zia", "locations")
+	assertMachineError(t, err, machine.ErrorKindUnsupportedOperation, machine.Operation(operationCanary), "zia", "locations")
 	assertResponseError(t, got, machine.ErrorKindUnsupportedOperation)
+	if got.Error.Message != "unsupported operation for resources.read" {
+		t.Fatalf("Executor.Execute(delete request) message = %q, want fixed diagnostic", got.Error.Message)
+	}
+	assertNoValidationCanary(t, err.Error(), operationCanary)
 	if len(loader.calls) != 0 {
 		t.Fatalf("Executor.Execute(delete request) loader calls = %#v, want none", loader.calls)
 	}
@@ -505,6 +515,111 @@ func TestExecutorRejectsUnsupportedInputSemanticsBeforeLoader(t *testing.T) {
 	}
 }
 
+func TestExecutorRejectsInvalidFilterOperatorWithoutReflectingClientValue(t *testing.T) {
+	const operatorCanary = "\x1b[31moperator-canary-raw\x1b[0m"
+	newExecutor := func(loader *fakeBrowserLoader) machine.Executor {
+		return machine.Executor{
+			Browser: loader,
+			Catalog: resources.ResourceCatalog{
+				testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id", "name"),
+			},
+		}
+	}
+	newRequest := func() machine.Request {
+		return machine.Request{
+			RequestID:  "req-invalid-filter-operator",
+			Capability: machine.CapabilityResourcesRead,
+			Operation:  machine.OperationList,
+			Input: &machine.Input{
+				Product:  "zia",
+				Resource: "locations",
+				Filters: []machine.Filter{{
+					Field:    "name",
+					Operator: operatorCanary,
+					Value:    "HQ",
+				}},
+			},
+		}
+	}
+	const wantMessage = `input.filters.operator is not supported; use "=", "exact", "~", or "contains"`
+
+	t.Run("execute", func(t *testing.T) {
+		loader := &fakeBrowserLoader{}
+		got, err := newExecutor(loader).Execute(context.Background(), newRequest())
+		if err == nil {
+			t.Fatal("Executor.Execute(invalid filter operator) error = nil, want usage MachineError")
+		}
+		assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+		assertResponseError(t, got, machine.ErrorKindUsage)
+		if got.Error.Message != wantMessage {
+			t.Fatalf("Executor.Execute(invalid filter operator) message = %q, want fixed diagnostic", got.Error.Message)
+		}
+		assertNoValidationCanary(t, err.Error(), operatorCanary)
+		if len(loader.calls) != 0 {
+			t.Fatalf("Executor.Execute(invalid filter operator) loader calls = %#v, want none", loader.calls)
+		}
+	})
+
+	t.Run("execute_stream_terminal", func(t *testing.T) {
+		loader := &fakeBrowserLoader{}
+		var events []machine.Event
+		err := newExecutor(loader).ExecuteStream(context.Background(), newRequest(), func(event machine.Event) error {
+			events = append(events, event)
+			return nil
+		})
+		if err == nil {
+			t.Fatal("Executor.ExecuteStream(invalid filter operator) error = nil, want usage MachineError")
+		}
+		assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+		if len(events) != 2 || events[1].Kind != machine.EventFailed || events[1].Err == nil {
+			t.Fatalf("Executor.ExecuteStream(invalid filter operator) events = %#v, want started plus failed terminal", events)
+		}
+		if events[1].Err.Message != wantMessage {
+			t.Fatalf("Executor.ExecuteStream(invalid filter operator) terminal message = %q, want fixed diagnostic", events[1].Err.Message)
+		}
+		assertNoValidationCanary(t, events[1].Err.Message, operatorCanary)
+		if len(loader.calls) != 0 {
+			t.Fatalf("Executor.ExecuteStream(invalid filter operator) loader calls = %#v, want none", loader.calls)
+		}
+	})
+
+	t.Run("typed_read", func(t *testing.T) {
+		loader := &fakeBrowserLoader{}
+		request := machine.ResourceReadRequest{
+			RequestID: "req-invalid-filter-operator",
+			Operation: machine.OperationList,
+			Input: machine.ResourceReadInput{
+				Product:  "zia",
+				Resource: "locations",
+				Filters: []machine.Filter{{
+					Field:    "name",
+					Operator: operatorCanary,
+					Value:    "HQ",
+				}},
+			},
+		}
+		_, err := newExecutor(loader).Read(context.Background(), request)
+		if err == nil {
+			t.Fatal("Executor.Read(invalid filter operator) error = nil, want usage MachineError")
+		}
+		assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+		if err.Error() != wantMessage {
+			t.Fatalf("Executor.Read(invalid filter operator) message = %q, want fixed diagnostic", err.Error())
+		}
+		assertNoValidationCanary(t, err.Error(), operatorCanary)
+		if len(loader.calls) != 0 {
+			t.Fatalf("Executor.Read(invalid filter operator) loader calls = %#v, want none", loader.calls)
+		}
+	})
+}
+
+func assertNoValidationCanary(t *testing.T, got, canary string) {
+	t.Helper()
+	if strings.Contains(got, canary) || strings.Contains(got, "operator-canary-raw") || strings.ContainsAny(got, "\x1b") {
+		t.Fatalf("validation error = %q, want no client operator value or ANSI escape", got)
+	}
+}
+
 func TestExecutorDoesNotEchoClientSuppliedMeta(t *testing.T) {
 	loader := &fakeBrowserLoader{
 		records: projectedRecordsFromFields(t, map[string]any{"id": "123", "name": "HQ"}),
@@ -564,7 +679,7 @@ func TestExecutorUnknownFieldSelectionIsUsageError(t *testing.T) {
 		Input: &machine.Input{
 			Product:  "zia",
 			Resource: "locations",
-			Fields:   []string{"nope"},
+			Fields:   []string{"Authorization: Bearer machine-field-canary-abcdefghijklmnopqrstuvwxyz"},
 		},
 	}
 
@@ -574,6 +689,57 @@ func TestExecutorUnknownFieldSelectionIsUsageError(t *testing.T) {
 	}
 	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
 	assertResponseError(t, got, machine.ErrorKindUsage)
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(unknown field request) loader calls = %#v, want none", loader.calls)
+	}
+	if strings.Contains(err.Error(), "machine-field-canary-abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("Executor.Execute(unknown field request) error = %q, want canary redacted", err.Error())
+	}
+	if !strings.Contains(err.Error(), "<REDACTED:SECRET>") {
+		t.Fatalf("Executor.Execute(unknown field request) error = %q, want redaction marker", err.Error())
+	}
+}
+
+func TestExecutorUnknownFilterIsUsageErrorBeforeLoader(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123", "name": "HQ"}),
+	}
+	executor := machine.Executor{
+		Browser: loader,
+		Catalog: resources.ResourceCatalog{
+			testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id", "name"),
+		},
+	}
+	req := machine.Request{
+		RequestID:  "req-unknown-filter",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			Filters: []machine.Filter{{
+				Field:    "Authorization: Bearer machine-filter-canary-abcdefghijklmnopqrstuvwxyz",
+				Operator: "=",
+				Value:    "HQ",
+			}},
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(unknown filter request) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(unknown filter request) loader calls = %#v, want none", loader.calls)
+	}
+	if strings.Contains(err.Error(), "machine-filter-canary-abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("Executor.Execute(unknown filter request) error = %q, want canary redacted", err.Error())
+	}
+	if !strings.Contains(err.Error(), "<REDACTED:SECRET>") {
+		t.Fatalf("Executor.Execute(unknown filter request) error = %q, want redaction marker", err.Error())
+	}
 }
 
 func TestExecutorRejectsMissingLoader(t *testing.T) {

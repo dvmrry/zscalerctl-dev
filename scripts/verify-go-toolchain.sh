@@ -11,7 +11,7 @@ workflows_dir="${ZSCALERCTL_WORKFLOWS_DIR:-.github/workflows}"
 # Security policy floor. Raise this deliberately when a newer patch release is
 # required; do not derive it from go.mod, or a synchronized downgrade would
 # make the gate approve its own weakened policy.
-minimum="1.26.5"
+minimum="1.26.6"
 
 go_directive() {
 	awk '$1 == "go" { print $2; exit }' "$1"

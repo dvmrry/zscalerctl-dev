@@ -14,6 +14,7 @@ These are the stable, versioned JSON Schemas for the machine-readable output
 | Error record | each line of `errors.ndjson` in the dump | [dump-error.schema.json](dump-error.schema.json) | `zscalerctl.dump.error.v1` |
 | Diff report | stdout from `zscalerctl diff --format json` | [diff.schema.json](diff.schema.json) | `zscalerctl.diff.v1` |
 | Error envelope | stderr, on a failing command with JSON output | [error.schema.json](error.schema.json) | `zscalerctl.error.v1` |
+| Bounded list page | stdout from a resource `list --limit N --format json` | [list-page.schema.json](list-page.schema.json) | — (the resource-specific page has no embedded schema field) |
 
 The machine manifest carries its contract id in the `version` field. The dump
 artifacts and diff report each carry their `schema` id as a field, so consumers

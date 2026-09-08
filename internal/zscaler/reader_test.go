@@ -4501,7 +4501,7 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				PACUrl:     "https://pac.example.invalid/proxy.pac",
 				PACContent: "function FindProxyForURL() { return \"DIRECT\"; }",
 				PACSubURL:  "obfuscated.example.invalid",
-				LastModifiedBy: pacfiles.LastModifiedBy{
+				LastModifiedBy: &ziacommon.IDNameExtensions{
 					ID:   2,
 					Name: canary,
 				},

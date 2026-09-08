@@ -6,96 +6,230 @@ description: Use when asked about Zscaler tenant configuration, inventory, or au
 
 # zscalerctl
 
-Tenant-read-only CLI for Zscaler configuration: no command can modify tenant
-state. Local and process effects are separate. Inspect `zscalerctl --format
-json introspect` `effects` before delegation. Config-loading commands may read
-local files; live reads may execute configured `cmd:` or keyring helpers;
-`config init`, `dump --out`, and global `--output` write locally, and
-force/overwrite modes can replace existing local data.
+Use `zscalerctl` for authorized, tenant-read-only Zscaler inventory and
+configuration reads. The allow-list projection and redaction layers are the
+output boundary: a field absent from machine output is intentionally
+unavailable.
 
-## Cold start
+## Version and capability preflight
 
-1. **CLI missing?** If `zscalerctl` is not on `PATH`, ask the operator to
-   install it — do not fall back to raw Zscaler APIs or SDK environment
-   variables.
-2. **Never guess resource names.** Start with the config-free machine
-   capability manifest: `zscalerctl --format json machine manifest`. It lists
-   the `resources.read` product/resource pairs, supported `list`/`get`/`show`
-   operations, projected-record schema refs, and read-only metadata without
-   loading config, resolving credentials, constructing SDK clients, or
-   contacting Zscaler. Use `zscalerctl --format json introspect` when you need
-   the full CLI command/flag/effect surface, `zscalerctl --format json schema list` when you need
-   catalog field metadata, and `zscalerctl <product> --help` only as a syntax
-   fallback after discovery.
-3. **Credentials:** Use `ZSCALERCTL_*` environment variables — not profiles.
-   Profiles and secret providers (`env:`, `file:`, `keyring:`, `cmd:`) are
-   operator ergonomics for interactive local workflows; env vars are the right
-   agent path and always take precedence. `zscalerctl doctor`
-   reports which env values or profile-backed secret refs are set or missing
-   without contacting Zscaler. Profile secret refs can use `env:`, `file:`, `keyring:`, or
-   structured `cmd:` providers; `cmd:` executes an operator-specified argv with
-   no shell and can be disabled with `ZSCALERCTL_DISALLOW_CMD=true`. If any are
-   missing, ask the operator to set them — values and provider commands are
-   environment-specific; do not invent them or hunt through shell config.
-   Treat `configuration_dependent` effects as possible unless the effective
-   config, environment, provider, and platform are reviewed and pinned.
-4. **Read:** `zscalerctl --format json <product> <resource> list | get <id> | show`,
-   e.g. `zscalerctl --format json zia locations list`. Pass `--format json`
-   explicitly rather than relying on piped auto-JSON; use `--format ndjson`
-   for streaming resource `list`/`get`/`show` reads when useful.
+Pair the installed binary with the installed copy of this skill. Start with
+`zscalerctl version`; then discover the resource and operation instead of
+guessing a product or resource name. The development workflow uses
+`machine manifest` and bounded JSON list pages. A public `v0.68.1` binary
+may predate `machine manifest` and `--limit/--offset`, so do not assume
+those commands or flags exist: if the manifest is unsupported, fall back to
+`introspect` and `schema list`, and use only the flags those surfaces
+advertise. Updating this checkout's skill does not update an already-installed
+binary or publish a release.
 
-## Contract
+If the CLI is missing, ask the operator to install it. Stop on failed
+discovery or field validation before attempting a live read. Run the shell
+recipes in order with `set -euo pipefail` so failure stops later commands.
 
-- Machine consumers use JSON or NDJSON, not `pretty` or `table`. Failures emit
-  a JSON error envelope on stderr with `kind`, `product`, `resource`.
-- Exit codes: 0 ok, 2 usage, 3 credentials missing, 4 not found/unsupported,
-  5 live API failure (possibly entitlement), 6 partial dump, 7 drift detected
-  when `diff --fail-on-drift` is used.
-- `--fields a,b,c` narrows output; `zscalerctl dump --products zia --out DIR`
-  writes a sanitized export. A long dump is silent by default; add
-  `--log-level info` for start, per-resource, and completion progress on stderr.
-- Prefer stdout for agent reads. `--output PATH` creates or atomically replaces
-  a restricted regular file and should be used only with explicit local-write
-  authorization; it is not valid with `dump`.
-- `zscalerctl --format json diff OLD_DUMP_DIR NEW_DUMP_DIR` compares two
-  existing dumps. It does not schedule collection or contact Zscaler; use cron,
-  CI, or another scheduler to create dumps on a cadence.
-- Absent fields are deliberately excluded by a fail-closed allow-list — do
-  not try to recover them.
-
-## Narrowing results
-
-`list` narrows in-process — no `jq` needed. Field names come from
-`schema list`; both flags run after redaction (narrow only, never widen — a
-dropped or secret field matches nothing), and an empty match is exit 0 with
-`[]`:
+The manifest and catalog are large; select one resource with `jq` rather than
+printing them into a prompt:
 
 ```sh
-# substring match on a field, case-insensitive
-zscalerctl --format json zia url-filtering-rules list --filter name~social
-# exact match, AND-ed; repeat --filter to add conditions
-zscalerctl --format json zia locations list --filter country=US --filter name~hq
-# --search matches a term in any rendered field
-zscalerctl --format json zia locations list --search branch
+set -euo pipefail
+PRODUCT=zia
+RESOURCE=locations
+MODE=standard
+FIELDS=id,name
+
+MANIFEST=$(mktemp)
+trap 'rm -f "$MANIFEST"' EXIT
+if zscalerctl --format json machine manifest >"$MANIFEST"; then
+  jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" '
+    [ .capabilities[]
+      | select(.name == "resources.read"
+               and .input.product == $product
+               and .input.resource == $resource) ] as $matches
+    | if ($matches | length) != 1
+      then error("resource is not advertised by this binary")
+      else $matches[0]
+        | {resource: .input.resource, operations,
+           shape: .meta.shape, get_key: (.meta.get_key // null)}
+      end
+  ' "$MANIFEST"
+else
+  manifest_status=$?
+  if [ "$manifest_status" -ne 2 ]; then exit "$manifest_status"; fi
+  # Compatibility fallback for binaries without machine manifest.
+  zscalerctl --format json introspect |
+    jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" '
+      [ .commands[]
+        | select(.path == ($product + " " + $resource + " list")) ] as $matches
+      | if ($matches | length) != 1
+        then error("resource list command is not advertised by this binary")
+        else $matches[0]
+          | {path, inherited_flags, effects, output_fields}
+        end
+    '
+fi
 ```
 
-For richer predicates (array membership, cross-field logic) that the native
-flags can't express, pipe the JSON to `jq`:
+Use `schema list` for the field catalog, and validate the intended redaction
+mode and requested fields before a live read. This targeted query selects
+top-level renderable fields; it rejects a typo or a field that is not rendered
+in the chosen mode:
 
 ```sh
-zscalerctl --format json zia url-filtering-rules list | jq '[.[] | select(.urlCategories // [] | index("SOCIAL_NETWORKING"))]'
+SCHEMA=$(mktemp)
+trap 'rm -f "$SCHEMA" "$MANIFEST"' EXIT
+zscalerctl --format json schema list >"$SCHEMA"
+jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" \
+  --arg mode "$MODE" --arg requested "$FIELDS" '
+  [ .[] | select(.product == $product and .name == $resource) ] as $matches
+  | if ($matches | length) != 1
+    then error("expected exactly one resource catalog entry")
+    else $matches[0] as $spec
+      | [ $spec.fields[]
+          | select(.classification != "secret")
+          | select(((.allowed_modes // []) | index($mode)) != null)
+          | (.json_name // .name) ] as $renderable
+      | ($requested | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $wanted
+      | ($wanted - $renderable) as $unavailable
+      | if ($unavailable | length) > 0
+        then error("requested field is unknown or not renderable in this mode")
+        else {product: $spec.product, resource: $spec.name,
+               shape: ($spec.shape // "list"),
+               operations: $spec.operations,
+               get_key: ($spec.get_key // null),
+               redaction_mode: $mode, fields: $renderable,
+               requested_fields: $wanted}
+        end
+    end
+' "$SCHEMA"
 ```
 
-For policy questions ("would this URL be blocked for this user?"), do not
-guess evaluation semantics: fetch the relevant rules with this tool, then
-apply the zscaler-skill (policy precedence, wildcard and SSL-inspection
-semantics) if it is installed.
+The CLI itself accepts a known field that the active mode suppresses, then
+omits it; the preflight above deliberately asks the caller to choose only
+renderable fields. Secret fields are never recoverable through `--fields`,
+`jq`, raw SDK values, config, or credentials.
 
-Full guide: `AGENTS.md` in the repo checkout, or
-https://github.com/dvmrry/zscalerctl/blob/main/AGENTS.md.
-Agent machine workflow:
-`docs/cli/agent-machine-workflow.md` in the repo checkout, or
-https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/agent-machine-workflow.md.
-CLI reference (commands, flags, defaults):
-`docs/cli/zscalerctl.md` in the repo checkout, or
-https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/zscalerctl.md.
+## Read a small, explicit result
+
+Inspect `introspect` effects before delegating a command. Resource reads can
+read configuration or execute an operator-configured provider, contact the
+Zscaler API, and write a local file when `--output` is set. Agents use
+`ZSCALERCTL_*` environment variables; `zscalerctl doctor` reports missing
+values without contacting Zscaler.
+If credentials are missing, ask the operator to set them; do not invent values,
+search shell configuration, or change provider commands. Prefer stdout;
+use `--output` only when the local file write is intended. Sanitized tenant
+inventory is still confidential.
+
+Use explicit JSON and separate commands for list, get, and show. If the
+selected list command advertises `--limit`, use a bounded JSON page:
+
+```sh
+set -euo pipefail
+zscalerctl --format json --timeout 30s --redaction "$MODE" \
+  --fields "$FIELDS" --filter 'name~hq' --limit 20 --offset 0 \
+  "$PRODUCT" "$RESOURCE" list |
+  jq -e '
+    if (.records | type) != "array" or (.pagination | type) != "object"
+    then error("expected a bounded JSON list page")
+    else {offset: .pagination.offset, limit: .pagination.limit,
+          returned_count: .pagination.returned_count,
+          matched_count: .pagination.matched_count,
+          has_more: .pagination.has_more,
+          next_offset: .pagination.next_offset,
+          collection_complete: .pagination.collection_complete,
+          records: .records}
+    end
+  '
+```
+
+`--limit N` requires a positive N, and `--offset K` requires `--limit`
+and a nonnegative K. They apply to JSON resource `list` only. A bounded page
+has `records` and `pagination`; `matched_count` is the count after
+projection, redaction, and local filters, while `returned_count` is the
+number in this page. `next_offset` is the value for the next page when
+`has_more` is true and is JSON `null` otherwise. Collection completes
+before this output cut, so a successful page has `collection_complete: true`.
+Each invocation recollects the resource; offsets do not provide a cross-call
+snapshot or reduce the API collection work and memory.
+
+If the binary has no page flags, keep the complete-list semantics and summarize
+the array so a large raw list is never the agent's final answer:
+
+```sh
+set -euo pipefail
+zscalerctl --format json --timeout 30s --redaction "$MODE" \
+  --fields "$FIELDS" --filter 'name~hq' \
+  "$PRODUCT" "$RESOURCE" list |
+  jq -e '{matched_count: length, sample: .[:20],
+          sample_complete: (length <= 20)}'
+```
+
+When a get operation is advertised and the task already supplies a valid ID,
+use it directly; do not recollect the list:
+
+```sh
+: "${KNOWN_ID:?Set KNOWN_ID to the actual ID supplied by the task}"
+zscalerctl --format json --timeout 30s --redaction "$MODE" --fields "$FIELDS" \
+  "$PRODUCT" "$RESOURCE" get "$KNOWN_ID"
+```
+
+If you saved the page as `page.json`, extract its ID once with
+`jq -er '.records[0].id' page.json`; for an older binary without page flags,
+extract `.[0].id` from its complete array. Never use the shorthand
+`list | get | show` as a shell pipeline; these are separate CLI operations.
+
+## Narrowing, missing fields, and streams
+
+`--fields` can only narrow the sanitized projection and applies to resource
+`list`, `get`, and `show`. `--filter key=value` does exact matching,
+`--filter key~value` does case-insensitive substring matching, repeated
+filters are ANDed, and `--search term` scans rendered field values; filters
+and search apply to resource `list` only. Unknown `--fields` or
+`--filter` names are usage errors (exit 2) before config and live reads. A
+known field omitted by redaction is silently unavailable for output or
+matching. An absent field therefore means omitted or unknown; it does not mean
+false, empty, or unconfigured. No matches is a successful empty result.
+
+Use NDJSON only when the consumer intentionally handles a complete record
+stream:
+
+```sh
+set -euo pipefail
+zscalerctl --format ndjson --timeout 30s "$PRODUCT" "$RESOURCE" list |
+  jq -c 'select((.name // "") | test("hq"; "i"))'
+```
+
+NDJSON is one compact record per line after the full collection has been
+fetched, projected, redacted, and filtered. It is buffered collection framing,
+not early API streaming; `head` does not prevent collection, and
+`--limit/--offset` are not combined with NDJSON. `set -euo pipefail`
+preserves CLI failure and stops subsequent commands. Use `jq -e` when a
+missing result should itself be an error; a valid NDJSON filter may emit no
+records.
+
+Failures use a JSON envelope on stderr and stable process exits: 0 success, 1
+internal/canceled, 2 usage, 3 missing or invalid credentials, 4 not found or
+unsupported, 5 live API failure, 6 partial dump, and 7 drift detected from
+`diff --fail-on-drift`. `--timeout 30s` caps each HTTP request, not the
+whole list or dump run; apply a separate process or orchestration deadline
+when the total operation must be bounded.
+
+## Offline acceptance
+
+Run `bash skills/zscalerctl/examples/offline-workflow.sh` when changing this
+workflow. It uses a synthetic `zscalerctl` fixture and `jq` only: no
+credentials, config, tenant, or network. The harness checks targeted
+manifest/schema extraction, active-mode field selection, unknown-field
+preflight before reads, a 2,500-record summary, bounded page metadata,
+known-ID get, absent-field handling, pipefail, and the old-binary manifest
+fallback. Set `ZSCALERCTL_BIN=/path/to/candidate` to add config-free
+validation of a real candidate binary's manifest, schema, and introspection
+JSON; its list/get scenarios remain synthetic.
+
+For the full effects, credential, dump, and local-diff boundaries, read
+[`AGENTS.md`](../../AGENTS.md) and
+[`docs/cli/agent-machine-workflow.md`](../../docs/cli/agent-machine-workflow.md)
+from a repository checkout. An installed skill can use the corresponding
+[AGENTS.md](https://github.com/dvmrry/zscalerctl/blob/main/AGENTS.md) and
+[agent machine workflow](https://github.com/dvmrry/zscalerctl/blob/main/docs/cli/agent-machine-workflow.md)
+links instead.

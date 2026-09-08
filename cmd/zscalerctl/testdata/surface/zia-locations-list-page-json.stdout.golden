@@ -1,0 +1,17 @@
+{
+  "records": [
+    {
+      "id": "123",
+      "name": "HQ"
+    }
+  ],
+  "pagination": {
+    "offset": 0,
+    "limit": 1,
+    "returned_count": 1,
+    "matched_count": 2,
+    "has_more": true,
+    "next_offset": 1,
+    "collection_complete": true
+  }
+}

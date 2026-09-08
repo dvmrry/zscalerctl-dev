@@ -322,6 +322,27 @@ func TestRunUsageErrorReturnsTwo(t *testing.T) {
 	}
 }
 
+func TestRunOutputDirectoryReturnsUsageExit(t *testing.T) {
+	t.Parallel()
+
+	destination := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"--format", "json",
+		"--output", destination,
+		"config", "show",
+	}, &stdout, &stderr, nil)
+	if code != exitUsageError {
+		t.Fatalf("run(--output directory) exit code = %d, want %d; stderr = %q", code, exitUsageError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(--output directory) stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "not a regular file") {
+		t.Errorf("run(--output directory) stderr = %q, want non-regular destination error", stderr.String())
+	}
+}
+
 func TestRunJSONUsageErrorEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +360,34 @@ func TestRunJSONUsageErrorEnvelope(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "zscalerctl:") {
 		t.Errorf("run(json usage error) stderr = %q, want JSON without text prefix", stderr.String())
+	}
+}
+
+func TestRunUnknownFilterReturnsRedactedJSONUsageEnvelope(t *testing.T) {
+	t.Parallel()
+
+	const secretLikeField = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz"
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"--format", "json",
+		"--filter", secretLikeField + "=HQ",
+		"zia", "locations", "list",
+	}, &stdout, &stderr, nil)
+	if code != exitUsageError {
+		t.Fatalf("run(unknown filter) exit code = %d, want %d; stderr = %q", code, exitUsageError, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("run(unknown filter) stdout = %q, want empty", stdout.String())
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != "usage" {
+		t.Fatalf("run(unknown filter) error.kind = %q, want usage", got.Error.Kind)
+	}
+	if strings.Contains(stderr.String(), "abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("run(unknown filter) stderr = %q, want no raw secret-like field token", stderr.String())
+	}
+	if !strings.Contains(got.Error.Message, "<REDACTED:SECRET>") {
+		t.Fatalf("run(unknown filter) error.message = %q, want redaction marker", got.Error.Message)
 	}
 }
 

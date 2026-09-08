@@ -58,6 +58,16 @@ const (
 	ErrorKindInternal = "internal"
 )
 
+const (
+	// These diagnostics intentionally do not reflect arbitrary request values.
+	// The values are already available in structured request/error context when
+	// that context is useful; the human-readable message stays fixed so a
+	// malformed client value cannot become an output or terminal-event leak.
+	unsupportedCapabilityMessage     = "unsupported capability"
+	unsupportedReadOperationMessage  = "unsupported operation for resources.read"
+	unsupportedFilterOperatorMessage = `input.filters.operator is not supported; use "=", "exact", "~", or "contains"`
+)
+
 // BrowserLoader is the projected-record loading surface required by Executor.
 // Implementations own catalog lookup, live reads, projection, and redaction.
 type BrowserLoader interface {
@@ -119,7 +129,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 		if req.Capability != "" && req.Capability != CapabilityResourcesRead {
 			return failEventStream(stream, MachineError{
 				Kind:      ErrorKindUnsupportedCapability,
-				Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
+				Message:   unsupportedCapabilityMessage,
 				Operation: req.Operation,
 				Product:   product,
 				Resource:  resource,
@@ -135,7 +145,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 	if req.Capability != CapabilityResourcesRead {
 		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedCapability,
-			Message:   fmt.Sprintf("unsupported capability %q", req.Capability),
+			Message:   unsupportedCapabilityMessage,
 			Operation: req.Operation,
 			Product:   product,
 			Resource:  resource,
@@ -144,7 +154,7 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 	if !IsResourceReadOperation(req.Operation) {
 		return failEventStream(stream, MachineError{
 			Kind:      ErrorKindUnsupportedOperation,
-			Message:   fmt.Sprintf("unsupported operation %q for %s", req.Operation, CapabilityResourcesRead),
+			Message:   unsupportedReadOperationMessage,
 			Operation: req.Operation,
 			Product:   product,
 			Resource:  resource,
@@ -161,6 +171,9 @@ func (e Executor) ExecuteStream(ctx context.Context, req Request, sink EventSink
 			Product:   product,
 			Resource:  resource,
 		})
+	}
+	if machineErr := e.validateRequestNarrowing(req, product, resource); machineErr != nil {
+		return failEventStream(stream, *machineErr)
 	}
 
 	if e.Browser == nil {
@@ -375,11 +388,49 @@ func validateRequestSemantics(req Request, product, resource string) *MachineErr
 	if _, err := filtersFromInput(req.Input.Filters); err != nil {
 		return &MachineError{
 			Kind:      ErrorKindUsage,
-			Message:   err.Error(),
+			Message:   sanitizedMachineMessage(err.Error()),
 			Operation: req.Operation,
 			Product:   product,
 			Resource:  resource,
 		}
+	}
+	return nil
+}
+
+// validateRequestNarrowing validates catalog field names before the projected
+// loader is called. The machine API has no access to source records at this
+// point, so this preflight is the only way to ensure an invalid --fields or
+// --filter request cannot trigger a live read or provider resolution.
+func (e Executor) validateRequestNarrowing(req Request, product, resource string) *MachineError {
+	if req.Input == nil || (len(req.Input.Fields) == 0 && len(req.Input.Filters) == 0) {
+		return nil
+	}
+	spec, ok := e.catalog().FindSpec(resources.Product(product), resource)
+	if !ok {
+		return &MachineError{
+			Kind:      ErrorKindUnknownResource,
+			Message:   "unknown resource",
+			Operation: req.Operation,
+			Product:   product,
+			Resource:  resource,
+		}
+	}
+	filters, err := filtersFromInput(req.Input.Filters)
+	if err != nil {
+		return &MachineError{
+			Kind:      ErrorKindUsage,
+			Message:   sanitizedMachineMessage(err.Error()),
+			Operation: req.Operation,
+			Product:   product,
+			Resource:  resource,
+		}
+	}
+	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+		Fields:  fieldsFromInput(req.Input.Fields),
+		Filters: filters,
+	}); err != nil {
+		machineErr := machineErrorFromLoadError(err, req.Operation, product, resource)
+		return &machineErr
 	}
 	return nil
 }
@@ -439,7 +490,7 @@ func filtersFromInput(filters []Filter) ([]resources.ProjectedFilter, error) {
 		case "~", "contains":
 			projectedFilter.Substring = true
 		default:
-			return nil, fmt.Errorf("input.filters.operator %q is not supported", filter.Operator)
+			return nil, errors.New(unsupportedFilterOperatorMessage)
 		}
 		out = append(out, projectedFilter)
 	}
@@ -456,7 +507,7 @@ func (e Executor) catalog() resources.ResourceCatalog {
 func machineErrorFromLoadError(err error, op Operation, product, resource string) MachineError {
 	var machineErr *MachineError
 	if errors.As(err, &machineErr) {
-		return *machineErr
+		return sanitizeMachineError(*machineErr)
 	}
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -503,7 +554,7 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField):
 		return MachineError{
 			Kind:      ErrorKindUsage,
-			Message:   err.Error(),
+			Message:   sanitizedMachineMessage(err.Error()),
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
@@ -525,4 +576,18 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Resource:  resource,
 		}
 	}
+}
+
+// sanitizedMachineMessage keeps client-controlled details in usage errors
+// from crossing the machine boundary as raw text. In particular, unknown
+// catalog names are reflected in their diagnostic, and may contain a token
+// shaped like a credential.
+func sanitizedMachineMessage(message string) string {
+	sanitized, _ := redact.New(redact.ModeStandard).ScanRenderedString(message)
+	return sanitized
+}
+
+func sanitizeMachineError(machineErr MachineError) MachineError {
+	machineErr.Message = sanitizedMachineMessage(machineErr.Message)
+	return machineErr
 }

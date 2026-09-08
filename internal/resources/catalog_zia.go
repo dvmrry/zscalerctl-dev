@@ -893,6 +893,11 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("devices", standardOnlyMode()),
 				idNameExtensionsField("overrideUsers", standardOnlyMode()),
 				idNameExtensionsField("overrideGroups", standardOnlyMode()),
+				// HTTP header profile names are tenant-defined references. Keep
+				// them standard-only like the other user/location selectors; the
+				// adapter drops the SDK extensions map, which can carry header data.
+				idNameExtensionsField("httpHeaderProfiles", standardOnlyMode()),
+				idNameExtensionsField("httpHeaderActionProfiles", standardOnlyMode()),
 				idNameField("workloadGroups", standardOnlyMode()),
 			},
 		},
@@ -912,6 +917,9 @@ func catalogZIA() ResourceCatalog {
 				operationalField("enableFullLogging", allModes()),
 				operationalField("defaultRule", allModes()),
 				operationalField("predefined", allModes()),
+				tenantConfigField("excludeContextShieldEndPoint", standardShareModes()),
+				tenantConfigField("isEunEnabled", standardShareModes()),
+				tenantConfigField("eunTemplateId", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("sourceCountries", standardShareModes()),
 				operationalField("destCountries", standardShareModes()),
@@ -2174,8 +2182,14 @@ func catalogZIA() ResourceCatalog {
 				operationalField("defaultRule", allModes()),
 				operationalField("capturePCAP", allModes()),
 				operationalField("predefined", allModes()),
+				// Keep the historical output spelling as a compatibility alias while
+				// the v3.8.48 SDK uses an uppercase EUN JSON key.
 				operationalField("isWebEunEnabled", allModes()),
+				operationalField("isWebEUNEnabled", allModes()),
 				operationalField("defaultDnsRuleNameUsed", allModes()),
+				tenantConfigField("excludeContextShieldEndPoint", standardShareModes()),
+				tenantConfigField("isEunEnabled", standardShareModes()),
+				tenantConfigField("eunTemplateId", standardShareModes()),
 				idNameExtensionsField("applicationGroups", standardShareModes()),
 				idNameField("dnsGateway", standardOnlyMode()),
 				idNameField("zpaIpGroup", standardOnlyMode()),
@@ -2377,6 +2391,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("accessControl", standardShareModes()),
 				tenantConfigField("applications", standardShareModes()),
 				operationalField("numberOfApplications", allModes()),
+				tenantConfigField("promptCaptureEnabled", standardShareModes()),
 				operationalField("eunEnabled", allModes()),
 				operationalField("eunTemplateId", allModes()),
 				operationalField("browserEunTemplateId", allModes()),

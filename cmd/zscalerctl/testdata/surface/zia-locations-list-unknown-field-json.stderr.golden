@@ -1,0 +1,6 @@
+{
+  "error": {
+    "kind": "usage",
+    "message": "--fields: \"naem\" is not a field of zia/locations"
+  }
+}

@@ -255,8 +255,8 @@ type ProjectedRecords struct {
 	isolated bool
 }
 
-// UnknownFieldError reports a requested projected field that is not declared in
-// the catalog for a product/resource.
+// UnknownFieldError reports a requested --fields projected field that is not
+// declared in the catalog for a product/resource.
 type UnknownFieldError struct {
 	Product  Product
 	Resource string
@@ -270,6 +270,23 @@ func (e UnknownFieldError) Error() string {
 // Unwrap returns the sentinel error for errors.Is checks.
 func (e UnknownFieldError) Unwrap() error { return ErrUnknownField }
 
+// UnknownFilterError reports a requested --filter field that is not declared
+// in the catalog for a product/resource. It has its own type so adapters can
+// preserve the flag-specific usage message while sharing ErrUnknownField for
+// classification.
+type UnknownFilterError struct {
+	Product  Product
+	Resource string
+	Field    string
+}
+
+func (e UnknownFilterError) Error() string {
+	return fmt.Sprintf("--filter: %q is not a field of %s/%s", e.Field, e.Product, e.Resource)
+}
+
+// Unwrap returns the sentinel error for errors.Is checks.
+func (e UnknownFilterError) Unwrap() error { return ErrUnknownField }
+
 // ProjectedFilter describes one post-projection record filter.
 type ProjectedFilter struct {
 	Field     string
@@ -282,6 +299,45 @@ type NarrowOptions struct {
 	Fields  []string
 	Filters []ProjectedFilter
 	Search  string
+}
+
+// ValidateNarrowOptions validates all catalog names used by --fields and
+// --filter before a caller performs any read. Validation is intentionally
+// independent of the active redaction mode: a catalog field that is known but
+// omitted from the mode remains valid, and later projection/filtering makes it
+// non-renderable and therefore non-matching. Empty names are left to the
+// adapter's request-shape validation, which owns parsing and required-value
+// errors.
+func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
+	catalog := make(map[string]struct{}, len(spec.Fields))
+	for _, field := range spec.Fields {
+		catalog[field.JSONField()] = struct{}{}
+	}
+	for _, name := range opts.Fields {
+		if name == "" {
+			continue
+		}
+		if _, ok := catalog[name]; !ok {
+			return UnknownFieldError{
+				Product:  spec.Product,
+				Resource: spec.Name,
+				Field:    name,
+			}
+		}
+	}
+	for _, filter := range opts.Filters {
+		if filter.Field == "" {
+			continue
+		}
+		if _, ok := catalog[filter.Field]; !ok {
+			return UnknownFilterError{
+				Product:  spec.Product,
+				Resource: spec.Name,
+				Field:    filter.Field,
+			}
+		}
+	}
+	return nil
 }
 
 func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
@@ -387,9 +443,8 @@ func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([
 	if len(requested) == 0 {
 		return order, nil
 	}
-	catalog := make(map[string]struct{}, len(spec.Fields))
-	for _, field := range spec.Fields {
-		catalog[field.JSONField()] = struct{}{}
+	if err := ValidateNarrowOptions(spec, NarrowOptions{Fields: requested}); err != nil {
+		return nil, err
 	}
 	renderable := make(map[string]struct{}, len(order))
 	for _, name := range order {
@@ -397,13 +452,6 @@ func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([
 	}
 	out := make([]string, 0, len(requested))
 	for _, name := range requested {
-		if _, ok := catalog[name]; !ok {
-			return nil, UnknownFieldError{
-				Product:  spec.Product,
-				Resource: spec.Name,
-				Field:    name,
-			}
-		}
 		if _, ok := renderable[name]; ok {
 			out = append(out, name)
 		}
@@ -420,6 +468,9 @@ func NarrowProjectedRecords(
 	records ProjectedRecords,
 	opts NarrowOptions,
 ) (ProjectedRecords, error) {
+	if err := ValidateNarrowOptions(spec, opts); err != nil {
+		return ProjectedRecords{}, err
+	}
 	fields, err := EffectiveFields(spec, mode, opts.Fields)
 	if err != nil {
 		return ProjectedRecords{}, err

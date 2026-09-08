@@ -1015,6 +1015,303 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	}
 }
 
+func newZIAURLFilteringRuleTestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
+	t.Helper()
+	cfg := newSDKConfiguration(context.Background(), validReaderConfig())
+	cfg.HTTPClient.Transport = transport
+	cfg.ZIAHTTPClient.Transport = transport
+	service, err := zsdk.NewOneAPIClient(cfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+	return service
+}
+
+func TestGetZIAURLFilteringRulePreservesDirectDetail(t *testing.T) {
+	var ruleRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zia/api/v1/urlFilteringRules/101" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			ruleRequests = append(ruleRequests, cloned)
+			body = []byte(`{"id":101,"name":"direct-detail-rule","action":"ALLOW","cbiProfileId":7}`)
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+
+	service := newZIAURLFilteringRuleTestService(t, transport)
+
+	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
+	if err != nil {
+		t.Fatalf("getZIAURLFilteringRule(normal detail) error = %v, want nil", err)
+	}
+	if rule == nil {
+		t.Fatal("getZIAURLFilteringRule(normal detail) returned nil rule, want detail")
+	}
+	if got, want := rule.Name, "direct-detail-rule"; got != want {
+		t.Errorf("getZIAURLFilteringRule(normal detail).Name = %q, want %q", got, want)
+	}
+	if rule.CBIProfile != nil {
+		t.Errorf("getZIAURLFilteringRule(normal detail).CBIProfile = %#v, want nil", rule.CBIProfile)
+	}
+	if got, want := len(ruleRequests), 1; got != want {
+		t.Errorf("getZIAURLFilteringRule(normal detail) detail request count = %d, want %d", got, want)
+	}
+}
+
+func TestGetZIAURLFilteringRuleDoesNotEnrichIsolateWithoutProfileID(t *testing.T) {
+	var nonTokenRequests []string
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zia/api/v1/urlFilteringRules/101" {
+			nonTokenRequests = append(nonTokenRequests, request.URL.Path)
+			body = []byte(`{"id":101,"name":"isolate-without-profile-id","action":"ISOLATE"}`)
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			nonTokenRequests = append(nonTokenRequests, request.URL.Path)
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+
+	service := newZIAURLFilteringRuleTestService(t, transport)
+
+	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
+	if err != nil {
+		t.Fatalf("getZIAURLFilteringRule(ISOLATE without cbiProfileId) error = %v, want nil", err)
+	}
+	if rule == nil {
+		t.Fatal("getZIAURLFilteringRule(ISOLATE without cbiProfileId) returned nil rule, want detail")
+	}
+	if got, want := rule.Action, "ISOLATE"; got != want {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE without cbiProfileId).Action = %q, want %q", got, want)
+	}
+	if rule.CBIProfile != nil {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE without cbiProfileId).CBIProfile = %#v, want nil", rule.CBIProfile)
+	}
+	if got, want := len(nonTokenRequests), 1; got != want {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE without cbiProfileId) request count = %d, want %d", got, want)
+	} else if got, want := nonTokenRequests[0], "/zia/api/v1/urlFilteringRules/101"; got != want {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE without cbiProfileId) request path = %q, want %q", got, want)
+	}
+}
+
+func TestGetZIAURLFilteringRuleEnrichesIsolateWithBoundedList(t *testing.T) {
+	var productRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		switch request.URL.Path {
+		case "/oauth2/v1/token":
+		case "/zia/api/v1/urlFilteringRules/101":
+			body = []byte(`{"id":101,"name":"isolate-detail-rule","action":"ISOLATE","cbiProfileId":7}`)
+		case "/zia/api/v1/urlFilteringRules":
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequests = append(productRequests, cloned)
+			switch request.URL.Query().Get("page") {
+			case "1":
+				rows := make([]map[string]any, 100)
+				for index := range rows {
+					rows[index] = map[string]any{
+						"id":     index + 1,
+						"action": "ALLOW",
+					}
+				}
+				var err error
+				body, err = json.Marshal(rows)
+				if err != nil {
+					return nil, err
+				}
+			case "2":
+				body = []byte(`[{"id":101,"action":"ISOLATE","cbiProfileId":7,"cbiProfile":{"id":"7","name":"Isolation profile"}}]`)
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte(`{"message":"unexpected page"}`)
+			}
+		default:
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+
+	service := newZIAURLFilteringRuleTestService(t, transport)
+
+	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
+	if err != nil {
+		t.Fatalf("getZIAURLFilteringRule(ISOLATE) error = %v, want nil", err)
+	}
+	if rule == nil || rule.CBIProfile == nil {
+		t.Fatalf("getZIAURLFilteringRule(ISOLATE) = %#v, want cbiProfile detail", rule)
+	}
+	if got, want := rule.Name, "isolate-detail-rule"; got != want {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE).Name = %q, want %q", got, want)
+	}
+	if got, want := rule.CBIProfile.ID, "7"; got != want {
+		t.Errorf("getZIAURLFilteringRule(ISOLATE).CBIProfile.ID = %q, want %q", got, want)
+	}
+	if got, want := len(productRequests), 2; got != want {
+		t.Fatalf("getZIAURLFilteringRule(ISOLATE) list request count = %d, want %d", got, want)
+	}
+	for index, request := range productRequests {
+		query := request.URL.Query()
+		if got, want := query.Get("page"), strconv.Itoa(index+1); got != want {
+			t.Errorf("getZIAURLFilteringRule(ISOLATE) list request %d page = %q, want %q", index+1, got, want)
+		}
+		if got, want := query.Get("pageSize"), "100"; got != want {
+			t.Errorf("getZIAURLFilteringRule(ISOLATE) list request %d pageSize = %q, want %q", index+1, got, want)
+		}
+	}
+}
+
+func TestGetZIAURLFilteringRuleFailsWhenIsolateEnrichmentIsIncomplete(t *testing.T) {
+	fullPage := make([]map[string]any, 100)
+	for index := range fullPage {
+		fullPage[index] = map[string]any{
+			"id":     index + 1,
+			"action": "ALLOW",
+		}
+	}
+	fullPageBody, err := json.Marshal(fullPage)
+	if err != nil {
+		t.Fatalf("json.Marshal(full URL-filtering page) error = %v, want nil", err)
+	}
+
+	tests := []struct {
+		name          string
+		pageOne       string
+		pageTwo       string
+		pageTwoStatus int
+	}{
+		{
+			name:    "missing target rule",
+			pageOne: `[{"id":100,"action":"ALLOW"}]`,
+		},
+		{
+			name:    "missing profile",
+			pageOne: `[{"id":101,"action":"ISOLATE","cbiProfileId":7}]`,
+		},
+		{
+			name:    "mismatched profile",
+			pageOne: `[{"id":101,"action":"ISOLATE","cbiProfileId":7,"cbiProfile":{"id":"8","name":"Wrong profile"}}]`,
+		},
+		{
+			name:          "later page failure",
+			pageOne:       string(fullPageBody),
+			pageTwo:       `{"message":"page failed"}`,
+			pageTwoStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				body := []byte(`{"access_token":"test-token","expires_in":60}`)
+				statusCode := http.StatusOK
+				switch request.URL.Path {
+				case "/oauth2/v1/token":
+				case "/zia/api/v1/urlFilteringRules/101":
+					body = []byte(`{"id":101,"action":"ISOLATE","cbiProfileId":7}`)
+				case "/zia/api/v1/urlFilteringRules":
+					switch request.URL.Query().Get("page") {
+					case "1":
+						body = []byte(test.pageOne)
+					case "2":
+						body = []byte(test.pageTwo)
+						statusCode = test.pageTwoStatus
+					default:
+						statusCode = http.StatusBadRequest
+						body = []byte(`{"message":"unexpected page"}`)
+					}
+				default:
+					statusCode = http.StatusNotFound
+					body = []byte(`{}`)
+				}
+				return &http.Response{
+					StatusCode: statusCode,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(string(body))),
+					Request:    request,
+				}, nil
+			})
+
+			service := newZIAURLFilteringRuleTestService(t, transport)
+
+			rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
+			if err == nil {
+				t.Fatalf("getZIAURLFilteringRule(%s) = %#v, nil error; want explicit enrichment error", test.name, rule)
+			}
+			if rule != nil {
+				t.Errorf("getZIAURLFilteringRule(%s) rule = %#v, want nil", test.name, rule)
+			}
+			if !strings.Contains(err.Error(), "enrich zia url-filtering rule 101 cbiProfile") {
+				t.Errorf("getZIAURLFilteringRule(%s) error = %q, want enrichment context", test.name, err)
+			}
+		})
+	}
+}
+
+func TestGetZIAURLFilteringRulePreservesCanceledContextDuringEnrichment(t *testing.T) {
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte(`{"access_token":"test-token","expires_in":60}`)
+		statusCode := http.StatusOK
+		switch request.URL.Path {
+		case "/oauth2/v1/token":
+		case "/zia/api/v1/urlFilteringRules/101":
+			body = []byte(`{"id":101,"action":"ISOLATE","cbiProfileId":7}`)
+		case "/zia/api/v1/urlFilteringRules":
+			return nil, context.Canceled
+		default:
+			statusCode = http.StatusNotFound
+			body = []byte(`{}`)
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+
+	service := newZIAURLFilteringRuleTestService(t, transport)
+
+	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
+	if err == nil {
+		t.Fatalf("getZIAURLFilteringRule(cancelled enrichment) = %#v, nil error; want context error", rule)
+	}
+	if rule != nil {
+		t.Errorf("getZIAURLFilteringRule(cancelled enrichment) rule = %#v, want nil", rule)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("getZIAURLFilteringRule(cancelled enrichment) error = %v, want errors.Is(context.Canceled)", err)
+	}
+}
+
 // TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination guards against
 // regressing the wrapped users/locations/location-groups/url-categories/
 // url-filtering-rules endpoints back to unbounded or single-page SDK calls,

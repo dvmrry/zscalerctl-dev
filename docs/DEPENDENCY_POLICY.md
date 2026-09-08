@@ -43,7 +43,7 @@ module. Non-reachable findings in required modules require a written review
 note before release.
 
 Every module's `go` directive is the strict patch-level compiler minimum, not
-just a language-family marker. It is currently `1.26.5`, the first patch used
+just a language-family marker. It is currently `1.26.6`, the first patch used
 by this project that contains required standard-library security fixes.
 Redundant `toolchain` directives are forbidden because `go mod tidy` removes
 them when they equal the `go` directive. `make verify-go-toolchain` rejects a

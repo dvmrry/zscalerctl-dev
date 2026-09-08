@@ -17,8 +17,19 @@ the SDK module cache:
 
 ```sh
 SDK_DIR="$(go list -m -f '{{.Dir}}' -mod=mod github.com/zscaler/zscaler-sdk-go/v3)"
-go run ./scripts/sdk-surface-inventory.go --sdk-dir "$SDK_DIR" --format json
+SDK_VERSION="$(go list -m -f '{{.Version}}' -mod=mod github.com/zscaler/zscaler-sdk-go/v3)"
+go run ./scripts/sdk-surface-inventory.go \
+  --sdk-dir "$SDK_DIR" \
+  --sdk-version "$SDK_VERSION" \
+  --format json
 ```
+
+The default vendored invocation gets its version from the selected vendor
+tree's `vendor/modules.txt`. For an SDK source or module-cache directory, pass
+the version that was used to obtain that tree with `--sdk-version`; otherwise
+the version is omitted because a caller checkout's `vendor/modules.txt` does
+not describe an external tree. The inventory never infers a version from a
+directory name alone.
 
 The script parses Go source under `vendor/github.com/zscaler/zscaler-sdk-go/v3`
 with the Go AST. It records exported structs, exported read-like functions,

@@ -26,6 +26,11 @@ definitions and the fail-closed output rules. The machine-readable companion
 [field-coverage.json](field-coverage.json) lists every ignored field name and
 its reason, which feeds field-expansion planning.
 
+The ZIA `firewall-dns-rules` resource preserves the historical output key
+`isWebEunEnabled` alongside the SDK v3.8.48 spelling `isWebEUNEnabled`; both
+keys expose the same read-only flag. The compatibility alias is intentionally
+not counted as a second SDK field in the coverage totals.
+
 ## Ignored Fields Are Decided, Not Vague
 
 Every ignore reason must begin with one of two prefixes, so each ignored
@@ -45,12 +50,12 @@ is either rendered by classification or permanently excluded on the record.
 ## Repo-Wide Totals
 
 - Resources: 165
-- Total exported SDK fields: 2979
-- Classified: 2961
-- Ignored (fail-closed dropped): 18
-  - Deliberate (permanently excluded): 18
+- Total exported SDK fields: 3010
+- Classified: 2982
+- Ignored (fail-closed dropped): 28
+  - Deliberate (permanently excluded): 28
   - Deferred (awaiting modeling): 0
-- Coverage: 99.4%
+- Coverage: 99.1%
 - Decided coverage (classified + deliberate): 100.0%
 
 ## Per-Product Totals
@@ -59,10 +64,10 @@ Ranked worst coverage first.
 
 | Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| zia | 102 | 1681 | 1663 | 18 | 0 | 98.9% | 100.0% |
+| zia | 102 | 1696 | 1672 | 24 | 0 | 98.6% | 100.0% |
+| zpa | 28 | 654 | 650 | 4 | 0 | 99.4% | 100.0% |
 | zcc | 11 | 325 | 325 | 0 | 0 | 100.0% | 100.0% |
 | zidentity | 3 | 43 | 43 | 0 | 0 | 100.0% | 100.0% |
-| zpa | 28 | 638 | 638 | 0 | 0 | 100.0% | 100.0% |
 | ztw | 21 | 292 | 292 | 0 | 0 | 100.0% | 100.0% |
 
 ## Per-Resource Coverage
@@ -78,36 +83,36 @@ names, buckets, and reasons behind each row.
 | zia | workload-groups | 7 | 6 | 1 | 0 | 85.7% | 100.0% |
 | zia | locations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
 | zia | sublocations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
+| zia | ssl-inspection-rules | 34 | 32 | 2 | 0 | 94.1% | 100.0% |
+| zia | firewall-filtering-rules | 44 | 42 | 2 | 0 | 95.5% | 100.0% |
+| zia | firewall-dns-rules | 48 | 46 | 2 | 0 | 95.8% | 100.0% |
 | zia | url-categories | 27 | 26 | 1 | 0 | 96.3% | 100.0% |
+| zpa | browser-access | 49 | 48 | 1 | 0 | 98.0% | 100.0% |
+| zpa | inspection-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
+| zpa | pra-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
+| zpa | application-segments | 56 | 55 | 1 | 0 | 98.2% | 100.0% |
 | zia | nss-feeds | 126 | 126 | 0 | 0 | 100.0% | 100.0% |
 | zcc | company-info | 111 | 111 | 0 | 0 | 100.0% | 100.0% |
 | zia | org-information | 69 | 69 | 0 | 0 | 100.0% | 100.0% |
 | ztw | locations | 54 | 54 | 0 | 0 | 100.0% | 100.0% |
 | zia | casb-dlp-rules | 53 | 53 | 0 | 0 | 100.0% | 100.0% |
-| zpa | application-segments | 52 | 52 | 0 | 0 | 100.0% | 100.0% |
 | zia | advanced-settings | 51 | 51 | 0 | 0 | 100.0% | 100.0% |
 | zia | dlp-web-rules | 49 | 49 | 0 | 0 | 100.0% | 100.0% |
 | zia | advanced-threat-settings | 48 | 48 | 0 | 0 | 100.0% | 100.0% |
-| zpa | inspection-app-segments | 48 | 48 | 0 | 0 | 100.0% | 100.0% |
-| zpa | pra-app-segments | 48 | 48 | 0 | 0 | 100.0% | 100.0% |
 | zcc | application-profiles | 46 | 46 | 0 | 0 | 100.0% | 100.0% |
 | zpa | app-connectors | 45 | 45 | 0 | 0 | 100.0% | 100.0% |
-| zpa | browser-access | 45 | 45 | 0 | 0 | 100.0% | 100.0% |
+| zia | url-filtering-rules | 44 | 44 | 0 | 0 | 100.0% | 100.0% |
 | zpa | service-edges | 44 | 44 | 0 | 0 | 100.0% | 100.0% |
-| zia | firewall-dns-rules | 43 | 43 | 0 | 0 | 100.0% | 100.0% |
-| zia | url-filtering-rules | 42 | 42 | 0 | 0 | 100.0% | 100.0% |
 | ztw | forwarding-rules | 42 | 42 | 0 | 0 | 100.0% | 100.0% |
 | zpa | app-connector-groups | 41 | 41 | 0 | 0 | 100.0% | 100.0% |
 | zpa | service-edge-groups | 41 | 41 | 0 | 0 | 100.0% | 100.0% |
-| zia | cloud-app-control | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
-| zia | firewall-filtering-rules | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
+| zia | cloud-app-control | 40 | 40 | 0 | 0 | 100.0% | 100.0% |
 | zia | ips-policies | 39 | 39 | 0 | 0 | 100.0% | 100.0% |
 | zcc | admin-roles | 38 | 38 | 0 | 0 | 100.0% | 100.0% |
 | zia | forwarding-rules | 38 | 38 | 0 | 0 | 100.0% | 100.0% |
 | zia | risk-profiles | 37 | 37 | 0 | 0 | 100.0% | 100.0% |
 | zia | nat-control-rules | 36 | 36 | 0 | 0 | 100.0% | 100.0% |
 | zia | file-type-rules | 35 | 35 | 0 | 0 | 100.0% | 100.0% |
-| zia | ssl-inspection-rules | 32 | 32 | 0 | 0 | 100.0% | 100.0% |
 | zia | end-user-notification-settings | 30 | 30 | 0 | 0 | 100.0% | 100.0% |
 | zia | gre-tunnels | 30 | 30 | 0 | 0 | 100.0% | 100.0% |
 | zia | dlp-dictionaries | 29 | 29 | 0 | 0 | 100.0% | 100.0% |

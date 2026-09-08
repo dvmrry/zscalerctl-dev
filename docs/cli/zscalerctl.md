@@ -14,9 +14,11 @@ These flags are accepted by every command:
 | `--fields` | `string` | `—` | comma-separated output fields to keep (narrows the sanitized output) |
 | `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); repeatable, all must match |
 | `--format` | `string` | `auto` | output format: auto, table, json, ndjson, pretty |
+| `--limit` | `int` | `0` | bound a list result to a JSON page of this many records |
 | `--log-level` | `string` | `off` | diagnostic logging to stderr: off, error, warn, info, debug |
 | `--no-cache` | `bool` | `false` | bypass API cache where supported |
 | `--no-color` | `bool` | `false` | disable color output |
+| `--offset` | `int` | `0` | skip this many records in a bounded JSON list page (requires --limit) |
 | `--output` | `string` | `—` | create or replace an output file (not valid with dump) |
 | `--profile` | `string` | `—` | profile name |
 | `--redaction` | `string` | `—` | redaction mode: standard, share, paranoid |

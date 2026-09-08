@@ -153,6 +153,75 @@ grep -q '"category": "list-get-with-mutating-neighbors"' "$tmp/inventory.json"
 grep -q '"unknown_funcs": \[' "$tmp/inventory.json"
 grep -q '"ambiguous_funcs": \[' "$tmp/inventory.json"
 
+# The default vendored invocation continues to read the selected module's
+# modules.txt metadata. Derive the expectation from that fixture so this test
+# stays independent of the checkout's SDK upgrade version.
+default_version="$(awk '$1 == "#" && $2 == "github.com/zscaler/zscaler-sdk-go/v3" { print $3; exit }' vendor/modules.txt)"
+go run ./scripts/sdk-surface-inventory.go --format json > "$tmp/default.json"
+if [[ -n "$default_version" ]]; then
+  grep -q "\"sdk_version\": \"$default_version\"" "$tmp/default.json"
+else
+  if grep -q '"sdk_version":' "$tmp/default.json"; then
+    echo "sdk-surface-inventory emitted SDK version without vendored metadata" >&2
+    exit 1
+  fi
+fi
+
+# A source tree outside the repository's vendor tree has no version metadata
+# of its own. The inventory must not attribute the caller's vendor pin to it,
+# even when the source directory name happens to contain a version.
+external_sdk="$tmp/sdk-v3.8.48"
+cp -R "$sdk" "$external_sdk"
+caller="$tmp/caller"
+mkdir -p "$caller/vendor" "$tmp/no-provenance"
+cat > "$caller/vendor/modules.txt" <<'EOF'
+# github.com/zscaler/zscaler-sdk-go/v3 v3.8.38
+## explicit; go 1.25
+github.com/zscaler/zscaler-sdk-go/v3
+EOF
+
+(
+  cd "$caller"
+  go run "$repo_root/scripts/sdk-surface-inventory.go" \
+    --sdk-dir "$external_sdk" \
+    --module-path github.com/zscaler/zscaler-sdk-go/v3 \
+    --format json > "$tmp/external.json"
+)
+if grep -q '"sdk_version": "v3.8.38"' "$tmp/external.json"; then
+  echo "sdk-surface-inventory attributed caller vendor version to external SDK tree" >&2
+  exit 1
+fi
+if grep -q '"sdk_version":' "$tmp/external.json"; then
+  echo "sdk-surface-inventory invented version provenance for external SDK tree" >&2
+  exit 1
+fi
+
+(
+  cd "$caller"
+  go run "$repo_root/scripts/sdk-surface-inventory.go" \
+    --sdk-dir "$external_sdk" \
+    --module-path github.com/zscaler/zscaler-sdk-go/v3 \
+    --sdk-version v3.8.48 \
+    --format json > "$tmp/external-explicit.json"
+)
+grep -q '"sdk_version": "v3.8.48"' "$tmp/external-explicit.json"
+if grep -q 'v3.8.38' "$tmp/external-explicit.json"; then
+  echo "sdk-surface-inventory retained caller vendor version with explicit SDK version" >&2
+  exit 1
+fi
+
+(
+  cd "$tmp/no-provenance"
+  go run "$repo_root/scripts/sdk-surface-inventory.go" \
+    --sdk-dir "$external_sdk" \
+    --module-path github.com/zscaler/zscaler-sdk-go/v3 \
+    --format json > "$tmp/external-unknown.json"
+)
+if grep -q '"sdk_version":' "$tmp/external-unknown.json"; then
+  echo "sdk-surface-inventory emitted SDK version without provenance" >&2
+  exit 1
+fi
+
 if go run ./scripts/sdk-surface-inventory.go --sdk-dir "$sdk" --format xml >"$tmp/xml.out" 2>"$tmp/xml.err"; then
   echo "sdk-surface-inventory accepted unsupported format" >&2
   exit 1
