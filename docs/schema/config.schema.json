@@ -35,7 +35,7 @@
         },
         "cloud": {
           "type": "string",
-          "description": "Zscaler cloud region, e.g. `PRODUCTION`. Overridden by `ZSCALERCTL_CLOUD`."
+          "description": "OneAPI cloud, e.g. `PRODUCTION`. The legacy `ZPATWO` value is accepted case-insensitively as a compatibility input and uses production OneAPI routing. Overridden by `ZSCALERCTL_CLOUD`."
         },
         "client_id": {
           "type": "string",
