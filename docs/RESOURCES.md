@@ -11,7 +11,8 @@ records, and projection decides which fields can render for each redaction mode.
 - `standard`: local operational use. Allows explicitly reviewed tenant
   configuration and free-text fields, with secret scanning and rendered-string
   high-entropy token scanning still applied. Structured display-name fields
-  skip only the high-entropy heuristic in this local mode.
+  use a segment-based key check instead of whole-token length in this local
+  mode.
 - `share`: lower-detail output for tickets, reviews, and chat. Drops free text
   and sensitive identifiers.
 - `paranoid`: minimal identifiers and counts only.
@@ -20,9 +21,13 @@ All fields, including allowed strings, pass through the final redaction backstop
 before stdout or dump files. Rendered string values usually receive a
 conservative high-entropy token scan for bare unlabeled secret material.
 Structured display-name fields such as `name`, `configuredName`, and
-`displayName` skip only the high-entropy heuristic in `standard` mode so long
-cloud-style identifiers remain readable during local operation. `share` and
-`paranoid` redact high-entropy display-name values. Self-describing secrets such
+`displayName` use a segment-based check in `standard` mode instead of the
+whole-token length rule, so long cloud-style identifiers built from short
+separator-joined parts remain readable during local operation while a pasted
+high-entropy key segment, separator-split key material, or cloud access-key ID
+is still redacted. `share` and `paranoid` redact high-entropy display-name
+values. Values after generic credential labels such as `key:`, `token`, or
+`Bearer` redact in every field and mode when they are credential-shaped. Self-describing secrets such
 as `psk=...`, credential URLs, JWTs, and private keys still redact in display
 names in every mode. Canonical UUIDs and contextual git commit SHAs are
 preserved. In `standard` mode, structured rendered strings also preserve

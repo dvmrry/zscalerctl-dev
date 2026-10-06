@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
@@ -116,6 +117,15 @@ func TestIntrospectTree(t *testing.T) {
 				{Kind: "process_execution", When: "configuration_dependent"},
 			},
 		},
+		{
+			path: "zia admin-audit-logs status",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+				{Kind: "network_access", When: "always"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
 	}
 	for _, tc := range effectCases {
 		got := findByPath(tc.path)
@@ -128,6 +138,25 @@ func TestIntrospectTree(t *testing.T) {
 		}
 		if !got.Mutating {
 			t.Errorf("command %q mutating = false, want true for possible local filesystem effects", tc.path)
+		}
+	}
+
+	if statusCommand := findByPath("zia admin-audit-logs status"); statusCommand == nil {
+		t.Error("command zia admin-audit-logs status not found")
+	} else if !slices.Equal(statusCommand.OutputFields, []string{"status", "progress_items_complete", "completion_time", "error_code"}) {
+		t.Errorf("zia admin-audit-logs status output fields = %v, want the safe status fields", statusCommand.OutputFields)
+	}
+	for _, resource := range doc.Catalog.Resources {
+		if resource.Product == "zia" && resource.Name == "admin-audit-logs" {
+			t.Error("admin-audit-logs status must remain outside the resource catalog")
+		}
+	}
+	for _, capability := range machine.ManifestFromCatalog(resources.Catalog()).Capabilities {
+		if capability.Name == machine.CapabilityResourcesRead &&
+			capability.Input != nil &&
+			capability.Input.Product == "zia" &&
+			capability.Input.Resource == "admin-audit-logs" {
+			t.Error("admin-audit-logs status must remain outside resources.read")
 		}
 	}
 
@@ -369,15 +398,15 @@ func TestIntrospectEffectCounts(t *testing.T) {
 
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
-		"local_filesystem_read":   550,
-		"local_filesystem_write":  294,
-		"network_access":          273,
-		"process_execution":       274,
+		"local_filesystem_read":   551,
+		"local_filesystem_write":  296,
+		"network_access":          274,
+		"process_execution":       275,
 	}
 	wantWhen := map[string]int{
-		"always":                  276,
-		"configuration_dependent": 551,
-		"flag_set":                566,
+		"always":                  277,
+		"configuration_dependent": 553,
+		"flag_set":                568,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)
@@ -385,8 +414,8 @@ func TestIntrospectEffectCounts(t *testing.T) {
 	if !maps.Equal(byWhen, wantWhen) {
 		t.Errorf("effect condition counts = %v, want %v", byWhen, wantWhen)
 	}
-	if commandsWithRead != 278 {
-		t.Errorf("commands with local reads = %d, want 278", commandsWithRead)
+	if commandsWithRead != 279 {
+		t.Errorf("commands with local reads = %d, want 279", commandsWithRead)
 	}
 }
 

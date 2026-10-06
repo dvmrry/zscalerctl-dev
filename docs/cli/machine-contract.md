@@ -121,6 +121,13 @@ treatment as any other compatibility-affecting change.
 machine manifest schema validation, strict `machineio` decode behavior, and
 projected-record reconstruction guard together as the mechanical contract gate.
 
+The `zia admin-audit-logs status` JSON document always includes `status`.
+`progress_items_complete` is included only when the upstream response supplies
+a non-null, non-negative count; an explicit zero remains `0`. Missing or null `status`, a
+top-level `null`, and an empty response body are live-access failures (exit
+`5`). The diagnostic performs one status operation; HTTP retries follow the
+shared SDK policy. It rejects NDJSON because it returns one document.
+
 ## Streaming And Progress Direction
 
 The supported CLI read model remains intentionally single-shot. A

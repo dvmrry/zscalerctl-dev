@@ -112,6 +112,7 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 	// DisableFlagParsing to preserve its strict no-flags error message.
 	if product == resources.ProductZIA {
 		cmd.AddCommand(a.newURLLookupCmd(opts))
+		cmd.AddCommand(a.newAdminAuditLogsCmd(opts))
 	}
 	return cmd
 }
@@ -152,4 +153,30 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 			return a.runURLLookup(cmd.Context(), opts, args)
 		},
 	}
+}
+
+// newAdminAuditLogsCmd returns the ZIA-only administrator audit-log
+// diagnostic group. It remains outside the resource catalog.
+func (a *App) newAdminAuditLogsCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   adminAuditLogsCommandName,
+		Short: "inspect administrator audit-log report status",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return UsageError{Message: "usage: zscalerctl zia admin-audit-logs status"}
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "show current administrator audit-log report status",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			"introspect/output-fields": strings.Join(adminAuditLogsStatusFieldOrder, ","),
+			effectsAnnotation:          credentialedReadEffects,
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.runAdminAuditLogsStatus(cmd.Context(), opts)
+		},
+	})
+	return cmd
 }

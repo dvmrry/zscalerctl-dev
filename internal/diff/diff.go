@@ -30,7 +30,10 @@ const (
 	// maxCollectionBytes bounds the serialized resource data admitted into a
 	// saved in-memory collection. It is deliberately independent of the
 	// per-resource read cap: a collection can contain many resources.
-	maxCollectionBytes       int64 = 256 << 20
+	maxCollectionBytes int64 = 256 << 20
+	// maxComparisonBytes bounds the serialized resource data retained from both
+	// sides of one comparison, using the same limit as a saved collection.
+	maxComparisonBytes       int64 = maxCollectionBytes
 	maxExpandedIdentityBytes       = 8 << 10
 )
 
@@ -262,10 +265,11 @@ type FieldChange struct {
 }
 
 type loadedDump struct {
-	ref       DumpRef
-	manifest  dump.Manifest
-	resources map[ResourceKey]loadedResource
-	states    map[ResourceKey]collectionState
+	ref           DumpRef
+	manifest      dump.Manifest
+	resources     map[ResourceKey]loadedResource
+	states        map[ResourceKey]collectionState
+	resourceBytes int64
 }
 
 type loadedResource struct {
@@ -311,11 +315,7 @@ func CompareContext(ctx context.Context, oldDir, newDir string, opts Options, pr
 	if err := checkContext(ctx); err != nil {
 		return Report{}, err
 	}
-	oldDump, err := loadDump(ctx, oldDir, catalogSpecs, selected)
-	if err != nil {
-		return Report{}, err
-	}
-	newDump, err := loadDump(ctx, newDir, catalogSpecs, selected)
+	oldDump, newDump, err := loadComparisonDumps(ctx, oldDir, newDir, catalogSpecs, selected, maxComparisonBytes)
 	if err != nil {
 		return Report{}, err
 	}
@@ -594,18 +594,40 @@ func selectedSpecs(ctx context.Context, catalog resources.ResourceCatalog, opts 
 	return specs, nil
 }
 
+func loadComparisonDumps(
+	ctx context.Context,
+	oldDir, newDir string,
+	catalog map[ResourceKey]resources.ResourceSpec,
+	selected map[ResourceKey]bool,
+	byteBudget int64,
+) (loadedDump, loadedDump, error) {
+	oldDump, err := loadDumpWithBudget(ctx, oldDir, catalog, selected, byteBudget)
+	if err != nil {
+		return loadedDump{}, loadedDump{}, err
+	}
+	remainingBudget := byteBudget
+	if remainingBudget >= 0 {
+		remainingBudget -= oldDump.resourceBytes
+	}
+	newDump, err := loadDumpWithBudget(ctx, newDir, catalog, selected, remainingBudget)
+	if err != nil {
+		return loadedDump{}, loadedDump{}, err
+	}
+	return oldDump, newDump, nil
+}
+
 func loadDump(
 	ctx context.Context,
 	dir string,
 	catalog map[ResourceKey]resources.ResourceSpec,
 	selected map[ResourceKey]bool,
 ) (loadedDump, error) {
-	return loadDumpWithBudget(ctx, dir, catalog, selected, 0)
+	return loadDumpWithBudget(ctx, dir, catalog, selected, -1)
 }
 
 // loadDumpWithBudget admits selected resource files through the existing dump
-// validation and projection path. A positive byte budget limits the serialized
-// resource data retained by the caller; zero preserves ordinary diff behavior.
+// validation and projection path. A nonnegative byte budget limits serialized
+// resource data retained by the caller; a negative budget disables the limit.
 func loadDumpWithBudget(
 	ctx context.Context,
 	dir string,
@@ -616,9 +638,8 @@ func loadDumpWithBudget(
 	return loadDumpWithBudgetOptions(ctx, dir, catalog, selected, byteBudget, false)
 }
 
-// loadDumpWithBudgetOptions is the shared loader with collection-only
-// admission controls. Compare keeps its historical physical-payload handling;
-// saved collections additionally require the JSON shape written by the dump
+// loadDumpWithBudgetOptions is the shared loader with optional payload-shape
+// validation. Saved collections require the JSON shape written by the dump
 // runtime's selected read operation.
 func loadDumpWithBudgetOptions(
 	ctx context.Context,
@@ -727,7 +748,7 @@ func loadDumpWithBudgetOptions(
 				if err != nil {
 					return loadedDump{}, err
 				}
-				if byteBudget > 0 {
+				if byteBudget >= 0 {
 					if bytesRead > byteBudget-loadedBytes {
 						return loadedDump{}, collectionTooLargeError()
 					}
@@ -757,6 +778,7 @@ func loadDumpWithBudgetOptions(
 			return loadedDump{}, fmt.Errorf("%w: resource %s/%s has invalid status (want ok or error)", ErrInvalidDump, spec.Product, spec.Name)
 		}
 	}
+	loaded.resourceBytes = loadedBytes
 	return loaded, nil
 }
 
@@ -1212,7 +1234,7 @@ func openRootRegularFileWithLimit(
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
-	file, err := root.Open(name)
+	file, err := dump.OpenRootEntry(root, name)
 	if err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
 			return nil, ctxErr
@@ -1249,7 +1271,7 @@ func sizeExceededError(tooLargeErr error, label string) error {
 }
 
 func resourceReadLimit(byteBudget, loadedBytes int64) (int64, error) {
-	if byteBudget <= 0 {
+	if byteBudget < 0 {
 		return maxResourceBytes, ErrInvalidDump
 	}
 	if loadedBytes >= byteBudget {

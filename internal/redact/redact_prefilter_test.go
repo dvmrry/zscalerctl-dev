@@ -74,6 +74,12 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		"{\"message\":\"Authorization: Bearer first-prefilter-canary\"}\n{\"message\":\"Authorization:\",\"clientSecret\":\"second-prefilter-canary\"}\n",
 		`Authorization: Token sk-supersecret-credential-value`,
 		`owner alice@example.com uses 192.0.2.10`,
+		`key: production`,
+		`POC key: Bearer A7b9C2d4E6f8J5k7`,
+		`POC key: 550e8400-e29b-41d4-a716-446655440000.`,
+		`{"key":"` + `A7b9C2d4E6f8G1h3J5k7","value":"x"}`,
+		strings.ReplaceAll(`{"k^u0065y":"Projects/2024/Q3-planning"}`, "^", "\x5c"),
+		`tag key: Projects/2024/Q3-planning`,
 	} {
 		f.Add(seed)
 	}
@@ -160,6 +166,12 @@ func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
 
 func scanRulesWithoutPrefilters(out string, report Report, rules []rule) (string, Report) {
 	for _, rule := range rules {
+		if rule.custom != nil {
+			// Custom scanner rules share replacement semantics with
+			// production; this oracle only removes the prefilter gate.
+			out, report = scanCustomRule(out, report, rule, &prefilterText{})
+			continue
+		}
 		count := len(rule.re.FindAllStringIndex(out, -1))
 		if count == 0 {
 			continue

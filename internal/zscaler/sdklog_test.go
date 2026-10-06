@@ -2,6 +2,7 @@ package zscaler
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -64,6 +65,86 @@ func TestSDKLogAdapterForwardsRetryAndAuthEvents(t *testing.T) {
 				t.Errorf("Printf(%q) logged %q, want it emitted at DEBUG level", tc.format, out)
 			}
 		})
+	}
+}
+
+func TestSDKLogAdapterRedactsMalformedRetryAfterHeader(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		value       string
+		wantVisible bool
+	}{
+		{"short_assignment", "key=short-key-canary", false},
+		{"bare_hexadecimal", "b8e1093dc27f65a4e9021b7c8df6a350", false},
+		{"delta_seconds", "5", true},
+		{"http_date", "Sun, 06 Nov 1994 08:49:37 GMT", true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			adapter := newSDKLogger(debugSlogLogger(&buf))
+			adapter.Printf("[WARN] Could not parse Retry-After header: %s", tc.value)
+			out := buf.String()
+			if tc.wantVisible {
+				if !strings.Contains(out, "header: "+tc.value) {
+					t.Errorf("SDK log output = %q, want valid Retry-After value %q", out, tc.value)
+				}
+				return
+			}
+			if strings.Contains(out, tc.value) {
+				t.Errorf("SDK log output = %q, want header canary redacted", out)
+			}
+			if !strings.Contains(out, "<REDACTED:SECRET>") {
+				t.Errorf("SDK log output = %q, want secret redaction marker", out)
+			}
+		})
+	}
+}
+
+func TestSDKLogAdapterRedactsMalformedRetryAfterInRateLimitSummary(t *testing.T) {
+	t.Parallel()
+
+	// The SDK logs raw rate-limit headers before it parses Retry-After, so the
+	// summary must not carry a malformed value either.
+	const format = "[DEBUG] Rate limit headers: Limit=%s, Remaining=%s, Reset=%s, Retry-After=%s, Status=%d"
+	for _, canary := range []string{"key=short-key-canary", "b8e1093dc27f65a4e9021b7c8df6a350"} {
+		var buf bytes.Buffer
+		adapter := newSDKLogger(debugSlogLogger(&buf))
+		adapter.Printf(format, "100", "1", "1", canary, 429)
+		out := buf.String()
+		if strings.Contains(out, canary) {
+			t.Errorf("SDK log output = %q, want Retry-After canary %q redacted", out, canary)
+		}
+		if !strings.Contains(out, "Limit=100, Remaining=1, Reset=1") || !strings.Contains(out, "Status=429") {
+			t.Errorf("SDK log output = %q, want numeric rate-limit headers kept", out)
+		}
+	}
+
+	var buf bytes.Buffer
+	adapter := newSDKLogger(debugSlogLogger(&buf))
+	adapter.Printf(format, "100", "1", "1", "5", 429)
+	if out := buf.String(); !strings.Contains(out, "Retry-After=5") {
+		t.Errorf("SDK log output = %q, want valid Retry-After value kept", out)
+	}
+}
+
+func TestSDKLogAdapterRedactsTextArgumentsInForwardedFormats(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	adapter := newSDKLogger(debugSlogLogger(&buf))
+	adapter.Printf("[DEBUG] retrying after error: %v (waiting %s)", errors.New("token=short-key-canary"), "2s")
+	out := buf.String()
+	if strings.Contains(out, "short-key-canary") {
+		t.Errorf("SDK log output = %q, want error text redacted", out)
+	}
+	if !strings.Contains(out, "waiting 2s") {
+		t.Errorf("SDK log output = %q, want duration kept", out)
 	}
 }
 

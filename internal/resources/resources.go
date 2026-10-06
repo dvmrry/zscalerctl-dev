@@ -923,7 +923,7 @@ func scanStringValue(r redact.Redactor, field FieldSpec, value string) (string, 
 		return r.ScanFreeText(value)
 	}
 	if r.Mode() == redact.ModeStandard && IsStructuredDisplayNameField(field) {
-		return r.ScanString(value)
+		return r.ScanDisplayName(value)
 	}
 	return r.ScanRenderedString(value)
 }

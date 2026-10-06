@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -66,6 +67,18 @@ func TestExitCodeForError(t *testing.T) {
 		if got := exitCodeForError(tc.err); got != tc.want {
 			t.Errorf("exitCodeForError(%s) = %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestErrorKindAndExitCodePrioritizeCancellationOverMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, context.Canceled)
+	if got := errorKind(err); got != machine.ErrorKindCanceled {
+		t.Errorf("errorKind(canceled missing-credentials error) = %q, want %q", got, machine.ErrorKindCanceled)
+	}
+	if got := exitCodeForError(err); got != exitInternalError {
+		t.Errorf("exitCodeForError(canceled missing-credentials error) = %d, want %d", got, exitInternalError)
 	}
 }
 
@@ -521,6 +534,63 @@ profiles:
 	}
 }
 
+func TestRunJSONCmdProviderCancellationIsCancellation(t *testing.T) {
+	readyPath := filepath.Join(t.TempDir(), "provider-ready")
+	configPath := writeMainConfig(t, fmt.Sprintf(`
+profiles:
+  default:
+    auth_mode: oneapi
+    vanity_domain: example
+    client_id: client-id
+    client_secret_ref:
+      cmd:
+        argv: [%q, "-test.run=^TestRunConfigCmdHelperProcess$", "--", "block", %q]
+`, os.Args[0], readyPath))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	result := make(chan int, 1)
+	go func() {
+		result <- run(ctx, []string{
+			"--config", configPath,
+			"--format", "json",
+			"zia", "locations", "list",
+		}, &stdout, &stderr, []string{"XDG_CONFIG_HOME=" + t.TempDir()})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("os.Stat(provider ready marker) error = %v", err)
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("cmd provider did not start before deadline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case code := <-result:
+		if code != exitInternalError {
+			t.Fatalf("run(canceled cmd provider) exit code = %d, want %d; stderr = %q", code, exitInternalError, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("run(canceled cmd provider) stdout = %q, want empty", stdout.String())
+		}
+		got := decodeErrorEnvelope(t, stderr.Bytes())
+		if got.Error.Kind != machine.ErrorKindCanceled {
+			t.Fatalf("run(canceled cmd provider) error kind = %q, want %q", got.Error.Kind, machine.ErrorKindCanceled)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("run(canceled cmd provider) did not return after cancellation")
+	}
+}
+
 // TestRunJSONCredentialErrorEnvelopeMissingArray verifies that the JSON error
 // envelope for a missing-credentials failure includes a non-empty "missing"
 // array of variable NAMES and that no secret values appear anywhere in the
@@ -931,6 +1001,27 @@ func TestErrorFormatFollowsDataPathForAuto(t *testing.T) {
 	}
 }
 
+func TestRunAppNullSinkFailureUsesRequestedFormat(t *testing.T) {
+	previousOpenNullSink := openNullSink
+	openNullSink = func() (*os.File, error) {
+		return nil, errors.New("injected null sink failure")
+	}
+	defer func() { openNullSink = previousOpenNullSink }()
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"--format", "json", "version"}, &stdout, &stderr, nil)
+	if code != exitInternalError {
+		t.Fatalf("run(--format json) with null-sink failure = %d, want %d", code, exitInternalError)
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("json.Unmarshal(null-sink error %q) = %v, want JSON error envelope", stderr.String(), err)
+	}
+	if envelope.Error.Kind != "internal" {
+		t.Fatalf("null-sink error kind = %q, want internal", envelope.Error.Kind)
+	}
+}
+
 // stubContextError implements zscaler.ErrorContexter and unwraps to a sentinel,
 // exercising errorDetails' envelope enrichment without the unexported zscaler
 // error types.
@@ -973,12 +1064,21 @@ func TestRunConfigCmdHelperProcess(t *testing.T) {
 		return
 	}
 	args := os.Args[index+1:]
-	if len(args) < 2 || args[0] != "touch" {
+	switch {
+	case len(args) == 2 && args[0] == "touch":
+		if err := os.WriteFile(args[1], []byte("ran"), 0o600); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	case len(args) == 2 && args[0] == "block":
+		if err := os.WriteFile(args[1], []byte("ready"), 0o600); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		time.Sleep(time.Hour)
+		os.Exit(0)
+	default:
 		os.Exit(2)
 	}
-	if err := os.WriteFile(args[1], []byte("ran"), 0o600); err != nil {
-		fmt.Fprint(os.Stderr, err)
-		os.Exit(1)
-	}
-	os.Exit(0)
 }

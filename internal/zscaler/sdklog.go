@@ -3,7 +3,11 @@ package zscaler
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
+
+	"github.com/dvmrry/zscalerctl/internal/redact"
 
 	sdklogger "github.com/zscaler/zscaler-sdk-go/v3/logger"
 )
@@ -40,11 +44,85 @@ func (a sdkLogAdapter) Printf(format string, v ...interface{}) {
 	if a.logger == nil || !sdkLogForwardable(format) {
 		return
 	}
-	msg := strings.TrimSpace(fmt.Sprintf(format, v...))
+	msg := strings.TrimSpace(fmt.Sprintf(format, sdkLogSafeArgs(v)...))
+	msg, _ = redact.New(redact.ModeStandard).ScanRenderedString(msg)
 	if msg == "" {
 		return
 	}
 	a.logger.Debug(msg, slog.String("source", "zscaler-sdk"))
+}
+
+// sdkLogRedactedValue replaces an interpolated value that is not a known-safe
+// scalar.
+const sdkLogRedactedValue = "<REDACTED:SECRET>"
+
+// sdkLogSafeArgs keeps numeric, duration and time arguments and replaces every
+// text-like argument (string, []byte, error, Stringer) that is not a strict
+// number, Go duration or HTTP-date. Forwarded formats interpolate raw response
+// headers such as Retry-After, both in parse warnings and in rate-limit
+// summaries, and the credential scanner cannot recognize every malformed
+// value, so text is fail-closed regardless of which format carries it.
+func sdkLogSafeArgs(args []interface{}) []interface{} {
+	safe := make([]interface{}, len(args))
+	for i, arg := range args {
+		var text string
+		switch value := arg.(type) {
+		case string:
+			text = value
+		case []byte:
+			text = string(value)
+		case time.Duration, time.Time:
+			safe[i] = arg
+			continue
+		case error:
+			text = value.Error()
+		case fmt.Stringer:
+			text = value.String()
+		default:
+			safe[i] = arg
+			continue
+		}
+		if sdkLogSafeText(text) {
+			safe[i] = text
+		} else {
+			safe[i] = sdkLogRedactedValue
+		}
+	}
+	return safe
+}
+
+func sdkLogSafeText(value string) bool {
+	if sdkRetryAfterDeltaSeconds(value) || sdkRetryAfterHTTPDate(value) {
+		return true
+	}
+	_, err := time.ParseDuration(value)
+	return err == nil
+}
+
+func sdkRetryAfterDeltaSeconds(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func sdkRetryAfterHTTPDate(value string) bool {
+	for _, layout := range []string{
+		http.TimeFormat,
+		"Monday, 02-Jan-06 15:04:05 GMT",
+		time.ANSIC,
+	} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil && parsed.Format(layout) == value {
+			return true
+		}
+	}
+	return false
 }
 
 // sdkLogDenyMarkers identify SDK format strings that carry credential- or

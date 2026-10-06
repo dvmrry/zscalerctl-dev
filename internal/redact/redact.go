@@ -86,6 +86,11 @@ func (r Redactor) structuredScanMayMatch(in string) bool {
 	if strings.Contains(in, `\`) {
 		return true
 	}
+	// Pasted-credential rules include non-ASCII labels that the ASCII-folding
+	// rule prefilters cannot express.
+	if pasteCredentialMayMatch(in) {
+		return true
+	}
 	view := prefilterText{text: in}
 	for _, candidate := range baseRules {
 		if candidate.prefilter.match(&view) {
@@ -113,11 +118,27 @@ func (r Redactor) scanPlainString(in string) (string, Report) {
 }
 
 func (r Redactor) scanJSONString(value string) (string, Report) {
+	// A decoded string that is itself a JSON document (pasted JSON in a
+	// description) is scanned as a document, exactly as ScanString scans it
+	// when projection sees it on its own, so rendering does not re-redact what
+	// projection preserved. Each nested level is strictly shorter.
+	if nestedJSONDocumentCandidate(value) {
+		if out, report, ok := scanStructuredDocuments(value, r.scanJSONString, true); ok {
+			return out, report
+		}
+	}
 	out, report := scanRules(value, Report{}, baseRules)
 	if r.mode == ModeShare || r.mode == ModeParanoid {
 		out, report = scanRules(out, report, shareRules)
 	}
 	return out, report
+}
+
+// nestedJSONDocumentCandidate reports whether a decoded string starts like a
+// JSON object or array, the only documents that carry key/value structure.
+func nestedJSONDocumentCandidate(value string) bool {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	return trimmed != "" && (trimmed[0] == '{' || trimmed[0] == '[')
 }
 
 // scanStructuredDocuments keeps plaintext regexes inside decoded JSON string
@@ -190,6 +211,9 @@ func scanRule(out string, report Report, rule rule, view *prefilterText) (string
 	if !rule.prefilter.match(view) {
 		return out, report
 	}
+	if rule.custom != nil {
+		return scanCustomRule(out, report, rule, view)
+	}
 	count := len(rule.re.FindAllStringIndex(out, -1))
 	if count == 0 {
 		return out, report
@@ -201,6 +225,52 @@ func scanRule(out string, report Report, rule rule, view *prefilterText) (string
 	out = rule.re.ReplaceAllString(out, rule.replacement)
 	*view = prefilterText{text: out}
 	return out, report
+}
+
+// scanCredentialURLs redacts URL userinfo that carries a user:password colon.
+// When the matched userinfo contains one of this package's markers, a colon
+// inside the marker does not count: share-mode masking can leave a marker in
+// userinfo ("user-<REDACTED:IP>@host"), which would otherwise match the
+// credential URL pattern on a later pass.
+func scanCredentialURLs(in string) (string, int) {
+	matches := credentialURLRE.FindAllStringSubmatchIndex(in, -1)
+	if len(matches) == 0 {
+		return in, 0
+	}
+
+	var out strings.Builder
+	last, count := 0, 0
+	for _, match := range matches {
+		userInfo := strings.TrimSuffix(in[match[3]:match[1]], "@")
+		if strings.Contains(userInfo, "<REDACTED:") && !markedUserInfoHasPassword(userInfo) {
+			continue
+		}
+
+		out.WriteString(in[last:match[2]])
+		out.WriteString(in[match[2]:match[3]])
+		out.WriteString(markerSecret)
+		out.WriteByte('@')
+		last = match[1]
+		count++
+	}
+	if count == 0 {
+		return in, 0
+	}
+
+	out.WriteString(in[last:])
+	return out.String(), count
+}
+
+// scanCustomRule applies a rule implemented as a scanner function rather than
+// a single regex replacement.
+func scanCustomRule(out string, report Report, rule rule, view *prefilterText) (string, Report) {
+	scanned, count := rule.custom(out)
+	if count == 0 {
+		return out, report
+	}
+	report = addReportCount(report, rule.name, count)
+	*view = prefilterText{text: scanned}
+	return scanned, report
 }
 
 func jsonStringEnd(in string, start int) int {
@@ -222,6 +292,23 @@ type jsonStringToken struct {
 	start int
 	end   int
 	value string
+	// memberKey is the object member name when the token is a member value.
+	memberKey string
+}
+
+// publicMemberValue reports whether a member value is a public identifier
+// named by its member key ({"_id": <ObjectId>}, {"sha256": <digest>},
+// {"commit": <revision>}), the JSON form of the context isContextualPublicValue
+// reads in prose. Only values below the 32-character long-entropy floor are
+// considered, so the exemption reaches the branch's short free-text rule but
+// never changes main's long-entropy decision.
+func publicMemberValue(token jsonStringToken) bool {
+	if token.memberKey == "" || len(token.memberKey) > publicValueContextWindow || len(token.value) >= 32 {
+		return false
+	}
+	context := token.memberKey + ": "
+	text := context + token.value
+	return isContextualPublicValue(text, len(context), len(text))
 }
 
 type jsonSensitiveValue struct {
@@ -265,6 +352,9 @@ func scanJSONDocument(in string, scanString jsonStringScanner, classifySensitive
 	replacements := make([]jsonReplacement, 0, len(parser.strings)+len(parser.sensitiveValues))
 	var report Report
 	for _, token := range parser.strings {
+		if publicMemberValue(token) {
+			continue
+		}
 		value, tokenReport := scanString(token.value)
 		report = mergeReports(report, tokenReport)
 		if value != token.value || containsRedactionMarker(value) {
@@ -277,6 +367,9 @@ func scanJSONDocument(in string, scanString jsonStringScanner, classifySensitive
 	}
 	if classifySensitive {
 		for _, sensitive := range parser.sensitiveValues {
+			if sensitive.ruleName == "" {
+				continue // withdrawn: the key of a key/value pair object
+			}
 			report = addReportCount(report, sensitive.ruleName, 1)
 			replacements = append(replacements, jsonReplacement{
 				start:    sensitive.start,
@@ -321,8 +414,23 @@ func containsRedactionMarker(value string) bool {
 	return strings.Contains(value, markerSecret) ||
 		strings.Contains(value, markerPrivateKey) ||
 		strings.Contains(value, markerJWT) ||
-		strings.Contains(value, markerProvisioningKey)
+		strings.Contains(value, markerProvisioningKey) ||
+		strings.Contains(value, markerEmail) ||
+		strings.Contains(value, markerIP)
 }
+
+// markedUserInfoHasPassword fails closed: any colon outside the package's
+// markers counts as a password separator, even one that might be a host port
+// in a match that ran into a query ("user-<REDACTED:IP>@host:443?to=a@b").
+// Such ambiguous URLs are over-redacted, never leaked; only a colon that
+// exists solely inside a marker is exempt.
+func markedUserInfoHasPassword(userInfo string) bool {
+	return strings.Contains(redactionMarkerRE.ReplaceAllString(userInfo, ""), ":")
+}
+
+// redactionMarkerRE matches only markers this package emits, so arbitrary
+// marker-shaped text in userinfo is still judged as credentials.
+var redactionMarkerRE = regexp.MustCompile(`<REDACTED:(?:SECRET|PRIVATE_KEY|JWT|PROVISIONING_KEY|EMAIL|IP)>`)
 
 func mergeReports(dst, src Report) Report {
 	for name, count := range src.Counts {
@@ -381,6 +489,8 @@ func (p *jsonDocumentParser) parseObject() bool {
 		return true
 	}
 
+	pairKeyEntry, hasValueMember := -1, false
+	var object pasteJSONObject
 	for {
 		key, ok := p.parseString()
 		if !ok {
@@ -390,9 +500,16 @@ func (p *jsonDocumentParser) parseObject() bool {
 		if !p.consume(':') {
 			return false
 		}
+		firstValueString := len(p.strings)
 		valueStart, valueEnd, ok := p.parseValue()
 		if !ok {
 			return false
+		}
+		if p.in[valueStart] == '[' {
+			p.markPasteCredentialArray(key.value, firstValueString)
+		}
+		if p.in[valueStart] == '"' {
+			p.strings[len(p.strings)-1].memberKey = key.value
 		}
 		// Match the existing assignment-rule surface: scalar values are replaced,
 		// while structured values continue to be scanned recursively by token.
@@ -408,10 +525,45 @@ func (p *jsonDocumentParser) parseObject() bool {
 					priority: classification.priority,
 				})
 			}
+			if p.in[valueStart] == '"' {
+				object.note(key.value, p.strings[len(p.strings)-1])
+			}
+			// A key named only "key" (or "pwd"/"bearer") is ambiguous: tag
+			// objects use {"key": "Environment"}. Replace its string value only
+			// when the value itself is credential-shaped.
+			if p.in[valueStart] == '"' && genericCredentialJSONKeyRE.MatchString(key.value) {
+				var decoded string
+				passwordKey := !strings.EqualFold(key.value, "key") && !strings.EqualFold(key.value, "bearer")
+				if err := json.Unmarshal([]byte(p.in[valueStart:valueEnd]), &decoded); err == nil &&
+					credentialShapedValue(decoded, passwordKey) &&
+					!(strings.EqualFold(key.value, "pwd") && isReadableAbsolutePath(decoded)) {
+					if strings.EqualFold(key.value, "key") && isPublicIdentifierValue(decoded) {
+						pairKeyEntry = len(p.sensitiveValues)
+					}
+					p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
+						start:    valueStart,
+						end:      valueEnd,
+						ruleName: "generic_credential_label",
+						marker:   markerSecret,
+						priority: 3,
+					})
+				}
+			}
+		}
+		// {"Key": ..., "Value": ...} with any casing, and a scalar, object or
+		// array value.
+		if strings.EqualFold(key.value, "value") {
+			hasValueMember = true
 		}
 
 		p.skipSpace()
 		if p.consume('}') {
+			// In a {"key": K, "value": V} pair the key is a name; a UUID,
+			// digest or cloud resource ID there is a public identifier.
+			if pairKeyEntry >= 0 && hasValueMember {
+				p.sensitiveValues[pairKeyEntry].ruleName = ""
+			}
+			p.markPasteCredentialObject(&object)
 			return true
 		}
 		if !p.consume(',') {
@@ -510,6 +662,509 @@ func (r Redactor) ScanFreeText(in string) (string, Report) {
 	return r.scanStringWithEntropy(in, highEntropyFreeText)
 }
 
+// ScanDisplayName applies the standard scanners to a human-chosen display name
+// in standard mode, plus a targeted check for pasted key material. It keeps
+// long operational names built from short separator-joined segments (cloud
+// resource names, sites, rule slugs) and redacts a token only when one segment
+// is long, mixed-case, contains a digit and has high entropy, or carries a
+// cloud access-key prefix. Unlike ScanRenderedString it does not redact by
+// overall token length, which would destroy long generated names.
+func (r Redactor) ScanDisplayName(in string) (string, Report) {
+	out, report := r.ScanString(in)
+	// JSON escapes can split decoded key material into short raw fragments;
+	// inspect decoded string tokens when the value is a JSON document.
+	// Quoted JSON literals embedded in the value (or in a JSON document's
+	// string values) are judged on their decoded content too.
+	scanner := withEmbeddedJSONStrings(scanDisplayNameTokens)
+	if strings.Contains(out, `\`) {
+		if structured, tokenReport, ok := scanStructuredDocuments(out, scanner, false); ok {
+			return structured, mergeReports(report, tokenReport)
+		}
+	}
+	tokens, tokenReport := scanner(out)
+	return tokens, mergeReports(report, tokenReport)
+}
+
+var embeddedJSONStringRE = regexp.MustCompile(`"(?:\\.|[^"\\])*"`)
+
+// withGenericLabels runs the generic credential label scanner before scan, for
+// text that only appears after decoding and so was not seen by base rules.
+func withGenericLabels(scan jsonStringScanner) jsonStringScanner {
+	return func(value string) (string, Report) {
+		labeled, count := scanGenericCredentialLabels(value)
+		report := addReportCount(Report{}, "generic_credential_label", count)
+		out, scanReport := scan(labeled)
+		return out, mergeReports(report, scanReport)
+	}
+}
+
+// withEmbeddedJSONStrings extends a decoded-string scanner to also decode
+// quoted JSON literals embedded in that string (a JSON document whose string
+// value contains an escaped literal in prose).
+func withEmbeddedJSONStrings(scan jsonStringScanner) jsonStringScanner {
+	return embeddedJSONStringScanner(scan, 0)
+}
+
+// maxEmbeddedJSONDepth bounds how many levels of escaped literals inside
+// escaped literals are decoded. Each level is strictly shorter than the last.
+const maxEmbeddedJSONDepth = 4
+
+func embeddedJSONStringScanner(scan jsonStringScanner, depth int) jsonStringScanner {
+	return func(value string) (string, Report) {
+		out, report := value, Report{}
+		if depth < maxEmbeddedJSONDepth && strings.Contains(value, `\`) {
+			out, report = scanEmbeddedJSONStrings(value, withGenericLabels(embeddedJSONStringScanner(scan, depth+1)))
+		}
+		scanned, scanReport := scan(out)
+		return scanned, mergeReports(report, scanReport)
+	}
+}
+
+// scanEmbeddedJSONStrings decodes each quoted JSON string literal that
+// contains an escape, scans the decoded text, and re-encodes the literal when
+// the scan redacted something. Text outside literals is left to the caller.
+func scanEmbeddedJSONStrings(in string, scan jsonStringScanner) (string, Report) {
+	var report Report
+	out := embeddedJSONStringRE.ReplaceAllStringFunc(in, func(literal string) string {
+		if !strings.Contains(literal, `\`) {
+			return literal
+		}
+		var decoded string
+		if json.Unmarshal([]byte(literal), &decoded) != nil {
+			return literal
+		}
+		scanned, literalReport := scan(decoded)
+		if literalReport.Empty() {
+			return literal
+		}
+		report = mergeReports(report, literalReport)
+		return encodeJSONString(scanned)
+	})
+	return out, report
+}
+
+func scanDisplayNameTokens(out string) (string, Report) {
+	var report Report
+	matches := displayNameTokenRE.FindAllStringIndex(out, -1)
+	if len(matches) == 0 {
+		return out, report
+	}
+	var b strings.Builder
+	last := 0
+	count := 0
+	for _, match := range matches {
+		if !displayNameTokenCarriesSecretAt(out, match[0], match[1]) {
+			continue
+		}
+		b.WriteString(out[last:match[0]])
+		b.WriteString(markerSecret)
+		last = match[1]
+		count++
+	}
+	if count == 0 {
+		return out, report
+	}
+	b.WriteString(out[last:])
+	return b.String(), addReportCount(report, "high_entropy_display_name_segment", count)
+}
+
+const (
+	displayNameSecretSegmentMin = 20
+	displayNameSecretEntropy    = 3.5
+)
+
+var displayNameTokenRE = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9._~+/=-]{15,}`)
+
+// cloudAccessKeyIDRE requires a token boundary after the 16 characters, so a
+// longer name such as "ASIAREGIONALHEADQUARTERS" is not an access key ID.
+var cloudAccessKeyIDRE = regexp.MustCompile(`(?:AKIA|ASIA)[A-Z0-9]{16}\b`)
+
+// displayNameTokenCarriesSecretAt judges the display-name token text[start:end]
+// with its preceding context: a public identifier or digest in its context,
+// or a "name=value" token whose value is a readable path or public identifier,
+// is not key material.
+func displayNameTokenCarriesSecretAt(text string, start, end int) bool {
+	token := text[start:end]
+	if isContextualPublicValue(text, start, end) {
+		return false
+	}
+	if publicAssignedValue(token) {
+		return false
+	}
+	return displayNameTokenCarriesSecret(token)
+}
+
+func displayNameTokenCarriesSecret(token string) bool {
+	if cloudAccessKeyIDRE.MatchString(token) {
+		return true
+	}
+	if isReadablePath(token) || isBarePublicIdentifier(token) {
+		return false
+	}
+	if len(token) >= 24 && looksLikeSplitKeyMaterial(token) {
+		return true
+	}
+	for _, segment := range splitNameSegments(token) {
+		if len(segment) < displayNameSecretSegmentMin {
+			continue
+		}
+		// Standard mode preserves compact UUIDs and hex fingerprints in
+		// structured fields, and generated resource names commonly end in a
+		// hex suffix; keep hex segments as identifiers in names too.
+		if isHex(segment) {
+			continue
+		}
+		if hasDigit(segment) && hasLetter(segment) && !readsAsWords(segment) &&
+			!singleCaseWordAndNumber(segment) && shannonEntropy(segment) >= displayNameSecretEntropy {
+			return true
+		}
+	}
+	return false
+}
+
+// wordWithNumber reports whether a segment is words joined to numbers
+// ("production2024", "NetworkSwitch2024", "Switch01Port48"): letters and
+// digits alternate at most four times, and the letters read as words. Mixed-case
+// letters must parse as CamelCase or acronym words; single-case letters must
+// contain a word-like share of vowels. Random key material rarely has so few
+// letter/digit switches, and random mixed-case letters almost never parse as
+// CamelCase because isolated lowercase letters are common in them.
+func wordWithNumber(segment string) bool {
+	switches := 0
+	for i := 1; i < len(segment); i++ {
+		if isDigitByte(segment[i]) != isDigitByte(segment[i-1]) {
+			switches++
+		}
+	}
+	if switches <= 2 {
+		return readsAsWords(segment) || singleCaseWordAndNumber(segment)
+	}
+	// Three or four switches ("Switch01Port48", "Switch01Eth0",
+	// "Catalyst01Gi0", "CiscoNexus9K01") only when every letter run has two or
+	// more letters (a word, acronym or interface abbreviation), apart from at
+	// most one single uppercase model letter, and the segment reads as words.
+	if switches > 4 {
+		return false
+	}
+	// One single uppercase letter is allowed as a model letter directly after a
+	// digit and before a digit or the end ("Nexus9K01", "Nexus9K").
+	singleLetterRuns := 0
+	for i := 0; i < len(segment); {
+		if !isASCIILetter(rune(segment[i])) {
+			i++
+			continue
+		}
+		j := i
+		for j < len(segment) && isASCIILetter(rune(segment[j])) {
+			j++
+		}
+		if j-i == 1 {
+			modelLetter := segment[i] >= 'A' && segment[i] <= 'Z' && i > 0 && isDigitByte(segment[i-1]) &&
+				(j == len(segment) || isDigitByte(segment[j]))
+			if !modelLetter {
+				return false
+			}
+			singleLetterRuns++
+		}
+		i = j
+	}
+	return singleLetterRuns <= 1 && readsAsWords(segment)
+}
+
+// capitalizedWordAt reports whether run has one capital followed by at least
+// two lowercase letters at index i.
+func capitalizedWordAt(run string, i int) bool {
+	if i+2 >= len(run) || run[i] < 'A' || run[i] > 'Z' {
+		return false
+	}
+	return run[i+1] >= 'a' && run[i+1] <= 'z' && run[i+2] >= 'a' && run[i+2] <= 'z'
+}
+
+// commonShortCamelWords are two-letter English words that appear as their own
+// Capitalized word in policy and setting names ("SignIn", "LogOnAsService",
+// "GoToMeeting", "MicrosoftEntraId").
+var commonShortCamelWords = map[string]bool{
+	"As": true, "At": true, "Be": true, "By": true, "Do": true, "Go": true,
+	"Id": true, "In": true, "Is": true, "It": true, "Me": true, "No": true,
+	"Of": true, "On": true, "Or": true, "To": true, "Up": true,
+}
+
+// mixedCaseSpellings are well-known product and protocol spellings that do not
+// split into CamelCase words ("VoIPQualityOfService", "WiFiEnterprise",
+// "mDNSResponder"). They are listed explicitly: accepting any lowercase letter
+// before an acronym would also accept common random mixed-case fragments.
+var mixedCaseSpellings = []string{
+	"VoIP", "WiFi", "IoT", "iOS", "iPadOS", "macOS",
+	"mDNS", "mTLS", "eBPF", "uRPF", "vNIC", "vCPU",
+}
+
+func mixedCaseSpellingAt(run string, i int) int {
+	for _, spelling := range mixedCaseSpellings {
+		if strings.HasPrefix(run[i:], spelling) {
+			return len(spelling)
+		}
+	}
+	return 0
+}
+
+// camelCaseWords reports whether a run of ASCII letters parses as words:
+// a leading lowercase word or one-letter prefix ("vSwitch"),
+// Capitalized words of three or more letters, common two-letter words
+// ("SignIn", "LogOn"), a few well-known mixed spellings ("VoIP", "WiFi"), and
+// acronyms of two or more capitals (alone, before a Capitalized word as in
+// "HTTPServer", before a two-letter word as in "MFAAtSignIn", or with one
+// trailing lowercase letter at the end of the run as in "IPv").
+func camelCaseWords(run string) bool {
+	for i := 0; i < len(run); {
+		if n := mixedCaseSpellingAt(run, i); n > 0 {
+			i += n
+			continue
+		}
+		uppers := 0
+		for i+uppers < len(run) && run[i+uppers] >= 'A' && run[i+uppers] <= 'Z' {
+			uppers++
+		}
+		lowers := 0
+		for j := i + uppers; j+lowers < len(run) && run[j+lowers] >= 'a' && run[j+lowers] <= 'z'; {
+			lowers++
+		}
+		atEnd := i+uppers+lowers == len(run)
+		switch {
+		case uppers == 0 && lowers >= 2 && i == 0:
+		case uppers == 0 && lowers == 1 && i == 0 && capitalizedWordAt(run, 1): // vSwitch, iPhone
+		case uppers == 1 && lowers >= 2:
+		case uppers == 1 && lowers == 1 && commonShortCamelWords[run[i:i+2]]: // SignIn
+		case uppers >= 2 && (lowers == 0 || lowers >= 2):
+		case uppers >= 2 && lowers == 1 && atEnd: // IPv, IPv6
+		case uppers >= 3 && lowers == 1 && commonShortCamelWords[run[i+uppers-1:i+uppers+1]]: // MFAAt
+		default:
+			return false
+		}
+		i += uppers + lowers
+	}
+	return true
+}
+
+func isDigitByte(ch byte) bool {
+	return ch >= '0' && ch <= '9'
+}
+
+// alphanumericProductNames are product names spelled with digits that appear
+// as their own CamelCase word in policy names ("AllowO365SignInForMFA",
+// "M365AppsUpdate", "AwsS3Backup", "EC2InstanceConnect").
+var alphanumericProductNames = []string{"O365", "M365", "S3", "EC2"}
+
+// maskAlphanumericProductNames replaces each alphanumericProductNames word
+// with "-" so the letters around it are judged as their own words. A name
+// counts only at CamelCase boundaries: after the start, a separator or a
+// lowercase letter, and before the end, a separator or a capital.
+func maskAlphanumericProductNames(token string) string {
+	var masked []byte
+	for i := 0; i < len(token); i++ {
+		if i > 0 && (isDigitByte(token[i-1]) || token[i-1] >= 'A' && token[i-1] <= 'Z') {
+			continue
+		}
+		for _, name := range alphanumericProductNames {
+			end := i + len(name)
+			if end > len(token) || token[i:end] != name ||
+				end < len(token) && (isDigitByte(token[end]) || token[end] >= 'a' && token[end] <= 'z') {
+				continue
+			}
+			if masked == nil {
+				masked = []byte(token)
+			}
+			for j := i; j < end; j++ {
+				masked[j] = '-'
+			}
+			break
+		}
+	}
+	if masked == nil {
+		return token
+	}
+	return string(masked)
+}
+
+// readsAsWords reports whether a token is built from words rather than random
+// characters ("ZscalerClientConnectorRollout2024", "uswest2production01primary",
+// "Projects/2024/NetworkSwitch2024"). At least 60% of its letters must sit in
+// letter runs of three or more. If the token mixes upper and lower case, every
+// such run must parse as CamelCase or acronym words; random mixed-case letters
+// almost never do, because isolated lowercase letters are common in them. A
+// single-case token must instead have a word-like share of vowels (30%;
+// random letters average about 19%). Digit-spelled product names ("O365")
+// are masked first.
+func readsAsWords(token string) bool {
+	token = maskAlphanumericProductNames(token)
+	var upper, lower, vowels, inRuns int
+	var runs []string
+	for _, run := range strings.FieldsFunc(token, func(r rune) bool { return !isASCIILetter(r) }) {
+		if len(run) >= 3 {
+			inRuns += len(run)
+			runs = append(runs, run)
+		}
+	}
+	for i := 0; i < len(token); i++ {
+		switch ch := token[i]; {
+		case ch >= 'A' && ch <= 'Z':
+			upper++
+		case ch >= 'a' && ch <= 'z':
+			lower++
+		default:
+			continue
+		}
+		switch lowerASCII(token[i]) {
+		case 'a', 'e', 'i', 'o', 'u':
+			vowels++
+		}
+	}
+	letters := upper + lower
+	if letters < 4 || inRuns*10 < letters*6 {
+		return false
+	}
+	if upper == 0 || lower == 0 {
+		return vowels*10 >= letters*3
+	}
+	for _, run := range runs {
+		if !camelCaseWords(run) {
+			return false
+		}
+	}
+	return true
+}
+
+// singleCaseWordAndNumber reports whether a segment is one single-case run of
+// four or more letters joined to one run of digits ("crowdstrikefalcon2024",
+// "POSTGRESQL16"). Compound product names often have too few vowels for
+// readsAsWords, but random key material essentially never keeps all of its
+// letters and all of its digits in two contiguous runs.
+func singleCaseWordAndNumber(segment string) bool {
+	letters, digits, switches := 0, 0, 0
+	for i := 0; i < len(segment); i++ {
+		switch ch := segment[i]; {
+		case isDigitByte(ch):
+			digits++
+		case isASCIILetter(rune(ch)):
+			letters++
+		default:
+			return false
+		}
+		if i > 0 && isDigitByte(segment[i]) != isDigitByte(segment[i-1]) {
+			switches++
+		}
+	}
+	return switches == 1 && letters >= 4 && digits > 0 && !hasMixedCaseLetters(segment)
+}
+
+// isReadablePath reports whether a "/"-separated value is a path of words
+// rather than Base64 key material ("Network/PointToSite",
+// "projects/2024/networkplanning", "/var/lib/postgresql16",
+// "CORP/NYC/IDF01/SW02/PORT48"). A single-case segment must be short, a
+// number, or read as words; a mixed-case segment must be CamelCase words with
+// at most a trailing number in each "."/"-"/"_" piece. Random Base64 split on
+// "/" leaves long mixed-case fragments that fail, or contains "+".
+func isReadablePath(value string) bool {
+	path := strings.TrimPrefix(value, "/")
+	if !strings.Contains(path, "/") && path == value {
+		return false
+	}
+	if path == "" {
+		return false
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if !readablePathSegment(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+const readablePathSegmentMax = 16
+
+func readablePathSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for i := 0; i < len(segment); i++ {
+		if !isASCIIAlnum(segment[i]) && strings.IndexByte("._-", segment[i]) < 0 {
+			return false
+		}
+	}
+	if !hasMixedCaseLetters(segment) {
+		return len(segment) <= readablePathSegmentMax || singleCaseWordAndNumber(segment) || readsAsWords(segment)
+	}
+	for _, piece := range strings.FieldsFunc(segment, func(r rune) bool { return r == '.' || r == '-' || r == '_' }) {
+		if !isAllDigits(piece) && !camelCaseWordsAndNumber(piece) {
+			return false
+		}
+	}
+	return true
+}
+
+// camelCaseWordsAndNumber reports whether piece is a run of three or more
+// letters that parses as CamelCase words, optionally followed by digits
+// ("PointToSite", "NetworkSwitch2024").
+func camelCaseWordsAndNumber(piece string) bool {
+	letters := 0
+	for letters < len(piece) && isASCIILetter(rune(piece[letters])) {
+		letters++
+	}
+	return letters >= 3 && (letters == len(piece) || isAllDigits(piece[letters:])) &&
+		camelCaseWords(piece[:letters])
+}
+
+// isReadableAbsolutePath reports whether value is a filesystem path such as
+// "/opt/enterprise2024", "/var/tmp/CHG202410060123", "C:\Users\Admin\Projects"
+// or "\\fileserver\share\reports": it is absolute (Unix root, Windows drive or
+// UNC), has at least two segments, and isReadablePath accepts it.
+func isReadableAbsolutePath(value string) bool {
+	switch {
+	case strings.HasPrefix(value, `\\`):
+		value = "/" + strings.ReplaceAll(value[2:], `\`, "/")
+	case isWindowsDrivePath(value):
+		value = strings.ReplaceAll(value[2:], `\`, "/")
+	}
+	return strings.HasPrefix(value, "/") && strings.Count(value, "/") >= 2 && isReadablePath(value)
+}
+
+// isWindowsDrivePath reports whether value starts with a drive root ("C:\",
+// "C:/").
+func isWindowsDrivePath(value string) bool {
+	return len(value) > 3 && isASCIILetter(rune(value[0])) && value[1] == ':' && (value[2] == '\\' || value[2] == '/')
+}
+
+// readableAbsolutePathAt reports whether the text at start is a readable
+// absolute path up to the next space, quote or delimiter. JSON-escaped
+// backslashes ("C:\\Users") are read as single backslashes.
+func readableAbsolutePathAt(in string, start int) bool {
+	end := start
+	for end < len(in) && end-start < 256 && strings.IndexByte(" \t\r\n\"'`,;)]}", in[end]) < 0 {
+		end++
+	}
+	value := strings.TrimRight(in[start:end], ".")
+	return isReadableAbsolutePath(value) || isReadableAbsolutePath(strings.ReplaceAll(value, `\\`, `\`))
+}
+
+// assignedTokenValue splits a "name=value" token whose name is a word label
+// ("PartitionKey=...", "pwd=/srv/x") and returns the value. Base64 only has
+// "=" as trailing padding, so an inner "=" after letters is an assignment.
+func assignedTokenValue(token string) (string, bool) {
+	eq := strings.IndexByte(token, '=')
+	if eq <= 0 || eq == len(token)-1 || token[eq+1] == '=' {
+		return "", false
+	}
+	for i := 0; i < eq; i++ {
+		if !isASCIILetter(rune(token[i])) && token[i] != '_' && token[i] != '-' {
+			return "", false
+		}
+	}
+	return token[eq+1:], true
+}
+
+func isASCIILetter(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+}
+
 type highEntropyContext int
 
 const (
@@ -522,19 +1177,71 @@ func (r Redactor) scanStringWithEntropy(in string, context highEntropyContext) (
 	// JSON escapes can split one decoded token into raw fragments too short for
 	// the entropy regex. An escape therefore requires token-aware inspection
 	// even when the serialized bytes have no contiguous candidate.
-	if !strings.Contains(out, `\`) && !highEntropyFreeTextTokenRE.MatchString(out) {
+	if !strings.Contains(out, `\`) && !highEntropyFreeTextTokenRE.MatchString(out) &&
+		(context != highEntropyFreeText || !shortFreeTextTokenRE.MatchString(out)) {
 		return out, report
 	}
 	entropyScanner := func(value string) (string, Report) {
 		return r.scanEntropy(value, Report{}, context)
 	}
-	if structured, entropyReport, ok := scanStructuredDocuments(out, entropyScanner, false); ok {
+	scanner := withEmbeddedJSONStrings(entropyScanner)
+	if structured, entropyReport, ok := scanStructuredDocuments(out, scanner, false); ok {
 		return structured, mergeReports(report, entropyReport)
 	}
-	return r.scanEntropy(out, report, context)
+	scanned, scanReport := scanner(out)
+	return scanned, mergeReports(report, scanReport)
 }
 
 func (r Redactor) scanEntropy(out string, report Report, context highEntropyContext) (string, Report) {
+	out, report = r.scanLongEntropy(out, report, context)
+	if context == highEntropyFreeText {
+		out, report = scanShortFreeTextTokens(out, report, r.mode)
+	}
+	return out, report
+}
+
+// Free text is where admins paste PoC keys, and many API keys are 20-31
+// characters, below the general 32-character floor. In free text only, a
+// single unseparated alphanumeric run of 24-31 characters that mixes upper,
+// lower and digits and has high entropy is treated as key material. The
+// stricter character and entropy conditions keep ticket numbers, circuit IDs
+// and CamelCase product names intact.
+const (
+	shortFreeTextTokenEntropy = 3.7
+)
+
+var shortFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9]{24,31}\b`)
+
+func scanShortFreeTextTokens(out string, report Report, mode Mode) (string, Report) {
+	matches := shortFreeTextTokenRE.FindAllStringIndex(out, -1)
+	if len(matches) == 0 {
+		return out, report
+	}
+	var b strings.Builder
+	last := 0
+	count := 0
+	for _, match := range matches {
+		token := out[match[0]:match[1]]
+		if !hasDigit(token) || !hasLetter(token) || readsAsWords(token) || singleCaseWordAndNumber(token) ||
+			shannonEntropy(token) < shortFreeTextTokenEntropy {
+			continue
+		}
+		if mode == ModeStandard && (isBarePublicIdentifier(token) || isContextualPublicValue(out, match[0], match[1])) {
+			continue
+		}
+		b.WriteString(out[last:match[0]])
+		b.WriteString(markerSecret)
+		last = match[1]
+		count++
+	}
+	if count == 0 {
+		return out, report
+	}
+	b.WriteString(out[last:])
+	return b.String(), addReportCount(report, "high_entropy_short_free_text_token", count)
+}
+
+func (r Redactor) scanLongEntropy(out string, report Report, context highEntropyContext) (string, Report) {
 	matches := highEntropyFreeTextTokenRE.FindAllStringIndex(out, -1)
 	if len(matches) == 0 {
 		return out, report
@@ -570,6 +1277,9 @@ type rule struct {
 	// prefilter is a cheap necessary-condition gate. It must return false only
 	// when the regex cannot match; the regex remains the authority.
 	prefilter rulePrefilter
+	// custom, when set, replaces re/replacement: it returns the scanned text
+	// and the number of redactions.
+	custom func(string) (string, int)
 }
 
 type rulePrefilter struct {
@@ -678,6 +1388,8 @@ const (
 	markerPrivateKey      = `<REDACTED:PRIVATE_KEY>`
 	markerJWT             = `<REDACTED:JWT>`
 	markerProvisioningKey = `<REDACTED:PROVISIONING_KEY>`
+	markerEmail           = `<REDACTED:EMAIL>`
+	markerIP              = `<REDACTED:IP>`
 
 	provisioningAssignmentKeys = `provision(?:ing)?[_ -]?key|provision[_ -]?token|enrollment[_ -]?token|oauth[_ -]?2[_ -]?enrollment[_ -]?token`
 	privateKeyAssignmentKeys   = `ssh[_-]?private[_-]?key|private[_-]?key|certBlob|zrsaencryptedprivatekey|zrsaencryptedsessionkey`
@@ -687,6 +1399,8 @@ const (
 
 var authorizationHeaderRE = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)\S.*`)
 
+var credentialURLRE = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s]+@`)
+
 var baseRules = buildBaseRules()
 
 // The plaintext assignment rules can begin within a longer key, but only when
@@ -695,13 +1409,92 @@ var baseRules = buildBaseRules()
 var jsonProvisioningAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + provisioningAssignmentKeys + `)$`)
 var jsonPrivateKeyAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + privateKeyAssignmentKeys + `)$`)
 var jsonSecretAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + secretAssignmentKeys + `)$`)
+var genericCredentialJSONKeyRE = regexp.MustCompile(`(?i)^(?:key|pwd|passwd|bearer)$`)
 
 var highEntropyFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}\b`)
 var canonicalUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 var compactUUIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
 var publicHexFingerprintRE = regexp.MustCompile(`(?i)^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var gitSHARE = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
-var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b[\s:=#-]*)$`)
+var gitSHAContextRE = regexp.MustCompile(`(?i)(?:\b(?:git|commit|sha|revision|rev)\b(?:\s+(?:is|was))?[\s:=#-]*)$`)
+
+// Public identifier shapes. Cloud resource IDs and ULIDs (whose leading
+// timestamp character pair is "01" for current dates) are recognizable on
+// their own. Abbreviated git revisions, MongoDB ObjectIds, KSUIDs and digests
+// look like key material and count only right after their naming context.
+var cloudResourceIDRE = regexp.MustCompile(`^(?:i|sg|subnet|vpc|vpce|ami|vol|snap|eni|rtb|tgw|igw|nat|acl)-(?:[0-9a-f]{8}|[0-9a-f]{17})$`)
+var ulidRE = regexp.MustCompile(`^01[0-9A-HJKMNP-TV-Z]{24}$`)
+var gitRevisionRE = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+var objectIDRE = regexp.MustCompile(`^[0-9a-f]{24}$`)
+var objectIDContextRE = regexp.MustCompile(`(?i)(?:\b_id|\bobject\s?id|\boid)["']?\s*[:=]?\s*["']?$`)
+var ksuidRE = regexp.MustCompile(`^[0-9A-Za-z]{27}$`)
+var ksuidContextRE = regexp.MustCompile(`(?i)\bksuid\s*[:=]?\s*$`)
+var digestContextRE = regexp.MustCompile(`(?i)\b(?:fingerprint|thumbprint|checksum|digest|md5|sha-?(?:1|224|256|384|512))\b[^\n]{0,40}$`)
+
+const publicValueContextWindow = 48
+
+// isBarePublicIdentifier reports whether value is a public identifier that is
+// recognizable without context: a cloud resource ID or a ULID.
+func isBarePublicIdentifier(value string) bool {
+	return cloudResourceIDRE.MatchString(value) || ulidRE.MatchString(value)
+}
+
+// isPublicIdentifierValue reports whether value is a UUID, a hex digest of a
+// fingerprint length, or a bare public identifier.
+func isPublicIdentifierValue(value string) bool {
+	return canonicalUUIDRE.MatchString(value) || compactUUIDRE.MatchString(value) ||
+		publicHexFingerprintRE.MatchString(value) || isBarePublicIdentifier(value)
+}
+
+// isContextualPublicValue reports whether text[start:end] is a public
+// identifier named by the words right before it: an abbreviated git revision
+// after commit/revision/SHA, an ObjectId after _id/ObjectId, a KSUID after
+// KSUID, or a digest-length hex or Base64 value after
+// fingerprint/thumbprint/checksum/digest/MD5/SHA. The context window is
+// bounded, so the check is constant work per token.
+func isContextualPublicValue(text string, start, end int) bool {
+	for end < len(text) && end-start < 128 && text[end] == '=' {
+		end++ // Base64 padding is outside the token's word boundary
+	}
+	token := text[start:end]
+	contextStart := start - publicValueContextWindow
+	if contextStart < 0 {
+		contextStart = 0
+	}
+	context := text[contextStart:start]
+	switch {
+	case gitRevisionRE.MatchString(token) && gitSHAContextRE.MatchString(context):
+		return true
+	case objectIDRE.MatchString(token) && objectIDContextRE.MatchString(context):
+		return true
+	case ksuidRE.MatchString(token) && ksuidContextRE.MatchString(context):
+		return true
+	case digestShaped(token) && digestContextRE.MatchString(context):
+		return true
+	}
+	return false
+}
+
+// digestShaped reports whether value has the exact length of an MD5, SHA-1 or
+// SHA-2 digest in hex, or in Base64 with or without its padding.
+func digestShaped(value string) bool {
+	if isHex(value) {
+		switch len(value) {
+		case 32, 40, 56, 64, 96, 128:
+			return true
+		}
+		return false
+	}
+	body := strings.TrimRight(value, "=")
+	if !isBase64Text(body) || len(value)-len(body) > 2 {
+		return false
+	}
+	switch len(body) {
+	case 22, 27, 38, 43, 64, 86:
+		return len(value) == len(body) || len(value)%4 == 0
+	}
+	return false
+}
 
 func classifyJSONKey(key string) ([3]jsonSensitiveClassification, int) {
 	var classifications [3]jsonSensitiveClassification
@@ -769,10 +1562,9 @@ func buildBaseRules() []rule {
 			// containing '@' (e.g. admin:P@ssw0rd@host) is fully redacted. The
 			// char class excludes '/' and whitespace, keeping the match inside a
 			// single URL's userinfo.
-			name:        "credential_url",
-			re:          regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s]+@`),
-			replacement: `${1}` + markerSecret + `@`,
-			prefilter:   all(contains("://"), contains("@")),
+			name:      "credential_url",
+			prefilter: all(contains("://"), contains("@")),
+			custom:    scanCredentialURLs,
 		},
 	}
 	rules = append(rules, assignmentRules("provisioning_key_assignment", provisioningAssignmentKeys, markerProvisioningKey)...)
@@ -784,7 +1576,634 @@ func buildBaseRules() []rule {
 		replacement: markerSecret,
 		prefilter:   prefilterForAssignmentKeys(secretPhraseKeys),
 	})
+	// Admins paste PoC keys behind generic labels ("POC key: ...", "token ...",
+	// "Bearer ...") that the compound-key rules above do not name. Only the
+	// value is replaced, and only when it is credential-shaped, so prose such
+	// as "key: production" or "token bucket rate 100" survives.
+	// Well-known vendor token formats are recognized by prefix at any length
+	// above the format's minimum, which catches keys below the general entropy
+	// floor with very few false positives.
+	rules = append(rules, rule{
+		name:      "known_token_prefix",
+		custom:    scanKnownTokenPrefixes,
+		prefilter: containsAnyFold("gh", "github_pat_", "glpat", "glrt", "hvs.", "xox", "_live_", "_test_", "aiza", "sg.", "akia", "asia", "npm_", "shp", "sk"),
+	})
+	rules = append(rules, rule{
+		name:      "generic_credential_label",
+		prefilter: containsAnyFold(genericCredentialLabels...),
+		custom:    scanGenericCredentialLabels,
+	})
+	// Paste formats the label rules above cannot bound: punctuation passwords,
+	// CLI and PowerShell arguments, table and next-line values, encoded query
+	// signatures and Basic credentials. It runs last so it only adds redactions,
+	// and gates itself with pasteCredentialMayMatch, whose non-ASCII labels a
+	// rulePrefilter cannot express.
+	rules = append(rules, rule{
+		name:   "paste_credential",
+		custom: scanPasteCredentials,
+	})
 	return rules
+}
+
+// knownTokenPrefixRE matches common vendor token formats: GitHub, GitLab
+// (personal and runner tokens), HashiCorp Vault service tokens, Slack, Stripe,
+// Google API keys, SendGrid, AWS access key IDs, npm, Shopify and Twilio API
+// key SIDs. An AWS access key ID must end at a token boundary, so
+// "ASIAREGIONALHEADQUARTERS" is a name, not a key ID.
+var knownTokenPrefixRE = regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gl(?:pat|rt)-[A-Za-z0-9_-]{20,}|hvs\.[A-Za-z0-9_-]{24,}|xox[abposr]-[A-Za-z0-9-]{10,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{30,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|(?:AKIA|ASIA)[0-9A-Z]{16}\b|npm_[A-Za-z0-9]{30,}|shp(?:at|ca|pa|ss)_[a-fA-F0-9]{32}|SK[0-9a-f]{32})`)
+
+// scanKnownTokenPrefixes redacts knownTokenPrefixRE matches, except
+// documentation names that only share a vendor prefix (a "glpat-" prefix
+// followed by runbook words such as token-rotation-runbook, or
+// "github_pat_rotation_and_revocation").
+func scanKnownTokenPrefixes(in string) (string, int) {
+	matches := knownTokenPrefixRE.FindAllStringIndex(in, -1)
+	var b strings.Builder
+	last, count := 0, 0
+	for _, match := range matches {
+		if knownTokenSuffixIsWords(in[match[0]:match[1]]) {
+			continue
+		}
+		b.WriteString(in[last:match[0]])
+		b.WriteString(markerSecret)
+		last = match[1]
+		count++
+	}
+	if count == 0 {
+		return in, 0
+	}
+	b.WriteString(in[last:])
+	return b.String(), count
+}
+
+// knownTokenSuffixIsWords reports whether the part after a separator-style
+// vendor prefix (github_pat_, glpat-, xox?-) is two or more single-case,
+// letters-only words joined by "-" or "_". Real tokens of these formats mix
+// case or contain digits.
+func knownTokenSuffixIsWords(token string) bool {
+	var suffix string
+	switch {
+	case strings.HasPrefix(token, "github_pat_"):
+		suffix = token[len("github_pat_"):]
+	case strings.HasPrefix(token, "glpat-"), strings.HasPrefix(token, "glrt-"):
+		suffix = token[strings.IndexByte(token, '-')+1:]
+	case strings.HasPrefix(token, "xox") && len(token) > 5 && token[4] == '-':
+		suffix = token[5:]
+	default:
+		return false
+	}
+	segments := strings.FieldsFunc(suffix, func(r rune) bool { return r == '-' || r == '_' })
+	if len(segments) < 2 || hasMixedCaseLetters(suffix) {
+		return false
+	}
+	for _, segment := range segments {
+		if !isLettersOnly(segment) {
+			return false
+		}
+	}
+	return readsAsWords(suffix)
+}
+
+var genericCredentialLabels = []string{"key", "token", "secret", "passw", "pwd", "bearer", "sig", "credential"}
+
+// genericCredentialLabelWordRE finds candidate label words; leftmost-first
+// alternation prefers "password" over "passwd" and "pwd".
+var genericCredentialLabelWordRE = regexp.MustCompile(`(?i)credentials?|password|passwd|bearer|secret|token|key|pwd|sig`)
+
+// genericCredentialPhraseRE matches, anchored right after a label word, natural
+// phrasing that puts a few words between the label and its value ("key for the
+// vendor portal is X", "token was X", "token for the test index: X"): up to six
+// filler words on the same line, then a ":"/"=" or "is"/"was"/"are"/"were" cue,
+// then any opening wrappers.
+var genericCredentialPhraseRE = regexp.MustCompile(`(?i)^(?:[^\S\n]+[^\s:=]{1,30}){0,6}?(?:[^\S\n]*[:=]|[^\S\n]+(?:is|was|are|were)[^\S\n]+)[^\S\n]*(?:[*"'(\[<{\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]|[^\S\n])*`)
+
+// genericCredentialSeparatorRE matches, anchored right after a label word, an
+// optional closing quote, a ":"/"=" or whitespace separator, and any opening
+// wrappers or further whitespace before the value. It accepts Unicode space
+// separators (no-break space) and format characters (zero-width space), which
+// RE2's ASCII \s does not match.
+var genericCredentialSeparatorRE = regexp.MustCompile(`^[*_]{0,3}["'\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]?[*_]{0,3}(?:[\s\p{Zs}\p{Cf}]*[:=][\s\p{Zs}\p{Cf}]*|[\s\p{Zs}\p{Cf}]+)(?:[*"'(\[<{\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]|[\s\p{Zs}\p{Cf}])*`)
+
+type genericCredentialLabel struct {
+	start      int  // label word start
+	wordEnd    int  // first byte after the label word
+	valueStart int  // first byte after the separator and wrappers
+	password   bool // password, passwd or pwd: word-and-number values count
+}
+
+// scanGenericCredentialLabels redacts credential-shaped values that follow a
+// generic credential label. It first collects every valid label: a label word
+// not preceded by a letter or digit ("monkey" and "apikey" are not labels;
+// "poc_key" and "x-api-key" are), followed by a separator, with a non-empty
+// value. A value runs up to the next valid label, so nested labels
+// ("key: Bearer <key>", "key: key=<uuid>") are each examined as their own
+// label. If that shorter value is rejected and a later label sits inside the
+// same unbroken run of value characters, the whole run is judged once, so a key
+// that happens to contain "_key=" is still caught. Each run is judged whole at
+// most once, which keeps the scan linear. A quoted value that is a JSON string
+// literal with escapes is judged on its decoded content, including any labels
+// the decoding reveals.
+func scanGenericCredentialLabels(in string) (string, int) {
+	var labels []genericCredentialLabel
+	for _, word := range genericCredentialLabelWordRE.FindAllStringIndex(in, -1) {
+		if word[0] > 0 && isASCIIAlnum(in[word[0]-1]) && !camelCaseLabelStart(in, word[0]) {
+			continue
+		}
+		password := false
+		labelWord := strings.ToLower(in[word[0]:word[1]])
+		switch labelWord {
+		case "password", "passwd", "pwd":
+			password = true
+		}
+		if labelWord == "key" && nonCredentialKeyModifiers[labelModifierBefore(in, word[0])] {
+			continue // "Primary key", "PartitionKey", "Tag key": not a credential
+		}
+		if labelWord == "key" && jsonPairKeyIdentifierAt(in, word[0], word[1]) {
+			continue // {"key": <public identifier>, "value": ...} inside prose
+		}
+		valueStart := -1
+		if separator := genericCredentialSeparatorRE.FindStringIndex(in[word[1]:]); separator != nil {
+			if start := word[1] + separator[1]; startsCredentialValue(in, start) {
+				valueStart = start
+			}
+		}
+		// Natural phrasing: when the word right after the label is not
+		// credential-shaped, use the value after a nearby ":"/"is"/"was" cue.
+		// The looser password rule applies only to a value directly after
+		// the label ("Password reset ticket: INC0012345" is a reference).
+		phrased := false
+		if phrase := genericCredentialPhraseRE.FindStringIndex(in[word[1]:]); phrase != nil {
+			if start := word[1] + phrase[1]; start != valueStart && startsCredentialValue(in, start) &&
+				(valueStart < 0 || !credentialShapedValue(credentialValuePrefix(in, valueStart), password)) {
+				valueStart = start
+				phrased = true
+			}
+		}
+		if valueStart < 0 {
+			continue // no value: not a label, and must not cut a preceding value
+		}
+		// "Key fingerprint is ...", "Password hash algorithm is ...": the
+		// value describes the key or password, it is not the credential.
+		// A password label must be followed directly by the noun ("Password
+		// hash algorithm"); a key label may name it later in the phrase ("Key
+		// rotation implementation commit:").
+		if phrased && (labelWord == "key" || password) &&
+			phraseNamesMetadata(in[word[1]:valueStart], password) &&
+			!credentialKeyModifiers[labelModifierBefore(in, word[0])] {
+			continue
+		}
+		// "pwd: /opt/app" is a working directory.
+		if labelWord == "pwd" && readableAbsolutePathAt(in, valueStart) {
+			continue
+		}
+		labels = append(labels, genericCredentialLabel{word[0], word[1], valueStart, password && !phrased})
+	}
+	if len(labels) == 0 {
+		return in, 0
+	}
+
+	var b strings.Builder
+	last, count := 0, 0
+	runStart, runEnd, runJudged := -1, -1, false
+	for i, label := range labels {
+		if label.start < last {
+			continue // inside a value already replaced
+		}
+		limit := len(in)
+		if i+1 < len(labels) {
+			limit = labels[i+1].start
+		}
+		start, end := label.valueStart, label.valueStart
+
+		// A quoted JSON literal with escapes anywhere in the separator.
+		if quote := strings.LastIndexByte(in[label.wordEnd:label.valueStart], '"'); quote >= 0 {
+			literalStart := label.wordEnd + quote
+			if literalEnd := jsonStringEnd(in, literalStart); literalEnd > 0 && strings.Contains(in[literalStart:literalEnd], "\x5c") {
+				var decoded string
+				if json.Unmarshal([]byte(in[literalStart:literalEnd]), &decoded) == nil {
+					if credentialShapedValue(strings.TrimSpace(decoded), label.password) {
+						start, end = literalStart+1, literalEnd-1
+					} else if _, nested := scanGenericCredentialLabels(decoded); nested > 0 {
+						start, end = literalStart+1, literalEnd-1
+					}
+				}
+			}
+		}
+
+		if end == start {
+			for end < limit && isCredentialValueByte(in[end]) {
+				end++
+			}
+			for end > start && in[end-1] == '.' {
+				end--
+			}
+			if end == start || !credentialShapedValue(in[start:end], label.password) {
+				end = start
+				// Judge the whole unbroken run once when a later label cut it.
+				if start >= runEnd {
+					runStart, runEnd, runJudged = start, start, false
+					for runEnd < len(in) && isCredentialValueByte(in[runEnd]) {
+						runEnd++
+					}
+				}
+				if !runJudged && runStart == start && runEnd > limit {
+					runJudged = true
+					whole := runEnd
+					for whole > start && in[whole-1] == '.' {
+						whole--
+					}
+					if credentialShapedValue(in[start:whole], label.password) {
+						end = whole
+					}
+				}
+				if end == start {
+					continue
+				}
+			}
+		}
+		b.WriteString(in[last:start])
+		b.WriteString(markerSecret)
+		last = end
+		count++
+	}
+	if count == 0 {
+		return in, 0
+	}
+	b.WriteString(in[last:])
+	return b.String(), count
+}
+
+// Wrapper punctuation around a value ("<key>", "(key)", typographic quotes) is
+// not part of it. Trailing sentence periods are not part of it either.
+const (
+	credentialValueOpeners = "*_\"'([<{`‘’‚‛“”„‟«»‹›"
+	credentialValueClosers = "*_.\"')]>}`‘’‚‛“”„‟«»‹›"
+)
+
+// camelCaseLabelStart reports whether a label word at i ends a CamelCase or
+// camelCase identifier ("AccountKey=", "authToken:"): it starts with a capital
+// that follows a lowercase letter or digit.
+// nonCredentialKeyModifiers name keys that are data or metadata identifiers,
+// not credentials: database and table keys, tag keys, cache and idempotency
+// keys, hot keys, registry keys and public keys.
+var nonCredentialKeyModifiers = map[string]bool{
+	"primary": true, "foreign": true, "partition": true, "row": true, "sort": true,
+	"range": true, "composite": true, "surrogate": true, "unique": true, "lookup": true,
+	"tag": true, "object": true, "cache": true, "idempotency": true, "hot": true,
+	"registry": true, "record": true, "asset": true, "public": true,
+}
+
+// credentialKeyModifiers name keys that are credentials; metadata words after
+// them ("API key name is ...") do not withdraw the label.
+var credentialKeyModifiers = map[string]bool{
+	"api": true, "access": true, "secret": true, "account": true, "subscription": true,
+	"client": true, "private": true, "shared": true, "poc": true, "integration": true,
+	"license": true, "master": true, "root": true,
+}
+
+// labelMetadataWords are nouns that, between a key or password label and its
+// value, make the value metadata about the credential rather than the
+// credential itself.
+var labelMetadataWords = map[string]bool{
+	"fingerprint": true, "thumbprint": true, "checksum": true, "digest": true,
+	"hash": true, "md5": true, "sha": true, "sha1": true, "sha256": true, "sha512": true,
+	"identifier": true, "id": true, "name": true, "alias": true, "length": true,
+	"size": true, "type": true, "algorithm": true, "format": true, "version": true,
+	"revision": true, "commit": true, "metadata": true, "reference": true,
+	"binding": true, "policy": true, "expiry": true, "expiration": true,
+}
+
+// phraseNamesMetadata reports whether the words of a label phrase (the text
+// between a label and its phrased value, at most six short words) include a
+// labelMetadataWords noun, or, with firstOnly, start with one.
+func phraseNamesMetadata(phrase string, firstOnly bool) bool {
+	for _, word := range strings.FieldsFunc(phrase, func(r rune) bool { return !isASCIILetter(r) && !unicode.IsDigit(r) }) {
+		if labelMetadataWords[strings.ToLower(word)] {
+			return true
+		}
+		if firstOnly {
+			return false
+		}
+	}
+	return false
+}
+
+// labelModifierBefore returns the lowercased word directly before a label
+// word at i: joined CamelCase ("PartitionKey") or separated by a short run of
+// spaces, tabs, "_", "-" and Markdown emphasis or code wrappers ("Primary
+// key", "Primary  key", "tag_key", "Primary **key**", "**Primary** key").
+func labelModifierBefore(in string, i int) string {
+	for n := 0; n < labelModifierGapMax && i > 0 && strings.IndexByte(" \t_-*`", in[i-1]) >= 0; n++ {
+		i--
+	}
+	end := i
+	for i > 0 && isASCIILetter(rune(in[i-1])) {
+		i--
+	}
+	return strings.ToLower(in[i:end])
+}
+
+// labelModifierGapMax bounds the separator run labelModifierBefore skips.
+const labelModifierGapMax = 16
+
+// jsonPairKeyIdentifierAt reports whether the label word in[start:end] is a
+// JSON member name "key" (any case) whose string value is a public identifier
+// and whose object also has a "value" member, in either order: the same
+// {"key": K, "value": V} pair that parseObject exempts, found in text that
+// is not itself a JSON document ("CMDB entry: {...}"). Lookbehind and
+// lookahead are bounded, so the check is constant work per label.
+func jsonPairKeyIdentifierAt(in string, start, end int) bool {
+	if !strings.EqualFold(in[start:end], "key") || start == 0 || in[start-1] != '"' ||
+		end >= len(in) || in[end] != '"' {
+		return false
+	}
+	i := skipJSONSpace(in, end+1)
+	if i >= len(in) || in[i] != ':' {
+		return false
+	}
+	i = skipJSONSpace(in, i+1)
+	if i >= len(in) || in[i] != '"' {
+		return false
+	}
+	valueStart := i + 1
+	valueEnd := valueStart
+	for valueEnd < len(in) && valueEnd-valueStart < 128 && in[valueEnd] != '"' && in[valueEnd] != '\\' {
+		valueEnd++
+	}
+	if valueEnd >= len(in) || in[valueEnd] != '"' || !isPublicIdentifierValue(in[valueStart:valueEnd]) {
+		return false
+	}
+	if jsonMemberAtDepthZero(in, valueEnd+1, pasteBound(valueEnd+1, len(in), jsonPairWindow), "value") {
+		return true
+	}
+	objectStart := jsonObjectStartBefore(in, start-1)
+	return objectStart >= 0 && jsonMemberAtDepthZero(in, objectStart+1, start-1, "value")
+}
+
+// jsonPairWindow bounds how far jsonPairKeyIdentifierAt looks for the
+// companion member.
+const jsonPairWindow = 512
+
+func skipJSONSpace(in string, i int) int {
+	for i < len(in) && (in[i] == ' ' || in[i] == '\t' || in[i] == '\r' || in[i] == '\n') {
+		i++
+	}
+	return i
+}
+
+// jsonObjectStartBefore returns the index of the "{" that opens the object
+// containing position i, scanning back at most jsonPairWindow bytes, or -1.
+// Braces inside strings are not distinguished; the window keeps a mistake
+// local to one exemption decision.
+func jsonObjectStartBefore(in string, i int) int {
+	depth := 0
+	for j := i - 1; j >= 0 && i-j <= jsonPairWindow; j-- {
+		switch in[j] {
+		case '}', ']':
+			depth++
+		case '{', '[':
+			if depth == 0 {
+				if in[j] == '{' {
+					return j
+				}
+				return -1
+			}
+			depth--
+		}
+	}
+	return -1
+}
+
+// jsonMemberAtDepthZero reports whether in[from:to] contains, at the
+// object's own nesting level, a member named name (any case): a string equal
+// to name followed by ":". It stops at the object's closing brace.
+func jsonMemberAtDepthZero(in string, from, to int, name string) bool {
+	depth := 0
+	for i := from; i < to; i++ {
+		switch in[i] {
+		case '{', '[':
+			depth++
+		case '}', ']':
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case '"':
+			end := jsonStringEnd(in[:to], i)
+			if end < 0 {
+				return false
+			}
+			if depth == 0 && strings.EqualFold(in[i+1:end-1], name) {
+				if next := skipJSONSpace(in, end); next < len(in) && in[next] == ':' {
+					return true
+				}
+			}
+			i = end - 1
+		}
+	}
+	return false
+}
+
+func camelCaseLabelStart(in string, i int) bool {
+	return i > 0 && in[i] >= 'A' && in[i] <= 'Z' &&
+		(in[i-1] >= 'a' && in[i-1] <= 'z' || isDigitByte(in[i-1]))
+}
+
+func startsCredentialValue(in string, start int) bool {
+	return start < len(in) && (isCredentialValueByte(in[start]) || in[start] == '\x5c')
+}
+
+// credentialValuePrefix returns the run of value bytes at start, capped so a
+// discovery-time shape check stays linear on long runs.
+func credentialValuePrefix(in string, start int) string {
+	end := start
+	for end < len(in) && end-start < 256 && isCredentialValueByte(in[end]) {
+		end++
+	}
+	return in[start:end]
+}
+
+func isCredentialValueByte(ch byte) bool {
+	return isASCIIAlnum(ch) || strings.IndexByte("._~+/=-", ch) >= 0
+}
+
+func isASCIIAlnum(ch byte) bool {
+	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9'
+}
+
+// credentialShapedValue reports whether a value that follows a generic
+// credential label looks like key material rather than prose, a slug or a
+// path. After a password label (password, passwd, pwd) a word joined to a
+// number is still a credential: that is the shape of a typical weak password
+// ("Abc123def456"); after key/token/secret/bearer it is treated as a name
+// ("Switch01Port48").
+func credentialShapedValue(value string, passwordLabel bool) bool {
+	for {
+		trimmed := strings.TrimSpace(value)
+		trimmed = strings.TrimLeft(trimmed, credentialValueOpeners)
+		trimmed = strings.TrimRight(trimmed, credentialValueClosers)
+		if trimmed == value {
+			break
+		}
+		value = trimmed
+	}
+	if referenceIDRE.MatchString(value) {
+		return false // ticket and change references: INC0012345, RITM0012345678, OPS-1234
+	}
+	if cloudResourceIDRE.MatchString(value) {
+		return false // public cloud resource IDs: i-0d12e34f56a78b90c, subnet-0e12d34c56b78a90f
+	}
+	if canonicalUUIDRE.MatchString(value) {
+		return true
+	}
+	if len(value) >= 32 && isHex(value) {
+		return true
+	}
+	// A preceding credential label is strong evidence, so a single
+	// letter-and-digit segment is enough here; no word or entropy check.
+	for _, segment := range splitKeySegments(value) {
+		if len(segment) >= 12 && hasDigit(segment) && hasLetter(segment) &&
+			(passwordLabel || !wordWithNumber(segment)) {
+			return true
+		}
+		if passwordLabel && len(segment) >= 8 && hasDigit(segment) && hasLetter(segment) {
+			return true
+		}
+	}
+	// A letters-only key (about 3% of random 20-character base62 keys have no
+	// digit) counts when it is long, mixes upper and lower case, does not read
+	// as words, and has high entropy. Base64 padding is ignored. Single-case
+	// letters-only values are left alone: they are usually tag-like words
+	// ("monthlypatchwindows").
+	if letters := trimBase64Padding(value); len(letters) >= 16 && isLettersOnly(letters) &&
+		hasMixedCaseLetters(letters) && !readsAsWords(letters) &&
+		shannonEntropy(letters) >= displayNameSecretEntropy {
+		return true
+	}
+	// Standard and URL-safe Base64 key material contains "+", "/", "-" or "_",
+	// which split it into short segments that often lack a digit. Judge the
+	// whole value (padding ignored) when it is mixed-case, does not read as
+	// words, and has high entropy. Mixed case keeps single-case slugs such as
+	// "rule-2024-q3-block-gambling" out.
+	if b := trimBase64Padding(value); len(b) >= 16 && isBase64Text(b) && hasMixedCaseLetters(b) &&
+		!readsAsWords(b) && mostlyNonWordSegments(b) && shannonEntropy(b) >= displayNameSecretEntropy {
+		return true
+	}
+	// base64url key material contains "-" and "_", which split it into short
+	// segments; judge the whole value when it does not read as words.
+	return len(value) >= 16 && looksLikeSplitKeyMaterial(value)
+}
+
+// mostlyNonWordSegments reports whether at least 40% of a value's characters
+// sit in segments that are neither words nor plain numbers. Split random
+// Base64 is mostly such fragments; a path like "Projects/2024/iOS" is mostly
+// words and a year (18% non-word).
+func mostlyNonWordSegments(value string) bool {
+	nonWord := 0
+	for _, segment := range splitKeySegments(value) {
+		if !isAllDigits(segment) && !readsAsWords(segment) {
+			nonWord += len(segment)
+		}
+	}
+	return nonWord*10 >= len(value)*4
+}
+
+func isAllDigits(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if !isDigitByte(value[i]) {
+			return false
+		}
+	}
+	return value != ""
+}
+
+// referenceIDRE matches ticket, change and issue references: a short
+// letter prefix, an optional separator, then only digits.
+var referenceIDRE = regexp.MustCompile(`^[A-Za-z]{1,8}[-_]?[0-9]{3,}$`)
+
+func isBase64Text(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if !isASCIIAlnum(value[i]) && strings.IndexByte("+/_-", value[i]) < 0 {
+			return false
+		}
+	}
+	return value != ""
+}
+
+// trimBase64Padding removes up to two trailing "=" padding characters.
+func trimBase64Padding(value string) string {
+	for i := 0; i < 2 && strings.HasSuffix(value, "="); i++ {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+func hasMixedCaseLetters(value string) bool {
+	return strings.IndexFunc(value, func(r rune) bool { return r >= 'a' && r <= 'z' }) >= 0 &&
+		strings.IndexFunc(value, func(r rune) bool { return r >= 'A' && r <= 'Z' }) >= 0
+}
+
+func isLettersOnly(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if !isASCIILetter(rune(value[i])) {
+			return false
+		}
+	}
+	return value != ""
+}
+
+// looksLikeSplitKeyMaterial reports whether a token whose separators break it
+// into short segments is still key material: most of it sits in segments that
+// mix letters and digits (pure-hex segments, typical generated suffixes, do
+// not count), it does not read as words, and it has high entropy. Slugs such
+// as "rule-2024-q3-block-gambling" keep letters and digits in separate
+// segments and fail the first condition.
+func looksLikeSplitKeyMaterial(token string) bool {
+	mixed := 0
+	for _, segment := range splitKeySegments(token) {
+		if hasDigit(segment) && hasLetter(segment) && !isHex(segment) && !wordWithNumber(segment) {
+			mixed += len(segment)
+		}
+	}
+	return mixed*2 >= len(token) && !readsAsWords(token) &&
+		shannonEntropy(token) >= displayNameSecretEntropy
+}
+
+// splitNameSegments splits on the separators used in human-chosen names and
+// slugs. "+", "/" padding and "=" stay inside a segment because they occur in
+// base64 key material.
+func splitNameSegments(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || unicode.IsSpace(r)
+	})
+}
+
+// splitKeySegments splits more finely than splitNameSegments: path-like values
+// such as "Projects/2024/Q3-planning" must not count as one letter-and-digit
+// segment, and random base64 stays letter/digit-mixed when split on "/", "+"
+// or "=".
+func splitKeySegments(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return strings.ContainsRune("-_./+=:~", r) || unicode.IsSpace(r)
+	})
+}
+
+func isHex(value string) bool {
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if !(ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'f' || ch >= 'A' && ch <= 'F') {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func hasDigit(value string) bool {
+	return strings.IndexFunc(value, func(r rune) bool { return r >= '0' && r <= '9' }) >= 0
+}
+
+func hasLetter(value string) bool {
+	return strings.IndexFunc(value, func(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }) >= 0
 }
 
 func assignmentRules(name, keys, marker string) []rule {
@@ -809,6 +2228,15 @@ func assignmentRules(name, keys, marker string) []rule {
 			replacement: `${1}"` + marker + `"${3}`,
 			prefilter:   prefilter,
 		},
+		// Markdown emphasis between the label and a value ("secret:** `KEY`")
+		// would otherwise be taken as the whole unquoted value below, leaving
+		// the key behind.
+		{
+			name:        name,
+			re:          regexp.MustCompile(`(?i)(` + key + `)[*_]{1,3}\s*\x60?[^<"'\s,}\]\{\[\x60]+\x60?`),
+			replacement: `${1}` + marker,
+			prefilter:   prefilter,
+		},
 		{
 			name:        name,
 			re:          regexp.MustCompile(`(?i)(` + key + `)[^<"'\s,}\]\{\[]+`),
@@ -822,14 +2250,23 @@ var shareRules = []rule{
 	{
 		name:        "email",
 		re:          regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`),
-		replacement: `<REDACTED:EMAIL>`,
+		replacement: markerEmail,
 		prefilter:   contains("@"),
 	},
 	{
 		name:        "ipv4",
 		re:          regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`),
-		replacement: `<REDACTED:IP>`,
+		replacement: markerIP,
 		prefilter:   contains("."),
+	},
+	{
+		// Email and IP masking can turn URL userinfo into a credential shape
+		// ("alice@example.com:pw@host" -> "<REDACTED:EMAIL>:pw@host"), so the
+		// credential URL rule runs again after them; one pass is then already
+		// what a rescan would produce.
+		name:      "credential_url",
+		prefilter: all(contains("://"), contains("@")),
+		custom:    scanCredentialURLs,
 	},
 }
 
@@ -966,9 +2403,16 @@ func isASCII(text string) bool {
 	return true
 }
 
+// shouldRedactHighEntropyToken keeps main's decision for tokens of 32 or more
+// characters, adding only recognized public identifiers in standard mode. It
+// deliberately has no word, path or label exemption: a word-built name of 32
+// or more characters cannot be told apart from a word-built password here.
 func shouldRedactHighEntropyToken(text string, start, end int, context highEntropyContext, mode Mode) bool {
 	token := text[start:end]
 	if canonicalUUIDRE.MatchString(token) {
+		return false
+	}
+	if mode == ModeStandard && publicIdentifierToken(text, start, end) {
 		return false
 	}
 	if context == highEntropyStructured {
@@ -980,6 +2424,42 @@ func shouldRedactHighEntropyToken(text string, start, end int, context highEntro
 		return false
 	}
 	return looksLikeHighEntropySecret(token)
+}
+
+// publicIdentifierToken reports whether a long token is a recognized public
+// identifier: a cloud resource ID or ULID, a digest, revision, ObjectId or
+// KSUID named by its context, or "Name=<public identifier>" with a
+// non-credential name ("PartitionKey=<uuid>"). Readable paths and words are
+// not exempt on the long-entropy path.
+func publicIdentifierToken(text string, start, end int) bool {
+	token := text[start:end]
+	return isBarePublicIdentifier(token) || isContextualPublicValue(text, start, end) ||
+		(!strings.Contains(token, "/") && publicAssignedValue(token))
+}
+
+// publicAssignedValue reports whether token is "Name=value" with a name that
+// does not name a credential ("PartitionKey", "pwd" before a path) and a value
+// that is a public identifier or a readable path.
+func publicAssignedValue(token string) bool {
+	eq := strings.IndexByte(token, '=')
+	value, ok := assignedTokenValue(token)
+	if !ok {
+		return false
+	}
+	name := strings.ToLower(token[:eq])
+	if isReadableAbsolutePath(value) && (name == "pwd" || name == "cwd") {
+		return true
+	}
+	if !isPublicIdentifierValue(value) && !isReadablePath(value) {
+		return false
+	}
+	for _, label := range genericCredentialLabels {
+		if strings.Contains(name, label) {
+			modifier := strings.TrimRight(strings.TrimSuffix(name, "key"), "_-")
+			return strings.HasSuffix(name, "key") && nonCredentialKeyModifiers[modifier]
+		}
+	}
+	return true
 }
 
 func hasGitSHAContext(text string, start int) bool {

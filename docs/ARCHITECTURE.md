@@ -259,9 +259,48 @@ token scan for bare unlabeled secret material. Canonical UUIDs are preserved
 everywhere. In `standard` mode, structured rendered strings also preserve compact
 UUIDs and 40/64 character hex fingerprints; `share` and `paranoid` redact those
 fingerprint-shaped values. Free-text prose preserves git commit SHAs only when
-nearby words identify them as git revisions. The scan does not guarantee
-detection of every short unlabeled secret below the 32-character entropy floor,
-or of every hex-shaped secret in a rendering `standard` field.
+nearby words identify them as git revisions.
+
+Pasted PoC keys are the main free-text risk, so narrower rules sit beside that
+scan. Well-known vendor token formats (GitHub, GitLab, Slack, Stripe, Google
+API keys, SendGrid, AWS access key IDs, npm, Shopify, Twilio API key SIDs) are
+redacted by prefix at any length above the format's minimum. A value after a
+generic credential label (`key`, `token`, `secret`, `credential`, `password`,
+`passwd`, `pwd`, `bearer`, `sig`, including CamelCase suffixes such as
+`AccountKey=`; followed by `:`, `=` or whitespace, or by natural phrasing of up
+to six words before a `:`, `=`, `is` or `was` cue, as in "key for the vendor
+portal is ...",
+including Unicode spaces, with the value optionally wrapped in ASCII or
+typographic quotes, brackets or guillemets, and decoded JSON keys named exactly `key`, `pwd`,
+`passwd` or `bearer`) is redacted when it is credential-shaped: a canonical
+UUID, 32+ hex characters, a 12+ character letter-and-digit segment that is not
+a word joined to a number (after `password`, `passwd` or `pwd`, any 8+
+character letter-and-digit segment, since weak passwords look like words and
+numbers), or separator-split material that does not read as words. Labels are
+found first and each value ends at the next label with a value, so nested
+labels (`key: Bearer <key>`, `key: key=<uuid>`) are each examined; a value cut
+short by a label-like fragment inside it is also judged as one unbroken run.
+The scan stays linear. A quoted value with JSON escapes is judged on its
+decoded content, including labels the decoding reveals, as are escaped quoted
+literals (up to four levels deep) in names and other rendered strings.
+"Reads as words" means the letters parse as CamelCase or acronym words or,
+when single-case, contain at least 30% vowels. Free-text fields also redact unseparated 24-31 character
+letter-and-digit tokens that do not read as words and have high entropy. In
+`standard` mode, structured display names (`name`, `configuredName`,
+`displayName`) are scanned by segment instead of whole-token length: long
+operational names built from short separator-joined parts survive, while a
+long high-entropy letter-and-digit segment, separator-split key material, or a
+cloud access-key ID is redacted. Hex segments in names are kept as identifiers.
+Conversely, an identifier after a credential label that mixes several single
+letters and numbers (beyond one model letter such as the `K` in
+`CiscoNexus9K01`) can read as key material and be redacted. A letters-only
+value after a label counts as a key when it is 16+ characters, mixes upper
+and lower case, does not read as words and has high entropy; Base64 values
+(standard or URL-safe, padding ignored) are judged whole the same way, and
+Markdown emphasis around a label (`**key**:`) is accepted. Single-case
+letters-only values and unlabeled letters-only tokens are not judged. The scan does not guarantee detection of every short unlabeled secret, a token
+split across lines, a single-case key that reads like concatenated words, or a
+hex-shaped secret in a rendering `standard` field.
 
 ## Secret-Safe Types
 
@@ -511,9 +550,14 @@ immutable projected collection. It implements the browser loader and direct
 projected-get interfaces consumed by `internal/machine.Executor`, allowing
 repeated reads without a live reader. The CLI selects this path before config
 loading when `--from-dump` is supplied. Its serialized resource admission budget
-is 256 MiB; it is not an RSS bound. Existing diff input limits remain unchanged.
+is 256 MiB; ordinary diff applies the same serialized-byte budget across the
+selected resource files in both input dumps. Neither limit is an RSS bound.
 Safe collection provenance includes validated schema, mode, status and counts;
 free-form manifest strings and source paths are not returned as trusted metadata.
+Admission reprojects every stored record and rejects the artifact if any value
+changes. A dump written before a scanner change that now redacts a stored value
+therefore fails `--from-dump` and `diff` admission instead of serving that
+value; collect a new dump.
 
 `internal/resources.DescribeSemantics` adds a separate candidate metadata
 contract for three reviewed resources. It describes existing renderable fields

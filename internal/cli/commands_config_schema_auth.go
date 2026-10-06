@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -90,19 +89,33 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 // ever outputs anything credential-like it must be added to the redact package's
 // test corpus instead.
 func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW io.Writer) error {
+	return a.runConfigInitWithForceHook(opts, force, out, errW, nil)
+}
+
+func (a *App) runConfigInitWithForceHook(opts globalOptions, force bool, out, errW io.Writer, afterDestinationCheck func() error) error {
 	path, _ := config.ResolveConfigPath(a.env, config.LoadOptions{
 		Profile:    opts.profile,
 		ConfigPath: opts.configPath,
 	})
 
-	switch _, statErr := os.Lstat(path); {
+	parent, name, err := splitDestinationPath(path)
+	if err != nil {
+		return UsageError{Message: fmt.Sprintf("config init: %v: %s", err, path)}
+	}
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return fmt.Errorf("create config directory %s: %w", parent, err)
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return fmt.Errorf("open config directory %s: %w", parent, err)
+	}
+	defer root.Close()
+
+	_, statErr := root.Lstat(name)
+	switch {
 	case statErr == nil:
 		if !force {
 			return UsageError{Message: fmt.Sprintf("config already exists at %s; pass --force to overwrite", path)}
-		}
-		// WriteOwnerOnly is O_EXCL, so we remove before re-creating.
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("remove existing config %s: %w", path, err)
 		}
 	case errors.Is(statErr, fs.ErrNotExist):
 		// Expected: nothing to overwrite.
@@ -110,10 +123,18 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW i
 		return fmt.Errorf("stat config path %s: %w", path, statErr)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create config directory %s: %w", filepath.Dir(path), err)
+	if afterDestinationCheck != nil {
+		if err := afterDestinationCheck(); err != nil {
+			return err
+		}
 	}
-	if err := fileperm.WriteOwnerOnly(path, []byte(configInitTemplate)); err != nil {
+	if statErr == nil {
+		// WriteOwnerOnlyRoot is O_EXCL, so remove before re-creating.
+		if err := root.Remove(name); err != nil {
+			return fmt.Errorf("remove existing config %s: %w", path, err)
+		}
+	}
+	if err := fileperm.WriteOwnerOnlyRoot(root, name, []byte(configInitTemplate)); err != nil {
 		return fmt.Errorf("write config %s: %w", path, err)
 	}
 

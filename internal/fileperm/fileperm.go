@@ -27,3 +27,9 @@ func OpenOwnerOnly(path string) (*os.File, error) {
 func WriteOwnerOnly(path string, data []byte) error {
 	return writeOwnerOnly(path, data)
 }
+
+// WriteOwnerOnlyRoot creates name beneath root with owner-only permissions. It
+// fails if the entry already exists.
+func WriteOwnerOnlyRoot(root *os.Root, name string, data []byte) error {
+	return writeOwnerOnlyRoot(root, name, data)
+}

@@ -1542,7 +1542,9 @@ func effectiveTimeout(timeout time.Duration) time.Duration {
 // silently redirect every ZPA read to the wrong microtenant), and
 // ZSCALER_SANDBOX_TOKEN is a call-time credential fallback. Clearing them for
 // the process lifetime upholds the contract that zscalerctl honors only
-// explicit ZSCALERCTL_* configuration.
+// explicit ZSCALERCTL_* configuration. The config loader snapshots values
+// named by profile env: refs before SDK construction, so clearing these
+// variables does not break those references on later reads.
 func neutralizeForeignSDKEnv() {
 	for _, key := range []string{"ZPA_MICROTENANT_ID", "ZSCALER_SANDBOX_TOKEN"} {
 		_ = os.Unsetenv(key)

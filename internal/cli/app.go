@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -893,6 +896,9 @@ func (a *App) runProductWithRuntime(
 		var err error
 		rt, err = a.machineRuntime(ctx, cfg, opts)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return err
 		}
 	}
@@ -1038,15 +1044,41 @@ func isResourceReadInvocation(rest []string, catalog resources.ResourceCatalog) 
 	return false
 }
 
+func splitDestinationPath(path string) (string, string, error) {
+	// filepath.Split preserves the raw parent path. Keep symlink/.. components
+	// so os.OpenRoot resolves them in filesystem order.
+	parent, name := filepath.Split(path)
+	if name == "" || name == "." || name == ".." {
+		return "", "", errors.New("destination path must name a file")
+	}
+	if parent == "" {
+		parent = "."
+	}
+	return parent, name, nil
+}
+
 func writeOutputFile(path string, body []byte) error {
+	return writeOutputFileWithHook(path, body, nil)
+}
+
+func writeOutputFileWithHook(path string, body []byte, afterDestinationCheck func() error) error {
 	if strings.TrimSpace(path) == "" {
 		return UsageError{Message: "--output requires a path"}
 	}
+	parent, name, err := splitDestinationPath(path)
+	if err != nil {
+		return UsageError{Message: fmt.Sprintf("--output: %v: %s", err, path)}
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", parent, pathErrorReason(err))}
+	}
+	defer root.Close()
 	// Refuse to write through a symlink or replace a non-regular destination,
 	// while allowing an existing regular file to be overwritten. Lstat keeps the
-	// check itself from following a symlink; missing destinations are created by
-	// the same-directory temporary file below.
-	if info, err := os.Lstat(path); err == nil {
+	// check itself from following a symlink; all later operations use the same
+	// opened parent directory.
+	if info, err := root.Lstat(name); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return UsageError{Message: fmt.Sprintf("write --output: %s is a symlink", path)}
 		}
@@ -1056,27 +1088,31 @@ func writeOutputFile(path string, body []byte) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return UsageError{Message: fmt.Sprintf("--output: cannot inspect %s: %v", path, pathErrorReason(err))}
 	}
+	if afterDestinationCheck != nil {
+		if err := afterDestinationCheck(); err != nil {
+			return err
+		}
+	}
 	// On Unix, write to a temp file in the same directory, fsync it, then
 	// atomically rename it over the destination, so an interrupted write never
 	// leaves a truncated file at the final path. Overwriting an existing regular
 	// file is still allowed (rename replaces it) so re-running a pipeline to the
-	// same path works; rename targets the path itself, never through a symlink.
+	// same path works; rename targets the entry itself, never through a symlink.
 	// On platforms where os.Rename does not provide replacement/atomicity
 	// guarantees (notably Windows), this same-directory temp file does not claim
 	// atomic replacement.
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
+	tmp, tmpName, err := createRootTempFile(root, ".tmp-"+name+"-")
 	if err != nil {
 		// The destination is a user-supplied argument, so an unwritable or
 		// missing directory is a usage error (documented exit 2). Report the
 		// directory the user gave, not the generated temp-file name, which is
 		// an implementation detail.
-		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", filepath.Dir(path), pathErrorReason(err))}
+		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", parent, pathErrorReason(err))}
 	}
-	tmpPath := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpPath)
+			_ = root.Remove(tmpName)
 		}
 	}()
 	if err := tmp.Chmod(0o600); err != nil {
@@ -1094,11 +1130,30 @@ func writeOutputFile(path string, body []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("write --output: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := root.Rename(tmpName, name); err != nil {
 		return fmt.Errorf("write --output: %w", err)
 	}
 	cleanup = false
 	return nil
+}
+
+// createRootTempFile creates prefix plus a random decimal suffix of at most ten
+// digits, the same length budget as os.CreateTemp, so destinations whose names
+// fit NAME_MAX with os.CreateTemp still fit here.
+func createRootTempFile(root *os.Root, prefix string) (*os.File, string, error) {
+	var suffix [4]byte
+	for attempt := 0; attempt < 100; attempt++ {
+		if _, err := rand.Read(suffix[:]); err != nil {
+			return nil, "", err
+		}
+		name := prefix + strconv.FormatUint(uint64(binary.BigEndian.Uint32(suffix[:])), 10)
+		file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return file, name, err
+	}
+	return nil, "", fs.ErrExist
 }
 
 // pathErrorReason extracts the underlying OS reason from a path error so the

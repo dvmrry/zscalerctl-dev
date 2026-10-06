@@ -105,6 +105,61 @@ func TestConfigInitRefusesOverwriteWithoutForce(t *testing.T) {
 
 // TestConfigInitForceOverwrites asserts --force replaces an existing file with
 // the loadable template.
+func TestConfigInitRejectsTrailingSeparator(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "export")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", dir, err)
+	}
+	nested := filepath.Join(dir, "export")
+	const sentinel = "nested config must remain unchanged"
+	if err := os.WriteFile(nested, []byte(sentinel), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v, want nil", nested, err)
+	}
+
+	destination := dir + string(filepath.Separator)
+	var out, errOut bytes.Buffer
+	app := cli.New(&out, &errOut, nil)
+	err := app.Run(context.Background(), []string{"--config", destination, "config", "init", "--force"})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("config init --force (trailing separator) error = %v, want ErrUsage", err)
+	}
+	if got, err := os.ReadFile(nested); err != nil {
+		t.Fatalf("os.ReadFile(%q) error = %v, want sentinel unchanged", nested, err)
+	} else if string(got) != sentinel {
+		t.Errorf("nested config body = %q, want %q", got, sentinel)
+	}
+
+	missingDir := filepath.Join(t.TempDir(), "empty-export")
+	if err := os.Mkdir(missingDir, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", missingDir, err)
+	}
+	destination = missingDir + string(filepath.Separator)
+	app = cli.New(&out, &errOut, nil)
+	err = app.Run(context.Background(), []string{"--config", destination, "config", "init"})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("config init (missing trailing-separator destination) error = %v, want ErrUsage", err)
+	}
+	missingNested := filepath.Join(missingDir, filepath.Base(missingDir))
+	if _, err := os.Lstat(missingNested); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Lstat(%q) error = %v, want ErrNotExist", missingNested, err)
+	}
+
+	// An absent directory spelled with a trailing separator must not be
+	// created by the config directory MkdirAll either.
+	absentDir := filepath.Join(t.TempDir(), "absent")
+	destination = absentDir + string(filepath.Separator)
+	app = cli.New(&out, &errOut, nil)
+	err = app.Run(context.Background(), []string{"--config", destination, "config", "init"})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("config init (absent trailing-separator destination) error = %v, want ErrUsage", err)
+	}
+	if _, err := os.Lstat(absentDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Lstat(%q) error = %v, want ErrNotExist", absentDir, err)
+	}
+}
+
 func TestConfigInitForceOverwrites(t *testing.T) {
 	t.Parallel()
 

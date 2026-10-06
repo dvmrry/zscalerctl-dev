@@ -11,6 +11,25 @@ import (
 
 const publicationTestHookDirEnv = "ZSCALERCTL_ENGINE_TEST_HOOK_DIR"
 
+var inventoryDirectoryTestHook func(rootName, path string)
+
+// SetInventoryDirectoryTestHook installs an in-process hook that inventory
+// traversal calls after a directory handle is opened and validated and before
+// that handle is enumerated. It exists only in test-hook builds; the returned
+// function restores the previous hook. Callers must not run admissions
+// concurrently with installing or restoring the hook.
+func SetInventoryDirectoryTestHook(hook func(rootName, path string)) (restore func()) {
+	previous := inventoryDirectoryTestHook
+	inventoryDirectoryTestHook = hook
+	return func() { inventoryDirectoryTestHook = previous }
+}
+
+func runInventoryDirectoryTestHook(rootName, path string) {
+	if hook := inventoryDirectoryTestHook; hook != nil {
+		hook(rootName, path)
+	}
+}
+
 func runPublicationTestHook(stage string) error {
 	dir := os.Getenv(publicationTestHookDirEnv)
 	if dir == "" {
