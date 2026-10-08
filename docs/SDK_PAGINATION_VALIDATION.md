@@ -10,10 +10,10 @@ No credentials are required:
 
 ```sh
 go test -mod=vendor ./internal/zscaler \
-  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
+  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIAURLCategoriesAllRequestsAllCategoryTypes|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
   -count=1
 go test -race -mod=vendor ./internal/zscaler \
-  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
+  -run 'Test(ZIAPaginate|ZTWPaginate|ZCCPaginate|GetZIAAllPages|GetZIAUsersAllPages|GetZIAURLCategoriesAllRequestsAllCategoryTypes|GetZIASublocationByID|NormalizeZIABrowserIsolationListError|GetZTWAllPages|GetZCCAllPages|ReadersAvoidVendoredUnboundedPagination)' \
   -count=1
 ```
 
@@ -43,6 +43,7 @@ for spec in \
   zia/sublocations \
   zia/location-groups \
   zia/devices \
+  zia/url-categories \
   zia/firewall-filtering-rules \
   zia/forwarding-rules \
   zia/dlp-web-rules \
@@ -98,6 +99,28 @@ resources:
   boundary; and
 - require any later-page or ceiling failure to exit nonzero instead of
   returning a shorter successful array.
+
+### URL-category 20-record clamp regression
+
+On a tenant whose console contains more than 20 URL and TLD categories, run:
+
+```sh
+./zscalerctl --timeout 30s --format json zia url-categories list |
+  jq -c '
+    ([.[].id] | length) as $ids_present |
+    {count: length, ids_present: $ids_present,
+     unique_ids: ([.[].id] | unique | length),
+     types: ([.[].type] | unique | sort)}'
+```
+
+Pass criteria:
+
+- `count` is greater than 20 and matches the corresponding console inventory;
+- `ids_present`, `unique_ids`, and `count` are equal; and
+- `types` includes `URL_CATEGORY` and, where configured or returned by the
+  tenant, `TLD_CATEGORY`.
+
+Record only the aggregate object above. Do not save or paste category records.
 
 ## Explicit Single-Read Targets
 
