@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -234,37 +234,119 @@ func inspectDirectoryTreeContext(
 	hasFiles := false
 	dirs := map[string]struct{}{".": {}}
 	identities := make(map[string]os.FileInfo)
-	err := fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if err := checkContext(ctx); err != nil {
-			return err
-		}
-		path = filepath.ToSlash(path)
-		if entry.IsDir() {
-			dirs[path] = struct{}{}
-			pathInfo, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			openedInfo, err := openRootEntryInfo(root, path)
-			if err != nil {
-				return err
-			}
-			if !os.SameFile(pathInfo, openedInfo) {
-				return fmt.Errorf("%w: existing dump directory changed during inspection", ErrUnsafePath)
-			}
-			identities[path] = openedInfo
-		} else {
-			hasFiles = true
-		}
-		return nil
-	})
-	if err != nil {
+	if err := inspectDirectoryTree(ctx, root, ".", dirs, identities, &hasFiles); err != nil {
 		return artifactCleanupPlan{}, false, fmt.Errorf("inspect existing dump directory: %w", err)
 	}
 	return newArtifactCleanupPlan(nil, dirs, identities), hasFiles, nil
+}
+
+// inspectDirectoryTree walks the existing dump through validated, nonblocking
+// directory handles. It never lets a library re-open a path by name: a FIFO or
+// other special file substituted after validation is rejected by OpenRootEntry
+// or by the pre/post-enumeration identity checks instead of blocking the walk.
+func inspectDirectoryTree(
+	ctx context.Context,
+	root *os.Root,
+	path string,
+	dirs map[string]struct{},
+	identities map[string]os.FileInfo,
+	hasFiles *bool,
+) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	directory, err := OpenRootEntry(root, path)
+	if err != nil {
+		return err
+	}
+	directoryInfo, err := directory.Stat()
+	if err != nil {
+		_ = directory.Close()
+		return err
+	}
+	if !directoryInfo.IsDir() {
+		_ = directory.Close()
+		return fmt.Errorf("%w: existing dump path %s is not a directory", ErrUnsafePath, path)
+	}
+	identities[path] = directoryInfo
+	runInventoryDirectoryTestHook(root.Name(), path)
+	if err := validateInspectionDirectoryPath(root, path, directoryInfo); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		_ = directory.Close()
+		return err
+	}
+	if err := validateInspectionDirectoryPath(root, path, directoryInfo); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	// Record child directories and their listed identities, then close this
+	// handle before descending, so live descriptors stay bounded by one per
+	// level being enumerated rather than one per ancestor. Each child is
+	// reopened through OpenRootEntry and must match the identity listed here.
+	type childDirectory struct {
+		path string
+		info os.FileInfo
+	}
+	var children []childDirectory
+	for _, entry := range entries {
+		if err := checkContext(ctx); err != nil {
+			_ = directory.Close()
+			return err
+		}
+		if !entry.IsDir() {
+			*hasFiles = true
+			continue
+		}
+		childPath := entry.Name()
+		if path != "." {
+			childPath = filepath.Join(filepath.FromSlash(path), entry.Name())
+		}
+		childPath = filepath.ToSlash(childPath)
+		dirs[childPath] = struct{}{}
+		entryInfo, err := entry.Info()
+		if err != nil {
+			_ = directory.Close()
+			return err
+		}
+		children = append(children, childDirectory{path: childPath, info: entryInfo})
+	}
+	if err := directory.Close(); err != nil {
+		return err
+	}
+	for _, child := range children {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		if err := inspectDirectoryTree(ctx, root, child.path, dirs, identities, hasFiles); err != nil {
+			return err
+		}
+		if recorded := identities[child.path]; recorded == nil || !os.SameFile(child.info, recorded) {
+			return fmt.Errorf(
+				"%w: existing dump directory %s changed during inspection",
+				ErrUnsafePath,
+				child.path,
+			)
+		}
+	}
+	return nil
+}
+
+func validateInspectionDirectoryPath(root *os.Root, path string, directoryInfo os.FileInfo) error {
+	pathInfo, err := root.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("%w: inspect existing dump directory %s: %v", ErrUnsafePath, path, err)
+	}
+	if !pathInfo.IsDir() || !os.SameFile(pathInfo, directoryInfo) {
+		return fmt.Errorf("%w: existing dump directory %s changed during inspection", ErrUnsafePath, path)
+	}
+	return nil
 }
 
 // removeReplacedDumpRoot atomically relocates the entire validated root into a
@@ -365,7 +447,7 @@ func validateAbsoluteCleanupEntry(path string, want os.FileInfo, wantDirectory b
 	if wantDirectory != info.IsDir() || (!wantDirectory && !info.Mode().IsRegular()) {
 		return fmt.Errorf("%w: cleanup path changed type", ErrUnsafePath)
 	}
-	file, err := os.Open(path) // #nosec G304 -- exact validated cleanup identity is checked before this metadata/removal-constraint handle is used.
+	file, err := openPathEntry(path, want)
 	if err != nil {
 		return fmt.Errorf("%w: open cleanup path: %v", ErrUnsafePath, err)
 	}
@@ -541,24 +623,22 @@ func validateCleanupEntry(
 	if !ok || want == nil {
 		return nil, fmt.Errorf("%w: cleanup identity missing for %s", ErrUnsafePath, name)
 	}
-	info, err := root.Lstat(name)
-	if err != nil {
-		return nil, fmt.Errorf("%w: inspect cleanup path %s: %v", ErrUnsafePath, name, err)
-	}
-	if !os.SameFile(want, info) {
-		return nil, fmt.Errorf("%w: cleanup path %s changed after validation", ErrUnsafePath, name)
-	}
-	if wantDirectory != info.IsDir() || (!wantDirectory && !info.Mode().IsRegular()) {
-		return nil, fmt.Errorf("%w: cleanup path %s changed type", ErrUnsafePath, name)
-	}
-	file, err := root.Open(name)
+	file, err := OpenRootEntry(root, name)
 	if err != nil {
 		return nil, fmt.Errorf("%w: open cleanup path %s: %v", ErrUnsafePath, name, err)
 	}
 	openedInfo, statErr := file.Stat()
-	if statErr != nil || !os.SameFile(want, openedInfo) {
+	if statErr != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("%w: cleanup path %s changed while opening", ErrUnsafePath, name)
+		return nil, fmt.Errorf("%w: inspect cleanup path %s: %v", ErrUnsafePath, name, statErr)
+	}
+	if wantDirectory != openedInfo.IsDir() || (!wantDirectory && !openedInfo.Mode().IsRegular()) {
+		_ = file.Close()
+		return nil, fmt.Errorf("%w: cleanup path %s changed type", ErrUnsafePath, name)
+	}
+	if !os.SameFile(want, openedInfo) {
+		_ = file.Close()
+		return nil, fmt.Errorf("%w: cleanup path %s changed after validation", ErrUnsafePath, name)
 	}
 	constraintErr := validateRemovalConstraints(file, openedInfo)
 	closeErr := file.Close()
@@ -575,7 +655,7 @@ func clearDumpRootContext(ctx context.Context, root *os.Root) error {
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	dir, err := root.Open(".")
+	dir, err := OpenRootEntry(root, ".")
 	if err != nil {
 		return fmt.Errorf("%w: open dump directory contents for --force: %v", ErrUnsafePath, err)
 	}
@@ -594,6 +674,17 @@ func clearDumpRootContext(ctx context.Context, root *os.Root) error {
 	// entries. Returning on cancellation mid-phase could strand a partially
 	// deleted artifact; cancellation is checked immediately before and after.
 	for _, name := range names {
+		// Re-open each top-level entry through a nonblocking, identity-checked
+		// handle before removal. A FIFO, device, or symlink swapped in after
+		// admission then fails closed instead of being opened by a blocking
+		// library call.
+		entry, err := OpenRootEntry(root, name)
+		if err != nil {
+			return fmt.Errorf("%w: validate dump directory entry %s for --force: %v", ErrUnsafePath, name, err)
+		}
+		if err := entry.Close(); err != nil {
+			return fmt.Errorf("%w: close dump directory entry %s for --force: %v", ErrUnsafePath, name, err)
+		}
 		if err := root.RemoveAll(name); err != nil {
 			return fmt.Errorf("%w: clear dump directory for --force: %v", ErrUnsafePath, err)
 		}

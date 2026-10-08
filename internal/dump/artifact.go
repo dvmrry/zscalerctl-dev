@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,7 +48,7 @@ type artifactCleanupPlan struct {
 // value unsafe after a same-name substitution. File.Stat records the identity
 // of the object behind the handle immediately on every supported platform.
 func openRootEntryInfo(root *os.Root, name string) (os.FileInfo, error) {
-	file, err := root.Open(name)
+	file, err := OpenRootEntry(root, name)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +59,9 @@ func openRootEntryInfo(root *os.Root, name string) (os.FileInfo, error) {
 	}
 	if closeErr != nil {
 		return nil, closeErr
+	}
+	if !info.IsDir() && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", name)
 	}
 	return info, nil
 }
@@ -239,7 +241,7 @@ func scanArtifactResource(ctx context.Context, root *os.Root, name string) (int,
 	if info.Size() > maxArtifactResourceBytes {
 		return 0, fmt.Errorf("%s is too large", name)
 	}
-	file, err := root.Open(name)
+	file, err := OpenRootEntry(root, name)
 	if err != nil {
 		return 0, fmt.Errorf("open %s: %v", name, err)
 	}
@@ -687,48 +689,30 @@ func validateArtifactInventory(
 	expectedDirs map[string]struct{},
 ) (map[string]os.FileInfo, error) {
 	inventory := make(map[string]os.FileInfo, len(expectedFiles)+len(expectedDirs))
-	err := fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return fmt.Errorf("%w: inspect artifact path: %v", ErrInvalidArtifact, walkErr)
-		}
-		if err := checkContext(ctx); err != nil {
-			return err
-		}
-		path = filepath.ToSlash(path)
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%w: artifact path %s is a symlink", ErrInvalidArtifact, path)
-		}
-		pathInfo, err := entry.Info()
-		if err != nil {
-			return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, path, err)
-		}
-		openedInfo, err := openRootEntryInfo(root, path)
-		if err != nil {
-			return fmt.Errorf("%w: open artifact path %s: %v", ErrInvalidArtifact, path, err)
-		}
-		if !os.SameFile(pathInfo, openedInfo) {
-			return fmt.Errorf("%w: artifact path %s changed during inventory", ErrInvalidArtifact, path)
-		}
-		if entry.IsDir() {
-			if _, expectedFile := expectedFiles[path]; expectedFile {
-				return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, path)
-			}
-			if _, ok := expectedDirs[path]; !ok {
-				return fmt.Errorf("%w: unexpected artifact directory %s", ErrInvalidArtifact, path)
-			}
-			inventory[path] = openedInfo
-			return nil
-		}
-		if !openedInfo.Mode().IsRegular() {
-			return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, path)
-		}
-		if _, ok := expectedFiles[path]; !ok {
-			return fmt.Errorf("%w: unexpected artifact file %s", ErrInvalidArtifact, path)
-		}
-		inventory[path] = openedInfo
-		return nil
-	})
+	rootDirectory, err := OpenRootEntry(root, ".")
 	if err != nil {
+		return nil, fmt.Errorf("%w: open artifact root: %v", ErrInvalidArtifact, err)
+	}
+	rootInfo, err := rootDirectory.Stat()
+	if err != nil {
+		_ = rootDirectory.Close()
+		return nil, fmt.Errorf("%w: inspect artifact root: %v", ErrInvalidArtifact, err)
+	}
+	if !rootInfo.IsDir() {
+		_ = rootDirectory.Close()
+		return nil, fmt.Errorf("%w: artifact root is not a directory", ErrInvalidArtifact)
+	}
+	inventory["."] = rootInfo
+	if err := validateArtifactInventoryDirectory(
+		ctx,
+		root,
+		".",
+		rootDirectory,
+		rootInfo,
+		expectedFiles,
+		expectedDirs,
+		inventory,
+	); err != nil {
 		return nil, err
 	}
 	for path := range expectedFiles {
@@ -744,6 +728,163 @@ func validateArtifactInventory(
 	return inventory, nil
 }
 
+func validateArtifactInventoryDirectory(
+	ctx context.Context,
+	root *os.Root,
+	path string,
+	directory *os.File,
+	directoryInfo os.FileInfo,
+	expectedFiles map[string]struct{},
+	expectedDirs map[string]struct{},
+	inventory map[string]os.FileInfo,
+) (walkErr error) {
+	directoryOpen := true
+	closeDirectory := func() error {
+		if !directoryOpen {
+			return nil
+		}
+		directoryOpen = false
+		if closeErr := directory.Close(); closeErr != nil {
+			return fmt.Errorf("%w: close artifact directory %s: %v", ErrInvalidArtifact, path, closeErr)
+		}
+		return nil
+	}
+	defer func() {
+		if closeErr := closeDirectory(); closeErr != nil && walkErr == nil {
+			walkErr = closeErr
+		}
+	}()
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	runInventoryDirectoryTestHook(root.Name(), path)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := validateArtifactDirectoryPath(root, path, directoryInfo); err != nil {
+		return err
+	}
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return fmt.Errorf("%w: read artifact directory %s: %v", ErrInvalidArtifact, path, err)
+	}
+	runInventoryAfterReadDirTestHook(root.Name(), path)
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if err := validateArtifactDirectoryPath(root, path, directoryInfo); err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	// Child directories are recorded with the identity seen here and visited
+	// after this handle is closed, so live descriptors stay bounded by one per
+	// level being enumerated rather than one per ancestor.
+	type childDirectory struct {
+		path string
+		info os.FileInfo
+	}
+	var children []childDirectory
+	for _, entry := range entries {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		entryPath := entry.Name()
+		if path != "." {
+			entryPath = filepath.Join(filepath.FromSlash(path), entry.Name())
+		}
+		entryPath = filepath.ToSlash(entryPath)
+		pathInfo, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, entryPath, err)
+		}
+		if !pathInfo.IsDir() && !pathInfo.Mode().IsRegular() {
+			return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, entryPath)
+		}
+		opened, err := OpenRootEntry(root, entryPath)
+		if err != nil {
+			return fmt.Errorf("%w: open artifact path %s: %v", ErrInvalidArtifact, entryPath, err)
+		}
+		openedInfo, err := opened.Stat()
+		if err != nil {
+			_ = opened.Close()
+			return fmt.Errorf("%w: inspect artifact path %s: %v", ErrInvalidArtifact, entryPath, err)
+		}
+		if pathInfo.IsDir() != openedInfo.IsDir() ||
+			(!openedInfo.IsDir() && !openedInfo.Mode().IsRegular()) ||
+			!os.SameFile(pathInfo, openedInfo) {
+			_ = opened.Close()
+			return fmt.Errorf("%w: artifact path %s changed during inventory", ErrInvalidArtifact, entryPath)
+		}
+		if openedInfo.IsDir() {
+			if _, expectedFile := expectedFiles[entryPath]; expectedFile {
+				_ = opened.Close()
+				return fmt.Errorf("%w: artifact path %s is not a regular file", ErrInvalidArtifact, entryPath)
+			}
+			if _, ok := expectedDirs[entryPath]; !ok {
+				_ = opened.Close()
+				return fmt.Errorf("%w: unexpected artifact directory %s", ErrInvalidArtifact, entryPath)
+			}
+			inventory[entryPath] = openedInfo
+			if closeErr := opened.Close(); closeErr != nil {
+				return fmt.Errorf("%w: close artifact directory %s: %v", ErrInvalidArtifact, entryPath, closeErr)
+			}
+			children = append(children, childDirectory{path: entryPath, info: openedInfo})
+			continue
+		}
+		if _, ok := expectedFiles[entryPath]; !ok {
+			_ = opened.Close()
+			return fmt.Errorf("%w: unexpected artifact file %s", ErrInvalidArtifact, entryPath)
+		}
+		inventory[entryPath] = openedInfo
+		if closeErr := opened.Close(); closeErr != nil {
+			return fmt.Errorf("%w: close artifact file %s: %v", ErrInvalidArtifact, entryPath, closeErr)
+		}
+	}
+	if err := closeDirectory(); err != nil {
+		return err
+	}
+	for _, child := range children {
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		reopened, err := OpenRootEntry(root, child.path)
+		if err != nil {
+			return fmt.Errorf("%w: open artifact path %s: %v", ErrInvalidArtifact, child.path, err)
+		}
+		reopenedInfo, err := reopened.Stat()
+		if err != nil || !reopenedInfo.IsDir() || !os.SameFile(child.info, reopenedInfo) {
+			_ = reopened.Close()
+			return fmt.Errorf("%w: artifact path %s changed during inventory", ErrInvalidArtifact, child.path)
+		}
+		if err := validateArtifactInventoryDirectory(
+			ctx,
+			root,
+			child.path,
+			reopened,
+			reopenedInfo,
+			expectedFiles,
+			expectedDirs,
+			inventory,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateArtifactDirectoryPath(root *os.Root, path string, directoryInfo os.FileInfo) error {
+	pathInfo, err := root.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("%w: inspect artifact directory %s: %v", ErrInvalidArtifact, path, err)
+	}
+	if !pathInfo.IsDir() || !os.SameFile(pathInfo, directoryInfo) {
+		return fmt.Errorf("%w: artifact directory %s changed during inventory", ErrInvalidArtifact, path)
+	}
+	return nil
+}
+
 func addExpectedDirs(expected map[string]struct{}, filePath string) {
 	for dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(filePath))); dir != "."; dir = filepath.ToSlash(filepath.Dir(dir)) {
 		expected[dir] = struct{}{}
@@ -754,7 +895,27 @@ func readArtifactFile(ctx context.Context, root *os.Root, name string, maxBytes 
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
-	info, err := root.Lstat(name)
+	file, err := OpenRootEntry(root, name)
+	if err != nil {
+		return nil, fmt.Errorf("%w: open %s: %v", ErrInvalidArtifact, name, err)
+	}
+	defer file.Close()
+	return readArtifactFileHandle(ctx, file, name, maxBytes)
+}
+
+type artifactReadHandle interface {
+	io.Reader
+	Stat() (os.FileInfo, error)
+}
+
+func readArtifactFileHandle(ctx context.Context, file artifactReadHandle, name string, maxBytes int64) ([]byte, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if ctxErr := checkContext(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: inspect %s: %v", ErrInvalidArtifact, name, err)
 	}
@@ -764,15 +925,18 @@ func readArtifactFile(ctx context.Context, root *os.Root, name string, maxBytes 
 	if info.Size() > maxBytes {
 		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidArtifact, name)
 	}
-	body, err := root.ReadFile(name)
+	body, err := io.ReadAll(io.LimitReader(&artifactContextReader{ctx: ctx, reader: file}, maxBytes+1))
 	if err != nil {
+		if ctxErr := checkContext(ctx); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidArtifact, name, err)
-	}
-	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidArtifact, name)
 	}
 	if err := checkContext(ctx); err != nil {
 		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("%w: %s is too large", ErrInvalidArtifact, name)
 	}
 	return body, nil
 }

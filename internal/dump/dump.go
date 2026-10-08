@@ -493,25 +493,57 @@ func preflightProcessStagingCleanup(path string, original os.FileInfo) error {
 	if err != nil || !os.SameFile(original, current) || !current.IsDir() {
 		return fmt.Errorf("%w: process staging root changed before cleanup", ErrUnsafePath)
 	}
-	return filepath.WalkDir(path, func(entryPath string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%w: process staging path is a symlink", ErrUnsafePath)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.IsDir() && info.Mode().Perm()&0o300 != 0o300 {
-			return fmt.Errorf("%w: process staging directory is not owner-writable", ErrUnsafePath)
-		}
-		if err := validateAbsoluteCleanupEntry(entryPath, info, info.IsDir()); err != nil {
-			return err
-		}
+	return preflightProcessStagingEntry(path, current)
+}
+
+// preflightProcessStagingEntry enumerates directories through nonblocking,
+// identity-checked handles. Each directory is closed before descending.
+func preflightProcessStagingEntry(path string, info os.FileInfo) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: process staging path is a symlink", ErrUnsafePath)
+	}
+	if info.IsDir() && info.Mode().Perm()&0o300 != 0o300 {
+		return fmt.Errorf("%w: process staging directory is not owner-writable", ErrUnsafePath)
+	}
+	if err := validateAbsoluteCleanupEntry(path, info, info.IsDir()); err != nil {
+		return err
+	}
+	if !info.IsDir() {
 		return nil
+	}
+	directory, err := openPathEntry(path, info)
+	if err != nil {
+		return fmt.Errorf("%w: open process staging directory: %v", ErrUnsafePath, err)
+	}
+	runInventoryDirectoryTestHook(path, ".")
+	if err := validateAbsoluteCleanupEntry(path, info, true); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	if readErr != nil {
+		return fmt.Errorf("%w: read process staging directory: %v", ErrUnsafePath, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("%w: close process staging directory: %v", ErrUnsafePath, closeErr)
+	}
+	if err := validateAbsoluteCleanupEntry(path, info, true); err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
 	})
+	for _, entry := range entries {
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("%w: inspect process staging path: %v", ErrUnsafePath, err)
+		}
+		if err := preflightProcessStagingEntry(filepath.Join(path, entry.Name()), entryInfo); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func publishDirectoryNoReplace(ctx context.Context, stagingDir, destination string) error {
