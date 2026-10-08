@@ -43,10 +43,12 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 var goldenBinary string
 
 const (
-	goldenSurfaceFixtureEnv        = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
-	goldenSurfaceReadFixture       = "resource-read"
-	goldenSurfaceInvalidIDFixture  = "invalid-resource-id"
-	goldenSurfaceMissingZPAFixture = "missing-zpa-customer-id"
+	goldenSurfaceFixtureEnv                    = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture                   = "resource-read"
+	goldenSurfaceInvalidIDFixture              = "invalid-resource-id"
+	goldenSurfaceMissingZPAFixture             = "missing-zpa-customer-id"
+	goldenSurfaceAuditStatusUnavailableFixture = "audit-status-progress-unavailable"
+	goldenSurfaceAuditStatusZeroFixture        = "audit-status-explicit-zero"
 )
 
 // TestMain builds the binary once for all golden tests.
@@ -366,6 +368,24 @@ func (r goldenSurfaceReader) Show(_ context.Context, product resources.Product, 
 	return resources.SourceRecord{}, fmt.Errorf("surface fixture %q has no show result for %s/%s", r.fixture, product, resource)
 }
 
+func (r goldenSurfaceReader) AdminAuditLogsStatus(context.Context) (zscaler.AdminAuditLogsStatus, error) {
+	switch r.fixture {
+	case goldenSurfaceAuditStatusUnavailableFixture:
+		return zscaler.AdminAuditLogsStatus{Status: "completed"}, nil
+	case goldenSurfaceAuditStatusZeroFixture:
+		progressItemsComplete := 0
+		return zscaler.AdminAuditLogsStatus{
+			Status:                "completed",
+			ProgressItemsComplete: &progressItemsComplete,
+		}, nil
+	default:
+		return zscaler.AdminAuditLogsStatus{}, fmt.Errorf(
+			"surface fixture %q has no administrator audit-log status result",
+			r.fixture,
+		)
+	}
+}
+
 // goldenPath returns the path to the golden file for a given case name.
 func goldenPath(name, stream string) string {
 	return filepath.Join("testdata", "surface", name+"."+stream+".golden")
@@ -521,6 +541,21 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"zia", "url-lookup", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
+		},
+		// ── administrator audit-log status JSON contract ─────────────────────────
+		{
+			name:     "zia-admin-audit-logs-status-progress-unavailable-json",
+			args:     []string{"--format", "json", "zia", "admin-audit-logs", "status"},
+			fixture:  goldenSurfaceAuditStatusUnavailableFixture,
+			wantCode: 0,
+			note:     "optional-upstream-progress-field",
+		},
+		{
+			name:     "zia-admin-audit-logs-status-explicit-zero-json",
+			args:     []string{"--format", "json", "zia", "admin-audit-logs", "status"},
+			fixture:  goldenSurfaceAuditStatusZeroFixture,
+			wantCode: 0,
+			note:     "explicit-zero-progress-field",
 		},
 		// ── resource help (SetHelpFunc resource-specific help) ───────────────────
 		{

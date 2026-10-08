@@ -49,7 +49,7 @@ func TestManPageDocumentsFlagsAndCommands(t *testing.T) {
 	// never yields them — gate their documentation explicitly or a future
 	// deletion of the man entry would pass every test (the un-driftable-docs
 	// invariant must extend to every new surface).
-	for _, diagnostic := range []string{"url-lookup"} {
+	for _, diagnostic := range []string{"url-lookup", "admin-audit-logs"} {
 		if !strings.Contains(content, diagnostic) {
 			t.Errorf("man/zscalerctl.1 does not document diagnostic command %q", diagnostic)
 		}

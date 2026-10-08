@@ -343,6 +343,22 @@ read zia resources
 zscalerctl zia
 ```
 
+#### zia admin-audit-logs
+
+inspect administrator audit-log report status
+
+```
+zscalerctl zia admin-audit-logs
+```
+
+##### zia admin-audit-logs status
+
+show current administrator audit-log report status
+
+```
+zscalerctl zia admin-audit-logs status
+```
+
 #### zia url-lookup
 
 look up URL categories for one or more URLs

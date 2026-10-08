@@ -30,6 +30,7 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  config init [--force]")
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
+	fmt.Fprintln(w, "  zia admin-audit-logs status")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  introspect")
 	fmt.Fprintln(w, "  machine manifest")
@@ -138,7 +139,7 @@ func productCommandUsage(product resources.Product, width int, catalog resources
 		columnize(names, width),
 	)
 	if product == resources.ProductZIA {
-		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]"
+		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]\n  zscalerctl zia admin-audit-logs status"
 	}
 	return msg
 }
