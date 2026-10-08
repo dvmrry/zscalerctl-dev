@@ -70,6 +70,7 @@ func LoadConfig(environ []string, opts LoadOptions) (Config, error) {
 		resolver = secretref.NewResolver(secretref.ResolverOpts{
 			AllowCmd: !disallowCmd,
 			Keyring:  keyring.New(),
+			Env:      profileSecretEnv(profile.data, env),
 		})
 	}
 	if err := applyProfile(&cfg, profile.data, env, resolver); err != nil {
@@ -79,6 +80,27 @@ func LoadConfig(environ []string, opts LoadOptions) (Config, error) {
 		cfg.AuthMode = cfg.EffectiveAuthMode()
 	}
 	return cfg, nil
+}
+
+func profileSecretEnv(profile profileData, env map[string]string) map[string]string {
+	values := make(map[string]string, 3)
+	for _, ref := range []*secretref.SecretRef{
+		profile.ClientSecretRef,
+		profile.ZIAPasswordRef,
+		profile.ZIAAPIKeyRef,
+	} {
+		if ref == nil || ref.Scheme != "env" {
+			continue
+		}
+		value, ok := env[ref.Name]
+		if !ok {
+			value, ok = os.LookupEnv(ref.Name)
+		}
+		if ok {
+			values[ref.Name] = value
+		}
+	}
+	return values
 }
 
 // ResolveConfigPath reports the config path the loader would use for the given
