@@ -20,6 +20,7 @@ var ErrNoResolver = errors.New("secret resolver is not configured")
 type ResolverOpts struct {
 	AllowCmd bool
 	Keyring  keyring.Getter
+	Env      map[string]string
 }
 
 type Resolver struct {
@@ -39,7 +40,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref SecretRef) (secret.Secret, e
 
 	switch ref.Scheme {
 	case "env":
-		value, ok := os.LookupEnv(ref.Name)
+		value, ok := r.lookupEnv(ref.Name)
 		if !ok {
 			return secret.Secret{}, fmt.Errorf("%w: env ref is not set: %s", ErrInvalidRef, ref.Name)
 		}
@@ -53,6 +54,14 @@ func (r *Resolver) Resolve(ctx context.Context, ref SecretRef) (secret.Secret, e
 	default:
 		return secret.Secret{}, fmt.Errorf("%w: unknown scheme %q", ErrInvalidRef, ref.Scheme)
 	}
+}
+
+func (r *Resolver) lookupEnv(name string) (string, bool) {
+	if value, ok := os.LookupEnv(name); ok {
+		return value, true
+	}
+	value, ok := r.opts.Env[name]
+	return value, ok
 }
 
 func (r *Resolver) resolveKeyring(ctx context.Context, ref SecretRef) (secret.Secret, error) {
@@ -100,6 +109,9 @@ func (r *Resolver) resolveCmd(ctx context.Context, ref SecretRef) (secret.Secret
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
+		if parentErr := ctx.Err(); parentErr != nil {
+			return secret.Secret{}, parentErr
+		}
 		if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
 			return secret.Secret{}, fmt.Errorf("%w: cmd provider %q timed out after %s", ErrInvalidRef, ref.Argv[0], timeout)
 		}

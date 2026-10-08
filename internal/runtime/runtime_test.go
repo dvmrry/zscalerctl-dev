@@ -16,6 +16,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/secret"
+	"github.com/dvmrry/zscalerctl/internal/secretref"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -611,6 +612,153 @@ func TestEngineReadStreamConstructsRuntimeAndForwardsEvents(t *testing.T) {
 	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
 		t.Fatalf("Engine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
 	}
+}
+
+func TestEngineReadResolvesSDKEnvRefAcrossRuntimeRebuilds(t *testing.T) {
+	// No t.Parallel(): this test mutates the process environment.
+	const canary = "sdk-env-reference-canary"
+	t.Setenv("ZSCALER_SANDBOX_TOKEN", canary)
+	configPath := runtimeWriteConfig(t, `
+profiles:
+  default:
+    auth_mode: oneapi
+    vanity_domain: example
+    client_id: client-id
+    client_secret_ref: env:ZSCALER_SANDBOX_TOKEN
+`)
+	var resolved []string
+	engine, err := NewEngine(Options{
+		Env:        []string{"ZSCALER_SANDBOX_TOKEN=" + canary},
+		ConfigPath: configPath,
+		Catalog:    runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		newReader: func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
+			resolved = append(resolved, cfg.ClientSecret.Reveal())
+			if err := os.Unsetenv("ZSCALER_SANDBOX_TOKEN"); err != nil {
+				return nil, err
+			}
+			return &runtimeFakeReader{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		RequestID: "sdk-env-reference",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	for i := range 2 {
+		if _, err := engine.Read(context.Background(), request); err != nil {
+			t.Fatalf("Engine.Read(%d) error = %v, want nil", i+1, err)
+		}
+	}
+	if !reflect.DeepEqual(resolved, []string{canary, canary}) {
+		t.Fatalf("resolved client secrets = %#v, want two reads of configured env ref", resolved)
+	}
+}
+
+func TestEngineReadCmdProviderCancellationPreservesContextIdentity(t *testing.T) {
+	for _, operation := range []string{"read", "read_stream"} {
+		operation := operation
+		t.Run(operation, func(t *testing.T) {
+			readyPath := filepath.Join(t.TempDir(), "provider-ready")
+			resolver := secretref.NewResolver(secretref.ResolverOpts{AllowCmd: true})
+			ref := secretref.SecretRef{
+				Scheme: "cmd",
+				Argv: []string{
+					os.Args[0],
+					"-test.run=^TestRuntimeCmdProviderHelperProcess$",
+					"--",
+					"block",
+					readyPath,
+				},
+			}
+			engine, err := NewEngine(Options{
+				Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+				loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+					return config.Config{
+						AuthMode:     config.AuthModeOneAPI,
+						VanityDomain: "example",
+						Credentials: config.Credentials{
+							ClientID:     secret.New("client-id"),
+							ClientSecret: secretref.Deferred(ref, resolver),
+						},
+					}, nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewEngine() error = %v, want nil", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			request := machine.ResourceReadRequest{
+				RequestID: "canceled-cmd-provider",
+				Operation: machine.OperationList,
+				Input: machine.ResourceReadInput{
+					Product: "zia", Resource: "locations",
+				},
+			}
+			result := make(chan error, 1)
+			go func() {
+				var err error
+				if operation == "read" {
+					_, err = engine.Read(ctx, request)
+				} else {
+					err = engine.ReadStream(ctx, request, func(machine.Event) error { return nil })
+				}
+				result <- err
+			}()
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if _, err := os.Stat(readyPath); err == nil {
+					break
+				} else if !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("os.Stat(provider ready marker) error = %v", err)
+				}
+				if time.Now().After(deadline) {
+					cancel()
+					t.Fatal("cmd provider did not start before deadline")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			cancel()
+			select {
+			case err := <-result:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("Engine.%s() error = %v, want context.Canceled", operation, err)
+				}
+				if !runtimeMachineErrorKind(err, machine.ErrorKindCanceled) {
+					t.Fatalf("Engine.%s() error = %v, want canceled MachineError", operation, err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("Engine.%s() did not return after cancellation", operation)
+			}
+		})
+	}
+}
+
+func TestRuntimeCmdProviderHelperProcess(t *testing.T) {
+	index := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return
+	}
+	args := os.Args[index+1:]
+	if len(args) != 2 || args[0] != "block" {
+		os.Exit(2)
+	}
+	if err := os.WriteFile(args[1], []byte("ready"), 0o600); err != nil {
+		os.Exit(1)
+	}
+	time.Sleep(time.Hour)
+	os.Exit(0)
 }
 
 func TestEngineTypedReadsRejectNonReadBeforeRuntimeConstruction(t *testing.T) {

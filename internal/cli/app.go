@@ -893,6 +893,9 @@ func (a *App) runProductWithRuntime(
 		var err error
 		rt, err = a.machineRuntime(ctx, cfg, opts)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return err
 		}
 	}

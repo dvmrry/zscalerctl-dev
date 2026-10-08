@@ -19,6 +19,10 @@ import (
 
 var processOutputMu sync.Mutex
 
+var openNullSink = func() (*os.File, error) {
+	return os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+}
+
 const (
 	exitSuccess           = 0
 	exitInternalError     = 1
@@ -45,7 +49,7 @@ func runApp(ctx context.Context, app *cli.App, args []string, stdout, stderr io.
 
 	restoreProcessOutput, err := muteProcessOutput()
 	if err != nil {
-		writeError(stderr, output.FormatTable, fmt.Errorf("internal error: %w", err))
+		writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %w", err))
 		return exitInternalError
 	}
 	defer restoreProcessOutput()
@@ -163,6 +167,10 @@ func errorKind(err error) string {
 		return machineErr.Kind
 	}
 	switch {
+	case errors.Is(err, context.Canceled):
+		return machine.ErrorKindCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return machine.ErrorKindDeadlineExceeded
 	case errors.Is(err, cli.ErrUsage):
 		return "usage"
 	case errors.Is(err, cli.ErrPartialDump):
@@ -198,6 +206,10 @@ func exitCodeForError(err error) int {
 		}
 	}
 	switch {
+	case errors.Is(err, context.Canceled):
+		return exitInternalError
+	case errors.Is(err, context.DeadlineExceeded):
+		return exitLiveAccessFailure
 	case errors.Is(err, cli.ErrUsage):
 		return exitUsageError
 	case errors.Is(err, cli.ErrPartialDump):
@@ -227,7 +239,7 @@ func exitCodeForError(err error) int {
 
 func muteProcessOutput() (func(), error) {
 	previousLogWriter := log.Writer()
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	devNull, err := openNullSink()
 	if err != nil {
 		return nil, fmt.Errorf("open null output sink: %w", err)
 	}
