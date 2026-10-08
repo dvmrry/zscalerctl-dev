@@ -21,8 +21,10 @@ before stdout or dump files. Rendered string values usually receive a
 conservative high-entropy token scan for bare unlabeled secret material.
 Structured display-name fields such as `name`, `configuredName`, and
 `displayName` skip only the high-entropy heuristic in `standard` mode so long
-cloud-style identifiers remain readable during local operation. `share` and
-`paranoid` redact high-entropy display-name values. Self-describing secrets such
+cloud-style identifiers remain readable during local operation; an unlabeled
+key pasted into such a name is not detected, by design. `share` and
+`paranoid` redact high-entropy display-name values. Values after generic credential labels such as `key:`, `token`, or
+`Bearer` redact in every field and mode when they are credential-shaped. Self-describing secrets such
 as `psk=...`, credential URLs, JWTs, and private keys still redact in display
 names in every mode. Canonical UUIDs and contextual git commit SHAs are
 preserved. In `standard` mode, structured rendered strings also preserve

@@ -1130,11 +1130,29 @@ func TestCatalogRenderedFieldsRedactSecretShapes(t *testing.T) {
 			value:     fakePrivateKeyBlock("shape-test-private-key-canary"),
 			forbidden: []string{"shape-test-private-key-canary"},
 		},
+		{
+			name:      "generic_label_short_key",
+			value:     "POC key: " + "Sh4peT3stK3yC4nary9",
+			forbidden: []string{"Sh4peT3stK3yC4nary9"},
+		},
+		{
+			name:      "bare_bearer",
+			value:     "Bearer Sh4peT3stB34rer7",
+			forbidden: []string{"Sh4peT3stB34rer7"},
+		},
+		{
+			name:      "labeled_uuid_key",
+			value:     "trial token: " + "3f1c9a2e-7b4d-4e8a-9c61-2d5f8e0b7a34",
+			forbidden: []string{"3f1c9a2e-7b4d-4e8a-9c61-2d5f8e0b7a34"},
+		},
 	}
 
-	// This net proves the scanner catches known self-describing secret shapes
-	// plus high-entropy rendered tokens. Low-entropy unlabeled secrets remain a
-	// naming/classification problem, not something a value scanner can infer.
+	// This net proves the scanner catches known self-describing secret shapes,
+	// generically labeled pasted keys, and high-entropy rendered tokens.
+	// Standard-mode display names keep main's ScanString, so unlabeled
+	// high-entropy tokens in names are not detected by design. Low-entropy
+	// unlabeled secrets remain a naming/classification problem, not something a
+	// value scanner can infer.
 	cases := 0
 	for _, spec := range resources.Catalog() {
 		spec := spec
