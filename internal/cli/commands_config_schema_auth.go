@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -90,19 +89,59 @@ func (a *App) newConfigInitCmd(opts globalOptions) *cobra.Command {
 // ever outputs anything credential-like it must be added to the redact package's
 // test corpus instead.
 func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW io.Writer) error {
+	return a.runConfigInitWithForceHook(opts, force, out, errW, nil)
+}
+
+func (a *App) runConfigInitWithForceHook(opts globalOptions, force bool, out, errW io.Writer, afterDestinationCheck func() error) error {
+	return a.runConfigInitWithForceLstat(opts, force, out, errW, afterDestinationCheck, nil)
+}
+
+func (a *App) runConfigInitWithForceLstat(opts globalOptions, force bool, out, errW io.Writer, afterDestinationCheck func() error, inspect func(string) (os.FileInfo, error)) error {
 	path, _ := config.ResolveConfigPath(a.env, config.LoadOptions{
 		Profile:    opts.profile,
 		ConfigPath: opts.configPath,
 	})
 
-	switch _, statErr := os.Lstat(path); {
+	parent, name, err := splitDestinationPath(path)
+	if err != nil {
+		return UsageError{Message: fmt.Sprintf("config init: %v: %s", err, path)}
+	}
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return fmt.Errorf("create config directory %s: %w", parent, err)
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil && !errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("open config directory %s: %w", parent, err)
+	}
+	// OpenRoot requires directory read permission; pathname writes can succeed
+	// with only write and search permission.
+	lstat := os.Lstat
+	remove := os.Remove
+	write := fileperm.WriteOwnerOnly
+	destination := path
+	if root != nil {
+		defer root.Close()
+		lstat = root.Lstat
+		remove = root.Remove
+		write = func(name string, data []byte) error {
+			return fileperm.WriteOwnerOnlyRoot(root, name, data)
+		}
+		destination = name
+	}
+	if inspect != nil {
+		lstat = inspect
+	}
+
+	_, statErr := lstat(destination)
+	if root != nil && statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+		// Preserve pathname inspection when opening the entry through root fails.
+		// Windows data access and sharing restrictions can block root.Lstat.
+		_, statErr = os.Lstat(path)
+	}
+	switch {
 	case statErr == nil:
 		if !force {
 			return UsageError{Message: fmt.Sprintf("config already exists at %s; pass --force to overwrite", path)}
-		}
-		// WriteOwnerOnly is O_EXCL, so we remove before re-creating.
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("remove existing config %s: %w", path, err)
 		}
 	case errors.Is(statErr, fs.ErrNotExist):
 		// Expected: nothing to overwrite.
@@ -110,10 +149,18 @@ func (a *App) runConfigInitWithForce(opts globalOptions, force bool, out, errW i
 		return fmt.Errorf("stat config path %s: %w", path, statErr)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create config directory %s: %w", filepath.Dir(path), err)
+	if afterDestinationCheck != nil {
+		if err := afterDestinationCheck(); err != nil {
+			return err
+		}
 	}
-	if err := fileperm.WriteOwnerOnly(path, []byte(configInitTemplate)); err != nil {
+	if statErr == nil {
+		// Both owner-only writers are O_EXCL, so remove before re-creating.
+		if err := remove(destination); err != nil {
+			return fmt.Errorf("remove existing config %s: %w", path, err)
+		}
+	}
+	if err := write(destination, []byte(configInitTemplate)); err != nil {
 		return fmt.Errorf("write config %s: %w", path, err)
 	}
 

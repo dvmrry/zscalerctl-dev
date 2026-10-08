@@ -34,6 +34,48 @@ func TestWriteOutputFileRejectsDirectory(t *testing.T) {
 	assertNoOutputTempFiles(t, dir)
 }
 
+func TestWriteOutputFileRejectsTrailingSeparator(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	parent := filepath.Join(dir, "export")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", parent, err)
+	}
+
+	nested := filepath.Join(parent, "export")
+	const sentinel = "nested file must remain unchanged"
+	if err := os.WriteFile(nested, []byte(sentinel), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%q) error = %v, want nil", nested, err)
+	}
+
+	destination := parent + string(filepath.Separator)
+	if err := writeOutputFile(destination, []byte("must be rejected")); !errors.Is(err, ErrUsage) {
+		t.Fatalf("writeOutputFile(trailing separator) error = %v, want ErrUsage", err)
+	}
+	if got, err := os.ReadFile(nested); err != nil {
+		t.Fatalf("os.ReadFile(%q) error = %v, want sentinel unchanged", nested, err)
+	} else if string(got) != sentinel {
+		t.Errorf("nested file body = %q, want %q", got, sentinel)
+	}
+
+	missingParent := filepath.Join(dir, "missing")
+	if err := os.Mkdir(missingParent, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v, want nil", missingParent, err)
+	}
+	destination = missingParent + string(filepath.Separator)
+	if err := writeOutputFile(destination, []byte("must be rejected")); !errors.Is(err, ErrUsage) {
+		t.Fatalf("writeOutputFile(missing trailing separator) error = %v, want ErrUsage", err)
+	}
+	missingNested := filepath.Join(missingParent, filepath.Base(missingParent))
+	if _, err := os.Lstat(missingNested); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Lstat(%q) error = %v, want ErrNotExist", missingNested, err)
+	}
+
+	assertNoOutputTempFiles(t, parent)
+	assertNoOutputTempFiles(t, missingParent)
+}
+
 func TestWriteOutputFileRejectsSymlink(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -120,6 +162,30 @@ func TestWriteOutputFileCreatesMissingFile(t *testing.T) {
 		t.Errorf("destination body = %q, want %q", got, want)
 	}
 	assertNoOutputTempFiles(t, dir)
+}
+
+func TestWriteOutputFileAcceptsLongFileName(t *testing.T) {
+	t.Parallel()
+
+	// The temp name adds ".tmp-", "-" and at most ten digits, as os.CreateTemp
+	// does, so a 230-byte name still fits a 255-byte NAME_MAX.
+	for _, existing := range []bool{false, true} {
+		dir := t.TempDir()
+		destination := filepath.Join(dir, strings.Repeat("a", 230))
+		if existing {
+			if err := os.WriteFile(destination, []byte("old body"), 0o600); err != nil {
+				t.Fatalf("os.WriteFile(long name) error = %v, want nil", err)
+			}
+		}
+		const want = "new body"
+		if err := writeOutputFile(destination, []byte(want)); err != nil {
+			t.Fatalf("writeOutputFile(230-byte name, existing=%v) error = %v, want nil", existing, err)
+		}
+		if got, err := os.ReadFile(destination); err != nil || string(got) != want {
+			t.Errorf("destination body = %q, %v, want %q", got, err, want)
+		}
+		assertNoOutputTempFiles(t, dir)
+	}
 }
 
 func assertNoOutputTempFiles(t *testing.T, dir string) {
