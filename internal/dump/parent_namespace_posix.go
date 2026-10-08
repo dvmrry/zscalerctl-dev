@@ -89,7 +89,7 @@ func stableNamespaceEntry(path string) (os.FileInfo, error) {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("dump parent ancestry %s is not a directory", path)
 	}
-	file, err := os.Open(path) // #nosec G304 -- caller-selected dump ancestor is opened only to bind identity and inspect metadata/ACLs.
+	file, err := openPathEntry(path, info)
 	if err != nil {
 		return nil, fmt.Errorf("open dump parent ancestry %s: %w", path, err)
 	}

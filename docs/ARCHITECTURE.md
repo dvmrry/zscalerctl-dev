@@ -511,7 +511,8 @@ immutable projected collection. It implements the browser loader and direct
 projected-get interfaces consumed by `internal/machine.Executor`, allowing
 repeated reads without a live reader. The CLI selects this path before config
 loading when `--from-dump` is supplied. Its serialized resource admission budget
-is 256 MiB; it is not an RSS bound. Existing diff input limits remain unchanged.
+is 256 MiB; ordinary diff applies the same serialized-byte budget across the
+selected resource files in both input dumps. Neither limit is an RSS bound.
 Safe collection provenance includes validated schema, mode, status and counts;
 free-form manifest strings and source paths are not returned as trusted metadata.
 

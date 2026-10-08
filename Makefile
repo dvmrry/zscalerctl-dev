@@ -18,10 +18,12 @@ fmt-check:
 
 test:
 	go test -mod=vendor ./...
+	go test -tags=zscalerctl_engine_testhooks -mod=vendor ./internal/diff ./internal/dump
 	python3 -B -m unittest discover -s evals/agent-workflows -p 'test_*.py'
 
 race:
 	go test -race -mod=vendor ./...
+	go test -race -tags=zscalerctl_engine_testhooks -mod=vendor ./internal/diff ./internal/dump
 
 vet:
 	go vet -mod=vendor ./...
