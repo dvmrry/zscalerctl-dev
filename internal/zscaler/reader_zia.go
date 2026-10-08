@@ -102,33 +102,103 @@ import (
 )
 
 // ziaMaxPages is a fail-closed ceiling on the number of pages the bounded ZIA
-// paginators will fetch. Like the zcc/zidentity guards, termination otherwise
-// relies entirely on the server returning a short final page; an endpoint that
-// keeps returning a persistently-full page would loop until --timeout fires on
-// every request. At the smallest 100-record page size used by these wrappers,
-// the ceiling still admits 100,000 records, but converts a pathological
-// infinite loop into a visible, descriptive error.
+// paginators will fetch. Like the zcc/zidentity guards, it converts a
+// pathological endpoint into a visible, descriptive error instead of an
+// unbounded loop. Even when an endpoint clamps pages to 20 records, the ceiling
+// still admits nearly 20,000 records before requiring a terminal short page.
 const ziaMaxPages = 1000
 
-// ziaPaginate walks every page of a ZIA list endpoint, mirroring the SDK's
-// ReadAllPages contract (advance until a page returns fewer than pageSize
-// records) while enforcing the ziaMaxPages ceiling the vendored ReadAllPages
-// lacks. fetchPage is injectable so the ceiling is unit-testable without a live
-// tenant.
-func ziaPaginate[T any](ctx context.Context, pageSize int, fetchPage func(ctx context.Context, page, pageSize int) ([]T, error)) ([]T, error) {
-	var all []T
+// errZiaPaginationValidation marks a ziaWalkPages failure that proves the
+// endpoint violated its pagination contract. Callers that tolerate per-parent
+// read errors must still propagate it.
+var errZiaPaginationValidation = errors.New("zia pagination validation failed")
+
+// ziaWalkPages walks a ZIA list endpoint while enforcing the
+// ziaMaxPages ceiling the vendored ReadAllPages lacks. Some ZIA endpoints
+// silently clamp a requested page size (observed at 20 records), so a short
+// first page does not prove completion. The first nonempty response establishes
+// the effective page width; a later short page completes the walk. Repeated
+// pages, repeated record identities, and width growth fail closed because each
+// can indicate that the server ignored pagination or changed its pagination
+// contract mid-read. visitPage may
+// stop the walk after inspecting a validated page; point lookups use that path
+// so an already-found record does not depend on a later confirmation request.
+func ziaWalkPages[T any](
+	ctx context.Context,
+	pageSize int,
+	fetchPage func(ctx context.Context, page, pageSize int) ([]T, error),
+	visitPage func([]T) bool,
+) error {
+	if pageSize <= 0 {
+		return fmt.Errorf("%w: zia pagination page size must be positive: %d", errZiaPaginationValidation, pageSize)
+	}
+
+	var (
+		effectivePageSize int
+		recordsSeen       int
+		pageFingerprints  = make(map[pageFingerprint]struct{})
+		recordIdentities  = make(map[string]struct{})
+	)
 	for page := 1; ; page++ {
 		if page > ziaMaxPages {
-			return nil, fmt.Errorf("zia pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", ziaMaxPages, len(all))
+			return fmt.Errorf("%w: zia pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", errZiaPaginationValidation, ziaMaxPages, recordsSeen)
 		}
 		items, err := fetchPage(ctx, page, pageSize)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		all = append(all, items...)
-		if len(items) < pageSize {
+		if len(items) == 0 {
 			break
 		}
+		if effectivePageSize == 0 {
+			effectivePageSize = len(items)
+		} else if len(items) > effectivePageSize {
+			return fmt.Errorf("%w: zia pagination page width changed from %d to %d on page %d; completeness cannot be guaranteed", errZiaPaginationValidation, effectivePageSize, len(items), page)
+		}
+
+		fingerprint, err := fingerprintPage(items)
+		if err != nil {
+			return fmt.Errorf("%w: failed to fingerprint zia page %d: %v", errZiaPaginationValidation, page, err)
+		}
+		if _, seen := pageFingerprints[fingerprint]; seen {
+			return fmt.Errorf("%w: zia pagination received repeated page content at page %d; completeness cannot be guaranteed", errZiaPaginationValidation, page)
+		}
+		pageFingerprints[fingerprint] = struct{}{}
+		for _, item := range items {
+			identity, hasIdentity, err := paginationRecordIdentity(item)
+			if err != nil {
+				return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errZiaPaginationValidation, page, err)
+			}
+			if !hasIdentity {
+				continue
+			}
+			if _, seen := recordIdentities[identity]; seen {
+				return fmt.Errorf("%w: zia pagination received duplicate record identity on page %d; completeness cannot be guaranteed", errZiaPaginationValidation, page)
+			}
+			recordIdentities[identity] = struct{}{}
+		}
+
+		recordsSeen += len(items)
+		if visitPage(items) {
+			return nil
+		}
+		if page > 1 && len(items) < effectivePageSize {
+			break
+		}
+	}
+	return nil
+}
+
+// ziaPaginate collects every validated page. It discards the partial aggregate
+// whenever ziaWalkPages cannot prove completeness.
+func ziaPaginate[T any](ctx context.Context, pageSize int, fetchPage func(ctx context.Context, page, pageSize int) ([]T, error)) ([]T, error) {
+	var all []T
+	err := ziaWalkPages(ctx, pageSize, fetchPage, func(items []T) bool {
+		all = append(all, items...)
+		return false
+	})
+	if err != nil {
+		return nil, err
 	}
 	return all, nil
 }
@@ -185,6 +255,34 @@ func getZIASublocationsForParentAllPages(
 	return getZIAAllPages[locationmanagement.Locations](ctx, service, endpoint)
 }
 
+func getZIASublocationForParentByID(
+	ctx context.Context,
+	service *zsdk.Service,
+	parentID int,
+	id int,
+) (*locationmanagement.Locations, error) {
+	endpoint := fmt.Sprintf("/zia/api/v1/locations/%d/sublocations", parentID)
+	var found *locationmanagement.Locations
+	err := ziaWalkPages(ctx, ziacommon.GetPageSize(), func(ctx context.Context, page, size int) ([]locationmanagement.Locations, error) {
+		var items []locationmanagement.Locations
+		err := ziacommon.ReadPage(ctx, service.Client, endpoint, page, &items, size)
+		return items, err
+	}, func(items []locationmanagement.Locations) bool {
+		for index := range items {
+			if items[index].ID == id {
+				item := items[index]
+				found = &item
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+	return found, nil
+}
+
 func getZIASublocationsAllPages(ctx context.Context, service *zsdk.Service) ([]locationmanagement.Locations, error) {
 	parents, err := getZIALocationsAllPages(ctx, service)
 	if err != nil {
@@ -207,26 +305,45 @@ func getZIASublocationByID(
 	service *zsdk.Service,
 	id int,
 ) (*locationmanagement.Locations, error) {
-	parents, err := getZIALocationsAllPages(ctx, service)
+	var found *locationmanagement.Locations
+	var searchErr error
+	const pageSize = 1000
+	err := ziaWalkPages(ctx, pageSize, func(ctx context.Context, page, size int) ([]locationmanagement.Locations, error) {
+		var parents []locationmanagement.Locations
+		err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/locations", page, &parents, size)
+		return parents, err
+	}, func(parents []locationmanagement.Locations) bool {
+		for _, parent := range parents {
+			sublocation, err := getZIASublocationForParentByID(ctx, service, parent.ID, id)
+			if err != nil {
+				// Preserve the SDK get helper's tolerance for an inaccessible
+				// parent, but propagate pagination validation errors and never
+				// turn caller cancellation into a false not-found.
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					searchErr = ctxErr
+					return true
+				}
+				if errors.Is(err, errZiaPaginationValidation) {
+					searchErr = err
+					return true
+				}
+				continue
+			}
+			if sublocation != nil {
+				found = sublocation
+				return true
+			}
+		}
+		return false
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	for _, parent := range parents {
-		sublocations, err := getZIASublocationsForParentAllPages(ctx, service, parent.ID)
-		if err != nil {
-			// Preserve the SDK get helper's tolerance for an inaccessible
-			// parent, but never turn caller cancellation into a false not-found.
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			continue
-		}
-		for index := range sublocations {
-			if sublocations[index].ID == id {
-				return &sublocations[index], nil
-			}
-		}
+	if found != nil {
+		return found, nil
 	}
 	return nil, fmt.Errorf("sublocation not found: %d", id)
 }
