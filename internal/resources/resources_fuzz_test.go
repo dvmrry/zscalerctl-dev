@@ -13,20 +13,28 @@ import (
 
 func FuzzProjectRecordSubsetAndCanaryRedaction(f *testing.F) {
 	for _, seed := range []struct {
-		data   []byte
-		prefix string
-		suffix string
+		resourceSelector []byte
+		fieldSelector    []byte
+		data             []byte
+		prefix           string
+		suffix           string
 	}{
-		{data: []byte("scalar"), prefix: "operator note", suffix: "rollout"},
-		{data: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, prefix: "unicode \u2603", suffix: "ticket CHG-123456"},
-		{data: []byte(`{"nested":"shape"}`), prefix: "commit 0123456789abcdef0123456789abcdef01234567", suffix: "done"},
+		{resourceSelector: []byte{0, 0}, fieldSelector: []byte{0, 0}, data: []byte("scalar"), prefix: "operator note", suffix: "rollout"},
+		{resourceSelector: []byte{0, 1}, fieldSelector: []byte{0, 1}, data: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, prefix: "unicode \u2603", suffix: "ticket CHG-123456"},
+		{resourceSelector: []byte{0, 2}, fieldSelector: []byte{0, 1}, data: []byte(`{"nested":"shape"}`), prefix: "commit 0123456789abcdef0123456789abcdef01234567", suffix: "done"},
 	} {
-		f.Add(seed.data, seed.prefix, seed.suffix)
+		f.Add(seed.resourceSelector, seed.fieldSelector, seed.data, seed.prefix, seed.suffix)
+	}
+
+	// Catalog rebuilds all product specs, so construct it once per fuzz target.
+	catalog := resources.Catalog()
+	if len(catalog) == 0 {
+		f.Fatal("resources.Catalog() returned no specs")
 	}
 
 	const canary = "projection-fuzz-canary-value"
-	f.Fuzz(func(t *testing.T, data []byte, prefix, suffix string) {
-		if len(data)+len(prefix)+len(suffix) > 8192 {
+	f.Fuzz(func(t *testing.T, resourceSelector, fieldSelector, data []byte, prefix, suffix string) {
+		if len(resourceSelector)+len(fieldSelector)+len(data)+len(prefix)+len(suffix) > 8192 {
 			return
 		}
 		// The Go fuzzer harvests string constants from this test (including the
@@ -41,29 +49,28 @@ func FuzzProjectRecordSubsetAndCanaryRedaction(f *testing.F) {
 			return
 		}
 
-		for _, spec := range resources.Catalog() {
-			if err := spec.Validate(); err != nil {
-				t.Fatalf("ResourceSpec.Validate(%s/%s) error = %v, want nil", spec.Product, spec.Name, err)
+		spec := catalog[fuzzIndex(resourceSelector, len(catalog))]
+		if err := spec.Validate(); err != nil {
+			t.Fatalf("ResourceSpec.Validate(%s/%s) error = %v, want nil", spec.Product, spec.Name, err)
+		}
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			record := resources.NewSourceRecord(fuzzSourceRecord(spec, data, fieldSelector, prefix, suffix, canary))
+			got, _, err := resources.ProjectRecord(spec, mode, record)
+			if err != nil {
+				t.Fatalf("ProjectRecord(%s/%s, mode %s) error = %v, want nil", spec.Product, spec.Name, mode, err)
 			}
-			for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
-				record := resources.NewSourceRecord(fuzzSourceRecord(spec, data, prefix, suffix, canary))
-				got, _, err := resources.ProjectRecord(spec, mode, record)
-				if err != nil {
-					t.Fatalf("ProjectRecord(%s/%s, mode %s) error = %v, want nil", spec.Product, spec.Name, mode, err)
-				}
 
-				fields := got.Fields()
-				if err := resources.AssertRenderedSubset(spec, mode, fields); err != nil {
-					t.Fatalf("AssertRenderedSubset(%s/%s, mode %s, %#v) error = %v, want nil", spec.Product, spec.Name, mode, fields, err)
-				}
+			fields := got.Fields()
+			if err := resources.AssertRenderedSubset(spec, mode, fields); err != nil {
+				t.Fatalf("AssertRenderedSubset(%s/%s, mode %s, %#v) error = %v, want nil", spec.Product, spec.Name, mode, fields, err)
+			}
 
-				body, err := json.Marshal(fields)
-				if err != nil {
-					t.Fatalf("json.Marshal(ProjectRecord(%s/%s, mode %s)) error = %v, want nil", spec.Product, spec.Name, mode, err)
-				}
-				if strings.Contains(string(body), canary) {
-					t.Fatalf("ProjectRecord(%s/%s, mode %s) JSON = %s, want no canary", spec.Product, spec.Name, mode, string(body))
-				}
+			body, err := json.Marshal(fields)
+			if err != nil {
+				t.Fatalf("json.Marshal(ProjectRecord(%s/%s, mode %s)) error = %v, want nil", spec.Product, spec.Name, mode, err)
+			}
+			if strings.Contains(string(body), canary) {
+				t.Fatalf("ProjectRecord(%s/%s, mode %s) JSON = %s, want no canary", spec.Product, spec.Name, mode, string(body))
 			}
 		}
 	})
@@ -112,7 +119,7 @@ func FuzzProjectedRecordsMarshalJSONMatchesDefensiveCopy(f *testing.F) {
 	})
 }
 
-func fuzzSourceRecord(spec resources.ResourceSpec, data []byte, prefix, suffix, canary string) map[string]any {
+func fuzzSourceRecord(spec resources.ResourceSpec, data, fieldSelector []byte, prefix, suffix, canary string) map[string]any {
 	record := map[string]any{
 		"unknownScalar": "psk=" + canary,
 		"unknownNested": map[string]any{
@@ -129,7 +136,7 @@ func fuzzSourceRecord(spec resources.ResourceSpec, data []byte, prefix, suffix, 
 		record[field.JSONField()] = fuzzValue(rotateBytes(data, i), 0)
 	}
 	if len(spec.Fields) > 0 {
-		field := spec.Fields[fuzzIndex(data, len(spec.Fields))]
+		field := spec.Fields[fuzzIndex(fieldSelector, len(spec.Fields))]
 		record[field.JSONField()] = prefix + " psk=" + canary + " " + suffix
 	}
 	return record
@@ -180,5 +187,41 @@ func fuzzIndex(data []byte, length int) int {
 	if length <= 0 || len(data) == 0 {
 		return 0
 	}
-	return int(data[0]) % length
+	selector := uint16(data[0])
+	if len(data) > 1 {
+		selector = selector<<8 | uint16(data[1])
+	}
+	return int(selector) % length
+}
+
+func TestFuzzSelectorReachability(t *testing.T) {
+	catalog := resources.Catalog()
+	if len(catalog) == 0 {
+		t.Fatal("resources.Catalog() returned no specs")
+	}
+
+	for selector := 0; selector <= 256; selector++ {
+		data := []byte{byte(selector >> 8), byte(selector)}
+		if got := fuzzIndex(data, 257); got != selector {
+			t.Fatalf("fuzzIndex(%d, 257) = %d, want %d", selector, got, selector)
+		}
+	}
+
+	// Pair every resource selector with each of that resource's field selectors.
+	for resourceSelector := range catalog {
+		resourceData := []byte{byte(resourceSelector >> 8), byte(resourceSelector)}
+		resourceIndex := fuzzIndex(resourceData, len(catalog))
+		if resourceIndex != resourceSelector {
+			t.Fatalf("resource selector %d selected index %d, want %d", resourceSelector, resourceIndex, resourceSelector)
+		}
+
+		spec := catalog[resourceIndex]
+		for fieldSelector, field := range spec.Fields {
+			fieldData := []byte{byte(fieldSelector >> 8), byte(fieldSelector)}
+			fieldIndex := fuzzIndex(fieldData, len(spec.Fields))
+			if fieldIndex != fieldSelector {
+				t.Fatalf("%s/%s field %q selector %d selected index %d, want %d", spec.Product, spec.Name, field.JSONField(), fieldSelector, fieldIndex, fieldSelector)
+			}
+		}
+	}
 }

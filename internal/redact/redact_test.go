@@ -799,13 +799,96 @@ func TestScanFreeTextPreservesOrdinaryOperationalText(t *testing.T) {
 func TestRedactorRemovesZscalerShapedProvisioningKey(t *testing.T) {
 	t.Parallel()
 
-	input := "connector key 1|api.private.example.net|68F0AOEgpcG8McLmwdborq2m6v2A5oNEpSztJ=="
-	got := redact.New(redact.ModeStandard).String(input)
-	if strings.Contains(got, "68F0AOEgpcG8McLmwdborq2m6v2A5oNEpSztJ") {
-		t.Errorf("Redactor.String(provisioning key) = %q, want key material redacted", got)
+	// The rule absorbs a run of 8+ space-separated key characters after the key,
+	// so wrapped key material does not leak; following words may be lost with
+	// it. Each case lists fragments that must not survive any scanner or mode.
+	// Known residual: a wrapped tail shorter than 8 characters including its
+	// space, and a second key on the same line whose number the continuation
+	// absorbs, are not covered.
+	const canary = "A7b9C2d4E6f8G1h3J5k7L9m2N4p6Q8r0S2t4U6v"
+	tests := []struct {
+		name      string
+		input     string
+		fragments []string
+		markers   int
+	}{
+		{
+			name:      "provisioning key",
+			input:     "connector key 1|api.private.example.net|68F0AOEgpcG8McLmwdborq2m6v2A5oNEpSztJ==",
+			fragments: []string{"68F0AOEgpcG8McLm", "oNEpSztJ"},
+			markers:   1,
+		},
+		{
+			name:      "key-shaped prefix followed by high-entropy text",
+			input:     "0|0|0000000000000000 " + canary + " during rollout",
+			fragments: []string{canary},
+			markers:   1,
+		},
+		{
+			name:      "key wrapped before a digitless fragment",
+			input:     "connector key 1|api.private.example.net|68F0AOEgpcG8McLmwdborq2m6v2A5 oNEpSztJ==",
+			fragments: []string{"68F0AOEgpcG8McLm", "oNEpSztJ"},
+			markers:   1,
+		},
+		{
+			name:      "key wrapped into lowercase chunks",
+			input:     "connector key 1|api.private.example.net|68F0AOEgpcG8McLm wdborq 2m6v2A5oNEpSztJ==",
+			fragments: []string{"68F0AOEgpcG8McLm", "wdborq", "2m6v2A5oNEpSztJ"},
+			markers:   1,
+		},
+		{
+			name:      "wrapped tail before a table pipe",
+			input:     "connector key 1|api.private.example.net|68F0AOEgpcG8McLmwdborq2m6v2A5 oNEpSztJ==|",
+			fragments: []string{"68F0AOEgpcG8McLm", "oNEpSztJ"},
+			markers:   1,
+		},
+		{
+			name:      "key followed by a glued password label",
+			input:     "1|h|Ab3Cd5Ef7Gh9Jk2M pwd:Abc123def456",
+			fragments: []string{"Ab3Cd5Ef7Gh9Jk2M", "Abc123def456"},
+			markers:   1,
+		},
+		{
+			name:      "key followed by a spaced key label",
+			input:     "1|h|Ab3Cd5Ef7Gh9Jk2M key : " + "No4Pq6Rs8Tu0Vw1X",
+			fragments: []string{"Ab3Cd5Ef7Gh9Jk2M", "No4Pq6Rs8Tu0Vw1X"},
+			markers:   1,
+		},
+		{
+			name:      "two keys on one line",
+			input:     "1|h|Ab3Cd5Ef7Gh9Jk2M 2|h|No4Pq6Rs8Tu0Vw1X",
+			fragments: []string{"Ab3Cd5Ef7Gh9Jk2M", "No4Pq6Rs8Tu0Vw1X"},
+			markers:   2,
+		},
 	}
-	if !strings.Contains(got, "<REDACTED:PROVISIONING_KEY>") {
-		t.Errorf("Redactor.String(provisioning key) = %q, want provisioning key marker", got)
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+				r := redact.New(mode)
+				for name, scan := range map[string]func(string) (string, redact.Report){
+					"ScanString":         r.ScanString,
+					"ScanFreeText":       r.ScanFreeText,
+					"ScanRenderedString": r.ScanRenderedString,
+				} {
+					got, _ := scan(test.input)
+					for _, fragment := range test.fragments {
+						if strings.Contains(got, fragment) {
+							t.Errorf("%s(%q, %s) = %q, want %q redacted", name, test.input, mode, got, fragment)
+						}
+					}
+					if n := strings.Count(got, "<REDACTED:PROVISIONING_KEY>"); n != test.markers {
+						t.Errorf("%s(%q, %s) = %q, want %d provisioning key markers", name, test.input, mode, got, test.markers)
+					}
+					if again, _ := scan(got); again != got {
+						t.Errorf("%s(%q, %s) rescan = %q, want idempotent %q", name, test.input, mode, again, got)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -836,6 +919,69 @@ func TestShareModeRemovesSensitiveIdentifiers(t *testing.T) {
 		if !strings.Contains(got, marker) {
 			t.Errorf("Redactor.String(%q) = %q, want marker %q", input, got, marker)
 		}
+	}
+}
+
+func TestShareAndParanoidRedactionIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+		want  string // expected first-pass output; empty skips the check
+	}{
+		{"email-overlap-one", `{"":"0000A://00000000000@0.AA@"}`, ""},
+		{"email-overlap-two", `{"":"0A://00@0000.AA@"}`, ""},
+		{"ip-in-userinfo", `{"url":"https://user-192.0.2.10@localhost"}`, `{"url":"https://user-<REDACTED:IP>@localhost"}`},
+		{"email-in-userinfo", `{"url":"https://!alice@example.com@localhost"}`, `{"url":"https://!<REDACTED:EMAIL>@localhost"}`},
+		{"credential-around-marker", `{"url":"https://user:alice@example.comtail@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		// Ambiguous with a password containing '@' and '?'; over-redacted.
+		{"ip-in-userinfo-with-port-and-query", `{"url":"https://user-192.0.2.10@localhost:443?to=admin@local"}`, `{"url":"https://<REDACTED:SECRET>@local"}`},
+		{"email-username-with-hash", `{"url":"https://alice#ops@example.com:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-username-with-question-mark", `{"url":"https://alice?ops@example.com:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"unknown-marker-label", `{"url":"https://<REDACTED:ALPHACANARY>@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-username-with-password", `{"url":"https://!alice@example.com:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"malformed-email-username-with-password", `{"url":"https://!alice@example..com:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-username-with-query-like-password", `{"url":"https://alice@example.com:P@canarypw?@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-host-with-port", `{"url":"https://alice@example.com:8443/path?to=bob@example.org"}`, `{"url":"https://<REDACTED:EMAIL>:8443/path?to=<REDACTED:EMAIL>"}`},
+		{"email-username-password-with-question-mark", `{"url":"https://alice@example.com:canarypw?@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-username-password-with-hash", `{"url":"https://alice@example.com:canarypw#@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"jwt-username-password-with-question-mark", `{"url":"https://eyJabcdefgh.abcdefgh.abcdefgh:canarypw?@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		// Ambiguous with "user:8443?pw@host"; over-redacted rather than leaked.
+		{"email-host-with-port-and-wildcard-query", `{"url":"https://alice@example.com:8443?email=*@example.net"}`, `{"url":"https://<REDACTED:SECRET>@example.net"}`},
+		{"email-username-numeric-password-prefix", `{"url":"https://alice@example.com:12345?canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"jwt-username-numeric-password-prefix", `{"url":"https://eyJabcdefgh.abcdefgh.abcdefgh:12345?canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"email-host-with-port-and-query", `{"url":"https://alice@example.com:8443?to=bob@example.org"}`, `{"url":"https://<REDACTED:EMAIL>:8443?to=<REDACTED:EMAIL>"}`},
+		{"marker-username-with-password", `{"url":"https://<REDACTED:JWT>:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+		{"jwt-username-with-password", `{"url":"https://eyJabcdefgh.abcdefgh.abcdefgh:canarypw@localhost"}`, `{"url":"https://<REDACTED:SECRET>@localhost"}`},
+	}
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			for _, tc := range cases {
+				tc := tc
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+
+					r := redact.New(mode)
+					got := r.String(tc.input)
+					if !json.Valid([]byte(got)) {
+						t.Fatalf("Redactor.String(%q, %s) = invalid JSON %q", tc.input, mode, got)
+					}
+					if tc.want != "" && got != tc.want {
+						t.Errorf("Redactor.String(%q, %s) = %q, want %q", tc.input, mode, got, tc.want)
+					}
+					if scanned, _ := r.ScanRenderedString(got); scanned != got {
+						t.Errorf("ScanRenderedString(Redactor.String(%q), %s) = %q, want idempotent %q", tc.input, mode, scanned, got)
+					}
+					if gotTwice := r.String(got); gotTwice != got {
+						t.Errorf("Redactor.String(Redactor.String(%q), %s) = %q, want idempotent %q", tc.input, mode, gotTwice, got)
+					}
+				})
+			}
+		})
 	}
 }
 
