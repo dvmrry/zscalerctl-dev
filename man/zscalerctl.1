@@ -128,6 +128,14 @@ including security-alert categories and the matched cloud application. A
 diagnostic query, not a catalog resource: the backing endpoint performs a pure
 lookup and never modifies tenant state. At least one URL is required.
 .TP
+.B zia admin-audit-logs status
+Show the status of the tenant's admin audit log report: a normalized status,
+the progress count when supplied (including an explicit zero), the completion
+time when known, and an allow-listed error code. A read-only diagnostic: it
+performs one status operation, with HTTP retries following the shared SDK
+policy. It never creates, downloads or cancels a report. The API's free-form
+error message is never shown.
+.TP
 .B dump \-\-out <dir> [\-\-products ...] [\-\-resources ...] [\-\-continue-on-error] [\-\-force]
 Write a sanitized multi-resource dump (manifest.json, redaction_report.json,
 per-resource files, and errors.ndjson on failure) into a new directory.

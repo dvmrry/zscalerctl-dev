@@ -134,3 +134,8 @@ Windows retains replacement support without that guarantee.
 - Invalid numeric tokens in saved resources and diff inputs now use a value-free
   diagnostic instead of echoing the token from a floating-point parser error.
   Error envelope shapes and invalid-dump classifications are unchanged.
+
+| `inventory` | No `zia admin-audit-logs` commands | Adds `zia admin-audit-logs` and `zia admin-audit-logs status` | New read-only diagnostic that reports admin audit-log status in one operation; HTTP retries follow the shared SDK policy. It never creates, downloads or cancels a report. | `command-added` |
+| `zia-help` | Available Commands: `url-lookup` | Available Commands: `admin-audit-logs`, `url-lookup` | The new diagnostic parent is listed under zia. Exit code stays 0. | `help-text` |
+| `introspect`, `introspect-pretty` | No admin-audit-logs entries | Adds both commands with the same effects a credentialed live read declares (configuration-dependent local reads and provider execution, network, conditional `--output` write) and the status output fields | Introspection lists every command and its declared effects; the new diagnostic follows the existing credentialed read pattern and is not in the resource catalog or machine manifest. | `command-added` |
+| `zia-admin-audit-logs-status-progress-unavailable-json`, `zia-admin-audit-logs-status-explicit-zero-json` | No process-boundary status JSON fixtures | Add JSON goldens for omitted upstream progress and an explicit zero | Freeze the distinction between unavailable progress and a measured zero at the CLI boundary. NDJSON remains rejected. | `new-fixture` |

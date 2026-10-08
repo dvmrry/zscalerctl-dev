@@ -25,7 +25,7 @@ Global flags (16):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (293):
+Commands (295):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -436,6 +436,10 @@ Commands (293):
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-deny-list show                    show zia url-deny-list
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  zia admin-audit-logs                      inspect administrator audit-log report status
+      effects: local_filesystem_write (when --output is set)
+  zia admin-audit-logs status               show current administrator audit-log report status
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-lookup                            look up URL categories for one or more URLs
       effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity groups list                     list zidentity groups

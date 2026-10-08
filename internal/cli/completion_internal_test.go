@@ -68,6 +68,27 @@ func TestCompletionScriptsIncludeURLLookup(t *testing.T) {
 	}
 }
 
+func TestCompletionIncludesAdminAuditLogsStatus(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	a := New(&out, io.Discard, nil)
+	if err := a.Run(context.Background(), []string{"__complete", "zia", ""}); err != nil {
+		t.Fatalf("App.Run(__complete zia) error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), adminAuditLogsCommandName) {
+		t.Errorf("zia completion = %q, want %q", out.String(), adminAuditLogsCommandName)
+	}
+
+	out.Reset()
+	if err := a.Run(context.Background(), []string{"__complete", "zia", adminAuditLogsCommandName, ""}); err != nil {
+		t.Fatalf("App.Run(__complete zia admin-audit-logs) error = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), "status") {
+		t.Errorf("admin-audit-logs completion = %q, want status", out.String())
+	}
+}
+
 // TestCompletionScriptsOfferLogLevelValues asserts that --log-level flag-value
 // completion offers the expected values (off/error/warn/info/debug). The values
 // are registered via RegisterFlagCompletionFunc in applyGlobalPersistentFlags.

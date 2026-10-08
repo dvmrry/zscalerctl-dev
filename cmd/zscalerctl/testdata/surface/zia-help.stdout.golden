@@ -5,7 +5,8 @@ Usage:
   zscalerctl zia [command]
 
 Available Commands:
-  url-lookup  look up URL categories for one or more URLs
+  admin-audit-logs inspect administrator audit-log report status
+  url-lookup       look up URL categories for one or more URLs
 
 Flags:
   -h, --help   help for zia
