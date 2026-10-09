@@ -4,6 +4,7 @@ package dump
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,8 +23,10 @@ const (
 // TestDirectoryWalksKeepDescriptorsBounded walks a tree deeper than the
 // descriptor limit through --force inspection and artifact inventory. A walk
 // that keeps every ancestor handle open runs out of descriptors (EMFILE); the
-// walks must close each directory before descending. The limit is set in a
-// child process so it cannot affect parallel tests.
+// walks must close each directory before descending, and --force inspection
+// must refuse the tree as too deep (ErrUnsafePath) rather than fail with
+// EMFILE. The limit is set in a child process so it cannot affect parallel
+// tests.
 func TestDirectoryWalksKeepDescriptorsBounded(t *testing.T) {
 	if os.Getenv(descriptorDepthChildEnv) == "1" {
 		runDescriptorDepthChild(t, os.Getenv(descriptorDepthDirEnv))
@@ -62,12 +65,9 @@ func runDescriptorDepthChild(t *testing.T, dir string) {
 	}
 	defer root.Close()
 
-	_, hasFiles, err := inspectDirectoryTreeContext(context.Background(), root)
-	if err != nil {
-		t.Fatalf("inspectDirectoryTreeContext(%d-level tree, %d descriptors) error = %v", descriptorDepthLevels, descriptorDepthLimit, err)
-	}
-	if !hasFiles {
-		t.Errorf("inspectDirectoryTreeContext(%d-level tree) hasFiles = false, want true", descriptorDepthLevels)
+	if _, _, err := inspectDirectoryTreeContext(context.Background(), root); !errors.Is(err, ErrUnsafePath) ||
+		!strings.Contains(err.Error(), "deeper than") {
+		t.Fatalf("inspectDirectoryTreeContext(%d-level tree, %d descriptors) error = %v, want a too-deep ErrUnsafePath", descriptorDepthLevels, descriptorDepthLimit, err)
 	}
 
 	expectedFiles := map[string]struct{}{"marker.txt": {}}

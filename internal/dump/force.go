@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/effectcommit"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -240,6 +241,13 @@ func inspectDirectoryTreeContext(
 	return newArtifactCleanupPlan(nil, dirs, identities), hasFiles, nil
 }
 
+// maxForceInspectionDepth bounds how deeply nested an existing dump directory
+// may be for --force. Dumps are shallow; os.Root.RemoveAll holds one descriptor
+// per level, so a deeper tree could exhaust descriptors part-way through
+// removal, after the new dump was already published. Refusing it during
+// inspection fails closed before anything is published.
+const maxForceInspectionDepth = 32
+
 // inspectDirectoryTree walks the existing dump through validated, nonblocking
 // directory handles. It never lets a library re-open a path by name: a FIFO or
 // other special file substituted after validation is rejected by OpenRootEntry
@@ -254,6 +262,14 @@ func inspectDirectoryTree(
 ) error {
 	if err := checkContext(ctx); err != nil {
 		return err
+	}
+	if path != "." && strings.Count(path, "/")+1 > maxForceInspectionDepth {
+		return fmt.Errorf(
+			"%w: existing dump directory nests deeper than %d levels at %s; remove it manually",
+			ErrUnsafePath,
+			maxForceInspectionDepth,
+			path,
+		)
 	}
 	directory, err := OpenRootEntry(root, path)
 	if err != nil {
