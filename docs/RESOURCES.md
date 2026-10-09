@@ -332,9 +332,12 @@ zscalerctl zia url-categories list
 zscalerctl zia url-categories get <id>
 ```
 
-The list includes ordinary `URL_CATEGORY` records and `TLD_CATEGORY` records.
-List responses request the API's count-only payload; use `get <id>` when the
-category's members are needed. TLD members use the existing `urls` field.
+The list walks the API's pages with a bounded paginator and includes ordinary
+`URL_CATEGORY` records and `TLD_CATEGORY` records. The paginator accounts for
+the service clamping a requested page size to 20 instead of treating the first
+short response as complete. List responses request the API's count-only
+payload; use `get <id>` when the category's members are needed. TLD members use
+the existing `urls` field.
 
 Fields:
 
@@ -2082,6 +2085,11 @@ contract and focused downstream count checks.
 Bounded ZIA, ZTW, and ZCC list readers have corresponding automated and
 live-count checks in
 [SDK Pagination Validation](SDK_PAGINATION_VALIDATION.md).
+
+Paginated readers fail closed when pages repeat or a record identifier appears
+twice. A tenant change during a long list walk can shift records across page
+boundaries and trigger that check; the command then exits with an error and
+returns no partial list. Retrying the command is the remedy.
 
 ## ZPA Version Profiles
 

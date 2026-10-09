@@ -503,25 +503,28 @@ func getZIAURLFilteringRule(
 	)
 }
 
-// getZIAURLCategoriesAll reads /zia/api/v1/urlCategories. This endpoint does not
-// paginate (the SDK's GetAll issues a single Read), so it follows the
-// networkApplications pattern instead of ziaPaginate: read one large bounded
-// page and fail closed if it fills the ceiling, since a full single page is
-// indistinguishable from a truncated one. includeOnlyUrlKeywordCounts=true
-// preserves the prior GetAll(customOnly=false, includeOnlyUrlKeywordCounts=true)
-// payload shape. type=ALL is required to include TLD_CATEGORY records; omitting
-// the type returns only predefined and custom URL_CATEGORY records.
+// getZIAURLCategoriesAll reads every /zia/api/v1/urlCategories page. The SDK's
+// GetAll issues a single Read, and the API silently clamps a much larger
+// requested page size to 20 records (observed live), so a single read with a
+// ceiling check cannot detect truncation. The adaptive bounded paginator learns
+// the response width and continues. includeOnlyUrlKeywordCounts=true preserves
+// the prior GetAll(customOnly=false, includeOnlyUrlKeywordCounts=true) payload
+// shape. type=ALL is required to include TLD_CATEGORY records; omitting the
+// type returns only predefined and custom URL_CATEGORY records.
 func getZIAURLCategoriesAll(ctx context.Context, service *zsdk.Service) ([]urlcategories.URLCategory, error) {
-	const pageCeiling = 5000
-	var categories []urlcategories.URLCategory
-	err := ziacommon.ReadPage(ctx, service.Client, "/zia/api/v1/urlCategories?includeOnlyUrlKeywordCounts=true&type=ALL", 1, &categories, pageCeiling)
-	if err != nil {
-		return nil, err
-	}
-	if len(categories) >= pageCeiling {
-		return nil, fmt.Errorf("zia url-categories returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", pageCeiling)
-	}
-	return categories, nil
+	const requestedPageSize = 5000
+	return ziaPaginate(ctx, requestedPageSize, func(ctx context.Context, page, size int) ([]urlcategories.URLCategory, error) {
+		var categories []urlcategories.URLCategory
+		err := ziacommon.ReadPage(
+			ctx,
+			service.Client,
+			"/zia/api/v1/urlCategories?includeOnlyUrlKeywordCounts=true&type=ALL",
+			page,
+			&categories,
+			size,
+		)
+		return categories, err
+	})
 }
 
 func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {

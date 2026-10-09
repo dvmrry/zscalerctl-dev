@@ -933,7 +933,12 @@ func TestGetZIAUsersAllPagesPreservesSDKSortDefaults(t *testing.T) {
 	}
 }
 
-func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
+// urlCategoryPageServer fakes /zia/api/v1/urlCategories the way the live API
+// behaves: whatever page size is requested, it returns at most 20 records per
+// page, and pages past the inventory are empty.
+func urlCategoryPageServer(t *testing.T, total int) (*zsdk.Service, *[]*http.Request) {
+	t.Helper()
+	const clampedWidth = 20
 	cfg := validReaderConfig()
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
@@ -946,8 +951,24 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 			clonedURL := *request.URL
 			cloned.URL = &clonedURL
 			productRequests = append(productRequests, cloned)
-			// The endpoint returns the complete inventory regardless of page.
-			body = []byte("[{\"id\":\"CUSTOM_URL\",\"type\":\"URL_CATEGORY\"},{\"id\":\"CUSTOM_TLD\",\"type\":\"TLD_CATEGORY\",\"customUrlsCount\":1}]")
+			page, err := strconv.Atoi(request.URL.Query().Get("page"))
+			if err != nil || page < 1 {
+				t.Errorf("urlCategories request page = %q, want a positive integer", request.URL.Query().Get("page"))
+				page = 1
+			}
+			var records []map[string]any
+			for i := (page - 1) * clampedWidth; i < total && i < page*clampedWidth; i++ {
+				record := map[string]any{"id": "CUSTOM_" + strconv.Itoa(i+1), "type": "URL_CATEGORY"}
+				if i == total-1 {
+					record["type"] = "TLD_CATEGORY"
+					record["customUrlsCount"] = 1
+				}
+				records = append(records, record)
+			}
+			if records == nil {
+				records = []map[string]any{}
+			}
+			body, _ = json.Marshal(records)
 		} else if request.URL.Path != "/oauth2/v1/token" {
 			statusCode = http.StatusNotFound
 			body = []byte("{}")
@@ -967,15 +988,23 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
 	}
 	t.Cleanup(service.Client.Close)
+	return service, &productRequests
+}
+
+// TestGetZIAURLCategoriesAllRequestsAllCategoryTypes covers the live 20-record
+// clamp: a 5,000-record request returns 20 categories, so the reader must keep
+// walking until a short page instead of accepting the first page as complete.
+func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
+	service, productRequests := urlCategoryPageServer(t, 47)
 
 	categories, err := getZIAURLCategoriesAll(context.Background(), service)
 	if err != nil {
 		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
 	}
-	if got, want := len(productRequests), 1; got != want {
+	if got, want := len(*productRequests), 3; got != want {
 		t.Fatalf("getZIAURLCategoriesAll() product request count = %d, want %d", got, want)
 	}
-	for index, productRequest := range productRequests {
+	for index, productRequest := range *productRequests {
 		if got, want := productRequest.URL.Host, "api.zsapi.net"; got != want {
 			t.Errorf("getZIAURLCategoriesAll() request %d host = %q, want %q", index+1, got, want)
 		}
@@ -991,22 +1020,41 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 			}
 		}
 	}
-	if got, want := len(categories), 2; got != want {
+	if got, want := len(categories), 47; got != want {
 		t.Fatalf("getZIAURLCategoriesAll() category count = %d, want %d", got, want)
 	}
-	for index, want := range []string{"CUSTOM_URL", "CUSTOM_TLD"} {
-		if got := categories[index].ID; got != want {
-			t.Errorf("getZIAURLCategoriesAll() categories[%d].ID = %q, want %q", index, got, want)
+	seen := make(map[string]bool, len(categories))
+	for index, category := range categories {
+		if want := "CUSTOM_" + strconv.Itoa(index+1); category.ID != want {
+			t.Errorf("getZIAURLCategoriesAll() categories[%d].ID = %q, want %q", index, category.ID, want)
 		}
+		if seen[category.ID] {
+			t.Errorf("getZIAURLCategoriesAll() repeated category %q", category.ID)
+		}
+		seen[category.ID] = true
 	}
 	if got, want := categories[0].Type, "URL_CATEGORY"; got != want {
 		t.Errorf("getZIAURLCategoriesAll() categories[0].Type = %q, want %q", got, want)
 	}
-	if got, want := categories[1].Type, "TLD_CATEGORY"; got != want {
-		t.Errorf("getZIAURLCategoriesAll() categories[1].Type = %q, want %q", got, want)
+	if got, want := categories[46].Type, "TLD_CATEGORY"; got != want {
+		t.Errorf("getZIAURLCategoriesAll() categories[46].Type = %q, want %q", got, want)
 	}
-	if got, want := categories[1].CustomUrlsCount, 1; got != want {
-		t.Errorf("getZIAURLCategoriesAll() categories[1].CustomUrlsCount = %d, want %d", got, want)
+}
+
+// TestGetZIAURLCategoriesAllClampedExactMultiple covers an inventory that is an
+// exact multiple of the clamped width: the walk ends on the empty page.
+func TestGetZIAURLCategoriesAllClampedExactMultiple(t *testing.T) {
+	service, productRequests := urlCategoryPageServer(t, 40)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
+	}
+	if got, want := len(categories), 40; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() category count = %d, want %d", got, want)
+	}
+	if got, want := len(*productRequests), 3; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() product request count = %d, want %d", got, want)
 	}
 }
 
