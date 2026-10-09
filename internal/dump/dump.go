@@ -230,7 +230,7 @@ func publishContextWithCatalogAndHooks(
 		cleanupStagingPath(stagingDir, stagingInfo, nil)
 		return fmt.Errorf("chmod dump staging directory: %w", err)
 	}
-	stagingRoot, err := os.OpenRoot(stagingDir)
+	stagingRoot, err := OpenRootDirectory(stagingDir, false)
 	if err != nil {
 		cleanupStagingPath(stagingDir, stagingInfo, nil)
 		return fmt.Errorf("open dump staging directory: %w", err)
@@ -472,7 +472,7 @@ func cleanupStagingPath(path string, original os.FileInfo, beforeRelocate func(s
 		_ = renameNoReplace(quarantinedRoot, path)
 		return
 	}
-	root, err := os.OpenRoot(quarantinedRoot)
+	root, err := OpenRootDirectory(quarantinedRoot, false)
 	if err != nil {
 		_ = renameNoReplace(quarantinedRoot, path)
 		return

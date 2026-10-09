@@ -95,7 +95,7 @@ func publishReplacingDirectoryWithCatalogAndHooks(
 	if !info.IsDir() {
 		return replacementTargetError(allowOwnedDump, dir, "target is not a directory", nil)
 	}
-	root, err := os.OpenRoot(target)
+	root, err := OpenRootDirectory(target, false)
 	if err != nil {
 		return replacementTargetError(allowOwnedDump, dir, "open dump directory", err)
 	}
@@ -124,7 +124,7 @@ func publishReplacingDirectoryWithCatalogAndHooks(
 	if err := preflightCleanupParent(target); err != nil {
 		return err
 	}
-	stagedRoot, err := os.OpenRoot(stagingDir)
+	stagedRoot, err := OpenRootDirectory(stagingDir, false)
 	if err != nil {
 		return fmt.Errorf("%w: open staged dump directory: %v", ErrUnsafePath, err)
 	}
@@ -269,7 +269,7 @@ func inspectDirectoryTree(
 		return fmt.Errorf("%w: existing dump path %s is not a directory", ErrUnsafePath, path)
 	}
 	identities[path] = directoryInfo
-	runInventoryDirectoryTestHook(root.Name(), path)
+	runInventoryDirectoryTestHook(rootPathForTestHooks(root), path)
 	if err := validateInspectionDirectoryPath(root, path, directoryInfo); err != nil {
 		_ = directory.Close()
 		return err

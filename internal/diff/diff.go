@@ -657,7 +657,7 @@ func loadDumpWithBudgetOptions(
 	if err := checkContext(ctx); err != nil {
 		return loadedDump{}, err
 	}
-	root, err := os.OpenRoot(dir)
+	root, err := dump.OpenRootDirectory(dir, true)
 	if err != nil {
 		if ctxErr := checkContext(ctx); ctxErr != nil {
 			return loadedDump{}, ctxErr

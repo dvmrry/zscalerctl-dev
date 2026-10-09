@@ -6,8 +6,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+// rootPaths maps roots opened through OpenRootDirectory, whose Name is a
+// descriptor link, back to the path the caller opened, for test hooks.
+var rootPaths sync.Map
+
+func registerRootPathForTestHooks(root *os.Root, path string) {
+	rootPaths.Store(root, path)
+}
+
+func rootPathForTestHooks(root *os.Root) string {
+	if path, ok := rootPaths.Load(root); ok {
+		return path.(string)
+	}
+	return root.Name()
+}
 
 const publicationTestHookDirEnv = "ZSCALERCTL_ENGINE_TEST_HOOK_DIR"
 

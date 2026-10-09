@@ -72,7 +72,7 @@ func ValidateArtifactContext(ctx context.Context, dir string) (ValidatedArtifact
 	if err := checkContext(ctx); err != nil {
 		return ValidatedArtifact{}, err
 	}
-	root, err := os.OpenRoot(dir)
+	root, err := OpenRootDirectory(dir, true)
 	if err != nil {
 		return ValidatedArtifact{}, fmt.Errorf("%w: open dump root: %v", ErrInvalidArtifact, err)
 	}
@@ -757,7 +757,7 @@ func validateArtifactInventoryDirectory(
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	runInventoryDirectoryTestHook(root.Name(), path)
+	runInventoryDirectoryTestHook(rootPathForTestHooks(root), path)
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
@@ -768,7 +768,7 @@ func validateArtifactInventoryDirectory(
 	if err != nil {
 		return fmt.Errorf("%w: read artifact directory %s: %v", ErrInvalidArtifact, path, err)
 	}
-	runInventoryAfterReadDirTestHook(root.Name(), path)
+	runInventoryAfterReadDirTestHook(rootPathForTestHooks(root), path)
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
