@@ -56,12 +56,15 @@ func (r *Resolver) Resolve(ctx context.Context, ref SecretRef) (secret.Secret, e
 	}
 }
 
+// lookupEnv reads an env ref from the caller's environment snapshot first, so
+// a host that passes an explicit environment is not overridden by the process
+// environment, and falls back to the process environment, matching
+// config.profileSecretEnv.
 func (r *Resolver) lookupEnv(name string) (string, bool) {
-	if value, ok := os.LookupEnv(name); ok {
+	if value, ok := r.opts.Env[name]; ok {
 		return value, true
 	}
-	value, ok := r.opts.Env[name]
-	return value, ok
+	return os.LookupEnv(name)
 }
 
 func (r *Resolver) resolveKeyring(ctx context.Context, ref SecretRef) (secret.Secret, error) {
