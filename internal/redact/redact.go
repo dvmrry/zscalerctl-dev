@@ -1582,7 +1582,19 @@ func buildBaseRules() []rule {
 	rules := []rule{
 		{
 			name:        "private_key_block",
-			re:          regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`),
+			re:          regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----.*?-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----`),
+			replacement: markerPrivateKey,
+			prefilter:   containsFold("private key"),
+		},
+		// A private key pasted without its END line (truncated, or cut off by a
+		// field limit): redact from the BEGIN line through the armour body that
+		// follows, which is Base64, line breaks (raw or JSON-escaped) and PEM or
+		// PGP headers ("Proc-Type: 4,ENCRYPTED", "Version: ..."). It stops at the
+		// first character armour cannot contain, so later prose ending in
+		// punctuation survives.
+		{
+			name:        "private_key_block",
+			re:          regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----(?:[A-Za-z0-9+/=:,. \t\r\n-]|\\[nrt])*`),
 			replacement: markerPrivateKey,
 			prefilter:   containsFold("private key"),
 		},
