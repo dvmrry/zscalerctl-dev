@@ -935,8 +935,9 @@ func TestGetZIAUsersAllPagesPreservesSDKSortDefaults(t *testing.T) {
 
 // urlCategoryPageServer fakes /zia/api/v1/urlCategories the way the live API
 // behaves: whatever page size is requested, it returns at most 20 records per
-// page, and pages past the inventory are empty.
-func urlCategoryPageServer(t *testing.T, total int) (*zsdk.Service, *[]*http.Request) {
+// page, and pages past the inventory are empty. With ignorePage it returns the
+// first page for every request instead.
+func urlCategoryPageServer(t *testing.T, total int, ignorePage ...bool) (*zsdk.Service, *[]*http.Request) {
 	t.Helper()
 	const clampedWidth = 20
 	cfg := validReaderConfig()
@@ -954,6 +955,9 @@ func urlCategoryPageServer(t *testing.T, total int) (*zsdk.Service, *[]*http.Req
 			page, err := strconv.Atoi(request.URL.Query().Get("page"))
 			if err != nil || page < 1 {
 				t.Errorf("urlCategories request page = %q, want a positive integer", request.URL.Query().Get("page"))
+				page = 1
+			}
+			if len(ignorePage) > 0 && ignorePage[0] {
 				page = 1
 			}
 			var records []map[string]any
@@ -1757,5 +1761,23 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		if !strings.Contains(source, want) {
 			t.Errorf("reader_zia.go missing bounded paginator wiring: %q", want)
 		}
+	}
+}
+
+// TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored pins the failure mode
+// of an endpoint that ignores the page parameter: page 2 repeats page 1, and
+// the walk returns an error and no categories instead of a truncated list.
+func TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored(t *testing.T) {
+	service, _ := urlCategoryPageServer(t, 47, true)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err == nil {
+		t.Fatalf("getZIAURLCategoriesAll() = %d categories, want a repeated-page error", len(categories))
+	}
+	if !errors.Is(err, errZiaPaginationValidation) {
+		t.Errorf("getZIAURLCategoriesAll() error = %v, want errZiaPaginationValidation", err)
+	}
+	if categories != nil {
+		t.Errorf("getZIAURLCategoriesAll() returned %d categories with the error, want none", len(categories))
 	}
 }
