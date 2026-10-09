@@ -34,7 +34,7 @@ const maxPasteValueLen = 256
 var pasteCredentialNeedles = []string{
 	"pass", "pwd", "kennwort", "contrase", "key", "token", "secret", "creden",
 	"sig", "auth", "basic", "api", "jeton", "clave", "schl", "/user:", "-p",
-	"curl",
+	"curl", "plaintext", "credential",
 }
 
 var pasteCredentialUnicodeNeedles = []string{"パスワード", "トークン", "キー"}
@@ -173,14 +173,17 @@ func collectPastePasswordLabels(in string, spans *[]pasteSpan) {
 		if kind != pasteSeparatorNone {
 			if kind == pasteSeparatorDirect && strings.EqualFold(in[label[0]:label[1]], "passphrase") {
 				if words := pastePassphraseWordsRE.FindStringIndex(in[start:lineEnd]); words != nil {
-					*spans = append(*spans, pasteSpan{start: start, end: start + words[1]})
+					if !pasteValueIsMetadata(in, label[0], label[1], start, start+words[1], true) {
+						*spans = append(*spans, pasteSpan{start: start, end: start + words[1]})
+					}
 					continue
 				}
 			}
 			valueStart, valueEnd, quoted := pastePasswordValueSpan(in, start, lineEnd)
 			if valueEnd > valueStart {
 				value := in[valueStart:valueEnd]
-				ok := pastePasswordValue(value, false)
+				ok := pastePasswordValue(value, false) ||
+					pasteDirectPasswordBridgeRE.MatchString(in[label[1]:start]) && pasteWordAndNumberPassword(value)
 				// After plain whitespace the next word is usually prose
 				// ("Password policy**: ..."): require a quoted value, password
 				// punctuation, or an all-digit trial password.
@@ -200,16 +203,42 @@ func collectPastePasswordLabels(in string, spans *[]pasteSpan) {
 		// Natural phrasing ("password for the trial account is X"): a value
 		// with password punctuation or key shape, never in policy prose.
 		phrase := genericCredentialPhraseRE.FindStringIndex(in[label[1]:lineEnd])
-		if phrase == nil || pastePasswordPolicyContext(in[label[1]:label[1]+phrase[1]]) {
+		if phrase == nil {
+			continue
+		}
+		// "Password reset to: X" and "Password (admin): X" give the password
+		// itself, so judge X as a password rather than as phrased prose.
+		direct := pasteDirectPasswordBridgeRE.MatchString(in[label[1] : label[1]+phrase[1]])
+		if !direct && pastePasswordPolicyContext(in[label[1]:label[1]+phrase[1]]) {
 			continue
 		}
 		valueStart, valueEnd, _ := pastePasswordValueSpan(in, label[1]+phrase[1], lineEnd)
-		if valueEnd > valueStart && pastePasswordValue(in[valueStart:valueEnd], true) &&
+		if valueEnd > valueStart &&
+			(pastePasswordValue(in[valueStart:valueEnd], !direct) || direct && pasteWordAndNumberPassword(in[valueStart:valueEnd])) &&
 			!pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, true) {
 			*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 		}
 	}
 }
+
+// pasteWordAndNumberPassword reports the classic weak password shape, a word
+// joined to a number ("Winter2026"), which the ticket-reference exemption in
+// credentialShapedValue would otherwise skip. Ticket references keep an
+// all-uppercase prefix ("INC0012345").
+func pasteWordAndNumberPassword(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 8 || len(value) > maxPasteValueLen || !hasDigit(value) || !hasLetter(value) ||
+		pasteReferenceValue(value) || pasteDescriptiveValue(value) {
+		return false
+	}
+	letters := strings.TrimRightFunc(value, func(r rune) bool { return r >= '0' && r <= '9' })
+	return letters != strings.ToUpper(letters)
+}
+
+// pasteDirectPasswordBridgeRE matches the text between a password label and
+// its value when that text still introduces the password: a new value
+// ("reset to:", "was changed to") or an account qualifier ("(admin):").
+var pasteDirectPasswordBridgeRE = regexp.MustCompile(`(?i)^[ \t]*(?:(?:(?:has[ \t]+been|was|is)[ \t]+)?(?:reset|changed|set|updated)[ \t]+to|\([^()\n]{1,40}\))[ \t]*[:=]?[ \t]*$`)
 
 var pastePassphraseWordsRE = regexp.MustCompile(`^(?:[A-Z][a-z]+[ \t]+){2,7}[A-Z][a-z]+[!?#$%&*0-9]+`)
 
@@ -301,6 +330,10 @@ func pasteNonCredentialKeyLabel(in string, start, end int) bool {
 func pasteValueIsMetadata(in string, labelStart, labelEnd, valueStart, valueEnd int, password bool) bool {
 	if valueStart > labelEnd && phraseNamesMetadata(in[labelEnd:valueStart],
 		password || credentialKeyModifiers[labelModifierBefore(in, labelStart)]) {
+		return true
+	}
+	if valueStart > labelEnd && phraseNamesIdentifiedObject(in[labelEnd:valueStart]) &&
+		isPublicIdentifierValue(in[valueStart:valueEnd]) {
 		return true
 	}
 	return isBarePublicIdentifier(in[valueStart:valueEnd]) || isContextualPublicValue(in, valueStart, valueEnd)
@@ -527,6 +560,9 @@ func pasteStrongPassword(value string) bool {
 	return false
 }
 
+// pasteBatchVariableRE matches a cmd.exe delayed-expansion variable ("!SQL_PASS!").
+var pasteBatchVariableRE = regexp.MustCompile(`^![A-Za-z_][A-Za-z0-9_]*!$`)
+
 var pasteEmailLikeRE = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$`)
 
 // pasteReferenceValue reports a value that points at a secret rather than
@@ -544,7 +580,7 @@ func pasteReferenceValue(value string) bool {
 			return true
 		}
 	}
-	return fewDistinctRunes(value, 2) || pasteEmailLikeRE.MatchString(value)
+	return fewDistinctRunes(value, 2) || pasteEmailLikeRE.MatchString(value) || pasteBatchVariableRE.MatchString(value)
 }
 
 // fewDistinctRunes reports whether value uses at most limit distinct runes
@@ -580,6 +616,9 @@ func pastePasswordValue(value string, phrased bool) bool {
 		strings.HasSuffix(value, ":") || strings.Contains(value, "**") || strings.Contains(value, "__") {
 		return false // a label or Markdown emphasis, not a password
 	}
+	if pasteDescriptiveValue(value) {
+		return false
+	}
 	if pasteStrongPassword(value) {
 		return true
 	}
@@ -590,6 +629,21 @@ func pastePasswordValue(value string, phrased bool) bool {
 		return len(value) <= 16
 	}
 	return credentialShapedValue(value, true)
+}
+
+// Values that describe a password field rather than give one: a status or
+// validation word ("Required!", "case-sensitive!"), a phrase of plain words,
+// a YYYYMMDD date, or a document name ("ResetGuide2026.pdf").
+var (
+	pasteStatusWordRE  = regexp.MustCompile(`^[A-Za-z][a-z]+(?:-[a-z]+)*!$`)
+	pastePlainPhraseRE = regexp.MustCompile(`^[A-Za-z]+(?: [A-Za-z]+)+!?$`)
+	pasteDateRE        = regexp.MustCompile(`^(?:19|20)\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])$`)
+	pasteDocumentRE    = regexp.MustCompile(`(?i)^[A-Za-z0-9_-]+\.(?:pdf|docx?|txt|md|html?|xlsx?|pptx?)$`)
+)
+
+func pasteDescriptiveValue(value string) bool {
+	return pasteStatusWordRE.MatchString(value) || pastePlainPhraseRE.MatchString(value) ||
+		pasteDateRE.MatchString(value) || pasteDocumentRE.MatchString(value)
 }
 
 func pastePasswordPolicyContext(bridge string) bool {
@@ -820,15 +874,21 @@ func pasteNameValueSecret(value string, password bool) bool {
 
 const pasteQuotedArg = `'[^'\n]{1,256}'|"[^"\n]{1,256}"`
 
+// pasteArgumentGap spans the arguments of one command: whitespace-separated
+// tokens, none ending in sentence punctuation, and no pipe or separator.
+const pasteArgumentGap = `(?:[ \t]+[^\s|;&]*[^\s|;&,.:!?])*?`
+
 // pasteCommandGap spans the rest of one command: it stops at a pipe, ";",
 // "&&" or a background "&", but not at "&" inside a URL.
 const pasteCommandGap = `(?:[^\n|;&]|&[^\n|;&\s]){0,200}?`
 
 var (
-	// mysql -p'X' (lowercase; -P is the port) and sqlcmd -P 'X' (uppercase;
-	// -p prints statistics): quoted only, and only within a command that takes
-	// its password that way ("git log -p" is a patch flag).
-	pasteShortPasswordOptionRE = regexp.MustCompile(`\b(?:(?i:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,200}?[ \t]-p|(?i:sqlcmd|bcp|osql)\b[^\n|;&]{0,200}?[ \t]-P)[ \t]*(` + pasteQuotedArg + `)`)
+	// mysql -p'X' (lowercase and attached: "-p 'X'" names the database, and
+	// -P is the port) and sqlcmd -P 'X' (uppercase; -p prints statistics):
+	// quoted only, and only within one command that takes its password that
+	// way. pasteArgumentGap stops at sentence punctuation, so prose that
+	// mentions mysql before "git log -p 'x'" is not a mysql command.
+	pasteShortPasswordOptionRE = regexp.MustCompile(`\b(?:(?i:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b` + pasteArgumentGap + `[ \t]-p|(?i:sqlcmd|bcp|osql)\b` + pasteArgumentGap + `[ \t]-P[ \t]*)(` + pasteQuotedArg + `)`)
 	// sshpass -p X, only among sshpass's own options (-f file, -d fd,
 	// -P prompt, -e, -v): the wrapped command's "-p" is its port.
 	pasteSSHPassRE    = regexp.MustCompile(`\b(?i:sshpass)(?:[ \t]+(?:-[fdP][ \t]*(?:` + pasteQuotedArg + `|[^\s'"]+)|-[evhV]))*[ \t]+-p[ \t]*(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
@@ -838,7 +898,7 @@ var (
 	// ConvertTo-SecureString 'X' -AsPlainText; the flag alone also marks the
 	// literal, since "$password = ConvertTo-SecureString" is itself redacted
 	// by the password assignment rule before this scanner runs.
-	pasteSecureStringRE     = regexp.MustCompile(`(?i)(?:\bConvertTo-SecureString[ \t]+(?:-String[ \t]+)?(` + pasteQuotedArg + `)|[ \t](` + pasteQuotedArg + `)[ \t]+-AsPlainText\b)`)
+	pasteSecureStringRE     = regexp.MustCompile(`(?i)(?:(?:^|[\s(=])ConvertTo-SecureString[ \t]+(?:-String[ \t]+)?(` + pasteQuotedArg + `)|[ \t](` + pasteQuotedArg + `)[ \t]+-AsPlainText\b)`)
 	pasteCredentialObjectRE = regexp.MustCompile(`(?i)\b(?:PSCredential|NetworkCredential)[ \t]*\([ \t]*(?:'[^'\n]*'|"[^"\n]*"|\$[A-Za-z_][A-Za-z0-9_:]*)[ \t]*,[ \t]*(` + pasteQuotedArg + `)`)
 )
 
@@ -847,20 +907,59 @@ func collectPasteCommandCredentials(in string, spans *[]pasteSpan) {
 		return pastePasswordValue(value, false)
 	})
 	for _, re := range []*regexp.Regexp{pasteSSHPassRE, pasteCmdkeyPassRE, pasteNetUseRE, pasteCredentialObjectRE} {
-		appendPasteArgument(in, re, spans, pasteLiteralSecret)
+		appendPasteArgument(in, re, spans, pasteCommandLiteralSecret)
 	}
 	for _, match := range pasteSecureStringRE.FindAllStringSubmatchIndex(in, -1) {
+		if match[2] >= 0 && !pasteCommandHasFlag(in, match[1], "-asplaintext") {
+			continue // without -AsPlainText the argument is an encrypted string
+		}
 		if match[4] < 0 || pasteSecureStringLiteral(in, match[4], match[1]) {
-			appendPasteMatch(in, match, spans, pasteLiteralSecret)
+			appendPasteMatch(in, match, spans, pasteCommandLiteralSecret)
 		}
 	}
 	// curl -u user:password: only the part after the first colon.
 	for _, match := range pasteCurlUserRE.FindAllStringSubmatchIndex(in, -1) {
 		start, end := unquotePasteArgument(in, match[2], match[3])
-		if colon := strings.IndexByte(in[start:end], ':'); colon > 0 && pasteLiteralSecret(in[start+colon+1:end]) {
+		if pasteSedExpression(in[start:end]) {
+			continue // "sed -u 's:a:b:g'" mentioned after curl
+		}
+		if colon := strings.IndexByte(in[start:end], ':'); colon > 0 && pasteCommandLiteralSecret(in[start+colon+1:end]) {
 			*spans = append(*spans, pasteSpan{start: start + colon + 1, end: end})
 		}
 	}
+}
+
+// pasteCommandLiteralSecret judges a command argument: pasteLiteralSecret,
+// except for documentation placeholders and prose ("/pass:PASSWORD",
+// "sshpass -p should be avoided", "PSCredential('user name', ...)").
+func pasteCommandLiteralSecret(value string) bool {
+	if !pasteLiteralSecret(value) {
+		return false
+	}
+	word := strings.TrimRight(value, ".,;:!?")
+	return !pasteLowerWordRE.MatchString(word) && !pastePlaceholderWordRE.MatchString(word) &&
+		!pastePlainPhraseRE.MatchString(value)
+}
+
+var (
+	pasteLowerWordRE       = regexp.MustCompile(`^[a-z]+$`)
+	pastePlaceholderWordRE = regexp.MustCompile(`^[A-Z][A-Z_]{2,}$`)
+)
+
+// pasteSedExpression reports a sed substitution such as "s:old:new:g".
+func pasteSedExpression(value string) bool {
+	return len(value) >= 4 && value[0] == 's' && !isASCIIAlnum(value[1]) &&
+		strings.Count(value, value[1:2]) >= 3
+}
+
+// pasteCommandHasFlag reports whether the rest of the command after i (up to
+// a newline, pipe or ";") contains flag, compared case-insensitively.
+func pasteCommandHasFlag(in string, i int, flag string) bool {
+	end := i
+	for end < len(in) && end-i < 512 && strings.IndexByte("\n|;", in[end]) < 0 {
+		end++
+	}
+	return strings.Contains(strings.ToLower(in[i:end]), flag)
 }
 
 // pasteSecureStringLiteral reports whether the quoted argument at start,

@@ -1212,6 +1212,7 @@ func scanShortFreeTextTokens(out string, report Report, mode Mode) (string, Repo
 	for _, match := range matches {
 		token := out[match[0]:match[1]]
 		if !hasDigit(token) || !hasLetter(token) || readsAsWords(token) || singleCaseWordAndNumber(token) ||
+			readsAsNameWithNumbers(token) || dottedNameSegment(out, match[0], match[1]) ||
 			shannonEntropy(token) < shortFreeTextTokenEntropy {
 			continue
 		}
@@ -1228,6 +1229,49 @@ func scanShortFreeTextTokens(out string, report Report, mode Mode) (string, Repo
 	}
 	b.WriteString(out[last:])
 	return b.String(), addReportCount(report, "high_entropy_short_free_text_token", count)
+}
+
+// readsAsNameWithNumbers reports whether a short token is a name built from
+// words, acronyms and at most two numbers ("EnableQoSForMicrosoftTeams2026",
+// "nyc01zscalerconnectorprod02", "Enable8021XOnBranchPorts2026"): digits in
+// at most two runs, at least half the letters in lowercase runs of two or more
+// that contain a vowel, and at least 20% vowels in those runs. Random keys
+// scatter their digits and rarely form pronounceable lowercase runs.
+func readsAsNameWithNumbers(token string) bool {
+	digitRuns, letters, wordLetters, wordVowels := 0, 0, 0, 0
+	for i := 0; i < len(token); {
+		ch := token[i]
+		switch {
+		case ch >= '0' && ch <= '9':
+			for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+				i++
+			}
+			digitRuns++
+		case ch >= 'a' && ch <= 'z':
+			start, vowels := i, 0
+			for i < len(token) && token[i] >= 'a' && token[i] <= 'z' {
+				if strings.IndexByte("aeiouy", token[i]) >= 0 {
+					vowels++
+				}
+				i++
+			}
+			letters += i - start
+			if i-start >= 2 && vowels > 0 {
+				wordLetters += i - start
+				wordVowels += vowels
+			}
+		default:
+			letters++
+			i++
+		}
+	}
+	return digitRuns <= 2 && letters > 0 && wordLetters*2 >= letters && wordVowels*5 >= wordLetters
+}
+
+// dottedNameSegment reports whether in[start:end] sits between dots, as a
+// segment of a file or host name ("app.652f8a1b9c7d4e30a56b2f90.js").
+func dottedNameSegment(in string, start, end int) bool {
+	return start > 0 && end < len(in) && in[start-1] == '.' && in[end] == '.'
 }
 
 func (r Redactor) scanLongEntropy(out string, report Report, context highEntropyContext) (string, Report) {
@@ -1755,6 +1799,10 @@ func scanGenericCredentialLabels(in string) (string, int) {
 			password || credentialKeyModifiers[labelModifierBefore(in, word[0])]) {
 			continue
 		}
+		if phrased && phraseNamesIdentifiedObject(in[word[1]:valueStart]) &&
+			isPublicIdentifierValue(credentialValuePrefix(in, valueStart)) {
+			continue
+		}
 		// "pwd: /opt/app" is a working directory.
 		if labelWord == "pwd" && readableWorkingDirectoryAt(in, valueStart) {
 			continue
@@ -1851,6 +1899,14 @@ const (
 // keys, hot keys, registry keys and public keys. "Primary" is deliberately
 // absent: Azure names subscription and storage access keys "Primary key".
 var nonCredentialKeyModifiers = map[string]bool{
+	// Data and configuration keys that name a record or setting. Function
+	// and policy keys are absent: Azure Function keys and B2C policy keys
+	// are secrets.
+	"business": true, "routing": true, "deduplication": true, "dedup": true,
+	"configuration": true,
+	"setting":       true, "settings": true, "image": true, "shortcut": true,
+	"inventory": true, "circuit": true, "route": true, "location": true, "rack": true,
+	"natural": true, "candidate": true,
 	"foreign": true, "partition": true, "row": true, "sort": true,
 	"range": true, "composite": true, "surrogate": true, "unique": true, "lookup": true,
 	"tag": true, "object": true, "cache": true, "idempotency": true, "hot": true,
@@ -1881,6 +1937,42 @@ var labelMetadataWords = map[string]bool{
 	"binding": true, "policy": true, "expiry": true, "expiration": true,
 	"serial": true, "etag": true, "ulid": true, "objectid": true, "uuid": true,
 	"guid": true,
+	// Words that describe a password or key rather than give it ("Password
+	// (status):", "Password (last changed):", "Passphrase (error message):").
+	"status": true, "changed": true, "last": true, "baseline": true, "procedure": true,
+	"runbook": true, "message": true, "schedule": true, "expires": true, "expired": true,
+	"standard": true, "requirement": true, "requirements": true, "rule": true, "rules": true,
+	"guidance": true, "date": true, "updated": true, "created": true,
+}
+
+// identifiedObjectNouns name an object whose identifier follows a credential
+// label phrase: "Token scope: <uuid>", "Key Vault tenant: <uuid>", "Password
+// reset event: <uuid>". They exempt only a public-identifier-shaped value.
+var identifiedObjectNouns = map[string]bool{
+	"scope": true, "scopes": true, "claim": true, "claims": true, "audience": true,
+	"aud": true, "tid": true, "oid": true, "jti": true, "tenant": true, "subscription": true,
+	"group": true, "groups": true, "event": true, "events": true, "request": true,
+	"transaction": true, "workflow": true, "job": true, "location": true, "storage": true,
+	"application": true, "app": true, "device": true, "user": true, "account": true,
+	"certificate": true, "session": true, "correlation": true, "trace": true, "vault": true,
+}
+
+// phraseNamesIdentifiedObject reports whether a label phrase is a compound
+// noun (no function words) ending in an identifiedObjectNouns noun.
+func phraseNamesIdentifiedObject(phrase string) bool {
+	words := strings.FieldsFunc(phrase, func(r rune) bool { return !isASCIILetter(r) && !unicode.IsDigit(r) })
+	for len(words) > 0 && phraseCueWords[strings.ToLower(words[len(words)-1])] {
+		words = words[:len(words)-1]
+	}
+	if len(words) == 0 {
+		return false
+	}
+	for _, word := range words {
+		if phraseFunctionWords[strings.ToLower(word)] {
+			return false
+		}
+	}
+	return identifiedObjectNouns[strings.ToLower(words[len(words)-1])]
 }
 
 // phraseNamesMetadata reports whether the words of a label phrase (the text
@@ -1932,8 +2024,14 @@ var phraseFunctionWords = map[string]bool{
 // spaces, tabs, "_", "-" and Markdown emphasis or code wrappers ("Primary
 // key", "Primary  key", "tag_key", "Primary **key**", "**Primary** key").
 func labelModifierBefore(in string, i int) string {
-	for n := 0; n < labelModifierGapMax && i > 0 && strings.IndexByte(" \t_-*`", in[i-1]) >= 0; n++ {
-		i--
+	for n := 0; n < labelModifierGapMax && i > 0; n++ {
+		if strings.IndexByte(" \t_-*`", in[i-1]) >= 0 {
+			i--
+		} else if i > 1 && in[i-2:i] == "\u00a0" {
+			i -= 2 // no-break space
+		} else {
+			break
+		}
 	}
 	end := i
 	for i > 0 && isASCIILetter(rune(in[i-1])) {
