@@ -1,6 +1,6 @@
 module github.com/dvmrry/zscalerctl
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/charmbracelet/x/term v0.2.2

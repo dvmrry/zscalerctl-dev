@@ -33,7 +33,7 @@ See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/
 
 Release archives for macOS, Linux, and Windows include checksums, CycloneDX SBOMs, and GitHub provenance attestations. See [docs/INSTALL.md](docs/INSTALL.md) for verification, credentials, proxy, completions, and platform notes.
 
-With Go 1.26.6 or newer (no checkout needed):
+With Go 1.26.9 or newer (no checkout needed):
 
 ```sh
 go install github.com/dvmrry/zscalerctl/cmd/zscalerctl@latest

@@ -43,8 +43,9 @@ module. Non-reachable findings in required modules require a written review
 note before release.
 
 Every module's `go` directive is the strict patch-level compiler minimum, not
-just a language-family marker. It is currently `1.26.6`, the first patch used
-by this project that contains required standard-library security fixes.
+just a language-family marker. It is currently `1.26.9`, the first patch that fixes GO-2026-6617 (an HTTP/2
+HPACK encoder race in net/http) on top of the earlier standard-library
+security fixes.
 Redundant `toolchain` directives are forbidden because `go mod tidy` removes
 them when they equal the `go` directive. `make verify-go-toolchain` rejects a
 synchronized downgrade, an untracked nested module, a stale or missing
