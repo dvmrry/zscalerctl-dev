@@ -22,6 +22,9 @@ import (
 type pasteSpan struct {
 	start int
 	end   int
+	// absorb lets the span replace secret markers already inside it: an
+	// earlier rule redacted only part of the same value.
+	absorb bool
 }
 
 // maxPasteValueLen caps how far a value is followed, keeping each label's
@@ -84,7 +87,7 @@ func applyPasteSpans(in string, spans []pasteSpan) (string, int) {
 	last, count := 0, 0
 	for _, span := range spans {
 		if span.start < last || span.end <= span.start || span.end > len(in) ||
-			strings.Contains(in[span.start:span.end], "<REDACTED") {
+			!span.absorb && strings.Contains(in[span.start:span.end], "<REDACTED") {
 			continue
 		}
 		b.WriteString(in[last:span.start])
@@ -170,7 +173,7 @@ func collectPastePasswordLabels(in string, spans *[]pasteSpan) {
 		if kind != pasteSeparatorNone {
 			if kind == pasteSeparatorDirect && strings.EqualFold(in[label[0]:label[1]], "passphrase") {
 				if words := pastePassphraseWordsRE.FindStringIndex(in[start:lineEnd]); words != nil {
-					*spans = append(*spans, pasteSpan{start, start + words[1]})
+					*spans = append(*spans, pasteSpan{start: start, end: start + words[1]})
 					continue
 				}
 			}
@@ -189,7 +192,7 @@ func collectPastePasswordLabels(in string, spans *[]pasteSpan) {
 					continue
 				}
 				if ok {
-					*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+					*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 					continue
 				}
 			}
@@ -203,7 +206,7 @@ func collectPastePasswordLabels(in string, spans *[]pasteSpan) {
 		valueStart, valueEnd, _ := pastePasswordValueSpan(in, label[1]+phrase[1], lineEnd)
 		if valueEnd > valueStart && pastePasswordValue(in[valueStart:valueEnd], true) &&
 			!pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, true) {
-			*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+			*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 		}
 	}
 }
@@ -225,7 +228,7 @@ func collectPasteKeyLabels(in string, spans *[]pasteSpan) {
 			if valueStart, valueEnd := pasteKeyValueSpan(in, start, lineEnd); valueEnd > valueStart &&
 				credentialShapedValue(in[valueStart:valueEnd], false) {
 				if !pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) {
-					*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+					*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 				}
 				continue
 			}
@@ -242,7 +245,7 @@ func collectPasteKeyLabels(in string, spans *[]pasteSpan) {
 		if valueStart, valueEnd := pasteKeyValueSpan(in, label[1]+phrase[1], lineEnd); valueEnd > valueStart &&
 			credentialShapedValue(in[valueStart:valueEnd], false) &&
 			!pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) {
-			*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+			*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 		}
 	}
 }
@@ -448,10 +451,26 @@ func pasteWrappedValue(in string, start, lineEnd int) (int, int, bool) {
 			return 0, 0, false
 		}
 	}
-	switch quote := in[start]; quote {
+	// A quote escaped with backslashes (`\"...\"` inside a JSON string).
+	open := start
+	for open < lineEnd && in[open] == '\x5c' {
+		open++
+	}
+	if open == lineEnd {
+		return 0, 0, false
+	}
+	switch quote := in[open]; quote {
 	case '"', '\'', '`':
-		if closing := strings.IndexByte(in[start+1:pasteBound(start+1, lineEnd, maxPasteValueLen+1)], quote); closing > 0 {
-			return start + 1, start + 1 + closing, true
+		if closing := strings.IndexByte(in[open+1:pasteBound(open+1, lineEnd, maxPasteValueLen+1)], quote); closing > 0 {
+			end := open + 1 + closing
+			if open > start {
+				for end > open+1 && in[end-1] == '\x5c' {
+					end--
+				}
+			}
+			if end > open+1 {
+				return open + 1, end, true
+			}
 		}
 	}
 	return 0, 0, false
@@ -618,7 +637,7 @@ func collectPasteNextLineValues(in string, spans *[]pasteSpan) {
 		if ok {
 			value := in[valueStart:valueEnd]
 			if (password && pastePasswordValue(value, false)) || (!password && credentialShapedValue(value, false)) {
-				*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+				*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 			}
 		}
 		lineStart = next
@@ -780,7 +799,7 @@ func pasteYAMLValue(in string, start int, password bool, spans *[]pasteSpan) {
 				}
 			}
 			if valueEnd > valueStart && pasteNameValueSecret(in[valueStart:valueEnd], password) {
-				*spans = append(*spans, pasteSpan{valueStart, valueEnd})
+				*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 			}
 			return
 		}
@@ -839,7 +858,7 @@ func collectPasteCommandCredentials(in string, spans *[]pasteSpan) {
 	for _, match := range pasteCurlUserRE.FindAllStringSubmatchIndex(in, -1) {
 		start, end := unquotePasteArgument(in, match[2], match[3])
 		if colon := strings.IndexByte(in[start:end], ':'); colon > 0 && pasteLiteralSecret(in[start+colon+1:end]) {
-			*spans = append(*spans, pasteSpan{start + colon + 1, end})
+			*spans = append(*spans, pasteSpan{start: start + colon + 1, end: end})
 		}
 	}
 }
@@ -881,7 +900,7 @@ func appendPasteMatch(in string, match []int, spans *[]pasteSpan, secret func(st
 		}
 		start, end := unquotePasteArgument(in, match[group], match[group+1])
 		if end > start && secret(in[start:end]) {
-			*spans = append(*spans, pasteSpan{start, end})
+			*spans = append(*spans, pasteSpan{start: start, end: end})
 		}
 		return
 	}
@@ -897,7 +916,9 @@ func unquotePasteArgument(in string, start, end int) (int, int) {
 // Percent-encoded credential query values (SAS "sig=", "key=",
 // "credential="): the escapes split the value for the label rules, so decode
 // it for inspection and redact the complete encoded value.
-var pasteEncodedQueryRE = regexp.MustCompile(`(?i)(?:^|[?&;\s'"(])(?:sig|signature|key|api[_-]?key|credential|token|secret|password|passwd|pwd)=([^&\s"'<>#]*%[0-9A-Fa-f]{2}[^&\s"'<>#]*)`)
+// The value may already contain a secret marker where an earlier rule
+// redacted only the part before the first escape.
+var pasteEncodedQueryRE = regexp.MustCompile(`(?i)(?:^|[?&;\s'"(])(?:sig|signature|key|api[_-]?key|credential|token|secret|password|passwd|pwd)=((?:<REDACTED:SECRET>|[^&\s"'<>#])*%[0-9A-Fa-f]{2}(?:<REDACTED:SECRET>|[^&\s"'<>#])*)`)
 
 func collectPasteEncodedQueryValues(in string, spans *[]pasteSpan) {
 	for _, match := range pasteEncodedQueryRE.FindAllStringSubmatchIndex(in, -1) {
@@ -905,12 +926,16 @@ func collectPasteEncodedQueryValues(in string, spans *[]pasteSpan) {
 		for end > start && in[end-1] == '.' {
 			end--
 		}
+		if strings.Contains(in[start:end], markerSecret) {
+			*spans = append(*spans, pasteSpan{start: start, end: end, absorb: true})
+			continue
+		}
 		decoded, err := url.QueryUnescape(in[start:end])
 		if err != nil {
 			continue
 		}
 		if credentialShapedValue(decoded, false) || pasteStrongPassword(decoded) {
-			*spans = append(*spans, pasteSpan{start, end})
+			*spans = append(*spans, pasteSpan{start: start, end: end})
 		}
 	}
 }
@@ -926,13 +951,13 @@ func collectPasteBasicCredentials(in string, spans *[]pasteSpan) {
 			continue
 		}
 		if decodesToBasicCredential(in[start:end]) {
-			*spans = append(*spans, pasteSpan{start, end})
+			*spans = append(*spans, pasteSpan{start: start, end: end})
 		}
 	}
 	// BASIC_AUTH=user:password written out before encoding.
 	for _, match := range pastePlainBasicCredentialRE.FindAllStringSubmatchIndex(in, -1) {
 		if pasteLiteralSecret(in[match[2]:match[3]]) {
-			*spans = append(*spans, pasteSpan{match[2], match[3]})
+			*spans = append(*spans, pasteSpan{start: match[2], end: match[3]})
 		}
 	}
 }
@@ -1020,7 +1045,7 @@ func collectPasteValuesBeforeLabels(in string, spans *[]pasteSpan) {
 		value := in[start:end]
 		password := strings.HasPrefix(strings.ToLower(in[match[2]:match[3]]), "pass")
 		if (password && pastePasswordValue(value, true)) || (!password && credentialShapedValue(value, false)) {
-			*spans = append(*spans, pasteSpan{start, end})
+			*spans = append(*spans, pasteSpan{start: start, end: end})
 		}
 	}
 }

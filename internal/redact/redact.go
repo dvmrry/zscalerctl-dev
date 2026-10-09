@@ -998,6 +998,10 @@ func readablePathSegment(segment string) bool {
 	if segment == "" {
 		return false
 	}
+	// Administrative shares end in "$" ("C$", "IT$").
+	if len(segment) > 1 && segment[len(segment)-1] == '$' {
+		segment = segment[:len(segment)-1]
+	}
 	// "Program Files (x86)": each space-separated word, without surrounding
 	// parentheses, must read on its own.
 	if strings.Contains(segment, " ") {
@@ -1098,11 +1102,36 @@ func readableWorkingDirectoryAt(in string, start int) bool {
 			end++
 		}
 		value := strings.TrimRight(in[start:end], ".")
-		if isReadableWorkingDirectory(value) || isReadableWorkingDirectory(strings.ReplaceAll(value, `\\`, `\`)) {
+		if isReadableWorkingDirectory(value) || isReadableWorkingDirectory(collapseEscapedBackslashes(value)) {
 			return true
 		}
 	}
 	return false
+}
+
+// collapseEscapedBackslashes reads a JSON-escaped path, possibly escaped more
+// than once ("C:\\\\Users\\\\Admin\\"): trailing backslashes (an escaped
+// closing quote) are dropped and each run of backslashes becomes one, except
+// that a leading run stays a UNC prefix ("\\\\server" reads "\\server").
+func collapseEscapedBackslashes(value string) string {
+	value = strings.TrimRight(value, `\`)
+	var b strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\x5c' {
+			b.WriteByte(value[i])
+			continue
+		}
+		run := i
+		for i+1 < len(value) && value[i+1] == '\x5c' {
+			i++
+		}
+		if run == 0 && i > 0 {
+			b.WriteString(`\\`)
+		} else {
+			b.WriteByte('\x5c')
+		}
+	}
+	return b.String()
 }
 
 // assignedTokenValue splits a "name=value" token whose name is a word label
@@ -1652,10 +1681,12 @@ var genericCredentialPhraseRE = regexp.MustCompile(`(?i)^(?:[^\S\n]+[^\s:=]{1,30
 
 // genericCredentialSeparatorRE matches, anchored right after a label word, an
 // optional closing quote, a ":"/"=" or whitespace separator, and any opening
-// wrappers or further whitespace before the value. It accepts Unicode space
+// wrappers or further whitespace before the value. Quotes may be escaped with
+// backslashes (`key: \"...\"` inside a JSON string); a backslash not followed by
+// a quote is left to the value (UNC paths). It accepts Unicode space
 // separators (no-break space) and format characters (zero-width space), which
 // RE2's ASCII \s does not match.
-var genericCredentialSeparatorRE = regexp.MustCompile(`^[*_]{0,3}["'\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]?[*_]{0,3}(?:[\s\p{Zs}\p{Cf}]*[:=][\s\p{Zs}\p{Cf}]*|[\s\p{Zs}\p{Cf}]+)(?:[*"'(\[<{\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]|[\s\p{Zs}\p{Cf}])*`)
+var genericCredentialSeparatorRE = regexp.MustCompile(`^[*_]{0,3}(?:\x5c*["'\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}])?[*_]{0,3}(?:[\s\p{Zs}\p{Cf}]*[:=][\s\p{Zs}\p{Cf}]*|[\s\p{Zs}\p{Cf}]+)(?:\x5c+["'\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]|[*"'(\[<{\x60\x{2018}\x{2019}\x{201A}\x{201B}\x{201C}\x{201D}\x{201E}\x{201F}\x{00AB}\x{00BB}\x{2039}\x{203A}]|[\s\p{Zs}\p{Cf}])*`)
 
 type genericCredentialLabel struct {
 	start      int  // label word start
@@ -1921,6 +1952,13 @@ const labelModifierGapMax = 16
 // is not itself a JSON document ("CMDB entry: {...}"). Lookbehind and
 // lookahead are bounded, so the check is constant work per label.
 func jsonPairKeyIdentifierAt(in string, start, end int) bool {
+	// A pair whose quotes are escaped ("{\"key\":\"...\"}" inside a JSON
+	// string): judge an unescaped copy of the surrounding window.
+	if start >= 2 && in[start-1] == '"' && in[start-2] == '\x5c' {
+		lo, hi := pasteBack(start, jsonPairWindow), pasteBound(end, len(in), jsonPairWindow)
+		windowStart := len(unescapeJSONQuotes(in[lo:start]))
+		return jsonPairKeyIdentifierAt(unescapeJSONQuotes(in[lo:hi]), windowStart, windowStart+end-start)
+	}
 	if !strings.EqualFold(in[start:end], "key") || start == 0 || in[start-1] != '"' ||
 		end >= len(in) || in[end] != '"' {
 		return false
@@ -1946,6 +1984,26 @@ func jsonPairKeyIdentifierAt(in string, start, end int) bool {
 	}
 	objectStart := jsonObjectStartBefore(in, start-1)
 	return objectStart >= 0 && jsonMemberAtDepthZero(in, objectStart+1, start-1, "value")
+}
+
+// unescapeJSONQuotes drops each run of backslashes directly before a double
+// quote, turning escaped JSON ("{\\\"key\\\":1}") back into its structure.
+func unescapeJSONQuotes(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x5c' {
+			j := i
+			for j < len(s) && s[j] == '\x5c' {
+				j++
+			}
+			if j < len(s) && s[j] == '"' {
+				i = j - 1
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // jsonPairWindow bounds how far jsonPairKeyIdentifierAt looks for the
@@ -2209,6 +2267,20 @@ func assignmentRules(name, keys, marker string) []rule {
 	key := `["']?(?:` + keys + `)["']?\s*[:=]\s*`
 	prefilter := prefilterForAssignmentKeys(keys)
 	return []rule{
+		// Quotes escaped with backslashes: a JSON document pasted into a
+		// JSON string ("password: \"...\"").
+		{
+			name:        name,
+			re:          regexp.MustCompile(`(?i)(` + key + `)(\\+)"(?:[^"\\\n]|\\+[^"\\\n])*\\+"`),
+			replacement: `${1}${2}"` + marker + `${2}"`,
+			prefilter:   prefilter,
+		},
+		{
+			name:        name,
+			re:          regexp.MustCompile(`(?i)(` + key + `)(\\+)'(?:[^'\\\n]|\\+[^'\\\n])*\\+'`),
+			replacement: `${1}${2}'` + marker + `${2}'`,
+			prefilter:   prefilter,
+		},
 		{
 			name:        name,
 			re:          regexp.MustCompile(`(?i)(` + key + `)"(?:\\.|[^"\\])*"`),
@@ -2237,8 +2309,9 @@ func assignmentRules(name, keys, marker string) []rule {
 			prefilter:   prefilter,
 		},
 		{
-			name:        name,
-			re:          regexp.MustCompile(`(?i)(` + key + `)[^<"'\s,}\]\{\[]+`),
+			name: name,
+			// A leading backslash escapes a quote handled above.
+			re:          regexp.MustCompile(`(?i)(` + key + `)[^<"'\s,}\]\{\[\\][^<"'\s,}\]\{\[]*`),
 			replacement: `${1}` + marker,
 			prefilter:   prefilter,
 		},

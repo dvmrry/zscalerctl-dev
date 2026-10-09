@@ -515,3 +515,60 @@ func TestAssignedGetSecretKeepsVaultName(t *testing.T) {
 		}
 	}
 }
+
+// TestEscapedQuotesAndEncodedSignaturesRedactCompletely covers credentials in
+// JSON strings whose quotes are escaped (a JSON document pasted into a JSON
+// string) and percent-encoded SAS signatures that an earlier rule redacted
+// only up to the first escape. No fragment may survive.
+func TestEscapedQuotesAndEncodedSignaturesRedactCompletely(t *testing.T) {
+	t.Parallel()
+
+	key := "AbCdEfGh" + "IjKlMnOp" + "QrStUvWx" + "Yz012345"
+	password := "Zx9!" + "kq2mLp"
+	sigHead := "Ab1Cd2Ef3Gh4Ij5Kl" + "MnOpQrStUvWxYz"
+	sigTail := "AbCdEfGhIjKl" + "MnOpQrStUv"
+	cases := []struct {
+		input   string
+		secrets []string
+	}{
+		{`{"comment":"key: \\\"` + key + `\\\""}`, []string{key}},
+		{`{"comment":"password: \\\"` + password + `\\\""}`, []string{password, "kq2mLp"}},
+		{`{"comment":"token=\\\"` + key + `\\\""}`, []string{key}},
+		{`{"comment":"{\\\"key\\\": \\\"` + key + `\\\"}"}`, []string{key}},
+		{`key: \"` + key + `\"`, []string{key}},
+		{`password: \"` + password + `\"`, []string{password, "kq2mLp"}},
+		{"https://acct.blob.core.windows.net/c/b?sv=2022-11-02&sp=r&sig=" + sigHead + "%2B" + sigTail + "%3D", []string{sigHead, sigTail}},
+		{"https://acct.blob.core.windows.net/c/b?sv=2022-11-02&sig=" + "%2F" + sigHead + sigTail + "%3D&sp=r", []string{sigHead, sigTail}},
+		{`CMDB sample: "{\"key\":\"` + key + `\",\"value\":\"location-reference\"}"`, []string{key}},
+	}
+	for _, tc := range cases {
+		for _, scanner := range allStringScanners {
+			got, report := scanner.scan(redact.New(redact.ModeStandard), tc.input)
+			for _, secret := range tc.secrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("%s(%q) = %q, leaks %q", scanner.name, tc.input, got, secret)
+				}
+			}
+			if report.Empty() {
+				t.Errorf("%s(%q) report is empty, want a redaction", scanner.name, tc.input)
+			}
+		}
+	}
+
+	// A backslash that does not escape a quote stays part of the value; an
+	// escaped {"key": <public identifier>, "value": ...} pair is a tag pair.
+	for _, input := range []string{
+		`pwd: \\fileserver\share\Projects2024`,
+		`{"pwd":"\\\\fileserver\\share\\Projects2024"}`,
+		`{"pwd":"\\\\fs01.corp.example.com\\IT$\\Scripts"}`,
+		`Runbook output: "{\"pwd\":\"\\\\\\\\fs01.corp.example.com\\\\IT$\\\\Scripts\"}"`,
+		`CMDB sample: "{\"key\":\"550e8400-e29b-41d4-a716-446655440000\",\"value\":\"location-reference\"}"`,
+		`KB mapping: "{\"key\":\"i-0d12e34f56a78b90c\",\"value\":\"asset\"}"`,
+	} {
+		for _, scanner := range allStringScanners {
+			if got, report := scanner.scan(redact.New(redact.ModeStandard), input); got != input || !report.Empty() {
+				t.Errorf("%s(%q) = %q (report %v), want unchanged", scanner.name, input, got, report.Counts)
+			}
+		}
+	}
+}
