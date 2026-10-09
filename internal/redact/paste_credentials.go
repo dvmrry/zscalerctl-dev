@@ -131,7 +131,7 @@ var pasteNonCredentialKeyQualifiers = map[string]bool{
 	"tag": true, "sort": true, "object": true, "record": true,
 	"idempotency": true, "resource": true, "asset": true, "host": true,
 	"registry": true, "lookup": true, "hash": true, "composite": true,
-	"unique": true, "index": true, "routing": true, "shard": true,
+	"unique": true, "index": true, "shard": true,
 	"surrogate": true, "natural": true, "candidate": true, "dedup": true,
 }
 
@@ -256,7 +256,8 @@ func collectPasteKeyLabels(in string, spans *[]pasteSpan) {
 		if kind == pasteSeparatorDirect || kind == pasteSeparatorTable {
 			if valueStart, valueEnd := pasteKeyValueSpan(in, start, lineEnd); valueEnd > valueStart &&
 				credentialShapedValue(in[valueStart:valueEnd], false) {
-				if !pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) {
+				if !pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) &&
+					!pasteSettingKeyName(in, label[0], label[1], valueStart, valueEnd) {
 					*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 				}
 				continue
@@ -273,10 +274,20 @@ func collectPasteKeyLabels(in string, spans *[]pasteSpan) {
 		}
 		if valueStart, valueEnd := pasteKeyValueSpan(in, label[1]+phrase[1], lineEnd); valueEnd > valueStart &&
 			credentialShapedValue(in[valueStart:valueEnd], false) &&
-			!pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) {
+			!pasteValueIsMetadata(in, label[0], label[1], valueStart, valueEnd, false) &&
+			!pasteSettingKeyName(in, label[0], label[1], valueStart, valueEnd) {
 			*spans = append(*spans, pasteSpan{start: valueStart, end: valueEnd})
 		}
 	}
+}
+
+// pasteSettingKeyName reports a "key" label with a settingKeyModifiers
+// modifier ("Configuration key", "Routing key") followed by a name-shaped
+// value; a random value after such a label is still a key.
+func pasteSettingKeyName(in string, labelStart, labelEnd, valueStart, valueEnd int) bool {
+	return strings.EqualFold(in[labelStart:labelEnd], "key") &&
+		settingKeyModifiers[labelModifierBefore(in, labelStart)] &&
+		settingKeyNameValue(in[valueStart:valueEnd])
 }
 
 // pasteLabelBoundary rejects a label word inside a longer word ("monkey",
@@ -891,10 +902,12 @@ var (
 	pasteShortPasswordOptionRE = regexp.MustCompile(`\b(?:(?i:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b` + pasteArgumentGap + `[ \t]-p|(?i:sqlcmd|bcp|osql)\b` + pasteArgumentGap + `[ \t]-P[ \t]*)(` + pasteQuotedArg + `)`)
 	// sshpass -p X, only among sshpass's own options (-f file, -d fd,
 	// -P prompt, -e, -v): the wrapped command's "-p" is its port.
-	pasteSSHPassRE    = regexp.MustCompile(`\b(?i:sshpass)(?:[ \t]+(?:-[fdP][ \t]*(?:` + pasteQuotedArg + `|[^\s'"]+)|-[evhV]))*[ \t]+-p[ \t]*(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
-	pasteCurlUserRE   = regexp.MustCompile(`(?i)\bcurl\b` + pasteCommandGap + `[ \t](?:-u|--user)(?:=|[ \t]+)(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
-	pasteCmdkeyPassRE = regexp.MustCompile(`(?i)(?:^|[ \t])/pass:(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
-	pasteNetUseRE     = regexp.MustCompile(`(?i)\bnet[ \t]+use\b` + pasteCommandGap + `[ \t](` + pasteQuotedArg + `|[^\s'"/\\*][^\s'"]{0,255})[ \t]+/user:`)
+	// mysql -pSecret: an unquoted value attached to -p is the password.
+	pasteMySQLAttachedPasswordRE = regexp.MustCompile(`\b(?i:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b` + pasteArgumentGap + `[ \t]-p([^\s'"|;&]{1,256})`)
+	pasteSSHPassRE               = regexp.MustCompile(`\b(?i:sshpass)(?:[ \t]+(?:-[fdP][ \t]*(?:` + pasteQuotedArg + `|[^\s'"]+)|-[evhV]))*[ \t]+-p[ \t]*(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
+	pasteCurlUserRE              = regexp.MustCompile(`(?i)\bcurl\b` + pasteCommandGap + `[ \t](?:-u|--user)(?:=|[ \t]+)(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
+	pasteCmdkeyPassRE            = regexp.MustCompile(`(?i)(?:^|[ \t])/pass:(` + pasteQuotedArg + `|[^\s'"]{1,256})`)
+	pasteNetUseRE                = regexp.MustCompile(`(?i)\bnet[ \t]+use\b` + pasteCommandGap + `[ \t](` + pasteQuotedArg + `|[^\s'"/\\*][^\s'"]{0,255})[ \t]+/user:`)
 	// ConvertTo-SecureString 'X' -AsPlainText; the flag alone also marks the
 	// literal, since "$password = ConvertTo-SecureString" is itself redacted
 	// by the password assignment rule before this scanner runs.
@@ -906,7 +919,7 @@ func collectPasteCommandCredentials(in string, spans *[]pasteSpan) {
 	appendPasteArgument(in, pasteShortPasswordOptionRE, spans, func(value string) bool {
 		return pastePasswordValue(value, false)
 	})
-	for _, re := range []*regexp.Regexp{pasteSSHPassRE, pasteCmdkeyPassRE, pasteNetUseRE, pasteCredentialObjectRE} {
+	for _, re := range []*regexp.Regexp{pasteSSHPassRE, pasteCmdkeyPassRE, pasteNetUseRE, pasteCredentialObjectRE, pasteMySQLAttachedPasswordRE} {
 		appendPasteArgument(in, re, spans, pasteCommandLiteralSecret)
 	}
 	for _, match := range pasteSecureStringRE.FindAllStringSubmatchIndex(in, -1) {

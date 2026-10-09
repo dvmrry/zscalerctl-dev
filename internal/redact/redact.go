@@ -1238,6 +1238,12 @@ func scanShortFreeTextTokens(out string, report Report, mode Mode) (string, Repo
 // that contain a vowel, and at least 20% vowels in those runs. Random keys
 // scatter their digits and rarely form pronounceable lowercase runs.
 func readsAsNameWithNumbers(token string) bool {
+	return nameWithNumbers(token, 2)
+}
+
+// nameWithNumbers is readsAsNameWithNumbers with at most maxDigitRuns runs of
+// digits.
+func nameWithNumbers(token string, maxDigitRuns int) bool {
 	digitRuns, letters, wordLetters, wordVowels := 0, 0, 0, 0
 	for i := 0; i < len(token); {
 		ch := token[i]
@@ -1265,7 +1271,7 @@ func readsAsNameWithNumbers(token string) bool {
 			i++
 		}
 	}
-	return digitRuns <= 2 && letters > 0 && wordLetters*2 >= letters && wordVowels*5 >= wordLetters
+	return digitRuns <= maxDigitRuns && letters > 0 && wordLetters*2 >= letters && wordVowels*5 >= wordLetters
 }
 
 // dottedNameSegment reports whether in[start:end] sits between dots, as a
@@ -1736,7 +1742,7 @@ type genericCredentialLabel struct {
 	start      int  // label word start
 	wordEnd    int  // first byte after the label word
 	valueStart int  // first byte after the separator and wrappers
-	password   bool // password, passwd or pwd: word-and-number values count
+	password   bool // a password or explicit credential label: word-and-number values count
 }
 
 // scanGenericCredentialLabels redacts credential-shaped values that follow a
@@ -1763,9 +1769,14 @@ func scanGenericCredentialLabels(in string) (string, int) {
 		case "password", "passwd", "pwd":
 			password = true
 		}
-		if labelWord == "key" && nonCredentialKeyModifiers[labelModifierBefore(in, word[0])] {
+		modifier := labelModifierBefore(in, word[0])
+		if labelWord == "key" && nonCredentialKeyModifiers[modifier] {
 			continue // "Primary key", "PartitionKey", "Tag key": not a credential
 		}
+		// "API key:", "Access token:", "Client secret:" name the credential
+		// explicitly, so a word-built value after them is still judged as a
+		// credential, as after a password label.
+		wordValues := password || credentialKeyModifiers[modifier]
 		if labelWord == "key" && jsonPairKeyIdentifierAt(in, word[0], word[1]) {
 			continue // {"key": <public identifier>, "value": ...} inside prose
 		}
@@ -1782,7 +1793,7 @@ func scanGenericCredentialLabels(in string) (string, int) {
 		phrased := false
 		if phrase := genericCredentialPhraseRE.FindStringIndex(in[word[1]:]); phrase != nil {
 			if start := word[1] + phrase[1]; start != valueStart && startsCredentialValue(in, start) &&
-				(valueStart < 0 || !credentialShapedValue(credentialValuePrefix(in, valueStart), password)) {
+				(valueStart < 0 || !credentialShapedValue(credentialValuePrefix(in, valueStart), wordValues)) {
 				valueStart = start
 				phrased = true
 			}
@@ -1795,9 +1806,12 @@ func scanGenericCredentialLabels(in string) (string, int) {
 		// Password labels and credential-prefixed labels must be followed
 		// directly by the noun ("Password hash algorithm", "API token ID");
 		// other labels may name it later ("Key rotation implementation commit:").
-		if phrased && phraseNamesMetadata(in[word[1]:valueStart],
-			password || credentialKeyModifiers[labelModifierBefore(in, word[0])]) {
+		if phrased && phraseNamesMetadata(in[word[1]:valueStart], wordValues) {
 			continue
+		}
+		if labelWord == "key" && settingKeyModifiers[modifier] &&
+			settingKeyNameValue(credentialValuePrefix(in, valueStart)) {
+			continue // "Configuration key: EnableQoSForMicrosoftTeams"
 		}
 		if phrased && phraseNamesIdentifiedObject(in[word[1]:valueStart]) &&
 			isPublicIdentifierValue(credentialValuePrefix(in, valueStart)) {
@@ -1807,7 +1821,7 @@ func scanGenericCredentialLabels(in string) (string, int) {
 		if labelWord == "pwd" && readableWorkingDirectoryAt(in, valueStart) {
 			continue
 		}
-		labels = append(labels, genericCredentialLabel{word[0], word[1], valueStart, password && !phrased})
+		labels = append(labels, genericCredentialLabel{word[0], word[1], valueStart, wordValues && !phrased})
 	}
 	if len(labels) == 0 {
 		return in, 0
@@ -1899,14 +1913,7 @@ const (
 // keys, hot keys, registry keys and public keys. "Primary" is deliberately
 // absent: Azure names subscription and storage access keys "Primary key".
 var nonCredentialKeyModifiers = map[string]bool{
-	// Data and configuration keys that name a record or setting. Function
-	// and policy keys are absent: Azure Function keys and B2C policy keys
-	// are secrets.
-	"business": true, "routing": true, "deduplication": true, "dedup": true,
-	"configuration": true,
-	"setting":       true, "settings": true, "image": true, "shortcut": true,
-	"inventory": true, "circuit": true, "route": true, "location": true, "rack": true,
-	"natural": true, "candidate": true,
+	"dedup": true, "natural": true, "candidate": true,
 	"foreign": true, "partition": true, "row": true, "sort": true,
 	"range": true, "composite": true, "surrogate": true, "unique": true, "lookup": true,
 	"tag": true, "object": true, "cache": true, "idempotency": true, "hot": true,
@@ -1943,6 +1950,43 @@ var labelMetadataWords = map[string]bool{
 	"runbook": true, "message": true, "schedule": true, "expires": true, "expired": true,
 	"standard": true, "requirement": true, "requirements": true, "rule": true, "rules": true,
 	"guidance": true, "date": true, "updated": true, "created": true,
+}
+
+// settingKeyModifiers name a setting, record or route rather than a
+// credential ("Configuration key: EnableQoSForMicrosoftTeams", "Routing key:
+// HQ01FW02WAN1"). Unlike nonCredentialKeyModifiers they exempt only a
+// name-shaped value: a random value after them is still a key. Function and
+// policy keys are absent: Azure Function keys and B2C policy keys are secrets.
+var settingKeyModifiers = map[string]bool{
+	"business": true, "routing": true, "deduplication": true, "configuration": true,
+	"setting": true, "settings": true, "image": true, "shortcut": true,
+	"inventory": true, "circuit": true, "route": true, "location": true, "rack": true,
+}
+
+// settingKeyNameValue reports whether a value after a settingKeyModifiers label
+// reads as a setting or record name: not key-shaped, a public identifier,
+// built from words with at most four numbers ("WindowsServer2022Datacenter21H2"),
+// a short single-case code, or a code of short segments ("NYC01/IDF02/SW03",
+// "nyc1-sw02-eth3-dmz4").
+func settingKeyNameValue(value string) bool {
+	return !credentialShapedValue(value, false) || isPublicIdentifierValue(value) ||
+		nameWithNumbers(value, 4) || len(value) <= 16 && !hasMixedCaseLetters(value) ||
+		shortSegmentCode(value)
+}
+
+// shortSegmentCode reports a value split by "/", "-", "_" or "." into
+// segments of at most eight characters.
+func shortSegmentCode(value string) bool {
+	segments := strings.FieldsFunc(value, func(r rune) bool { return strings.ContainsRune("/-_.", r) })
+	if len(segments) < 2 {
+		return false
+	}
+	for _, segment := range segments {
+		if len(segment) > 8 {
+			return false
+		}
+	}
+	return true
 }
 
 // identifiedObjectNouns name an object whose identifier follows a credential
@@ -2627,7 +2671,7 @@ func publicAssignedValue(token string) bool {
 	for _, label := range genericCredentialLabels {
 		if strings.Contains(name, label) {
 			modifier := strings.TrimRight(strings.TrimSuffix(name, "key"), "_-")
-			return strings.HasSuffix(name, "key") && nonCredentialKeyModifiers[modifier]
+			return strings.HasSuffix(name, "key") && (nonCredentialKeyModifiers[modifier] || settingKeyModifiers[modifier])
 		}
 	}
 	return isReadablePath(value) || publicIdentifierAssignmentName(token[:eq])

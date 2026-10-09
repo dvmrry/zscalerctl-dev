@@ -34,6 +34,11 @@ The same Windows ACL limitation applies to individual files created with
 `--output`: mode `0600` does not restrict their inherited ACLs, so select an
 already restricted destination directory.
 
+On Linux, `dump`, `dump --force`, and `diff --from-dump` need `/proc` mounted:
+they open dump directories through `/proc/self/fd` so a FIFO substituted for a
+directory cannot hang them. Without it they fail closed with an error naming
+the unavailable descriptor directory. macOS uses `/dev/fd`.
+
 Windows can atomically publish a dump when the requested destination does not
 exist. Replacing an existing directory (including `dump --force`) fails closed:
 Windows does not provide the directory-exchange primitive needed to avoid a
