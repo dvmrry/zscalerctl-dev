@@ -199,7 +199,13 @@ reviewed wrapper script and point `argv` at that script. Set
 
 **Source/profile selection:** `--config` (or `ZSCALERCTL_CONFIG`) chooses which
 config file to load; `--profile` (or `ZSCALERCTL_PROFILE`) chooses which named
-profile within that file to use.
+profile within that file to use. Without either, the file's `default_profile`
+(or a profile named `default`) is used. When the file defines more than one
+profile and the choice came from that default, a command that reads a tenant
+and succeeds prints one line to stderr naming the profile, for example
+`zscalerctl: using profile "prod" (default_profile; 2 profiles configured); pass --profile to choose`.
+Stdout is unchanged, and a failing command's stderr is still only its error
+envelope. Pass `--profile` to make the choice explicit.
 
 **Per-field value precedence (highest to lowest):** flag > `ZSCALERCTL_*`
 environment variable > profile value > built-in default. A field set as a flag

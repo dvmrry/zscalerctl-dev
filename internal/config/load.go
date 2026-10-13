@@ -36,8 +36,10 @@ func LoadConfig(environ []string, opts LoadOptions) (Config, error) {
 	}
 
 	requestedProfile := strings.TrimSpace(opts.Profile)
+	profileSource := ProfileFromFlag
 	if requestedProfile == "" {
 		requestedProfile = strings.TrimSpace(env[EnvProfile])
+		profileSource = ProfileFromEnv
 	}
 	configPath, explicitConfig := configPathFromOptions(env, opts)
 	profile, loaded, err := loadProfileFile(configPath, requestedProfile, explicitConfig)
@@ -62,6 +64,11 @@ func LoadConfig(environ []string, opts LoadOptions) (Config, error) {
 	cfg.Source = "config"
 	cfg.ConfigFile = configPath
 	cfg.Profile = profile.name
+	cfg.ProfileCount = profile.count
+	cfg.ProfileSource = profileSource
+	if requestedProfile == "" {
+		cfg.ProfileSource = profile.defaultSource
+	}
 	if env[EnvAuthMode] == "" {
 		cfg.AuthMode = ""
 	}

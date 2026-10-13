@@ -209,6 +209,12 @@ preserves CLI failure and stops subsequent commands. Use `jq -e` when a
 missing result should itself be an error; a valid NDJSON filter may emit no
 records.
 
+When the config file defines more than one profile and neither `--profile`
+nor `ZSCALERCTL_PROFILE` is set, a successful live read prints
+`zscalerctl: using profile "<name>" (...)` to stderr; a failure's stderr is
+only the error envelope. Pass `--profile` explicitly when more than one
+tenant is configured.
+
 Failures use a JSON envelope on stderr and stable process exits: 0 success, 1
 internal/canceled, 2 usage, 3 missing or invalid credentials, 4 not found or
 unsupported, 5 live API failure, 6 partial dump, and 7 drift detected from

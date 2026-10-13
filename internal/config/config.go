@@ -49,17 +49,39 @@ const (
 var ErrInvalidConfig = errors.New("invalid configuration")
 
 type Config struct {
-	Source       string
-	ConfigFile   string
-	Profile      string
-	AuthMode     AuthMode
-	VanityDomain string
-	Cloud        string
-	Credentials  Credentials
-	ZPA          ZPAConfig
-	ZIALegacy    ZIALegacyCredentials
-	Proxy        Proxy
-	Defaults     Defaults
+	Source     string
+	ConfigFile string
+	Profile    string
+	// ProfileSource and ProfileCount are set when a config file was loaded:
+	// how Profile was chosen and how many profiles the file defines.
+	ProfileSource ProfileSource
+	ProfileCount  int
+	AuthMode      AuthMode
+	VanityDomain  string
+	Cloud         string
+	Credentials   Credentials
+	ZPA           ZPAConfig
+	ZIALegacy     ZIALegacyCredentials
+	Proxy         Proxy
+	Defaults      Defaults
+}
+
+// ProfileSource says how the active config-file profile was chosen.
+type ProfileSource string
+
+const (
+	ProfileFromFlag           ProfileSource = "flag"
+	ProfileFromEnv            ProfileSource = "env"
+	ProfileFromDefaultProfile ProfileSource = "default_profile"
+	ProfileFromBuiltinDefault ProfileSource = "builtin_default"
+)
+
+// ImplicitProfileAmongMany reports whether the profile came from the config
+// file's default rather than --profile or ZSCALERCTL_PROFILE while the file
+// defines more than one profile, so the tenant may not be the one intended.
+func (c Config) ImplicitProfileAmongMany() bool {
+	implicit := c.ProfileSource == ProfileFromDefaultProfile || c.ProfileSource == ProfileFromBuiltinDefault
+	return implicit && c.ProfileCount > 1
 }
 
 type Credentials struct {

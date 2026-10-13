@@ -35,6 +35,10 @@ type App struct {
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
+	// notices collects operator notices from live reads (the implicitly
+	// chosen profile). Run writes them to redacted stderr only when it
+	// succeeds, so a failure's stderr stays one error envelope.
+	notices bytes.Buffer
 
 	machineRuntimeFactory machineRuntimeFactory
 }
@@ -180,10 +184,19 @@ func callWithSpinner[T any](a *App, opts globalOptions, msg string, fn func() (T
 	return fn()
 }
 
-func (a *App) Run(ctx context.Context, args []string) error {
+func (a *App) Run(ctx context.Context, args []string) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Live-read notices are written only when the whole run succeeds,
+	// including --output publication: a failing run's stderr is the single
+	// error envelope the caller writes after Run returns.
+	a.notices.Reset()
+	defer func() {
+		if err == nil {
+			a.writeNotices()
+		}
+	}()
 	// __complete / __completeNoDesc: Cobra's shell-completion protocol. These tokens
 	// must bypass parseGlobal entirely so that global flags appearing AFTER
 	// __complete (e.g. "__complete --log-level ''") are not consumed by the
@@ -216,6 +229,17 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.runParsed(ctx, opts, rest)
+}
+
+// writeNotices writes collected notices to stderr through the redactor.
+func (a *App) writeNotices() {
+	if a.notices.Len() == 0 {
+		return
+	}
+	w := redact.NewWriter(a.err, redact.ModeStandard)
+	_, _ = w.Write(a.notices.Bytes())
+	_ = w.Close()
+	a.notices.Reset()
 }
 
 func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) error {
@@ -961,6 +985,7 @@ func (a *App) defaultMachineRuntime(ctx context.Context, cfg config.Config, opts
 		Timeout:    opts.timeout,
 		Catalog:    a.resourceCatalog(),
 		DiagLogger: a.sdkDiagLogger(opts),
+		Notices:    &a.notices,
 	})
 }
 

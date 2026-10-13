@@ -65,6 +65,7 @@ func (a *App) readAdminAuditLogsStatus(
 		NoCache:    opts.noCache,
 		Catalog:    a.resourceCatalog(),
 		DiagLogger: a.sdkDiagLogger(opts),
+		Notices:    &a.notices,
 	})
 }
 

@@ -159,6 +159,7 @@ func (a *App) executeDump(
 		NoCache:      opts.noCache,
 		Catalog:      a.resourceCatalog(),
 		DiagLogger:   a.sdkDiagLogger(opts),
+		Notices:      &a.notices,
 	})
 	if err != nil {
 		return machine.DumpResult{}, err

@@ -228,7 +228,10 @@ Legacy ZIA credentials (with \fB_FILE\fR variants for password and API key)
 when \fBZSCALERCTL_AUTH_MODE=zia-legacy\fR.
 .TP
 .B ZSCALERCTL_PROFILE
-Default for \fB\-\-profile\fR.
+Default for \fB\-\-profile\fR. With neither set, the config file's
+\fBdefault_profile\fR is used; when the file defines more than one profile,
+a command that reads a tenant and succeeds prints a one-line stderr notice
+naming it. A failing command's stderr is only its error envelope.
 .TP
 .B ZSCALERCTL_CONFIG
 Default config file path for profile loading. Environment variables override
