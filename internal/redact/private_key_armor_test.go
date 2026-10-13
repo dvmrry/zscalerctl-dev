@@ -61,6 +61,11 @@ func TestPrivateKeyArmorRedactsCompletely(t *testing.T) {
 		{"begin without trailing dashes", "-----BEGIN RSA PRIVATE" + " KEY\n" + strings.Join(body, "\n")},
 		{"begin with four dashes", "----BEGIN RSA PRIVATE" + " KEY-----\n" + strings.Join(body, "\n")},
 		{"begin with doubled spaces", "-----BEGIN  RSA PRIVATE" + "  KEY-----\n" + strings.Join(body, "\n")},
+		// Labels with digits and punctuation.
+		{"rsa1 label", "-----BEGIN RSA1 PRIVATE" + " KEY-----\n" + strings.Join(body, "\n")},
+		{"ssh2 label", "---- BEGIN SSH2 ENCRYPTED PRIVATE" + " KEY ----\n" + strings.Join(body, "\n")},
+		{"pkcs8 label", "-----BEGIN PKCS8 PRIVATE" + " KEY-----\n" + strings.Join(body, "\n")},
+		{"x9.42 label", "-----BEGIN X9.42 DH PRIVATE" + " KEY-----\n" + strings.Join(body, "\n")},
 	} {
 		for _, scanner := range allStringScanners {
 			got, report := scanner.scan(redact.New(redact.ModeStandard), tc.input)

@@ -1592,7 +1592,7 @@ func buildBaseRules() []rule {
 		// key in that value is redacted with it.
 		{
 			name:        "private_key_block",
-			re:          regexp.MustCompile(`(?is)-{3,}[ \t]*BEGIN[ \t]+[A-Z \t]*PRIVATE[ \t]+KEY.*`),
+			re:          regexp.MustCompile(`(?is)-{3,}[ \t]*BEGIN[ \t]+[A-Z0-9 \t._-]*PRIVATE[ \t]+KEY.*`),
 			replacement: markerPrivateKey,
 			prefilter:   containsFold("private"),
 		},
