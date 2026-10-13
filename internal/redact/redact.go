@@ -1580,23 +1580,21 @@ func classifyJSONKey(key string) ([3]jsonSensitiveClassification, int) {
 
 func buildBaseRules() []rule {
 	rules := []rule{
+		// A private key BEGIN line redacts everything after it to the end of the
+		// text, whether or not an END line follows. Where the armour ends cannot
+		// be told from its contents: PEM and PGP headers hold any character
+		// (including an END-like line), line breaks may be raw, escaped or
+		// mixed, and a key may be truncated, so any rule that stops early can
+		// leave key material behind. The BEGIN line is matched in any case and
+		// with loose dashes and spacing for the same reason. Projection scans
+		// each field value on its own and JSON output is scanned per decoded
+		// string, so the text is normally a single field value; prose after the
+		// key in that value is redacted with it.
 		{
 			name:        "private_key_block",
-			re:          regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----.*?-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----`),
+			re:          regexp.MustCompile(`(?is)-{3,}[ \t]*BEGIN[ \t]+[A-Z \t]*PRIVATE[ \t]+KEY.*`),
 			replacement: markerPrivateKey,
-			prefilter:   containsFold("private key"),
-		},
-		// A private key pasted without its END line (truncated, or cut off by a
-		// field limit): redact from the BEGIN line through the armour body that
-		// follows, which is Base64, line breaks (raw or JSON-escaped) and PEM or
-		// PGP headers ("Proc-Type: 4,ENCRYPTED", "Version: ..."). It stops at the
-		// first character armour cannot contain, so later prose ending in
-		// punctuation survives.
-		{
-			name:        "private_key_block",
-			re:          regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----(?:[A-Za-z0-9+/=:,. \t\r\n-]|\\[nrt])*`),
-			replacement: markerPrivateKey,
-			prefilter:   containsFold("private key"),
+			prefilter:   containsFold("private"),
 		},
 		{
 			name:        "jwt",
