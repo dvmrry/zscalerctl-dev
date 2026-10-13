@@ -488,8 +488,9 @@ func TestExecutorFiltersNestedPathsElementByElement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProjectRecordsAndVerify() error = %v, want nil", err)
 	}
+	loader := &fakeBrowserLoader{records: projected}
 	executor := machine.Executor{
-		Browser:   &fakeBrowserLoader{records: projected},
+		Browser:   loader,
 		Catalog:   resources.ResourceCatalog{spec},
 		Redaction: redact.ModeStandard,
 	}
@@ -514,7 +515,11 @@ func TestExecutorFiltersNestedPathsElementByElement(t *testing.T) {
 	if want := []map[string]any{{"name": "alice"}}; !reflect.DeepEqual(got.Records, want) {
 		t.Fatalf("Executor.Execute(groups.name filter).Records = %#v, want %#v", got.Records, want)
 	}
+	loader.calls = nil
 	got, err = executor.Execute(context.Background(), request("groups.notAField"))
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(groups.notAField filter) loader calls = %#v, want none", loader.calls)
+	}
 	if err == nil {
 		t.Fatal("Executor.Execute(groups.notAField filter) error = nil, want usage MachineError")
 	}

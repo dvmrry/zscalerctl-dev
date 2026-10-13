@@ -689,6 +689,27 @@ func TestNestedFilterPathsMatchListElements(t *testing.T) {
 	}
 }
 
+// TestRepeatedNestedFiltersMatchIndependently pins record-level AND: each
+// dotted filter may be satisfied by a different list element.
+func TestRepeatedNestedFiltersMatchIndependently(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "alice", "groups": []any{
+			map[string]any{"id": 10, "name": "APP_DEV"},
+			map[string]any{"id": 11, "name": "Ops"},
+		}},
+	)
+	got := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{
+		{Field: "groups.name", Value: "APP_DEV"},
+		{Field: "groups.id", Value: "11"},
+	}, "")
+	if got.Len() != 1 {
+		t.Fatalf("FilterProjectedRecords(groups.name=APP_DEV, groups.id=11) records = %d, want 1", got.Len())
+	}
+}
+
 func TestNestedFilterPathsValidateAgainstNestedCatalog(t *testing.T) {
 	t.Parallel()
 
