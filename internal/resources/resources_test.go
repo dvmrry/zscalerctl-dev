@@ -648,6 +648,146 @@ func TestNarrowProjectedRecordsRejectsUnknownFilter(t *testing.T) {
 	}
 }
 
+func TestNestedFilterPathsMatchListElements(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "alice", "groups": []any{
+			map[string]any{"id": 10, "name": "APP_DEV", "comments": "pasted note"},
+		}, "tags": []any{"dev"}},
+		map[string]any{"id": 2, "name": "bob", "groups": []any{
+			map[string]any{"id": 11, "name": "APP_INFOSEC_DEV"},
+			map[string]any{"id": 12, "name": "Ops"},
+		}, "tags": []any{"dev-ops", "ops"}},
+		map[string]any{"id": 3, "name": "carol", "owner": map[string]any{
+			"manager": map[string]any{"name": "dave"},
+		}},
+	)
+
+	for _, tc := range []struct {
+		name   string
+		filter resources.ProjectedFilter
+		want   []string
+	}{
+		{"exact element name", resources.ProjectedFilter{Field: "groups.name", Value: "APP_DEV"}, []string{"alice"}},
+		{"exact element id", resources.ProjectedFilter{Field: "groups.id", Value: "12"}, []string{"bob"}},
+		{"substring element name", resources.ProjectedFilter{Field: "groups.name", Value: "_dev", Substring: true}, []string{"alice", "bob"}},
+		{"exact never spans elements", resources.ProjectedFilter{Field: "groups.name", Value: "APP_INFOSEC_DEV,Ops"}, nil},
+		{"substring never matches key names", resources.ProjectedFilter{Field: "groups.name", Value: "name", Substring: true}, nil},
+		{"top-level list keeps whole-value matching", resources.ProjectedFilter{Field: "tags", Value: "dev-ops,ops"}, []string{"bob"}},
+		{"two-level object path", resources.ProjectedFilter{Field: "owner.manager.name", Value: "dave"}, []string{"carol"}},
+	} {
+		got := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{tc.filter}, "")
+		var names []string
+		for _, record := range got.Records() {
+			names = append(names, record.Fields()["name"].(string))
+		}
+		if !reflect.DeepEqual(names, tc.want) {
+			t.Errorf("%s: FilterProjectedRecords(%+v) = %v, want %v", tc.name, tc.filter, names, tc.want)
+		}
+	}
+}
+
+// TestRepeatedNestedFiltersMatchIndependently pins record-level AND: each
+// dotted filter may be satisfied by a different list element.
+func TestRepeatedNestedFiltersMatchIndependently(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "alice", "groups": []any{
+			map[string]any{"id": 10, "name": "APP_DEV"},
+			map[string]any{"id": 11, "name": "Ops"},
+		}},
+	)
+	got := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{
+		{Field: "groups.name", Value: "APP_DEV"},
+		{Field: "groups.id", Value: "11"},
+	}, "")
+	if got.Len() != 1 {
+		t.Fatalf("FilterProjectedRecords(groups.name=APP_DEV, groups.id=11) records = %d, want 1", got.Len())
+	}
+}
+
+func TestNestedFilterPathsValidateAgainstNestedCatalog(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	for _, name := range []string{"groups.name", "groups.id", "groups.comments", "owner.manager.name", "owner"} {
+		if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+			Filters: []resources.ProjectedFilter{{Field: name, Value: "x"}},
+		}); err != nil {
+			t.Errorf("ValidateNarrowOptions(%q) error = %v, want nil", name, err)
+		}
+	}
+	for _, name := range []string{"groups.notAField", "name.id", "groups.", ".groups", "groups..name", "tags.name", "owner.manager", "owner.manager.name.x"} {
+		err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+			Filters: []resources.ProjectedFilter{{Field: name, Value: "x"}},
+		})
+		var unknown resources.UnknownFilterError
+		if !errors.As(err, &unknown) {
+			t.Errorf("ValidateNarrowOptions(%q) error = %T %v, want UnknownFilterError", name, err, err)
+		}
+	}
+	// --fields stays top-level only.
+	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{Fields: []string{"groups.name"}}); !errors.Is(err, resources.ErrUnknownField) {
+		t.Errorf("ValidateNarrowOptions(fields groups.name) error = %v, want ErrUnknownField", err)
+	}
+}
+
+func TestResourceSpecRejectsDottedFieldNames(t *testing.T) {
+	t.Parallel()
+
+	dotted := resources.FieldSpec{Name: "idp.name", Classification: resources.ClassOperational, AllowedModes: allTestModes()}
+	for _, tc := range []struct {
+		name string
+		add  func(*resources.ResourceSpec)
+	}{
+		{"top level", func(spec *resources.ResourceSpec) { spec.Fields = append(spec.Fields, dotted) }},
+		{"nested", func(spec *resources.ResourceSpec) {
+			spec.Fields[3].Fields = append(spec.Fields[3].Fields, dotted)
+		}},
+		{"two levels deep", func(spec *resources.ResourceSpec) {
+			spec.Fields[4].Fields[0].Fields = append(spec.Fields[4].Fields[0].Fields, dotted)
+		}},
+	} {
+		spec := nestedNarrowingSpec()
+		tc.add(&spec)
+		if err := spec.Validate(); !errors.Is(err, resources.ErrInvalidResourceSpec) {
+			t.Errorf("%s: Validate(field idp.name) error = %v, want ErrInvalidResourceSpec", tc.name, err)
+		}
+	}
+}
+
+func TestNestedFilterPathsCannotReachDroppedFields(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	source := []resources.SourceRecord{resources.NewSourceRecord(map[string]any{
+		"id": 1, "name": "alice", "groups": []any{
+			map[string]any{"id": 10, "name": "APP_DEV", "comments": "pasted note"},
+		},
+	})}
+	// Share mode drops groups.comments and groups.name; paranoid drops groups.
+	for _, tc := range []struct {
+		mode   redact.Mode
+		filter resources.ProjectedFilter
+	}{
+		{redact.ModeShare, resources.ProjectedFilter{Field: "groups.comments", Value: "pasted", Substring: true}},
+		{redact.ModeShare, resources.ProjectedFilter{Field: "groups.name", Value: "APP_DEV"}},
+		{redact.ModeParanoid, resources.ProjectedFilter{Field: "groups.id", Value: "10"}},
+	} {
+		projected, _, err := resources.ProjectRecordsAndVerify(spec, tc.mode, source)
+		if err != nil {
+			t.Fatalf("ProjectRecordsAndVerify(%s) error = %v", tc.mode, err)
+		}
+		if got := resources.FilterProjectedRecords(projected, []resources.ProjectedFilter{tc.filter}, ""); got.Len() != 0 {
+			t.Errorf("%s: FilterProjectedRecords(%+v) = %#v, want no records", tc.mode, tc.filter, got.Records())
+		}
+	}
+}
+
 func TestFilterProjectedRecordsCannotReachDroppedFields(t *testing.T) {
 	t.Parallel()
 
@@ -2080,6 +2220,45 @@ func narrowingSpec() resources.ResourceSpec {
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "authRequired", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "token", Classification: resources.ClassSecret},
+		},
+	}
+}
+
+// nestedNarrowingSpec mirrors zia/users: groups is a list of objects whose
+// name is dropped in paranoid mode along with the whole list, and whose
+// comments are free text. owner.manager.name is a two-level nested object.
+func nestedNarrowingSpec() resources.ResourceSpec {
+	return resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "users",
+		Operations: resources.ReadOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "id", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: allTestModes()},
+			{Name: "tags", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+			{
+				Name:           "groups",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
+				Fields: []resources.FieldSpec{
+					{Name: "id", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
+					{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}},
+					{Name: "comments", Classification: resources.ClassFreeText, AllowedModes: []redact.Mode{redact.ModeStandard}, StandardFreeTextReason: "test group comments"},
+				},
+			},
+			{
+				Name:           "owner",
+				Classification: resources.ClassTenantConfig,
+				AllowedModes:   allTestModes(),
+				Fields: []resources.FieldSpec{{
+					Name:           "manager",
+					Classification: resources.ClassTenantConfig,
+					AllowedModes:   allTestModes(),
+					Fields: []resources.FieldSpec{
+						{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: allTestModes()},
+					},
+				}},
+			},
 		},
 	}
 }

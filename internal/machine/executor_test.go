@@ -469,6 +469,64 @@ func TestExecutorAppliesFieldsFiltersAndSearchAfterProjection(t *testing.T) {
 	}
 }
 
+func TestExecutorFiltersNestedPathsElementByElement(t *testing.T) {
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "users",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "name", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			{Name: "groups", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}, Fields: []resources.FieldSpec{
+				{Name: "name", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			}},
+		},
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"name": "alice", "groups": []any{map[string]any{"name": "APP_DEV"}}}),
+		resources.NewSourceRecord(map[string]any{"name": "bob", "groups": []any{map[string]any{"name": "APP_INFOSEC_DEV"}}}),
+	})
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify() error = %v, want nil", err)
+	}
+	loader := &fakeBrowserLoader{records: projected}
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeStandard,
+	}
+	request := func(field string) machine.Request {
+		return machine.Request{
+			RequestID:  "req-nested",
+			Capability: machine.CapabilityResourcesRead,
+			Operation:  machine.OperationList,
+			Input: &machine.Input{
+				Product:  "zia",
+				Resource: "users",
+				Fields:   []string{"name"},
+				Filters:  []machine.Filter{{Field: field, Operator: "exact", Value: "APP_DEV"}},
+			},
+		}
+	}
+
+	got, err := executor.Execute(context.Background(), request("groups.name"))
+	if err != nil {
+		t.Fatalf("Executor.Execute(groups.name filter) error = %v, want nil", err)
+	}
+	if want := []map[string]any{{"name": "alice"}}; !reflect.DeepEqual(got.Records, want) {
+		t.Fatalf("Executor.Execute(groups.name filter).Records = %#v, want %#v", got.Records, want)
+	}
+	loader.calls = nil
+	got, err = executor.Execute(context.Background(), request("groups.notAField"))
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(groups.notAField filter) loader calls = %#v, want none", loader.calls)
+	}
+	if err == nil {
+		t.Fatal("Executor.Execute(groups.notAField filter) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "users")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+}
+
 func TestExecutorRejectsUnsupportedInputSemanticsBeforeLoader(t *testing.T) {
 	tests := []struct {
 		name  string

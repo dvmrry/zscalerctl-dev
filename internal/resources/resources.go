@@ -302,7 +302,8 @@ type NarrowOptions struct {
 }
 
 // ValidateNarrowOptions validates all catalog names used by --fields and
-// --filter before a caller performs any read. Validation is intentionally
+// --filter before a caller performs any read. A filter name is a top-level
+// field or a dotted path through nested catalog fields ("groups.name"). Validation is intentionally
 // independent of the active redaction mode: a catalog field that is known but
 // omitted from the mode remains valid, and later projection/filtering makes it
 // non-renderable and therefore non-matching. Empty names are left to the
@@ -329,7 +330,7 @@ func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
 		if filter.Field == "" {
 			continue
 		}
-		if _, ok := catalog[filter.Field]; !ok {
+		if !validFilterPath(spec.Fields, filter.Field) {
 			return UnknownFilterError{
 				Product:  spec.Product,
 				Resource: spec.Name,
@@ -508,18 +509,7 @@ func FilterProjectedRecords(
 
 func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
 	for _, filter := range filters {
-		value, ok := fields[filter.Field]
-		if !ok {
-			return false
-		}
-		rendered := FormatProjectedValue(value)
-		if filter.Substring {
-			if !strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.Value)) {
-				return false
-			}
-			continue
-		}
-		if rendered != filter.Value {
+		if !projectedFilterMatches(fields, filter) {
 			return false
 		}
 	}
@@ -533,6 +523,94 @@ func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, se
 		}
 	}
 	return false
+}
+
+// projectedFilterMatches applies one filter. A top-level field matches on its
+// whole rendered value. A dotted path matches when any value it reaches does:
+// lists along the path, and a list at its end, are matched element by element,
+// so "groups.name=Eng" means some group is named exactly "Eng".
+func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool {
+	values := []any(nil)
+	if value, ok := fields[filter.Field]; ok {
+		values = []any{value}
+	} else if strings.Contains(filter.Field, ".") {
+		values = projectedPathValues(fields, strings.Split(filter.Field, "."))
+	}
+	for _, value := range values {
+		rendered := FormatProjectedValue(value)
+		if filter.Substring {
+			if strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.Value)) {
+				return true
+			}
+			continue
+		}
+		if rendered == filter.Value {
+			return true
+		}
+	}
+	return false
+}
+
+// projectedPathValues returns the values a dotted path reaches in a projected
+// value. Missing keys reach nothing, so fields dropped by projection or
+// redaction never match.
+func projectedPathValues(value any, path []string) []any {
+	switch v := value.(type) {
+	case []any:
+		var out []any
+		for _, item := range v {
+			out = append(out, projectedPathValues(item, path)...)
+		}
+		return out
+	case []string:
+		if len(path) > 0 {
+			return nil
+		}
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	}
+	if len(path) == 0 {
+		return []any{value}
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	next, ok := object[path[0]]
+	if !ok {
+		return nil
+	}
+	return projectedPathValues(next, path[1:])
+}
+
+// validFilterPath reports whether name is a top-level field or a dotted path
+// whose every segment is a catalog field nested in the one before it. A path
+// must end at a field without nested fields, so it always matches leaf
+// values rather than a rendered object.
+func validFilterPath(fields []FieldSpec, name string) bool {
+	if _, ok := fieldByJSONName(fields, name); ok {
+		return true
+	}
+	for _, segment := range strings.Split(name, ".") {
+		field, ok := fieldByJSONName(fields, segment)
+		if !ok {
+			return false
+		}
+		fields = field.Fields
+	}
+	return len(fields) == 0
+}
+
+func fieldByJSONName(fields []FieldSpec, name string) (FieldSpec, bool) {
+	for _, field := range fields {
+		if field.JSONField() == name {
+			return field, true
+		}
+	}
+	return FieldSpec{}, false
 }
 
 // FormatProjectedValue renders a projected value for filter and search
@@ -1191,6 +1269,10 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		}
 		if jsonName == "" {
 			return fmt.Errorf("%w: %s/%s has field without name", ErrInvalidResourceSpec, product, resource)
+		}
+		// "." separates nested fields in --filter paths and projection reports.
+		if strings.Contains(jsonName, ".") {
+			return fmt.Errorf("%w: %s/%s field %s contains '.'", ErrInvalidResourceSpec, product, resource, path)
 		}
 		if _, ok := seen[jsonName]; ok {
 			return fmt.Errorf("%w: %s/%s duplicate field %s", ErrInvalidResourceSpec, product, resource, path)

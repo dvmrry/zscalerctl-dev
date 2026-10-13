@@ -324,6 +324,48 @@ func TestFieldsIsUsageErrorOutsideResourceReads(t *testing.T) {
 	}
 }
 
+// TestFilterNestedPathMatchesGroupMembership is the group-membership report
+// case: a substring filter on the whole groups list matches APP_INFOSEC_DEV
+// for "_DEV", while a nested path matches each group name exactly.
+func TestFilterNestedPathMatchesGroupMembership(t *testing.T) {
+	t.Parallel()
+
+	group := func(id int, name string) map[string]any { return map[string]any{"id": id, "name": name} }
+	reader := fakeResourceReader{list: []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "alice", "groups": []any{group(10, "APP_DEV")}}),
+		resources.NewSourceRecord(map[string]any{"id": 2, "name": "bob", "groups": []any{group(11, "APP_INFOSEC_DEV")}}),
+		resources.NewSourceRecord(map[string]any{"id": 3, "name": "carol"}),
+	}}
+	for _, tc := range []struct{ filter, want string }{
+		{"groups~_DEV", "alice,bob"},
+		{"groups.name=APP_DEV", "alice"},
+		{"groups.id=11", "bob"},
+		{"groups.name~infosec", "bob"},
+	} {
+		args := []string{"--format", "json", "--filter", tc.filter, "zia", "users", "list"}
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+		}
+		var decoded []map[string]any
+		if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(App.Run(%v)) error = %v; output=%q", args, err, out.String())
+		}
+		if got := recordNames(decoded); got != tc.want {
+			t.Errorf("App.Run(%v) records = %q, want %q", args, got, tc.want)
+		}
+	}
+
+	// A path that is not in the nested catalog is a usage error before any read.
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+	args := []string{"--filter", "groups.notAField=x", "zia", "users", "list"}
+	if err := app.Run(context.Background(), args); !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(%v) error = %v, want ErrUsage", args, err)
+	}
+}
+
 func TestFilterInvalidExpressionIsUsageError(t *testing.T) {
 	t.Parallel()
 

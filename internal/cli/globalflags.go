@@ -76,7 +76,7 @@ var globalFlagDefs = []globalFlagDef{
 		name:       "filter",
 		kind:       "stringArray",
 		defaultVal: "",
-		usage:      "narrow list results: key=value (exact) or key~value (substring); repeatable, all must match",
+		usage:      "narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match",
 	},
 	{
 		name:       "format",

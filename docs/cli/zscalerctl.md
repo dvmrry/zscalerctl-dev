@@ -12,7 +12,7 @@ These flags are accepted by every command:
 | `--color` | `string` | `auto` | color output: auto, always, never |
 | `--config` | `string` | `—` | config file path |
 | `--fields` | `string` | `—` | comma-separated output fields to keep (narrows the sanitized output) |
-| `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); repeatable, all must match |
+| `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match |
 | `--format` | `string` | `auto` | output format: auto, table, json, ndjson, pretty |
 | `--from-dump` | `string` | `—` | read resource data from a saved sanitized dump directory |
 | `--limit` | `int` | `0` | bound a list result to a JSON page of this many records |
