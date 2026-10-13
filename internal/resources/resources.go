@@ -587,7 +587,9 @@ func projectedPathValues(value any, path []string) []any {
 }
 
 // validFilterPath reports whether name is a top-level field or a dotted path
-// whose every segment is a catalog field nested in the one before it.
+// whose every segment is a catalog field nested in the one before it. A path
+// must end at a field without nested fields, so it always matches leaf
+// values rather than a rendered object.
 func validFilterPath(fields []FieldSpec, name string) bool {
 	if _, ok := fieldByJSONName(fields, name); ok {
 		return true
@@ -599,7 +601,7 @@ func validFilterPath(fields []FieldSpec, name string) bool {
 		}
 		fields = field.Fields
 	}
-	return true
+	return len(fields) == 0
 }
 
 func fieldByJSONName(fields []FieldSpec, name string) (FieldSpec, bool) {
