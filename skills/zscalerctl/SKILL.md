@@ -181,8 +181,10 @@ extract `.[0].id` from its complete array. Never use the shorthand
 
 `--fields` can only narrow the sanitized projection and applies to resource
 `list`, `get`, and `show`. `--filter key=value` does exact matching,
-`--filter key~value` does case-insensitive substring matching, repeated
-filters are ANDed, and `--search term` scans rendered field values; filters
+`--filter key~value` does case-insensitive substring matching, a key may
+be a dotted path into nested fields (`groups.name=APP_DEV` matches one group
+exactly, element by element), repeated filters are ANDed, and
+`--search term` scans rendered field values; filters
 and search apply to resource `list` only. Unknown `--fields` or
 `--filter` names are usage errors (exit 2) before config and live reads. A
 known field omitted by redaction is silently unavailable for output or

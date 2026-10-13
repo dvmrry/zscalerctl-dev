@@ -211,8 +211,10 @@ not write `list | get | show` as a shell pipeline.
 
 `--fields` applies to resource `list`, `get`, and `show`, and only
 narrows the sanitized projection. `--filter key=value` does exact matching,
-`--filter key~value` does case-insensitive substring matching, repeated
-filters are ANDed, and `--search term` searches rendered field values.
+`--filter key~value` does case-insensitive substring matching, a key may
+be a dotted path into nested fields (`groups.name=APP_DEV` matches one group
+exactly, element by element), repeated filters are ANDed, and
+`--search term` searches rendered field values.
 Filters and search apply to resource `list` only. Unknown `--fields` or
 `--filter` names are usage errors (exit 2) before configuration and live
 reads. A known field that projection or redaction omits is unavailable for

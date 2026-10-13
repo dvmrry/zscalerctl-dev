@@ -56,7 +56,7 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  --no-cache")
 	fmt.Fprintln(w, "  --log-level off|error|warn|info|debug")
 	fmt.Fprintln(w, "  --fields <a,b,c>")
-	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; repeatable, all must match)")
+	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; key may be a nested path; repeatable, all must match)")
 	fmt.Fprintln(w, "  --search <term>                  (list only; case-insensitive, any field)")
 }
 
