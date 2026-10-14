@@ -195,8 +195,9 @@ share mode omits zia/users fields: ...`), including nested paths such as
 `groups.name`; standard mode omits only secrets and prints no mode-omission notice. Secret
 fields never render and are named only when requested (`schema list` marks
 them). Any other missing key means the source had no renderable value (empty,
-null, or outside the catalog's projection); it never means false or
-unconfigured. No matches is a successful empty result.
+null, or outside the catalog's projection). For a list field such as
+`ipAddresses` or `groups`, a missing key normally means none are set; it never
+means false. No matches is a successful empty result.
 
 Use NDJSON only when the consumer intentionally handles a complete record
 stream:

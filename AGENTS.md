@@ -266,7 +266,8 @@ including nested paths such as `groups.name`; standard mode omits only secrets,
 so it prints no mode-omission notice. Secret fields never render in any mode and are named
 only when requested; `schema list` marks them. Any other missing key means the
 source had no renderable value for it (empty, null, or a value outside the
-catalog's projection); it never means false or unconfigured. Omitted fields
+catalog's projection). For a list field such as `ipAddresses` or `groups`, a
+missing key normally means none are set; it never means false. Omitted fields
 cannot be recovered except by reading in a mode that renders them.
 
 ```sh

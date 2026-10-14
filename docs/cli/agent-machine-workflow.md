@@ -225,7 +225,8 @@ including nested paths such as `groups.name`; standard mode omits only
 secrets and prints no mode-omission notice. Secret fields never render and are named only
 when requested (`schema list` marks them). Any other missing key means the
 source had no renderable value (empty, null, or outside the catalog's
-projection); do not interpret it as false or unconfigured. The stdio engine
+projection). For a list field such as `ipAddresses` or `groups`, a missing key
+normally means none are set; do not interpret it as false. The stdio engine
 does not emit this notice; machine clients read `allowed_modes` from the
 catalog instead. No matches is a successful empty result.
 
