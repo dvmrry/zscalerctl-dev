@@ -164,3 +164,16 @@ func TestGapStatusFollowsReason(t *testing.T) {
 		}
 	}
 }
+
+// TestPolicyExportIsTelemetry pins a classification the reason definitions
+// alone leave open: RESOURCE_QUEUE.md lists ZIA policy_export in the
+// "Reporting, discovery, log, or export telemetry" bucket, which names a
+// future report track, so it is deferred telemetry, not an action.
+func TestPolicyExportIsTelemetry(t *testing.T) {
+	t.Parallel()
+
+	gap, ok := FindGap(ProductZIA, "policy-export")
+	if !ok || gap.Reason != GapTelemetry || gap.Status != GapStatusDeferred {
+		t.Errorf("FindGap(zia, policy-export) = %+v, %v; want deferred telemetry", gap, ok)
+	}
+}

@@ -28,11 +28,12 @@ const (
 	// GapCredentialMaterial: keys, passwords, certificates or enrollment
 	// material. Never read.
 	GapCredentialMaterial GapReason = "credential_material"
-	// GapAction: mutating, execution or export actions. Never invoked by a
-	// read-only tool.
+	// GapAction: mutating or executing actions (activate, submit, move,
+	// remove). Never invoked by a read-only tool.
 	GapAction GapReason = "action"
-	// GapTelemetry: reports, logs and exports rather than configuration; a
-	// separate report command track may cover them later.
+	// GapTelemetry: reports, logs and read-only exports rather than
+	// configuration inventory; a separate report command track may cover them
+	// later.
 	GapTelemetry GapReason = "telemetry"
 	// GapAlternateView: a lookup, lite or diagnostic view rather than
 	// configuration; Instead names the covered resource it is a view of, if
