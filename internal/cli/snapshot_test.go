@@ -436,3 +436,31 @@ func (panicSavedDumpReader) Show(context.Context, resources.Product, string) (re
 }
 
 var _ ResourceReader = panicSavedDumpReader{}
+
+// TestFromDumpCountByUsesStoredMode: a dump read keeps the mode it was saved
+// in, so --count-by is checked against that mode before anything is counted,
+// never against a mode the saved values were not projected for.
+func TestFromDumpCountByUsesStoredMode(t *testing.T) {
+	standardDir, catalog := writeCLISavedDump(t, redact.ModeStandard, false, false)
+	app, out, _ := newSavedDumpTestApp(t, catalog)
+	args := []string{"--format", "json", "--from-dump", standardDir, "--count-by", "share_only", "zia", "locations", "list"}
+	err := app.Run(context.Background(), args)
+	if !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), "--redaction share") {
+		t.Fatalf("App.Run(%v) error = %v, want a usage error naming share", args, err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+
+	shareDir, catalog := writeCLISavedDump(t, redact.ModeShare, true, false)
+	app, out, _ = newSavedDumpTestApp(t, catalog)
+	args = []string{"--format", "json", "--from-dump", shareDir, "--count-by", "country", "zia", "locations", "list"}
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+	}
+	want := `{"count_by":["country"],"records":2,"distinct":2,"counts":[{"values":{"country":"DE"},"count":1},{"values":{"country":"US"},"count":1}]}`
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, out.Bytes()); err != nil || compact.String() != want {
+		t.Fatalf("stdout = %s (err %v), want %s", out.String(), err, want)
+	}
+}

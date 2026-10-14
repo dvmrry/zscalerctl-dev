@@ -40,8 +40,10 @@ type countResult struct {
 
 func (countResult) OutputSafe() {}
 
-// countRow renders as one flat object: each counted path with its value (null
-// when the record had none), then the count.
+// countRow renders as {"values": {<path>: value, ...}, "count": N}, the
+// values keyed by counted path in --count-by order (null when the record had
+// none). Nesting the values keeps the row keys fixed, whatever the paths are
+// called.
 type countRow struct {
 	paths []string
 	row   resources.CountRow
@@ -49,18 +51,9 @@ type countRow struct {
 
 func (countRow) OutputSafe() {}
 
-func (r countRow) countKey() string {
-	for _, path := range r.paths {
-		if path == "count" {
-			return "record_count"
-		}
-	}
-	return "count"
-}
-
 func (r countRow) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteByte('{')
+	b.WriteString(`{"values":{`)
 	for i, path := range r.paths {
 		key, err := json.Marshal(path)
 		if err != nil {
@@ -70,12 +63,14 @@ func (r countRow) MarshalJSON() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if i > 0 {
+			b.WriteByte(',')
+		}
 		b.Write(key)
 		b.WriteByte(':')
 		b.Write(value)
-		b.WriteByte(',')
 	}
-	fmt.Fprintf(&b, "%q:%d}", r.countKey(), r.row.Count)
+	fmt.Fprintf(&b, `},"count":%d}`, r.row.Count)
 	return b.Bytes(), nil
 }
 

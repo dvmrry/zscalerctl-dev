@@ -115,12 +115,15 @@ Count list records instead of listing them. Records are grouped by the
 rendered values at each comma-separated path; a path such as
 \fBgroups.id\fR counts per list element, once per record, so counting users by
 \fBgroups.id\fR gives members per group. A record with no value at a path
-counts under null, so the counts cover every record. JSON output is an object
-with \fBcount_by\fR, \fBrecords\fR (records counted), \fBdistinct\fR (value
-combinations) and \fBcounts\fR (largest first); NDJSON emits one count row per
+counts under null, so the counts cover every record. Paths through the same
+list pair values from the same element, so \fBgroups.id,groups.name\fR gives
+each group its own name; paths on different branches combine. JSON output is
+an object with \fBcount_by\fR, \fBrecords\fR (records counted),
+\fBdistinct\fR (value combinations) and \fBcounts\fR (largest first), each
+count \fB{"values": {...}, "count": N}\fR; NDJSON emits one count row per
 line. Filters and search apply first; \fB\-\-limit\fR \fIN\fR keeps the
 \fIN\fR largest counts. Valid for \fBlist\fR operations only; combining it with
-\fB\-\-fields\fR or \fB\-\-offset\fR, naming an object rather than a leaf, or
+\fB\-\-fields\fR or \fB\-\-offset\fR, repeating a path, naming an object rather than a leaf, or
 naming a field the active mode omits is a usage error (exit 2) before any read.
 .TP
 .BI \-\-search " term"

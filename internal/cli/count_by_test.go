@@ -33,13 +33,17 @@ func TestCountByCountsMembersPerGroup(t *testing.T) {
 		want string
 	}{
 		{"json", []string{"--format", "json", "--count-by", "groups.id"},
-			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"groups.id":10,"count":2},{"groups.id":11,"count":1},{"groups.id":null,"count":1}]}`},
+			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"values":{"groups.id":10},"count":2},{"values":{"groups.id":11},"count":1},{"values":{"groups.id":null},"count":1}]}`},
 		{"json top 1", []string{"--format", "json", "--count-by", "groups.id", "--limit", "1"},
-			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"groups.id":10,"count":2}]}`},
+			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"values":{"groups.id":10},"count":2}]}`},
 		{"after filter", []string{"--format", "json", "--count-by", "groups.id", "--filter", "groups.name=OPS"},
-			`{"count_by":["groups.id"],"records":1,"distinct":2,"counts":[{"groups.id":10,"count":1},{"groups.id":11,"count":1}]}`},
+			`{"count_by":["groups.id"],"records":1,"distinct":2,"counts":[{"values":{"groups.id":10},"count":1},{"values":{"groups.id":11},"count":1}]}`},
+		// Strata review: paths through the same list pair per element, and a
+		// filter keeps the record, not the element, so both of alice's groups count.
+		{"paired paths", []string{"--format", "json", "--count-by", "groups.id,groups.name", "--filter", "groups.name=OPS"},
+			`{"count_by":["groups.id","groups.name"],"records":1,"distinct":2,"counts":[{"values":{"groups.id":10,"groups.name":"APP_DEV"},"count":1},{"values":{"groups.id":11,"groups.name":"OPS"},"count":1}]}`},
 		{"ndjson", []string{"--format", "ndjson", "--count-by", "groups.id"},
-			"{\"groups.id\":10,\"count\":2}\n{\"groups.id\":11,\"count\":1}\n{\"groups.id\":null,\"count\":1}"},
+			"{\"values\":{\"groups.id\":10},\"count\":2}\n{\"values\":{\"groups.id\":11},\"count\":1}\n{\"values\":{\"groups.id\":null},\"count\":1}"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -54,7 +58,11 @@ func TestCountByCountsMembersPerGroup(t *testing.T) {
 			if compact := compactJSON(t, got, tc.name != "ndjson"); compact != tc.want {
 				t.Errorf("App.Run(%v) stdout = %s, want %s", args, compact, tc.want)
 			}
+			// Only counted values may appear; groups.name is counted in one case.
 			for _, name := range []string{"alice", "bob", "carol", "APP_DEV"} {
+				if name == "APP_DEV" && strings.Contains(strings.Join(tc.args, " "), "groups.name") {
+					continue
+				}
 				if strings.Contains(out.String(), name) {
 					t.Errorf("App.Run(%v) output contains record value %q", args, name)
 				}
@@ -90,6 +98,7 @@ func TestCountByRejectsInvocationsThatWouldMiscount(t *testing.T) {
 	}{
 		{"mode omits the path", []string{"--redaction", "share", "--count-by", "groups.id", "zia", "users", "list"}, "renders with --redaction standard"},
 		{"object path", []string{"--count-by", "groups", "zia", "users", "list"}, "is an object"},
+		{"repeated path", []string{"--count-by", "groups.id,groups.id", "zia", "users", "list"}, "listed more than once"},
 		{"unknown path", []string{"--count-by", "nope", "zia", "users", "list"}, "is not a field"},
 		{"with fields", []string{"--count-by", "groups.id", "--fields", "id", "zia", "users", "list"}, "--fields cannot be combined"},
 		{"with offset", []string{"--format", "json", "--count-by", "groups.id", "--limit", "1", "--offset", "1", "zia", "users", "list"}, "--offset cannot be combined"},
