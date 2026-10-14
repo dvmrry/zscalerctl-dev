@@ -263,7 +263,7 @@ the mode that renders it; it would otherwise match nothing and read as "no such
 records". When the mode omits fields, a successful read names them on stderr
 (`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`),
 including nested paths such as `groups.name`; standard mode omits only secrets,
-so it prints no notice. Secret fields never render in any mode and are named
+so it prints no mode-omission notice. Secret fields never render in any mode and are named
 only when requested; `schema list` marks them. Any other missing key means the
 source had no renderable value for it (empty, null, or a value outside the
 catalog's projection); it never means false or unconfigured. Omitted fields

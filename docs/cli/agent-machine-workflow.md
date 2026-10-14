@@ -222,7 +222,7 @@ reads. A `--filter` on a known field the active mode omits, or on a secret
 field, is a usage error (exit 2) before any read, naming the mode that renders
 it. When the mode omits fields, a successful read names them on stderr,
 including nested paths such as `groups.name`; standard mode omits only
-secrets and prints no notice. Secret fields never render and are named only
+secrets and prints no mode-omission notice. Secret fields never render and are named only
 when requested (`schema list` marks them). Any other missing key means the
 source had no renderable value (empty, null, or outside the catalog's
 projection); do not interpret it as false or unconfigured. The stdio engine

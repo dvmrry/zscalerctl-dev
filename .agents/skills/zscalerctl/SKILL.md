@@ -192,7 +192,7 @@ and search apply to resource `list` only. Unknown `--fields` or
 usage error (exit 2) before any read, naming the mode that renders it. When
 the mode omits fields, a successful read names them on stderr (`zscalerctl:
 share mode omits zia/users fields: ...`), including nested paths such as
-`groups.name`; standard mode omits only secrets and prints no notice. Secret
+`groups.name`; standard mode omits only secrets and prints no mode-omission notice. Secret
 fields never render and are named only when requested (`schema list` marks
 them). Any other missing key means the source had no renderable value (empty,
 null, or outside the catalog's projection); it never means false or
