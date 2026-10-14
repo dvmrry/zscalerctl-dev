@@ -2015,3 +2015,30 @@ func TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder(t *testing.T) {
 		t.Errorf("ziaPaginate(changed port) = %v, %v; want fail closed", got, err)
 	}
 }
+
+// TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages keeps the
+// order-insensitive comparison exact for numbers: two int64 values that a
+// float64 cannot tell apart are still a changed record.
+func TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID    int64   `json:"id"`
+		Value int64   `json:"value"`
+		Ports []int64 `json:"ports"`
+	}
+	responses := [][]rec{
+		{{1, 1_000_000_000_000_000_000, []int64{9_007_199_254_740_993}}, {2, 0, nil}},
+		{{2, 0, nil}, {1, 1_000_000_000_000_000_001, []int64{9_007_199_254_740_993}}},
+		{{1, 1_000_000_000_000_000_001, []int64{9_007_199_254_740_993}}, {2, 0, nil}},
+	}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := responses[call%len(responses)]
+		call++
+		return out, nil
+	})
+	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+		t.Fatalf("ziaPaginate(large number changed) = %v, %v; want fail closed", got, err)
+	}
+}

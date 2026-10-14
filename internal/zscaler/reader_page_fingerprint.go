@@ -1,6 +1,7 @@
 package zscaler
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"sort"
@@ -130,8 +131,12 @@ func canonicalRecord(record any) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	// UseNumber keeps each number's exact literal; decoding into float64 would
+	// make large integers that differ compare equal.
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
 	var value any
-	if err := json.Unmarshal(payload, &value); err != nil {
+	if err := decoder.Decode(&value); err != nil {
 		return nil, err
 	}
 	canonical, err := canonicalValue(value)
