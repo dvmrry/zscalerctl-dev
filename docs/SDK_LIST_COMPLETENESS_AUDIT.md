@@ -75,6 +75,39 @@ successful truncation when the API clamps the request. It continues to discard
 partial results on request failures and rejects repeated pages, page-width
 growth, and walks beyond the 1,000-page ceiling.
 
+## Endpoints That Ignore Pagination
+
+Live validation on 2026-10-14 against another tenant found the opposite
+behavior on about 25 ZIA list endpoints, `url-categories` among them: every
+request returns the whole collection, whatever `page` and `pageSize` say
+(247 categories for a 5,000- or a 10-record request, and page 2 repeats page
+1). The repeated-page check made each of these lists fail on that tenant.
+
+The paginator now resolves this one repeat. When page 1 was shorter than
+requested and page 2 returns the same records (identical content, or the same
+records per identity in another order, ignoring the order of list elements,
+which `network-services` shuffles on every response; a changed value never
+matches), it requests page 1 again with a page size one below what page 1
+returned. If every record comes back, the endpoint ignores page and size
+alike, and page 1 is everything that endpoint will return; the walk accepts
+it. If fewer come back, the endpoint honors sizes and may be capping each
+response at `min(pageSize, cap)`, so the walk fails closed as before.
+
+Limits, pinned by tests:
+
+- Only a short page 1 is resolved. An endpoint that ignores paging but
+  returns at least the requested page size still fails closed.
+- An endpoint that returns a fixed window smaller than its collection,
+  regardless of both `page` and `pageSize`, is indistinguishable from one
+  returning everything and is accepted. No client can read past such a
+  window, the SDK included.
+- A one-record page cannot be probed smaller and is accepted when page 2
+  repeats it exactly.
+- A record that changes between the requests (same id, different fields)
+  fails the walk closed, so a tenant change cannot pass for an unpaged
+  endpoint.
+- The probe is one extra request outside the page ceiling.
+
 ## Remaining Work
 
 Run focused live count checks for the explicitly single-read list endpoints and

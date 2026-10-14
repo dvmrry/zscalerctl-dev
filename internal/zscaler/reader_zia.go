@@ -120,7 +120,19 @@ var errZiaPaginationValidation = errors.New("zia pagination validation failed")
 // the effective page width; a later short page completes the walk. Repeated
 // pages, repeated record identities, and width growth fail closed because each
 // can indicate that the server ignored pagination or changed its pagination
-// contract mid-read. visitPage may
+// contract mid-read. One repeat can be resolved instead. When page 1 was
+// shorter than requested and page 2 returns the same records (same content,
+// or the same identities in another order), the endpoint ignored the page
+// parameter. That alone does not prove page 1 was complete, because a server
+// that caps each response (min(pageSize, cap)) and ignores the page would look
+// the same. So the walker asks for page 1 again with a page size one smaller:
+// an endpoint that still returns every record ignores paging entirely, and
+// page 1 is everything it will return (observed live for urlCategories, about
+// 25 ZIA list endpoints in all); one that returns fewer honors sizes and may
+// be capping, so the walk fails closed. A fixed window that ignores both page
+// and size is indistinguishable and accepted; no client can read past it.
+// Records must match field for field, so a tenant change between requests
+// still fails closed. visitPage may
 // stop the walk after inspecting a validated page; point lookups use that path
 // so an already-found record does not depend on a later confirmation request.
 func ziaWalkPages[T any](
@@ -138,6 +150,7 @@ func ziaWalkPages[T any](
 		recordsSeen       int
 		pageFingerprints  = make(map[pageFingerprint]struct{})
 		recordIdentities  = make(map[string]struct{})
+		firstPage         pageSummary
 	)
 	for page := 1; ; page++ {
 		if page > ziaMaxPages {
@@ -159,6 +172,22 @@ func ziaWalkPages[T any](
 		fingerprint, err := fingerprintPage(items)
 		if err != nil {
 			return fmt.Errorf("%w: failed to fingerprint zia page %d: %v", errZiaPaginationValidation, page, err)
+		}
+		summary, err := summarizePage(items, fingerprint)
+		if err != nil {
+			return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errZiaPaginationValidation, page, err)
+		}
+		if page == 1 {
+			firstPage = summary
+		} else if page == 2 && firstPage.records < pageSize && summary.sameRecords(firstPage) {
+			complete, err := ziaIgnoresPaging(ctx, firstPage, fetchPage)
+			if err != nil {
+				return err
+			}
+			if complete {
+				return nil
+			}
+			return fmt.Errorf("%w: zia endpoint ignored the page parameter but honored a smaller page size, so page 1 may be capped; completeness cannot be guaranteed", errZiaPaginationValidation)
 		}
 		if _, seen := pageFingerprints[fingerprint]; seen {
 			return fmt.Errorf("%w: zia pagination received repeated page content at page %d; completeness cannot be guaranteed", errZiaPaginationValidation, page)
@@ -187,6 +216,34 @@ func ziaWalkPages[T any](
 		}
 	}
 	return nil
+}
+
+// ziaIgnoresPaging re-requests page 1 with a page size one below what page 1
+// returned. Every record coming back shows the endpoint ignores page and size
+// alike, so page 1 is everything it will return. A one-record page cannot be
+// probed smaller; a cap of one record is not a real server limit, so it is
+// accepted. The probe is one request outside the ziaMaxPages ceiling.
+func ziaIgnoresPaging[T any](
+	ctx context.Context,
+	firstPage pageSummary,
+	fetchPage func(ctx context.Context, page, pageSize int) ([]T, error),
+) (bool, error) {
+	if firstPage.records <= 1 {
+		return true, nil
+	}
+	probe, err := fetchPage(ctx, 1, firstPage.records-1)
+	if err != nil {
+		return false, err
+	}
+	fingerprint, err := fingerprintPage(probe)
+	if err != nil {
+		return false, fmt.Errorf("%w: failed to fingerprint zia page-size probe: %v", errZiaPaginationValidation, err)
+	}
+	summary, err := summarizePage(probe, fingerprint)
+	if err != nil {
+		return false, fmt.Errorf("%w: failed to inspect zia page-size probe: %v", errZiaPaginationValidation, err)
+	}
+	return summary.sameRecords(firstPage), nil
 }
 
 // ziaPaginate collects every validated page. It discards the partial aggregate
