@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 )
@@ -43,12 +44,13 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 		{"503", sdkStatus(http.StatusServiceUnavailable), FailureServerError, 503, true},
 		{"409", sdkStatus(http.StatusConflict), FailureClientError, 409, false},
 		{"pagination", fmt.Errorf("%w: repeated page content", errZiaPaginationValidation), FailurePaginationIncomplete, 0, false},
-		{"not subscribed", errors.New("NOT_SUBSCRIBED: Cloud Browser Isolation subscription is required"), FailureNotSubscribed, 0, false},
+		{"not subscribed", normalizeZIABrowserIsolationListError(errors.New("Cloud Browser Isolation subscription is required")), FailureNotSubscribed, 0, false},
+		{"text mentioning NOT_SUBSCRIBED", errors.New("backend said NOT_SUBSCRIBED somewhere"), FailureUnknown, 0, false},
 		{"decode", fmt.Errorf("decode page: %w", syntaxErr), FailureDecodeFailed, 0, false},
 		{"transport", &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, FailureTransport, 0, true},
 		{"408", sdkStatus(http.StatusRequestTimeout), FailureTimeout, 408, true},
 		{"network timeout", &net.DNSError{Err: "i/o timeout", IsTimeout: true}, FailureTimeout, 0, true},
-		{"wrapped not subscribed", fmt.Errorf("read: %w", errors.New("NOT_SUBSCRIBED: subscription is required")), FailureNotSubscribed, 0, false},
+		{"wrapped not subscribed", fmt.Errorf("read: %w", fmt.Errorf("%w: subscription is required", errNotSubscribed)), FailureNotSubscribed, 0, false},
 		{"other", errors.New("something else"), FailureUnknown, 0, false},
 	}
 	for _, tt := range tests {
@@ -117,5 +119,13 @@ func TestFailureReasonsMatchPublishedSchemas(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Errorf("%s reason enum = %v, want %v", path, got, want)
 		}
+	}
+}
+
+func TestTimeoutReasonMatchesMachineVocabulary(t *testing.T) {
+	t.Parallel()
+
+	if FailureTimeout != machine.FailureReasonTimeout {
+		t.Errorf("zscaler timeout reason %q != machine timeout reason %q", FailureTimeout, machine.FailureReasonTimeout)
 	}
 }

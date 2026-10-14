@@ -37,6 +37,10 @@ func FailureDetailOf(err error) FailureDetail {
 	if errors.As(err, &machineErr) && machineErr.Detail.Reason != "" {
 		return machineErr.Detail
 	}
+	var machineValue MachineError
+	if errors.As(err, &machineValue) && machineValue.Detail.Reason != "" {
+		return machineValue.Detail
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return FailureDetail{Reason: FailureReasonTimeout, Retryable: true}
 	}

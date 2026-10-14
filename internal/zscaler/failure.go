@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"strings"
 )
 
 // Failure reasons are a closed, value-free vocabulary describing why a live
@@ -36,6 +35,10 @@ var failureReasons = []string{
 	FailurePaginationIncomplete, FailureDecodeFailed, FailureNotSubscribed, FailureUnknown,
 }
 
+// errNotSubscribed marks a read the tenant's licence does not include. Its text
+// keeps the SDK wrapper's status-free "NOT_SUBSCRIBED: ..." operator message.
+var errNotSubscribed = errors.New("NOT_SUBSCRIBED")
+
 // classifyFailure maps a live-read error and its HTTP status (0 when the
 // failure happened before or outside an HTTP response) to a failure reason
 // and whether a retry could plausibly succeed.
@@ -64,9 +67,7 @@ func classifyFailure(err error, status int) (reason string, retryable bool) {
 		// The page walker refused a result it could not prove complete
 		// (repeated pages, duplicate records, changing page width).
 		return FailurePaginationIncomplete, false
-	case err != nil && strings.Contains(err.Error(), "NOT_SUBSCRIBED"):
-		// The reader converts the subscription error to a status-free
-		// "NOT_SUBSCRIBED: ..." error; match it wherever it is wrapped.
+	case errors.Is(err, errNotSubscribed):
 		return FailureNotSubscribed, false
 	case errors.As(err, &syntaxErr), errors.As(err, &typeErr):
 		return FailureDecodeFailed, false

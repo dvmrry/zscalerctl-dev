@@ -94,3 +94,15 @@ func TestFailureDetailOfReadsMachineErrorDetail(t *testing.T) {
 		t.Errorf("FailureDetailOf(MachineError) = %+v", got)
 	}
 }
+
+func TestFailureDetailOfReadsWrappedMachineErrorValue(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("boundary: %w", machine.MachineError{
+		Kind:   machine.ErrorKindLiveAccessFailed,
+		Detail: machine.FailureDetail{Reason: "forbidden", Status: 403},
+	})
+	if got := machine.FailureDetailOf(err); got != (machine.FailureDetail{Reason: "forbidden", Status: 403}) {
+		t.Errorf("FailureDetailOf(MachineError value) = %+v", got)
+	}
+}

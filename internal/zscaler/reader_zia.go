@@ -387,7 +387,7 @@ func normalizeZIABrowserIsolationListError(err error) error {
 	const subscriptionMessage = "Cloud Browser Isolation subscription is required"
 	if strings.Contains(err.Error(), subscriptionMessage) {
 		// Match the SDK wrapper's intentionally status-free operator message.
-		return errors.New("NOT_SUBSCRIBED: " + subscriptionMessage)
+		return fmt.Errorf("%w: %s", errNotSubscribed, subscriptionMessage)
 	}
 	return err
 }
