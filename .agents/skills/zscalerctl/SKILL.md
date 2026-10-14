@@ -192,9 +192,11 @@ and search apply to resource `list` only. Unknown `--fields` or
 usage error (exit 2) before any read, naming the mode that renders it. When
 the mode omits fields, a successful read names them on stderr (`zscalerctl:
 share mode omits zia/users fields: ...`), including nested paths such as
-`groups.name`. A key missing from a record is empty or null in the source
-unless that notice names it; it never means false or unconfigured. No matches
-is a successful empty result.
+`groups.name`; standard mode omits only secrets and prints no notice. Secret
+fields never render and are named only when requested (`schema list` marks
+them). Any other missing key means the source had no renderable value (empty,
+null, or outside the catalog's projection); it never means false or
+unconfigured. No matches is a successful empty result.
 
 Use NDJSON only when the consumer intentionally handles a complete record
 stream:

@@ -261,10 +261,13 @@ environment, provider choice, and platform are reviewed and pinned.
 active mode omits, or on a secret field, is also a usage error (exit 2), naming
 the mode that renders it; it would otherwise match nothing and read as "no such
 records". When the mode omits fields, a successful read names them on stderr
-(`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`). A
-key missing from a record is therefore empty or null in the source unless that
-notice names it; it is never false or unconfigured. Omitted fields cannot be
-recovered except by reading in a mode that renders them.
+(`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`),
+including nested paths such as `groups.name`; standard mode omits only secrets,
+so it prints no notice. Secret fields never render in any mode and are named
+only when requested; `schema list` marks them. Any other missing key means the
+source had no renderable value for it (empty, null, or a value outside the
+catalog's projection); it never means false or unconfigured. Omitted fields
+cannot be recovered except by reading in a mode that renders them.
 
 ```sh
 zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive

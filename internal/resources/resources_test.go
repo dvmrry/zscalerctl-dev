@@ -2693,3 +2693,30 @@ func TestOmittedFields(t *testing.T) {
 		t.Errorf("OmittedFields(share, requested groups) = %v, want [groups.name groups.comments]", omitted)
 	}
 }
+
+// TestShippedCatalogRendersEveryNonSecretFieldInStandardMode pins the invariant
+// behind the omitted-field notice: standard mode omits nothing but secrets, so
+// a standard-mode read never prints the notice. A catalog entry that hides a
+// non-secret field from standard mode must change this test and the docs.
+func TestShippedCatalogRendersEveryNonSecretFieldInStandardMode(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range resources.Catalog() {
+		if omitted, _ := resources.OmittedFields(spec, redact.ModeStandard, nil); len(omitted) > 0 {
+			t.Errorf("%s/%s: standard mode omits %v", spec.Product, spec.Name, omitted)
+		}
+	}
+}
+
+func TestSuppressedFieldErrorDistinguishesSecretFromNeverRendered(t *testing.T) {
+	t.Parallel()
+
+	secret := resources.SuppressedFieldError{Product: resources.ProductZIA, Resource: "users", Field: "token", Secret: true}
+	if !strings.Contains(secret.Error(), "is secret") {
+		t.Errorf("secret error = %q, want it to say secret", secret.Error())
+	}
+	never := resources.SuppressedFieldError{Product: resources.ProductZIA, Resource: "users", Field: "odd"}
+	if strings.Contains(never.Error(), "secret") || !strings.Contains(never.Error(), "renders in no redaction mode") {
+		t.Errorf("never-rendered error = %q, want no secret claim", never.Error())
+	}
+}

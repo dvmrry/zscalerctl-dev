@@ -416,8 +416,12 @@ type SuppressedFieldError struct {
 }
 
 func (e SuppressedFieldError) Error() string {
-	if e.Secret || len(e.RenderableIn) == 0 {
+	if e.Secret {
 		return fmt.Sprintf("--filter: %q of %s/%s is secret and never renders, so it cannot be filtered on",
+			e.Field, e.Product, e.Resource)
+	}
+	if len(e.RenderableIn) == 0 {
+		return fmt.Sprintf("--filter: %q of %s/%s renders in no redaction mode, so it cannot be filtered on",
 			e.Field, e.Product, e.Resource)
 	}
 	return fmt.Sprintf("--filter: %q of %s/%s is omitted in %s mode, so it could never match; it renders with --redaction %s",

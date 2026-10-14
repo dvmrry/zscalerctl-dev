@@ -12,9 +12,10 @@ import (
 // active mode leaves out of a resource read. Without it an omitted field is
 // indistinguishable from an empty one, and a caller sampling records concludes
 // the data does not exist. With --fields the notice names only requested
-// fields; without, every non-secret field the mode suppresses. Standard mode
-// suppresses nothing, so it stays quiet. Names come from the catalog (requested
-// names were validated against it), never from tenant data.
+// fields; without, every non-secret field the mode suppresses. In the shipped
+// catalog standard mode omits only secrets (pinned by a resources test), so it
+// stays quiet. Names come from the catalog (requested names were validated
+// against it), never from tenant data.
 func (a *App) noteOmittedFields(spec resources.ResourceSpec, mode redact.Mode, requested []string, fromDump bool) {
 	omitted, secret := resources.OmittedFields(spec, mode, requested)
 	mode = redact.EffectiveMode(mode)

@@ -221,9 +221,13 @@ Filters and search apply to resource `list` only. Unknown `--fields` or
 reads. A `--filter` on a known field the active mode omits, or on a secret
 field, is a usage error (exit 2) before any read, naming the mode that renders
 it. When the mode omits fields, a successful read names them on stderr,
-including nested paths such as `groups.name`. A key missing from a record is
-empty or null in the source unless that notice names it; do not interpret it
-as false or unconfigured. No matches is a successful empty result.
+including nested paths such as `groups.name`; standard mode omits only
+secrets and prints no notice. Secret fields never render and are named only
+when requested (`schema list` marks them). Any other missing key means the
+source had no renderable value (empty, null, or outside the catalog's
+projection); do not interpret it as false or unconfigured. The stdio engine
+does not emit this notice; machine clients read `allowed_modes` from the
+catalog instead. No matches is a successful empty result.
 
 Use NDJSON only when a consumer intentionally handles the complete record
 stream:

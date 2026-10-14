@@ -1073,4 +1073,7 @@ func TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader(t *testing.T)
 	if strings.Contains(err.Error(), "host-canary-01") {
 		t.Fatalf("Executor.Execute(omitted-field filter) error = %q echoes the filter value", err.Error())
 	}
+	if got.Error == nil || strings.Contains(got.Error.Message, "host-canary-01") {
+		t.Fatalf("Executor.Execute(omitted-field filter) response error = %+v, want a message without the filter value", got.Error)
+	}
 }
