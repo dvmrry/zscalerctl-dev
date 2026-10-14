@@ -107,6 +107,8 @@ catalog fields and confirmed references; other known resources explicitly
 report `not_reviewed`. It does not change the existing `schema list` contract.
 `schema references <product> <resource>` lists the catalog fields that point at
 a resource, with the `--filter` path that holds its id.
+`schema gaps [product]` lists the Zscaler surfaces zscalerctl does not read,
+and why, so an absent resource is not mistaken for an empty one.
 These development capabilities must be discovered on the installed binary
 before use. See the [agent workflow](docs/cli/agent-machine-workflow.md),
 [implementation scope and follow-on experiments](docs/CORE_INVESTIGATION_SCOPE.md),

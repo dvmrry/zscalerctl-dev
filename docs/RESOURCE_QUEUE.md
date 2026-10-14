@@ -107,6 +107,14 @@ Do not merge product stacks on green CI alone. Promote only runtime-validated
 resources, and trim or defer any endpoints that fail with tenant/auth
 availability errors.
 
+## Declared Coverage Gaps
+
+The non-coverage records and the deferred backlog below are also declared in
+`internal/resources/gaps_table.go`, which `zscalerctl schema gaps [product]`
+lists and the unknown-resource error consults. When a row here changes, change
+the table too; `TestDeferredBacklogIsDeclared` fails if a backlog row has no
+deferred gap.
+
 ## ZPA Non-Coverage Record
 
 The ZPA catalog intentionally covers only runtime-validated, read-only
@@ -339,7 +347,6 @@ boundary issue, or a deliberate privacy/material hold.
 
 | Resource | Last evidence | Required next probe |
 | --- | --- | --- |
-| `zia/ips-signature-rules` | Legacy-ZIA list request failed; exact status not recorded. | Retry before `ips_policies`; do not use IPS policy adjacency as proof either way. |
 | `zpa/private-cloud-groups` | ZPA endpoint probe failed with status 403. | Treat as permission/role or product-feature availability; retry only if RO client scopes/roles change. |
 | `zpa/private-cloud-controllers` | ZPA endpoint probe failed with status 401. | Treat as auth/config or endpoint-specific authorization; retry only with captured endpoint path and confirmed ZPA customer ID. |
 | `zcc/notification-templates` | Live-smoke returned 404 (OneAPI) in the full ZCC batch. This is a v2 ZCC route (`/zcc/papi/public/v2/notification-templates`, SDK v3.8.38); the v1 ZCC surfaces on the same client succeeded. | ZCC v2 routes are not available on this tenant/cloud. Retry only if the v2 ZCC route is enabled; do not re-probe under the resolved v1 ZCC batch. |
