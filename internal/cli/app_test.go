@@ -2868,7 +2868,7 @@ func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T
 	if err := json.Unmarshal([]byte(lines[0]), &errorRecord); err != nil {
 		t.Fatalf("json.Unmarshal(errors.ndjson line) error = %v, want nil", err)
 	}
-	if errorRecord.Schema != "zscalerctl.dump.error.v1" ||
+	if errorRecord.Schema != "zscalerctl.dump.error.v2" ||
 		errorRecord.Product != "zia" ||
 		errorRecord.Name != "rule-labels" ||
 		errorRecord.Operation != "list" ||
@@ -4164,4 +4164,42 @@ func TestCLIConfigCmdHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// classifiedReadError stands in for the reader's live failure: value-free
+// detail behind a message that must never reach an artifact.
+type classifiedReadError struct{}
+
+func (classifiedReadError) Error() string { return "client_secret=raw-error-value" }
+func (classifiedReadError) FailureDetail() (string, int, bool) {
+	return "rate_limited", 429, true
+}
+
+// TestDumpErrorRecordsCarryTheReadFailureReason drives the dump pipeline end
+// to end: a resource whose read fails with a classified error lands in
+// errors.ndjson with its reason, status and retry hint, and nothing else.
+func TestDumpErrorRecordsCarryTheReadFailureReason(t *testing.T) {
+	t.Parallel()
+
+	reader := selectiveErrorResourceReader{
+		list:     []resources.SourceRecord{resources.NewSourceRecord(map[string]any{"id": "123", "name": "HQ"})},
+		failures: map[string]error{"zia/rule-labels": fmt.Errorf("read: %w", classifiedReadError{})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+	err := app.Run(context.Background(), []string{
+		"dump", "--products", "zia", "--resources", "locations,rule-labels", "--continue-on-error", "--out", outDir,
+	})
+	if !errors.Is(err, cli.ErrPartialDump) {
+		t.Fatalf("App.Run(dump) error = %v, want ErrPartialDump", err)
+	}
+	body, readErr := os.ReadFile(filepath.Join(outDir, "errors.ndjson"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	want := `{"schema":"zscalerctl.dump.error.v2","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed","reason":"rate_limited","status":429,"retryable":true}`
+	if got := strings.TrimSpace(string(body)); got != want {
+		t.Errorf("errors.ndjson = %s, want %s", got, want)
+	}
 }

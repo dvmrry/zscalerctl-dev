@@ -128,6 +128,11 @@ func (c *DumpCollector) dumpPrepared(
 			Resource:  resourceErr.Name,
 			Operation: machine.Operation(resourceErr.Operation),
 			Kind:      resourceErr.Kind,
+			Detail: machine.FailureDetail{
+				Reason:    resourceErr.Reason,
+				Status:    resourceErr.Status,
+				Retryable: resourceErr.Retryable,
+			},
 		}
 	}
 	result := machine.NewDumpResult(
@@ -353,6 +358,7 @@ func dumpRuntimeBoundaryError(err error) error {
 		machineErr.Message = "dump runtime failed"
 		machineErr.Operation = machine.OperationDump
 	}
+	machineErr.AttachFailure(err)
 	return newBoundaryError(machineErr, sentinel)
 }
 
@@ -365,11 +371,13 @@ func dumpCollectionBoundaryError(err error) error {
 			copyErr.Missing = append([]string(nil), machineErr.Missing...)
 			return &copyErr
 		}
-		return newBoundaryError(&machine.MachineError{
+		fallback := &machine.MachineError{
 			Kind:      machine.ErrorKindLiveAccessFailed,
 			Message:   "dump resource read failed",
 			Operation: machine.OperationDump,
-		}, zscaler.ErrLiveAccessFailed)
+		}
+		fallback.AttachFailure(err)
+		return newBoundaryError(fallback, zscaler.ErrLiveAccessFailed)
 	}
 	machineErr := producerErr.machineErr
 	machineErr.Missing = append([]string(nil), producerErr.machineErr.Missing...)

@@ -815,3 +815,45 @@ func assertStringSliceEqual(t *testing.T, label string, got []string, want []str
 		}
 	}
 }
+
+// TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1 pins the v2 error
+// record (reason, status, retryable) and keeps dumps written with v1 records
+// readable.
+func TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	entry := projectedDumpEntry(t, resources.ProductZIA, "locations", []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ"}),
+	})
+	failed := NewResourceError(resources.ProductZIA, "rule-labels", "list", "list_failed").
+		WithFailure("forbidden", 403, false)
+	if err := Write(dir, redact.ModeShare, Result{Entries: []ResourceDump{entry}, Errors: []ResourceError{failed}}); err != nil {
+		t.Fatalf("Write(partial) error = %v", err)
+	}
+	errorsPath := filepath.Join(dir, "errors.ndjson")
+	line := strings.TrimSpace(readFile(t, errorsPath))
+	want := `{"schema":"zscalerctl.dump.error.v2","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed","reason":"forbidden","status":403}`
+	if line != want {
+		t.Fatalf("errors.ndjson = %s, want %s", line, want)
+	}
+	if _, err := ValidateArtifactContext(context.Background(), dir); err != nil {
+		t.Fatalf("ValidateArtifactContext(v2) error = %v", err)
+	}
+
+	v1 := `{"schema":"zscalerctl.dump.error.v1","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed"}` + "\n"
+	if err := os.WriteFile(errorsPath, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateArtifactContext(context.Background(), dir); err != nil {
+		t.Fatalf("ValidateArtifactContext(v1 record) error = %v, want v1 still readable", err)
+	}
+
+	unknown := strings.Replace(v1, "error.v1", "error.v9", 1)
+	if err := os.WriteFile(errorsPath, []byte(unknown), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateArtifactContext(context.Background(), dir); !errors.Is(err, ErrInvalidArtifact) {
+		t.Fatalf("ValidateArtifactContext(unknown schema) error = %v, want ErrInvalidArtifact", err)
+	}
+}

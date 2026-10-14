@@ -54,6 +54,20 @@ type ResourceError struct {
 	Name      string `json:"name"`
 	Operation string `json:"operation"`
 	Kind      string `json:"kind"`
+	// Reason, Status and Retryable say why a live read failed (schema v2).
+	// They are value-free: a closed reason vocabulary, an HTTP status, and a
+	// retry hint. Empty when the failure was not a live read or is unknown.
+	Reason    string `json:"reason,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
+}
+
+// WithFailure returns a copy of the record carrying the read failure detail.
+func (e ResourceError) WithFailure(reason string, status int, retryable bool) ResourceError {
+	e.Reason = reason
+	e.Status = status
+	e.Retryable = retryable
+	return e
 }
 
 // NewResourceError builds a value-free dump failure record.

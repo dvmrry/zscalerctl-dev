@@ -230,5 +230,6 @@ func resourceReadRuntimeBoundaryError(err error, req machine.ResourceReadRequest
 		// adapter still maps them to its static internal failure.
 		return err
 	}
+	machineErr.AttachFailure(err)
 	return newBoundaryError(machineErr, sentinel)
 }

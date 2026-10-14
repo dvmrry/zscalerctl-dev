@@ -204,6 +204,44 @@ func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
 	}
 }
 
+// TestErrorEnvelopeCarriesFailureDetail pins error envelope v2: a live read
+// failure says why (reason, HTTP status, retry hint), and an error without a
+// detail keeps the v1 shape because the new fields are omitted.
+func TestErrorEnvelopeCarriesFailureDetail(t *testing.T) {
+	t.Parallel()
+
+	err := &machine.MachineError{
+		Kind:      machine.ErrorKindLiveAccessFailed,
+		Message:   "resource read failed: rate_limited (HTTP 429)",
+		Operation: machine.OperationList,
+		Product:   "zia",
+		Resource:  "url-categories",
+		Detail:    machine.FailureDetail{Reason: "rate_limited", Status: 429, Retryable: true},
+	}
+	var stderr bytes.Buffer
+	writeError(&stderr, output.FormatJSON, err)
+	var raw map[string]map[string]any
+	if e := json.Unmarshal(stderr.Bytes(), &raw); e != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stderr.String(), e)
+	}
+	body := raw["error"]
+	if body["reason"] != "rate_limited" || body["status"] != float64(429) || body["retryable"] != true {
+		t.Errorf("envelope = %v, want reason rate_limited, status 429, retryable true", body)
+	}
+
+	stderr.Reset()
+	writeError(&stderr, output.FormatJSON, cli.UsageError{Message: "bad flag"})
+	raw = nil
+	if e := json.Unmarshal(stderr.Bytes(), &raw); e != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stderr.String(), e)
+	}
+	for _, key := range []string{"reason", "status", "retryable"} {
+		if _, ok := raw["error"][key]; ok {
+			t.Errorf("usage envelope has %q, want it omitted", key)
+		}
+	}
+}
+
 func TestDumpOutputErrorsKeepActionableTextAndJSONMessages(t *testing.T) {
 	t.Parallel()
 

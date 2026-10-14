@@ -343,6 +343,7 @@ func urlLookupBoundaryError(err error) error {
 		machineErr.Kind = machine.ErrorKindInternal
 		machineErr.Message = "URL lookup runtime failed"
 	}
+	machineErr.AttachFailure(err)
 	return newBoundaryError(machineErr, sentinel)
 }
 

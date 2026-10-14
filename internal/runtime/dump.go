@@ -256,7 +256,7 @@ func (c *DumpCollector) collectShow(
 			)
 		}
 		if continueOnError {
-			resourceErr := dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed")
+			resourceErr := withFailure(dump.NewResourceError(spec.Product, spec.Name, "show", "show_failed"), err)
 			result.Errors = append(result.Errors, resourceErr)
 			return 0, emitDumpWarning(stream, resourceErr)
 		}
@@ -310,7 +310,7 @@ func (c *DumpCollector) collectList(
 			)
 		}
 		if continueOnError {
-			resourceErr := dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed")
+			resourceErr := withFailure(dump.NewResourceError(spec.Product, spec.Name, "list", "list_failed"), err)
 			result.Errors = append(result.Errors, resourceErr)
 			return 0, emitDumpWarning(stream, resourceErr)
 		}
@@ -352,6 +352,12 @@ func (c *DumpCollector) collectList(
 	return len(projectedRecords), nil
 }
 
+// withFailure records why a resource read failed on its dump error record.
+func withFailure(resourceErr dump.ResourceError, err error) dump.ResourceError {
+	detail := machine.FailureDetailOf(err)
+	return resourceErr.WithFailure(detail.Reason, detail.Status, detail.Retryable)
+}
+
 func emitDumpWarning(stream *machine.EventStream, resourceErr dump.ResourceError) error {
 	machineErr := machine.MachineError{
 		Kind:      resourceErr.Kind,
@@ -359,6 +365,11 @@ func emitDumpWarning(stream *machine.EventStream, resourceErr dump.ResourceError
 		Operation: machine.Operation(resourceErr.Operation),
 		Product:   resourceErr.Product,
 		Resource:  resourceErr.Name,
+		Detail: machine.FailureDetail{
+			Reason:    resourceErr.Reason,
+			Status:    resourceErr.Status,
+			Retryable: resourceErr.Retryable,
+		},
 	}
 	return stream.Emit(machine.Event{
 		Kind:     machine.EventWarning,
@@ -439,6 +450,7 @@ func dumpMachineError(
 	case fallbackKind == machine.ErrorKindUnsupportedOperation:
 		machineErr.Message = "unsupported dump resource operation"
 	}
+	machineErr.AttachFailure(err)
 	return machineErr
 }
 

@@ -230,7 +230,12 @@ environment, provider choice, and platform are reviewed and pinned.
 - Do not parse `pretty` or `table` output in automation; those are human
   presentation formats.
 - Failures emit a JSON envelope on stderr:
-  `{"error": {"kind": "...", "message": "...", "product": "...", "resource": "..."}}`
+  `{"error": {"kind": "...", "message": "...", "product": "...", "resource": "..."}}`.
+  A live read failure adds `reason`, `status` and `retryable`, e.g.
+  `{"error": {"kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "reason": "forbidden", "status": 403, ...}}`;
+  `retryable: true` (rate_limited, server_error, transport, timeout) means a
+  retry can succeed, while forbidden, unauthorized and not_subscribed mean the
+  API role or licence does not allow the resource.
 - Exit codes are a stable contract: `0` ok, `1` internal, `2` usage,
   `3` credentials missing/invalid, `4` not found/unsupported (including a
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
@@ -302,7 +307,8 @@ mode. `--redaction` (`standard`, `share`, or `paranoid`) only tunes value-scrubb
 of rendered fields — it never widens the allow-list, so no mode can surface a
 dropped or secret field. Do not try to recover dropped fields — absence is deliberate
 ([docs/FIELD_COVERAGE.md](docs/FIELD_COVERAGE.md)). Resources failing with
-exit `4`/`5` on a live tenant may be entitlement-gated, not broken.
+exit `4`/`5` on a live tenant may be entitlement-gated, not broken; the error's
+`reason` (`forbidden`, `not_subscribed`) says so.
 Dump directories and diff reports contain sanitized but still confidential
 tenant inventory; use ignored scratch paths and do not paste payloads into
 tickets or chats. `diff` only compares dump directories already on disk; it

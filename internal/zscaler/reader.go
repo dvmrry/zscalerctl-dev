@@ -4731,11 +4731,14 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	if operation == "get" && statusCode == http.StatusNotFound {
 		return resourceNotFoundError{product: product, resource: resource}
 	}
+	reason, retryable := classifyFailure(err, statusCode)
 	return liveAccessError{
 		operation:  operation,
 		product:    product,
 		resource:   resource,
 		statusCode: statusCode,
+		reason:     reason,
+		retryable:  retryable,
 	}
 }
 
@@ -4760,6 +4763,16 @@ type liveAccessError struct {
 	product    resources.Product
 	resource   string
 	statusCode int
+	reason     string
+	retryable  bool
+}
+
+// FailureDetail reports the value-free failure reason, the HTTP status (0 when
+// there was no HTTP response), and whether a retry could succeed. Callers
+// reach it through errors.As with a matching interface, so the CLI and dump
+// artifacts can say why a read failed without the backend message.
+func (e liveAccessError) FailureDetail() (reason string, status int, retryable bool) {
+	return e.reason, e.statusCode, e.retryable
 }
 
 func (e liveAccessError) Error() string {

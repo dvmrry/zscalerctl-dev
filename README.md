@@ -149,6 +149,12 @@ Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`; mac
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
+A live read failure also says why: `reason` (`forbidden`, `unauthorized`, `not_subscribed`, `rate_limited`, `server_error`, `transport`, `timeout`, `pagination_incomplete`, `decode_failed`, `not_found`, `client_error`, `unknown`), the HTTP `status` when there was a response, and `retryable: true` when a retry could succeed. Dump `errors.ndjson` records carry the same fields.
+
+```json
+{ "error": { "kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "operation": "list", "product": "zia", "resource": "dlp-dictionaries", "reason": "forbidden", "status": 403 } }
+```
+
 List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Filters and search apply to `list` only and run after projection and redaction. Unknown `--filter` or `--fields` names fail with usage exit `2` before configuration or credentials are loaded. A `--filter` on a known field the active redaction mode omits (or on a secret field) is also a usage error (exit `2`), since it could never match; when the mode omits fields, a successful read names them on stderr. Narrowing cannot widen the sanitized output. Discover exact names with `--format json schema list`. No matches is success with an empty result.
 
 A filter key can be a dotted path into nested fields, such as `groups.name` or `groups.id`. A path matches when any element it reaches matches, so `--filter groups.name=APP_DEV` keeps users in a group named exactly `APP_DEV` and not one named `APP_INFOSEC_DEV`. A path must end at a field without nested fields; `schema list` shows nested names under each field's `fields`. Repeated dotted filters are matched independently, so `--filter groups.name=APP_DEV --filter groups.id=11` can be satisfied by two different groups. A top-level key (`groups~DEV`) still matches against the whole rendered value. `--fields` takes top-level names only.

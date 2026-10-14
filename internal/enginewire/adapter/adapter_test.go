@@ -275,3 +275,41 @@ func adapterTestSpec() resources.ResourceSpec {
 		}},
 	}
 }
+
+// TestLiveFailureDetailDoesNotReachTheStdioWire pins the stdio protocol: a
+// live failure carrying a described message and a FailureDetail still becomes
+// the static live-access failure, and a dump failure's detail is dropped, so
+// the wire bytes are unchanged by error envelope v2.
+func TestLiveFailureDetailDoesNotReachTheStdioWire(t *testing.T) {
+	t.Parallel()
+
+	converted := adapter.ToOperationError(&machine.MachineError{
+		Kind:      machine.ErrorKindLiveAccessFailed,
+		Message:   "resource read failed: forbidden (HTTP 403)",
+		Operation: machine.OperationList,
+		Product:   "zia",
+		Resource:  "locations",
+		Detail:    machine.FailureDetail{Reason: "forbidden", Status: 403},
+	})
+	want := enginewire.NonCredentialFailure{Kind: enginewire.FailureLiveAccess}
+	if !reflect.DeepEqual(converted.Failure, want) {
+		t.Fatalf("ToOperationError(live failure with detail) = %#v, want %#v", converted.Failure, want)
+	}
+
+	summary, err := adapter.ToDumpSummary(machine.NewDumpResult(0, 0, "standard", []machine.DumpResourceError{{
+		Product: "zia", Resource: "locations", Operation: machine.OperationList, Kind: "list_failed",
+		Detail: machine.FailureDetail{Reason: "rate_limited", Status: 429, Retryable: true},
+	}}))
+	if err != nil {
+		t.Fatalf("ToDumpSummary() error = %v", err)
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leaked := range []string{"rate_limited", "429", "retryable", "Detail"} {
+		if strings.Contains(string(encoded), leaked) {
+			t.Errorf("dump summary %s carries %q", encoded, leaked)
+		}
+	}
+}
