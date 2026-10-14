@@ -1878,3 +1878,140 @@ func TestGetZIAURLCategoriesAllReadsAnUnpagedEndpoint(t *testing.T) {
 		t.Errorf("urlCategories requests = %d, want 3", got)
 	}
 }
+
+// TestZIAPaginateRejectsRepeatWithSameIdentitiesButChangedContent keeps a
+// tenant change from passing for an endpoint that ignores paging: the same
+// record ids with different field values between requests fail closed rather
+// than returning page 1's stale values.
+func TestZIAPaginateRejectsRepeatWithSameIdentitiesButChangedContent(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	for name, pages := range map[string][3][]rec{
+		"multi-record": {
+			{{1, "a"}, {2, "a"}},
+			{{2, "b"}, {1, "b"}},
+			{{1, "b"}, {2, "b"}},
+		},
+		"one record": {
+			{{1, "a"}},
+			{{1, "b"}},
+			nil,
+		},
+	} {
+		pages := pages
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, page, size int) ([]rec, error) {
+				switch {
+				case page == 1 && size < 1000:
+					return pages[2], nil
+				case page == 1:
+					return pages[0], nil
+				case page == 2:
+					return pages[1], nil
+				}
+				return nil, nil
+			})
+			if !errors.Is(err, errZiaPaginationValidation) {
+				t.Fatalf("ziaPaginate(same ids, changed content) error = %v, want pagination validation error", err)
+			}
+			if got != nil {
+				t.Errorf("ziaPaginate(same ids, changed content) = %v, want nil", got)
+			}
+		})
+	}
+}
+
+// TestZIAPaginateAcceptsReorderedUnpagedEndpoint covers the live
+// network-services behavior: every request returns the whole collection in a
+// different order. Same records per id, so page 1 is accepted.
+func TestZIAPaginateAcceptsReorderedUnpagedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	orders := [][]rec{{{1, "a"}, {2, "b"}, {3, "c"}}, {{3, "c"}, {1, "a"}, {2, "b"}}, {{2, "b"}, {3, "c"}, {1, "a"}}}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := orders[call%len(orders)]
+		call++
+		return out, nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(reordered unpaged) error = %v, want nil", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("ziaPaginate(reordered unpaged) = %v, want the 3 records of page 1", got)
+	}
+}
+
+// TestZIAPaginateUnpagedEndpointLimits pins what the probe can and cannot
+// decide. A fixed window returned regardless of page and pageSize is accepted:
+// no client can read past it, and nothing in the response says it is partial.
+// An endpoint that ignores paging but returns at least the requested page size
+// still fails closed, because a full repeated page may be capped.
+func TestZIAPaginateUnpagedEndpointLimits(t *testing.T) {
+	t.Parallel()
+
+	window := []int{1, 2, 3}
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]int, error) {
+		return window, nil
+	})
+	if err != nil || len(got) != 3 {
+		t.Errorf("fixed window: ziaPaginate() = %v, %v; want the window accepted (documented ambiguity)", got, err)
+	}
+
+	got, err = ziaPaginate(context.Background(), 3, func(_ context.Context, _, _ int) ([]int, error) {
+		return window, nil
+	})
+	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+		t.Errorf("collection >= page size: ziaPaginate() = %v, %v; want fail closed", got, err)
+	}
+}
+
+// TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder covers the live
+// networkServices behavior: the same records come back with their port lists
+// in another order on each request. List order is not a change; a different
+// port is.
+func TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID    int      `json:"id"`
+		Ports []string `json:"ports"`
+	}
+	responses := [][]rec{
+		{{1, []string{"80", "443"}}, {2, []string{"22"}}},
+		{{2, []string{"22"}}, {1, []string{"443", "80"}}},
+		{{1, []string{"443", "80"}}, {2, []string{"22"}}},
+	}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := responses[call%len(responses)]
+		call++
+		return out, nil
+	})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ziaPaginate(reordered lists) = %v, %v; want page 1 accepted", got, err)
+	}
+
+	changed := [][]rec{
+		{{1, []string{"80", "443"}}, {2, []string{"22"}}},
+		{{2, []string{"22"}}, {1, []string{"443", "8080"}}},
+	}
+	call = 0
+	got, err = ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := changed[call%len(changed)]
+		call++
+		return out, nil
+	})
+	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+		t.Errorf("ziaPaginate(changed port) = %v, %v; want fail closed", got, err)
+	}
+}

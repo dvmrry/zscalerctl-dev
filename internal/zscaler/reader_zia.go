@@ -127,9 +127,12 @@ var errZiaPaginationValidation = errors.New("zia pagination validation failed")
 // that caps each response (min(pageSize, cap)) and ignores the page would look
 // the same. So the walker asks for page 1 again with a page size one smaller:
 // an endpoint that still returns every record ignores paging entirely, and
-// page 1 was the whole collection (observed live for urlCategories, about 25
-// ZIA list endpoints in all); one that returns fewer honors sizes and may be
-// capping, so the walk fails closed. visitPage may
+// page 1 is everything it will return (observed live for urlCategories, about
+// 25 ZIA list endpoints in all); one that returns fewer honors sizes and may
+// be capping, so the walk fails closed. A fixed window that ignores both page
+// and size is indistinguishable and accepted; no client can read past it.
+// Records must match field for field, so a tenant change between requests
+// still fails closed. visitPage may
 // stop the walk after inspecting a validated page; point lookups use that path
 // so an already-found record does not depend on a later confirmation request.
 func ziaWalkPages[T any](
@@ -216,10 +219,10 @@ func ziaWalkPages[T any](
 }
 
 // ziaIgnoresPaging re-requests page 1 with a page size one below what page 1
-// returned. Every record coming back proves the endpoint ignores page and size
-// alike, so page 1 held the whole collection. A one-record page cannot be
-// probed smaller; a cap of one record is not a real server limit, so it counts
-// as complete.
+// returned. Every record coming back shows the endpoint ignores page and size
+// alike, so page 1 is everything it will return. A one-record page cannot be
+// probed smaller; a cap of one record is not a real server limit, so it is
+// accepted. The probe is one request outside the ziaMaxPages ceiling.
 func ziaIgnoresPaging[T any](
 	ctx context.Context,
 	firstPage pageSummary,

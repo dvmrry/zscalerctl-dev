@@ -85,15 +85,28 @@ request returns the whole collection, whatever `page` and `pageSize` say
 
 The paginator now resolves this one repeat. When page 1 was shorter than
 requested and page 2 returns the same records (identical content, or the same
-record identities in another order), it requests page 1 again with a page
-size one below what page 1 returned. If every record comes back, the endpoint
-ignores page and size alike and page 1 is the complete collection. If fewer
-come back, the endpoint honors sizes and may be capping each response at
-`min(pageSize, cap)`, so the walk fails closed as before. A repeated full
-first page also still fails closed. The only behavior this cannot tell apart
-from a complete read is an endpoint that returns a fixed window regardless of
-both `page` and `pageSize`; no client can read past such a window, the SDK
-included.
+records per identity in another order, ignoring the order of list elements,
+which `network-services` shuffles on every response; a changed value never
+matches), it requests page 1 again with a page size one below what page 1
+returned. If every record comes back, the endpoint ignores page and size
+alike, and page 1 is everything that endpoint will return; the walk accepts
+it. If fewer come back, the endpoint honors sizes and may be capping each
+response at `min(pageSize, cap)`, so the walk fails closed as before.
+
+Limits, pinned by tests:
+
+- Only a short page 1 is resolved. An endpoint that ignores paging but
+  returns at least the requested page size still fails closed.
+- An endpoint that returns a fixed window smaller than its collection,
+  regardless of both `page` and `pageSize`, is indistinguishable from one
+  returning everything and is accepted. No client can read past such a
+  window, the SDK included.
+- A one-record page cannot be probed smaller and is accepted when page 2
+  repeats it exactly.
+- A record that changes between the requests (same id, different fields)
+  fails the walk closed, so a tenant change cannot pass for an unpaged
+  endpoint.
+- The probe is one extra request outside the page ceiling.
 
 ## Remaining Work
 

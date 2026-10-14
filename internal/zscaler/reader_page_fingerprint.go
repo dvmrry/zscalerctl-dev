@@ -3,6 +3,7 @@ package zscaler
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"sort"
 )
 
 // pageFingerprint is a stable, content-based marker for one page of records.
@@ -47,12 +48,17 @@ func paginationRecordIdentity(record any) (string, bool, error) {
 
 // pageSummary is what the paginator remembers about a page to recognize an
 // endpoint that ignores the page parameter: its size, its content fingerprint,
-// and its record identities when every record has one.
+// and, when every record has a unique identity, a fingerprint of the records'
+// content in identity order with list elements sorted (so a reordered page,
+// or a record whose lists come back in another order, matches, but a changed
+// value does not; networkServices was observed returning its port lists in a
+// different order on every request).
 type pageSummary struct {
 	records       int
 	fingerprint   pageFingerprint
 	identities    map[string]struct{}
 	allIdentified bool
+	byIdentity    pageFingerprint
 }
 
 func summarizePage[T any](records []T, fingerprint pageFingerprint) (pageSummary, error) {
@@ -62,6 +68,7 @@ func summarizePage[T any](records []T, fingerprint pageFingerprint) (pageSummary
 		identities:    make(map[string]struct{}, len(records)),
 		allIdentified: true,
 	}
+	contents := make(map[string]json.RawMessage, len(records))
 	for _, record := range records {
 		identity, ok, err := paginationRecordIdentity(record)
 		if err != nil {
@@ -72,13 +79,36 @@ func summarizePage[T any](records []T, fingerprint pageFingerprint) (pageSummary
 			continue
 		}
 		summary.identities[identity] = struct{}{}
+		payload, err := canonicalRecord(record)
+		if err != nil {
+			return pageSummary{}, err
+		}
+		contents[identity] = payload
+	}
+	if summary.allIdentified && len(summary.identities) == len(records) {
+		keys := make([]string, 0, len(contents))
+		for identity := range contents {
+			keys = append(keys, identity)
+		}
+		sort.Strings(keys)
+		ordered := make([]json.RawMessage, 0, len(keys))
+		for _, identity := range keys {
+			ordered = append(ordered, contents[identity])
+		}
+		fingerprint, err := fingerprintPage(ordered)
+		if err != nil {
+			return pageSummary{}, err
+		}
+		summary.byIdentity = fingerprint
 	}
 	return summary, nil
 }
 
 // sameRecords reports whether two nonempty pages hold the same records: equal
-// content, or, when every record on both pages has an identity, the same set
-// of identities in any order.
+// content in the same order, or, when every record on both pages has a unique
+// identity, equal content per identity in any order. A record whose fields
+// changed between the two requests never matches, so a tenant change cannot
+// pass for an endpoint that ignores paging.
 func (s pageSummary) sameRecords(other pageSummary) bool {
 	if s.records == 0 || s.records != other.records {
 		return false
@@ -86,13 +116,62 @@ func (s pageSummary) sameRecords(other pageSummary) bool {
 	if s.fingerprint == other.fingerprint {
 		return true
 	}
-	if !s.allIdentified || !other.allIdentified || len(s.identities) != s.records || len(other.identities) != other.records {
-		return false
+	uniquelyIdentified := func(p pageSummary) bool {
+		return p.allIdentified && len(p.identities) == p.records
 	}
-	for identity := range s.identities {
-		if _, ok := other.identities[identity]; !ok {
-			return false
+	return uniquelyIdentified(s) && uniquelyIdentified(other) && s.byIdentity == other.byIdentity
+}
+
+// canonicalRecord renders a record as JSON with every list's elements sorted,
+// so two responses that differ only in list order compare equal. It is used
+// only to recognize repeated pages; returned records keep their order.
+func canonicalRecord(record any) (json.RawMessage, error) {
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return nil, err
+	}
+	canonical, err := canonicalValue(value)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(canonical)
+}
+
+func canonicalValue(value any) (any, error) {
+	switch v := value.(type) {
+	case []any:
+		elements := make([]string, len(v))
+		for i, element := range v {
+			canonical, err := canonicalValue(element)
+			if err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(canonical)
+			if err != nil {
+				return nil, err
+			}
+			elements[i] = string(encoded)
 		}
+		sort.Strings(elements)
+		out := make([]json.RawMessage, len(elements))
+		for i, element := range elements {
+			out[i] = json.RawMessage(element)
+		}
+		return out, nil
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, element := range v {
+			canonical, err := canonicalValue(element)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = canonical
+		}
+		return out, nil
 	}
-	return true
+	return value, nil
 }
