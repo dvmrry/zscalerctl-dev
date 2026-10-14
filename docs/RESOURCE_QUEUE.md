@@ -109,7 +109,8 @@ availability errors.
 
 ## Declared Coverage Gaps
 
-The non-coverage records and the deferred backlog below are also declared in
+Every deferred backlog row below, and the operator-facing surfaces from the
+non-coverage records (not every SDK package they name), are declared in
 `internal/resources/gaps_table.go`, which `zscalerctl schema gaps [product]`
 lists and the unknown-resource error consults. When a row here changes, change
 the table too; `TestDeferredBacklogIsDeclared` fails if a backlog row has no

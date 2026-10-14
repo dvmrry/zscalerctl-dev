@@ -31,25 +31,28 @@ const (
 	// GapAction: mutating, execution or export actions. Never invoked by a
 	// read-only tool.
 	GapAction GapReason = "action"
-	// GapTelemetry: reports and logs rather than configuration.
+	// GapTelemetry: reports, logs and exports rather than configuration; a
+	// separate report command track may cover them later.
 	GapTelemetry GapReason = "telemetry"
-	// GapAlternateView: a lookup or lite view that overlaps a covered
-	// resource; Instead names the one to read.
+	// GapAlternateView: a lookup, lite or diagnostic view rather than
+	// configuration; Instead names the covered resource it is a view of, if
+	// any.
 	GapAlternateView GapReason = "alternate_view"
 )
 
 const (
-	// GapStatusDeferred: not read today; may be added when the blocker
-	// (entitlement, shape, design, review) is resolved.
+	// GapStatusDeferred: not read today; may be added once the blocker
+	// (entitlement, shape, command design, privacy review) is resolved.
 	GapStatusDeferred = "deferred"
-	// GapStatusOutOfScope: deliberately never read by this tool.
+	// GapStatusOutOfScope: not configuration inventory, or excluded by
+	// policy; not planned.
 	GapStatusOutOfScope = "out_of_scope"
 )
 
 // Status reports whether a gap with this reason may close.
 func (r GapReason) Status() string {
 	switch r {
-	case GapEntitlement, GapResponseShape, GapNotModeled, GapPrivacyReview:
+	case GapEntitlement, GapResponseShape, GapNotModeled, GapPrivacyReview, GapTelemetry:
 		return GapStatusDeferred
 	}
 	return GapStatusOutOfScope
@@ -64,7 +67,9 @@ type CoverageGap struct {
 	Status  string    `json:"status"`
 	Reason  GapReason `json:"reason"`
 	Note    string    `json:"note"`
-	// Instead names covered resources that hold the same information.
+	// Instead names covered resources that hold this surface's readable
+	// configuration: the resource an alternate view shows, or the status of
+	// an action. It is never a merely related resource.
 	Instead []ResourceRef `json:"instead,omitempty"`
 	// Aliases are other names a caller is likely to try; they match in
 	// FindGap but are not rendered.
@@ -113,8 +118,12 @@ type GapsDocument struct {
 
 func (GapsDocument) OutputSafe() {}
 
+// withStatus returns a copy of gap with its status, sharing no slice with
+// the package table.
 func withStatus(gap CoverageGap) CoverageGap {
 	gap.Status = gap.Reason.Status()
+	gap.Instead = slices.Clone(gap.Instead)
+	gap.Aliases = slices.Clone(gap.Aliases)
 	return gap
 }
 

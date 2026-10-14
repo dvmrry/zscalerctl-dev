@@ -40,6 +40,11 @@ func TestCoverageGapsStayDistinctFromCatalog(t *testing.T) {
 			}
 			seen[nameKey] = key
 		}
+		if len(gap.Instead) > 0 && gap.Reason != GapAlternateView && gap.Reason != GapAction {
+			// Instead is the surface's own readable configuration, never a
+			// merely related resource.
+			t.Errorf("%s: instead targets on a %s gap", key, gap.Reason)
+		}
 		for _, ref := range gap.Instead {
 			if _, ok := catalog.FindSpec(ref.Product, ref.Resource); !ok {
 				t.Errorf("%s: instead target %s is not in the catalog", key, ref)
@@ -111,6 +116,51 @@ func TestCoverageGapsFilterAndOrder(t *testing.T) {
 	for _, gap := range CoverageGaps(ProductZCC) {
 		if gap.Product != ProductZCC || gap.Status == "" {
 			t.Errorf("CoverageGaps(zcc) returned %+v", gap)
+		}
+	}
+}
+
+// TestCoverageGapsShareNoSlicesWithTable keeps the table static: editing a
+// returned gap's Instead or Aliases must not change later lookups.
+func TestCoverageGapsShareNoSlicesWithTable(t *testing.T) {
+	t.Parallel()
+
+	for _, gap := range CoverageGaps(ProductZIA) {
+		if gap.Surface == "locations-lite" {
+			gap.Instead[0].Resource = "tampered"
+			gap.Aliases[0] = "tampered"
+		}
+	}
+	found, ok := FindGap(ProductZIA, "locations-lite")
+	if !ok || found.Instead[0].Resource != "locations" {
+		t.Errorf("FindGap(zia, locations-lite) = %+v after editing a returned copy", found)
+	}
+	found.Aliases[0] = "tampered-again"
+	if _, ok := FindGap(ProductZIA, "location-lite"); !ok {
+		t.Error("editing a FindGap result removed an alias from the table")
+	}
+	if _, ok := FindGap(ProductZIA, "tampered"); ok {
+		t.Error("an alias injected through a returned copy matched")
+	}
+}
+
+// TestGapStatusFollowsReason pins the status vocabulary: a reason whose
+// source record names a possible future track (telemetry has a report
+// command track) is deferred; only material, actions and alternate views are
+// out of scope.
+func TestGapStatusFollowsReason(t *testing.T) {
+	t.Parallel()
+
+	deferred := []GapReason{GapEntitlement, GapResponseShape, GapNotModeled, GapPrivacyReview, GapTelemetry}
+	outOfScope := []GapReason{GapCredentialMaterial, GapAction, GapAlternateView}
+	for _, reason := range deferred {
+		if got := reason.Status(); got != GapStatusDeferred {
+			t.Errorf("%s.Status() = %q, want %q", reason, got, GapStatusDeferred)
+		}
+	}
+	for _, reason := range outOfScope {
+		if got := reason.Status(); got != GapStatusOutOfScope {
+			t.Errorf("%s.Status() = %q, want %q", reason, got, GapStatusOutOfScope)
 		}
 	}
 }

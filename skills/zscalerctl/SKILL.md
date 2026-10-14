@@ -355,8 +355,9 @@ none of something, check that zscalerctl reads it:
 zscalerctl --format json schema gaps zpa
 ```
 
-Each entry names the `surface`, a `status` (`deferred` may be added later;
-`out_of_scope` never will), a `reason`, a value-free `note`, and, for a lite or
-alternate view, the covered resources to read `instead`. Asking for a declared
+Each entry names the `surface`, a `status` (`deferred` may be added once its
+blocker clears; `out_of_scope` is not planned), a `reason`, a value-free
+`note`, and, for a lite or alternate view or an action whose status is read,
+the covered resources to read `instead`. Asking for a declared
 gap (or a common alias, such as `zpa access-policies`) exits 4 with a message
 naming it, so an absent resource is not mistaken for an empty one.
