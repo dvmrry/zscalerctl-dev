@@ -75,6 +75,26 @@ successful truncation when the API clamps the request. It continues to discard
 partial results on request failures and rejects repeated pages, page-width
 growth, and walks beyond the 1,000-page ceiling.
 
+## Endpoints That Ignore Pagination
+
+Live validation on 2026-10-14 against another tenant found the opposite
+behavior on about 25 ZIA list endpoints, `url-categories` among them: every
+request returns the whole collection, whatever `page` and `pageSize` say
+(247 categories for a 5,000- or a 10-record request, and page 2 repeats page
+1). The repeated-page check made each of these lists fail on that tenant.
+
+The paginator now resolves this one repeat. When page 1 was shorter than
+requested and page 2 returns the same records (identical content, or the same
+record identities in another order), it requests page 1 again with a page
+size one below what page 1 returned. If every record comes back, the endpoint
+ignores page and size alike and page 1 is the complete collection. If fewer
+come back, the endpoint honors sizes and may be capping each response at
+`min(pageSize, cap)`, so the walk fails closed as before. A repeated full
+first page also still fails closed. The only behavior this cannot tell apart
+from a complete read is an endpoint that returns a fixed window regardless of
+both `page` and `pageSize`; no client can read past such a window, the SDK
+included.
+
 ## Remaining Work
 
 Run focused live count checks for the explicitly single-read list endpoints and

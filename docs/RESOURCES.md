@@ -335,7 +335,8 @@ zscalerctl zia url-categories get <id>
 The list walks the API's pages with a bounded paginator and includes ordinary
 `URL_CATEGORY` records and `TLD_CATEGORY` records. The paginator accounts for
 the service clamping a requested page size to 20 instead of treating the first
-short response as complete. List responses request the API's count-only
+short response as complete, and for tenants whose service ignores pagination
+and returns every category on each request. List responses request the API's count-only
 payload; use `get <id>` when the category's members are needed. TLD members use
 the existing `urls` field.
 
@@ -2087,7 +2088,10 @@ live-count checks in
 [SDK Pagination Validation](SDK_PAGINATION_VALIDATION.md).
 
 Paginated readers fail closed when pages repeat or a record identifier appears
-twice. A tenant change during a long list walk can shift records across page
+twice. The one exception is an endpoint that ignores pagination: when page 2
+repeats a short page 1 and a smaller page size still returns every record,
+page 1 is the complete list (see
+[SDK List Completeness Audit](SDK_LIST_COMPLETENESS_AUDIT.md)). A tenant change during a long list walk can shift records across page
 boundaries and trigger that check; the command then exits with an error and
 returns no partial list. Retrying the command is the remedy.
 

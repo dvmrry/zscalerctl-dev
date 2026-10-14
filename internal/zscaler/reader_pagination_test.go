@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -633,10 +634,55 @@ func TestZIAPaginateConfirmsShortFirstPageWithEmptySecondPage(t *testing.T) {
 	}
 }
 
+// TestZIAPaginateAcceptsEndpointThatIgnoresPaging covers an endpoint that
+// returns every record whatever page and pageSize say: page 2 repeats a short
+// page 1, a smaller page size still returns everything, so page 1 is complete.
+func TestZIAPaginateAcceptsEndpointThatIgnoresPaging(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]int, error) {
+		calls++
+		return []int{1, 2}, nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(unpaged endpoint) error = %v, want nil", err)
+	}
+	if !slices.Equal(got, []int{1, 2}) {
+		t.Errorf("ziaPaginate(unpaged endpoint) = %v, want [1 2]", got)
+	}
+	if calls != 3 {
+		t.Errorf("ziaPaginate(unpaged endpoint) calls = %d, want 3 (page 1, page 2, size probe)", calls)
+	}
+}
+
+// TestZIAPaginateRejectsRepeatWhenSmallerPageSizeIsHonored keeps the capping
+// case fail-closed: the endpoint repeats page 1 but honors a smaller page
+// size, so page 1 may be min(pageSize, cap) of a larger collection.
+func TestZIAPaginateRejectsRepeatWhenSmallerPageSizeIsHonored(t *testing.T) {
+	t.Parallel()
+
+	all := []int{1, 2}
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, size int) ([]int, error) {
+		return all[:min(size, len(all))], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "honored a smaller page size") {
+		t.Fatalf("ziaPaginate(capping endpoint) error = %v, want the capped-page error", err)
+	}
+	if !errors.Is(err, errZiaPaginationValidation) {
+		t.Errorf("ziaPaginate(capping endpoint) error = %v, want errZiaPaginationValidation", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(capping endpoint) result = %#v, want nil", got)
+	}
+}
+
+// TestZIAPaginateRejectsAdjacentRepeatedPage keeps a repeated full first page
+// fail-closed: the server filled the request and may hold more records.
 func TestZIAPaginateRejectsAdjacentRepeatedPage(t *testing.T) {
 	t.Parallel()
 
-	const requestedPageSize = 1000
+	const requestedPageSize = 2
 	pages := [][]int{{1, 2}, {1, 2}}
 	calls := 0
 	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, _ int) ([]int, error) {
@@ -937,9 +983,27 @@ func TestGetZIAUsersAllPagesPreservesSDKSortDefaults(t *testing.T) {
 // behaves: whatever page size is requested, it returns at most 20 records per
 // page, and pages past the inventory are empty. With ignorePage it returns the
 // first page for every request instead.
-func urlCategoryPageServer(t *testing.T, total int, ignorePage ...bool) (*zsdk.Service, *[]*http.Request) {
+// urlCategoryPaging selects how the fake urlCategories endpoint pages.
+type urlCategoryPaging int
+
+const (
+	// urlCategoriesPaged clamps each page to min(pageSize, 20) and honors page.
+	urlCategoriesPaged urlCategoryPaging = iota
+	// urlCategoriesCappedIgnoringPage clamps to min(pageSize, 20) but always
+	// serves page 1: no client can read past the cap.
+	urlCategoriesCappedIgnoringPage
+	// urlCategoriesUnpaged ignores page and pageSize and returns every record,
+	// as live tenants were observed to do.
+	urlCategoriesUnpaged
+)
+
+func urlCategoryPageServer(t *testing.T, total int, paging ...urlCategoryPaging) (*zsdk.Service, *[]*http.Request) {
 	t.Helper()
 	const clampedWidth = 20
+	mode := urlCategoriesPaged
+	if len(paging) > 0 {
+		mode = paging[0]
+	}
 	cfg := validReaderConfig()
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
@@ -957,11 +1021,18 @@ func urlCategoryPageServer(t *testing.T, total int, ignorePage ...bool) (*zsdk.S
 				t.Errorf("urlCategories request page = %q, want a positive integer", request.URL.Query().Get("page"))
 				page = 1
 			}
-			if len(ignorePage) > 0 && ignorePage[0] {
+			width := clampedWidth
+			if size, err := strconv.Atoi(request.URL.Query().Get("pageSize")); err == nil && size > 0 && size < width {
+				width = size
+			}
+			switch mode {
+			case urlCategoriesCappedIgnoringPage:
 				page = 1
+			case urlCategoriesUnpaged:
+				page, width = 1, total
 			}
 			var records []map[string]any
-			for i := (page - 1) * clampedWidth; i < total && i < page*clampedWidth; i++ {
+			for i := (page - 1) * width; i < total && i < page*width; i++ {
 				record := map[string]any{"id": "CUSTOM_" + strconv.Itoa(i+1), "type": "URL_CATEGORY"}
 				if i == total-1 {
 					record["type"] = "TLD_CATEGORY"
@@ -1292,10 +1363,14 @@ func TestGetZIASublocationByIDPropagatesPaginationValidationError(t *testing.T) 
 				body = `[]`
 			}
 		case "/zia/api/v1/locations/1/sublocations":
-			// Every page replays the same record, so the per-parent walk
-			// must fail pagination validation rather than be skipped as an
+			// Every page replays page 1 and a smaller page size is honored
+			// (a capping endpoint), so the per-parent walk must fail
+			// pagination validation rather than be skipped as an
 			// inaccessible parent and reported as not found.
-			body = `[{"id":10,"name":"sublocation"}]`
+			body = `[{"id":10,"name":"sublocation"},{"id":11,"name":"sublocation"}]`
+			if size, err := strconv.Atoi(request.URL.Query().Get("pageSize")); err == nil && size < 2 {
+				body = `[{"id":10,"name":"sublocation"}]`
+			}
 		case "/oauth2/v1/token":
 		default:
 			statusCode = http.StatusNotFound
@@ -1765,10 +1840,12 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 }
 
 // TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored pins the failure mode
-// of an endpoint that ignores the page parameter: page 2 repeats page 1, and
-// the walk returns an error and no categories instead of a truncated list.
+// of an endpoint that caps each response and ignores the page parameter: page
+// 2 repeats page 1 and a smaller page size is honored, so page 1 may be
+// capped, and the walk returns an error and no categories instead of a
+// truncated list.
 func TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored(t *testing.T) {
-	service, _ := urlCategoryPageServer(t, 47, true)
+	service, _ := urlCategoryPageServer(t, 47, urlCategoriesCappedIgnoringPage)
 
 	categories, err := getZIAURLCategoriesAll(context.Background(), service)
 	if err == nil {
@@ -1779,5 +1856,25 @@ func TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored(t *testing.T) {
 	}
 	if categories != nil {
 		t.Errorf("getZIAURLCategoriesAll() returned %d categories with the error, want none", len(categories))
+	}
+}
+
+// TestGetZIAURLCategoriesAllReadsAnUnpagedEndpoint covers the live behavior:
+// the endpoint ignores page and pageSize and returns every category on each
+// request. Page 2 repeats page 1 and the smaller-size probe still returns
+// everything, so page 1 is the complete collection.
+func TestGetZIAURLCategoriesAllReadsAnUnpagedEndpoint(t *testing.T) {
+	service, requests := urlCategoryPageServer(t, 47, urlCategoriesUnpaged)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
+	}
+	if len(categories) != 47 {
+		t.Fatalf("getZIAURLCategoriesAll() = %d categories, want 47", len(categories))
+	}
+	// page 1, page 2 (repeat), then the page-size probe.
+	if got := len(*requests); got != 3 {
+		t.Errorf("urlCategories requests = %d, want 3", got)
 	}
 }
