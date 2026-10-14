@@ -995,6 +995,43 @@
       ]
     },
     {
+      "path": "schema references",
+      "short": "list the fields that point at a resource, with the --filter path for its id (config-free)",
+      "aliases": [],
+      "hidden": false,
+      "mutating": true,
+      "effects": [
+        {
+          "kind": "local_filesystem_write",
+          "when": "flag_set",
+          "flag": "output"
+        }
+      ],
+      "args": {
+        "policy": "exact",
+        "n": 2
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "fields",
+        "filter",
+        "format",
+        "from-dump",
+        "limit",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "offset",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
       "path": "version",
       "short": "print version, commit, build date, and runtime info",
       "aliases": [],

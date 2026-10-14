@@ -90,6 +90,7 @@ Use an existing complete dump with normal resource commands:
 zscalerctl --format json --from-dump ./scratch-live-dump --fields id,name --limit 20 zia locations list
 zscalerctl --format json --from-dump ./scratch-live-dump zia locations get 12345
 zscalerctl --format json schema describe zia url-filtering-rules
+zscalerctl --format json schema references zia locations
 ```
 
 `--from-dump` bypasses configuration, credentials, secret providers and network
@@ -104,6 +105,8 @@ applies the normal narrowing options. Separate calls reload the directory.
 ZIA locations, URL filtering rules and rule labels. It describes selected
 catalog fields and confirmed references; other known resources explicitly
 report `not_reviewed`. It does not change the existing `schema list` contract.
+`schema references <product> <resource>` lists the catalog fields that point at
+a resource, with the `--filter` path that holds its id.
 These development capabilities must be discovered on the installed binary
 before use. See the [agent workflow](docs/cli/agent-machine-workflow.md),
 [implementation scope and follow-on experiments](docs/CORE_INVESTIGATION_SCOPE.md),

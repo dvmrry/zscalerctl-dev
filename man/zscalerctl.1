@@ -184,6 +184,14 @@ Known resources outside the pilot report not_reviewed with empty fields.
 Unknown resources exit 4. The explicit redaction mode filters described fields;
 the default is standard, independent of configuration. JSON is recommended.
 .TP
+.B schema references <product> <resource>
+List the catalog fields that point at one resource: each entry names the
+resource and field, the \fB\-\-filter\fR path that holds the target's id
+(\fBmatch\fR), and the redaction modes that render it. A secret reference is
+listed without a match path. Fields whose target is not verified are not
+listed, so an empty list does not prove nothing refers to the resource.
+Config-free; unknown resources exit 4.
+.TP
 .B doctor
 Report configuration readiness and the resolved auth mode without exposing
 secrets. \fBdoctor\fR inspects \fBZSCALERCTL_*\fR configuration only and never

@@ -19,6 +19,7 @@
   machine manifest
   schema describe
   schema list
+  schema references
   version
   zia admin-audit-logs status
   zia url-lookup

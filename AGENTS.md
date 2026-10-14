@@ -365,3 +365,27 @@ exit 4. Only fields renderable in the requested mode are described; the default
 is `standard`, independent of configuration. Continue using `schema list` to
 validate all available field names. An omitted value never establishes that a
 setting is false, empty, or unconfigured.
+
+## Find what points at a resource
+
+Reference fields name their target in the catalog: `schema list` shows
+`"references": {"product": ..., "resource": ...}` on each mapped field. To
+find every field that points at one resource, ask once instead of reading
+every resource:
+
+```sh
+zscalerctl --format json schema references zia locations
+```
+
+It is config-free. Each `referred_by` entry names the resource and field, the
+`match` path to filter on, and the modes that render it, so the next call is
+direct:
+
+```sh
+zscalerctl --format json --redaction standard --filter locations.id=12345 zia url-filtering-rules list
+```
+
+A secret reference is listed with no `match` and no modes: it shows the
+relationship exists but cannot be read. A field whose target has not been
+verified is not listed, so an empty `referred_by` does not prove nothing
+points at the resource.

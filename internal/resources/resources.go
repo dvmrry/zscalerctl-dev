@@ -55,13 +55,16 @@ func (o Operation) Mutates() bool {
 }
 
 type FieldSpec struct {
-	Name                   string              `json:"name"`
-	JSONName               string              `json:"json_name,omitempty"`
-	Classification         FieldClassification `json:"classification"`
-	AllowedModes           []redact.Mode       `json:"allowed_modes,omitempty"`
-	Fields                 []FieldSpec         `json:"fields,omitempty"`
-	SensitiveNameReason    string              `json:"sensitive_name_reason,omitempty"`
-	StandardFreeTextReason string              `json:"standard_free_text_reason,omitempty"`
+	Name           string              `json:"name"`
+	JSONName       string              `json:"json_name,omitempty"`
+	Classification FieldClassification `json:"classification"`
+	AllowedModes   []redact.Mode       `json:"allowed_modes,omitempty"`
+	Fields         []FieldSpec         `json:"fields,omitempty"`
+	// References names the catalog resource this field points at; see
+	// fieldReferences in references.go.
+	References             *ResourceRef `json:"references,omitempty"`
+	SensitiveNameReason    string       `json:"sensitive_name_reason,omitempty"`
+	StandardFreeTextReason string       `json:"standard_free_text_reason,omitempty"`
 }
 
 type FieldClassification string
@@ -1714,6 +1717,7 @@ func Catalog() ResourceCatalog {
 	c = append(c, catalogZTW()...)
 	c = append(c, catalogZCC()...)
 	c = append(c, catalogZidentity()...)
+	applyFieldReferences(c)
 	return c
 }
 

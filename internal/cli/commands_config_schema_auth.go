@@ -209,6 +209,7 @@ func (a *App) newConfigShowCmd(opts globalOptions) *cobra.Command {
 // newSchemaCmd returns the Cobra "schema" parent command:
 //   - list: config-LAZY; enumerates the resource catalog
 //   - describe: config-free; describes reviewed resource semantics
+//   - references: config-free; lists the fields that point at a resource
 //
 // The parent RunE returns UsageError (exit 2) for bare "schema" or unknown
 // subcommands, listing the real subcommand in the message.
@@ -217,11 +218,12 @@ func (a *App) newSchemaCmd(opts globalOptions) *cobra.Command {
 		Use:   "schema",
 		Short: "inspect the resource catalog schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return UsageError{Message: "usage: zscalerctl schema list | schema describe <product> <resource>"}
+			return UsageError{Message: "usage: zscalerctl schema list | schema describe <product> <resource> | schema references <product> <resource>"}
 		},
 	}
 	parent.AddCommand(a.newSchemaListCmd(opts))
 	parent.AddCommand(a.newSchemaDescribeCmd(opts))
+	parent.AddCommand(a.newSchemaReferencesCmd(opts))
 	return parent
 }
 

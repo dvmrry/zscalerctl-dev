@@ -1,0 +1,140 @@
+package resources
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/dvmrry/zscalerctl/internal/redact"
+)
+
+func TestFieldReferenceTablesMatchCatalog(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range FieldReferenceErrors(Catalog()) {
+		t.Error(err)
+	}
+}
+
+// TestEveryReferenceFieldIsClassified keeps the reference tables complete:
+// every reference-shaped field (an object or list with an id, or a scalar
+// named ...Id/...Ids) is in fieldReferences or unmappedReferences, so a new
+// catalog field cannot silently drop out of `schema references`. Run one
+// product with -run 'TestEveryReferenceFieldIsClassified/zpa'.
+func TestEveryReferenceFieldIsClassified(t *testing.T) {
+	t.Parallel()
+
+	byProduct := map[Product][]ResourceSpec{}
+	for _, spec := range Catalog() {
+		byProduct[spec.Product] = append(byProduct[spec.Product], spec)
+	}
+	for product, specs := range byProduct {
+		t.Run(string(product), func(t *testing.T) {
+			t.Parallel()
+			for _, spec := range specs {
+				key := specKey(spec)
+				for _, path := range referenceShapedPaths(spec.Fields, "") {
+					_, isMapped := fieldReferences[key][path]
+					_, isUnmapped := unmappedReferences[key][path]
+					if !isMapped && !isUnmapped {
+						t.Errorf("%s.%s is reference-shaped but in neither fieldReferences nor unmappedReferences", key, path)
+					}
+				}
+			}
+		})
+	}
+}
+
+func referenceShapedPaths(fields []FieldSpec, prefix string) []string {
+	var out []string
+	for _, field := range fields {
+		name := field.JSONField()
+		path := prefix + name
+		hasID := fieldAtPath(field.Fields, "id") != nil
+		idNamed := name != "id" && (strings.HasSuffix(name, "Id") || strings.HasSuffix(name, "Ids"))
+		if hasID || (idNamed && len(field.Fields) == 0) {
+			out = append(out, path)
+			continue
+		}
+		out = append(out, referenceShapedPaths(field.Fields, path+".")...)
+	}
+	return out
+}
+
+func TestCatalogFieldsCarryReferences(t *testing.T) {
+	t.Parallel()
+
+	spec, ok := Catalog().FindSpec(ProductZIA, "url-filtering-rules")
+	if !ok {
+		t.Fatal("zia/url-filtering-rules missing from catalog")
+	}
+	locations := fieldAtPath(spec.Fields, "locations")
+	if locations == nil || locations.References == nil || *locations.References != ziaRef("locations") {
+		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations", locations)
+	}
+	if timeWindows := fieldAtPath(spec.Fields, "timeWindows"); timeWindows == nil || timeWindows.References != nil {
+		t.Errorf("url-filtering-rules.timeWindows References = %+v, want unmapped", timeWindows)
+	}
+}
+
+func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
+	t.Parallel()
+
+	doc := ReferencesTo(Catalog(), ziaRef("locations"))
+	if doc.Target != ziaRef("locations") {
+		t.Errorf("Target = %v, want zia/locations", doc.Target)
+	}
+	want := ReferenceSite{
+		Product:      ProductZIA,
+		Resource:     "url-filtering-rules",
+		Field:        "locations",
+		Match:        "locations.id",
+		AllowedModes: []redact.Mode{redact.ModeStandard},
+	}
+	if !containsSite(doc.ReferredBy, want) {
+		t.Errorf("ReferredBy = %+v, want it to contain %+v", doc.ReferredBy, want)
+	}
+
+	// A flat string list matches on the field itself.
+	categories := ReferencesTo(Catalog(), ziaRef("url-categories"))
+	wantCategories := ReferenceSite{
+		Product:      ProductZIA,
+		Resource:     "url-filtering-rules",
+		Field:        "urlCategories",
+		Match:        "urlCategories",
+		AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare},
+	}
+	if !containsSite(categories.ReferredBy, wantCategories) {
+		t.Errorf("ReferredBy = %+v, want it to contain %+v", categories.ReferredBy, wantCategories)
+	}
+
+	// A secret reference is listed, with no mode that renders it.
+	admins := ReferencesTo(Catalog(), ziaRef("admin-users"))
+	for _, site := range admins.ReferredBy {
+		if site.Resource == "url-filtering-rules" && site.Field == "lastModifiedBy" {
+			if len(site.AllowedModes) != 0 || site.Match != "" {
+				t.Errorf("lastModifiedBy = %+v, want no modes and no match (secret)", site)
+			}
+			return
+		}
+	}
+	t.Errorf("ReferredBy(admin-users) = %+v, want url-filtering-rules.lastModifiedBy", admins.ReferredBy)
+}
+
+func TestReferencesToUnreferencedResourceIsEmptyList(t *testing.T) {
+	t.Parallel()
+
+	doc := ReferencesTo(Catalog(), ResourceRef{Product: ProductZIA, Resource: "activation-status"})
+	if doc.ReferredBy == nil || len(doc.ReferredBy) != 0 {
+		t.Errorf("ReferredBy = %#v, want empty non-nil list", doc.ReferredBy)
+	}
+}
+
+func containsSite(sites []ReferenceSite, want ReferenceSite) bool {
+	for _, site := range sites {
+		if reflect.DeepEqual(site, want) {
+			return true
+		}
+	}
+	return false
+}
