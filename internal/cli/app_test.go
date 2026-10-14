@@ -2842,7 +2842,7 @@ func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T
 	if err := json.Unmarshal([]byte(lines[0]), &errorRecord); err != nil {
 		t.Fatalf("json.Unmarshal(errors.ndjson line) error = %v, want nil", err)
 	}
-	if errorRecord.Schema != "zscalerctl.dump.error.v1" ||
+	if errorRecord.Schema != "zscalerctl.dump.error.v2" ||
 		errorRecord.Product != "zia" ||
 		errorRecord.Name != "rule-labels" ||
 		errorRecord.Operation != "list" ||

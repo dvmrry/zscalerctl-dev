@@ -5,15 +5,64 @@
   "description": "Schema for each newline-delimited JSON object in a dump's errors.ndjson. Each line is a value-free per-resource failure record.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "product", "name", "operation", "kind"],
+  "required": [
+    "schema",
+    "product",
+    "name",
+    "operation",
+    "kind"
+  ],
   "properties": {
     "schema": {
-      "const": "zscalerctl.dump.error.v1",
-      "description": "Versioned schema identifier for this artifact."
+      "enum": [
+        "zscalerctl.dump.error.v2",
+        "zscalerctl.dump.error.v1"
+      ],
+      "description": "Versioned schema identifier. New dumps write v2; v1 records (no reason, status, or retryable) remain readable."
     },
-    "product": { "type": "string", "description": "Product family of the failed resource." },
-    "name": { "type": "string", "description": "Resource name of the failed resource." },
-    "operation": { "type": "string", "description": "Read operation attempted (list or show)." },
-    "kind": { "type": "string", "description": "Failure classification; never includes live values." }
+    "product": {
+      "type": "string",
+      "description": "Product family of the failed resource."
+    },
+    "name": {
+      "type": "string",
+      "description": "Resource name of the failed resource."
+    },
+    "operation": {
+      "type": "string",
+      "description": "Read operation attempted (list or show)."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Failure classification; never includes live values."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "unauthorized",
+        "forbidden",
+        "not_found",
+        "rate_limited",
+        "server_error",
+        "client_error",
+        "transport",
+        "timeout",
+        "pagination_incomplete",
+        "decode_failed",
+        "not_subscribed",
+        "unknown"
+      ],
+      "description": "Why a live read failed, from a closed value-free vocabulary: unauthorized (401), forbidden (403: the API role or licence does not allow it), not_found (404 on a list/show endpoint), rate_limited (429), server_error (5xx), client_error (other 4xx), transport (network failure), timeout (the request hit --timeout), pagination_incomplete (the CLI refused a list it could not prove complete), decode_failed (the response did not match the expected shape), not_subscribed (the feature is not licensed), unknown. Present only for live read failures."
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599,
+      "description": "HTTP status of the failed request, when there was a response."
+    },
+    "retryable": {
+      "type": "boolean",
+      "description": "True when a retry (or a longer --timeout) could plausibly succeed: rate_limited, server_error, transport, timeout. Omitted when false."
+    }
   }
 }

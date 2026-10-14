@@ -37,6 +37,7 @@ type DumpResourceError struct {
 	Resource  string
 	Operation Operation
 	Kind      string
+	Detail    FailureDetail
 }
 
 // DumpResult owns the safe summary of a completed dump artifact. It carries no

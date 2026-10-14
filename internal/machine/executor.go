@@ -525,6 +525,7 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
+			Detail:    FailureDetailOf(err),
 		}
 	case errors.Is(err, resources.ErrUnknownResource):
 		return MachineError{
@@ -568,13 +569,15 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Resource:  resource,
 		}
 	default:
-		return MachineError{
+		machineErr := MachineError{
 			Kind:      ErrorKindLiveAccessFailed,
 			Message:   "resource read failed",
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
 		}
+		machineErr.AttachFailure(err)
+		return machineErr
 	}
 }
 

@@ -254,6 +254,16 @@ scraping `message` prose:
 | `6` | partial dump |
 | `7` | drift detected by `diff --fail-on-drift` |
 
+A live read failure (exit `5`: `live_access_failed` or `deadline_exceeded`)
+also carries `reason`, `status` (the HTTP status, when there was a response),
+and `retryable: true` when a retry could succeed. `forbidden`, `unauthorized`
+and `not_subscribed` mean the API role or licence does not allow the resource:
+do not retry, report it. `rate_limited`, `server_error`, `transport` and
+`timeout` are retryable: back off, and raise `--timeout` for `timeout`.
+`pagination_incomplete` means the CLI refused a list it could not prove
+complete; `decode_failed` means the response did not match the expected shape.
+A dump's `errors.ndjson` records carry the same three fields.
+
 Prefer stdout for data and stderr for diagnostics. `--output PATH` creates
 or replaces a restricted regular file and is a local write. Publication uses
 a same-directory rename and is atomic on Unix; Windows does not have an atomic

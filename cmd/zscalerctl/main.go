@@ -85,6 +85,10 @@ type errorBody struct {
 	Operation string   `json:"operation,omitempty"`
 	Product   string   `json:"product,omitempty"`
 	Resource  string   `json:"resource,omitempty"`
+	// Reason, Status and Retryable say why a live read failed (error v2).
+	Reason    string `json:"reason,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
 }
 
 // errorFormat decides how a command-boundary error is rendered, keeping it
@@ -135,12 +139,19 @@ func errorDetails(err error) errorBody {
 		body.Product = string(notFound.Product)
 		body.Resource = notFound.Resource
 	}
+	detail := machine.FailureDetailOf(err)
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
 		body.Operation = string(machineErr.Operation)
 		body.Product = machineErr.Product
 		body.Resource = machineErr.Resource
+		if machineErr.Detail.Reason != "" {
+			detail = machineErr.Detail
+		}
 	}
+	body.Reason = detail.Reason
+	body.Status = detail.Status
+	body.Retryable = detail.Retryable
 	var mce *zscaler.MissingCredentialsError
 	if errors.As(err, &mce) {
 		body.Missing = mce.Missing

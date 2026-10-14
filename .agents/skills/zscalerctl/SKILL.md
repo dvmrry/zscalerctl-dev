@@ -218,7 +218,15 @@ tenant is configured.
 Failures use a JSON envelope on stderr and stable process exits: 0 success, 1
 internal/canceled, 2 usage, 3 missing or invalid credentials, 4 not found or
 unsupported, 5 live API failure, 6 partial dump, and 7 drift detected from
-`diff --fail-on-drift`. `--timeout 30s` caps each HTTP request, not the
+`diff --fail-on-drift`. A live read failure (exit `5`: `live_access_failed` or `deadline_exceeded`)
+also carries `reason`, `status` (the HTTP status, when there was a response),
+and `retryable: true` when a retry could succeed. `forbidden`, `unauthorized`
+and `not_subscribed` mean the API role or licence does not allow the resource:
+do not retry, report it. `rate_limited`, `server_error`, `transport` and
+`timeout` are retryable: back off, and raise `--timeout` for `timeout`.
+`pagination_incomplete` means the CLI refused a list it could not prove
+complete; `decode_failed` means the response did not match the expected shape.
+A dump's `errors.ndjson` records carry the same three fields. `--timeout 30s` caps each HTTP request, not the
 whole list or dump run; apply a separate process or orchestration deadline
 when the total operation must be bounded.
 
