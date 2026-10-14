@@ -275,7 +275,21 @@ catalog's projection). For a list field such as `ipAddresses` or `groups`, a
 missing key normally means none are set; it never means false. Omitted fields
 cannot be recovered except by reading in a mode that renders them.
 
+Count instead of listing with `--count-by` (list only): it groups the narrowed
+records by the values at each comma-separated path and returns only those
+values and counts, so an audit can count without pulling records into
+context. A path into a list counts per element, once per record
+(`--count-by groups.id` on `zia users` gives members per group), and records
+with no value count under `null`. Paths through the same list pair values
+from the same element (`groups.id,groups.name` gives each group's own name);
+paths on different branches combine. JSON output is
+`{"count_by":[...],"records":N,"distinct":D,"counts":[{"values":{"groups.id":10},"count":2},...]}`
+with the largest counts first; `--limit N` keeps the top N. `--fields`,
+`--offset`, a repeated path, an object path, or a field the mode omits is a
+usage error.
+
 ```sh
+zscalerctl --redaction standard --format json --count-by groups.id zia users list  # members per group
 zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive
 zscalerctl zia locations list --filter country=US --filter name~hq  # exact + AND
 zscalerctl zia locations list --search branch                       # any rendered field value

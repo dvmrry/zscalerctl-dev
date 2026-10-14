@@ -325,6 +325,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if err := validatePaginationInvocation(opts, rest, a.resourceCatalog()); err != nil {
 		return err
 	}
+	if err := validateCountByInvocation(opts); err != nil {
+		return err
+	}
 	if err := validateFromDumpInvocation(opts, rest, a.resourceCatalog()); err != nil {
 		return err
 	}
@@ -440,18 +443,22 @@ type globalOptions struct {
 	colorMode          output.ColorMode
 	logLevel           string
 	fields             []string
+	countBy            []string
 	filters            []recordFilter
 	search             string
 	help               bool
 	argTerminatorIndex int
 }
 
-// narrowingFlag names the first result-narrowing flag in use (--filter or
-// --search), or "" when neither is set. Used to scope both flags to list
-// operations with a usage error that names the offending flag.
+// narrowingFlag names the first list-only flag in use (--filter, --search or
+// --count-by), or "" when none is set. Used to scope them to list operations
+// with a usage error that names the offending flag.
 func (o globalOptions) narrowingFlag() string {
 	if len(o.filters) > 0 {
 		return "--filter"
+	}
+	if len(o.countBy) > 0 {
+		return "--count-by"
 	}
 	if o.search != "" {
 		return "--search"
@@ -523,6 +530,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noColor := gp.noColor
 	logLevel := gp.logLevel
 	fieldsFlag := gp.fieldsFlag
+	countByFlag := gp.countByFlag
 	searchFlag := gp.searchFlag
 	globalArgs, rest, help, terminatorIndex, err := splitGlobalArgs(args)
 	if err != nil {
@@ -597,6 +605,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		colorMode:          colorMode,
 		logLevel:           *logLevel,
 		fields:             parseFieldsList(*fieldsFlag),
+		countBy:            parseFieldsList(*countByFlag),
 		filters:            filters,
 		search:             *searchFlag,
 		help:               help,
@@ -934,11 +943,19 @@ func (a *App) runProductWithRuntime(
 	if opts.fromDumpSet || opts.fromDump != "" {
 		message = "reading saved dump"
 	}
+	if len(opts.countBy) > 0 {
+		if err := resources.ValidateCountByPathsInMode(spec, rt.Redaction(), opts.countBy); err != nil {
+			return UsageError{Message: err.Error()}
+		}
+	}
 	projected, err := callWithSpinner(a, opts, message, func() (resources.ProjectedRecords, error) {
 		return a.executeMachineRead(ctx, spec, op, recordID, rt, opts)
 	})
 	if err != nil {
 		return err
+	}
+	if len(opts.countBy) > 0 {
+		return a.writeCounts(cfg, opts, projected)
 	}
 	a.noteOmittedFields(spec, rt.Redaction(), opts.fields, opts.fromDumpSet || opts.fromDump != "")
 	renderOpts := opts

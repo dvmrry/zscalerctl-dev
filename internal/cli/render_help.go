@@ -58,6 +58,7 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  --fields <a,b,c>")
 	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; key may be a nested path; repeatable, all must match)")
 	fmt.Fprintln(w, "  --search <term>                  (list only; case-insensitive, any field)")
+	fmt.Fprintln(w, "  --count-by <a,b,c>               (list only; counts instead of records; lists count per element)")
 }
 
 func dumpUsage(catalog resources.ResourceCatalog) string {

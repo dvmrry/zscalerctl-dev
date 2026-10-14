@@ -62,6 +62,12 @@ var globalFlagDefs = []globalFlagDef{
 		usage:      "config file path",
 	},
 	{
+		name:       "count-by",
+		kind:       "string",
+		defaultVal: "",
+		usage:      "count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element",
+	},
+	{
 		name:       "fields",
 		kind:       "string",
 		defaultVal: "",
@@ -190,6 +196,7 @@ type globalFlagPointers struct {
 	noColor     *bool
 	logLevel    *string
 	fieldsFlag  *string
+	countByFlag *string
 	filterFlags *repeatableFlag // points at the Var registered on fs
 	searchFlag  *string
 }
@@ -227,6 +234,8 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 				p.logLevel = ptr
 			case "fields":
 				p.fieldsFlag = ptr
+			case "count-by":
+				p.countByFlag = ptr
 			case "search":
 				p.searchFlag = ptr
 			}

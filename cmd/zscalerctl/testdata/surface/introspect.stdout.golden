@@ -21,6 +21,11 @@
       "usage": "config file path"
     },
     {
+      "name": "count-by",
+      "type": "string",
+      "usage": "count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element"
+    },
+    {
       "name": "fields",
       "type": "string",
       "usage": "comma-separated output fields to keep (narrows the sanitized output)"
@@ -138,6 +143,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -178,6 +184,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -214,6 +221,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -257,6 +265,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -300,6 +309,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -343,6 +353,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -386,6 +397,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -422,6 +434,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -478,6 +491,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -518,6 +532,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -594,6 +609,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -634,6 +650,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -719,6 +736,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -756,6 +774,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -792,6 +811,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -828,6 +848,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -865,6 +886,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -901,6 +923,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -938,6 +961,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -978,6 +1002,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1014,6 +1039,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1067,6 +1093,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1121,6 +1148,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1175,6 +1203,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1229,6 +1258,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1283,6 +1313,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1337,6 +1368,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1391,6 +1423,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1445,6 +1478,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1499,6 +1533,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1553,6 +1588,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1607,6 +1643,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1661,6 +1698,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1716,6 +1754,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1770,6 +1809,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1825,6 +1865,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1879,6 +1920,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1934,6 +1976,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -1988,6 +2031,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2042,6 +2086,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2097,6 +2142,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2151,6 +2197,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2206,6 +2253,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2260,6 +2308,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2315,6 +2364,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2369,6 +2419,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2424,6 +2475,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2478,6 +2530,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2533,6 +2586,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2587,6 +2641,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2642,6 +2697,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2696,6 +2752,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2751,6 +2808,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2805,6 +2863,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2860,6 +2919,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2914,6 +2974,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -2969,6 +3030,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3023,6 +3085,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3078,6 +3141,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3132,6 +3196,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3187,6 +3252,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3241,6 +3307,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3296,6 +3363,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3350,6 +3418,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3405,6 +3474,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3459,6 +3529,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3514,6 +3585,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3568,6 +3640,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3623,6 +3696,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3677,6 +3751,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3732,6 +3807,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3786,6 +3862,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3841,6 +3918,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3895,6 +3973,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -3950,6 +4029,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4004,6 +4084,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4059,6 +4140,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4113,6 +4195,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4168,6 +4251,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4222,6 +4306,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4277,6 +4362,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4331,6 +4417,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4386,6 +4473,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4440,6 +4528,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4495,6 +4584,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4549,6 +4639,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4604,6 +4695,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4658,6 +4750,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4713,6 +4806,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4767,6 +4861,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4822,6 +4917,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4876,6 +4972,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4931,6 +5028,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -4985,6 +5083,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5040,6 +5139,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5094,6 +5194,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5149,6 +5250,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5203,6 +5305,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5258,6 +5361,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5312,6 +5416,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5367,6 +5472,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5421,6 +5527,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5476,6 +5583,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5530,6 +5638,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5585,6 +5694,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5639,6 +5749,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5694,6 +5805,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5748,6 +5860,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5802,6 +5915,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5856,6 +5970,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5910,6 +6025,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -5965,6 +6081,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6019,6 +6136,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6074,6 +6192,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6128,6 +6247,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6183,6 +6303,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6237,6 +6358,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6292,6 +6414,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6346,6 +6469,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6401,6 +6525,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6455,6 +6580,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6510,6 +6636,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6564,6 +6691,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6619,6 +6747,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6673,6 +6802,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6728,6 +6858,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6782,6 +6913,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6837,6 +6969,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6891,6 +7024,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -6946,6 +7080,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7000,6 +7135,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7055,6 +7191,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7109,6 +7246,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7164,6 +7302,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7218,6 +7357,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7273,6 +7413,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7327,6 +7468,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7382,6 +7524,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7436,6 +7579,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7491,6 +7635,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7545,6 +7690,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7600,6 +7746,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7654,6 +7801,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7709,6 +7857,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7763,6 +7912,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7818,6 +7968,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7872,6 +8023,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7927,6 +8079,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -7981,6 +8134,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8036,6 +8190,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8090,6 +8245,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8145,6 +8301,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8199,6 +8356,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8254,6 +8412,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8308,6 +8467,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8363,6 +8523,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8417,6 +8578,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8471,6 +8633,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8525,6 +8688,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8579,6 +8743,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8633,6 +8798,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8687,6 +8853,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8741,6 +8908,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8795,6 +8963,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8849,6 +9018,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8903,6 +9073,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -8957,6 +9128,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9011,6 +9183,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9065,6 +9238,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9119,6 +9293,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9173,6 +9348,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9227,6 +9403,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9281,6 +9458,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9335,6 +9513,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9389,6 +9568,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9443,6 +9623,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9497,6 +9678,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9551,6 +9733,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9606,6 +9789,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9660,6 +9844,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9715,6 +9900,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9769,6 +9955,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9824,6 +10011,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9878,6 +10066,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9932,6 +10121,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -9986,6 +10176,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10040,6 +10231,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10094,6 +10286,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10148,6 +10341,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10202,6 +10396,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10256,6 +10451,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10310,6 +10506,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10364,6 +10561,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10418,6 +10616,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10472,6 +10671,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10526,6 +10726,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10580,6 +10781,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10617,6 +10819,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10665,6 +10868,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10715,6 +10919,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10769,6 +10974,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10824,6 +11030,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10878,6 +11085,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10933,6 +11141,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -10987,6 +11196,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11042,6 +11252,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11096,6 +11307,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11151,6 +11363,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11205,6 +11418,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11259,6 +11473,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11313,6 +11528,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11367,6 +11583,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11421,6 +11638,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11475,6 +11693,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11530,6 +11749,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11584,6 +11804,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11639,6 +11860,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11693,6 +11915,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11748,6 +11971,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11802,6 +12026,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11857,6 +12082,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11911,6 +12137,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -11966,6 +12193,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12020,6 +12248,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12075,6 +12304,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12129,6 +12359,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12184,6 +12415,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12238,6 +12470,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12293,6 +12526,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12347,6 +12581,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12402,6 +12637,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12456,6 +12692,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12511,6 +12748,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12565,6 +12803,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12620,6 +12859,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12674,6 +12914,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12729,6 +12970,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12783,6 +13025,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12838,6 +13081,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12892,6 +13136,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -12947,6 +13192,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13001,6 +13247,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13056,6 +13303,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13110,6 +13358,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13165,6 +13414,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13219,6 +13469,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13274,6 +13525,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13328,6 +13580,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13382,6 +13635,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13437,6 +13691,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13491,6 +13746,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13546,6 +13802,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13600,6 +13857,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13655,6 +13913,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13709,6 +13968,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13763,6 +14023,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13817,6 +14078,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13872,6 +14134,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13926,6 +14189,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -13981,6 +14245,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14035,6 +14300,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14090,6 +14356,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14144,6 +14411,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14199,6 +14467,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14253,6 +14522,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14308,6 +14578,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14362,6 +14633,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14417,6 +14689,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14471,6 +14744,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14526,6 +14800,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14580,6 +14855,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14635,6 +14911,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14689,6 +14966,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14744,6 +15022,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14798,6 +15077,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14853,6 +15133,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14907,6 +15188,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -14962,6 +15244,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15016,6 +15299,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15071,6 +15355,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15125,6 +15410,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15180,6 +15466,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15234,6 +15521,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15289,6 +15577,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15343,6 +15632,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15398,6 +15688,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15452,6 +15743,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15507,6 +15799,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15561,6 +15854,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15615,6 +15909,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15670,6 +15965,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15724,6 +16020,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15779,6 +16076,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15833,6 +16131,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
@@ -15888,6 +16187,7 @@
       "inherited_flags": [
         "color",
         "config",
+        "count-by",
         "fields",
         "filter",
         "format",
