@@ -173,9 +173,15 @@ func TestDescribeSemanticsReferenceTargetsAndCollectionOrdering(t *testing.T) {
 		t.Fatalf("DescribeSemantics(zia/url-filtering-rules, standard) error = %v, want nil", err)
 	}
 
+	// locations may name a location or a sublocation, so the pilot reports
+	// no single reference target for it (schema references lists both).
+	locations, ok := semanticField(got.Fields, "locations")
+	if !ok || locations.Reference != nil || locations.Collection == nil {
+		t.Errorf("DescribeSemantics(zia/url-filtering-rules, standard) locations = %+v, want a collection with no single reference", locations)
+	}
+
 	wantTargets := map[string]string{
-		"labels":    "rule-labels",
-		"locations": "locations",
+		"labels": "rule-labels",
 	}
 	for fieldName, wantResource := range wantTargets {
 		field, ok := semanticField(got.Fields, fieldName)

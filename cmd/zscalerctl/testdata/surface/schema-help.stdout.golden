@@ -7,6 +7,7 @@ Usage:
 Available Commands:
   describe    describe reviewed field semantics for one resource (config-free pilot)
   list        list all catalog resources and their supported operations
+  references  list the fields that point at a resource, with the --filter path for its id (config-free)
 
 Flags:
   -h, --help   help for schema

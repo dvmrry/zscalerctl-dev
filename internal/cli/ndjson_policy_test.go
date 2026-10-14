@@ -138,6 +138,7 @@ func ndjsonCommandPolicies() map[string]ndjsonCommandPolicy {
 		"schema":               {expect: ndjsonRejectUsage, args: args("schema")},
 		"schema list":          {expect: ndjsonRejectUnsupported, args: args("schema", "list")},
 		"schema describe":      {expect: ndjsonRejectUnsupported, args: args("schema", "describe", "zia", "locations")},
+		"schema references":    {expect: ndjsonRejectUnsupported, args: args("schema", "references", "zia", "locations")},
 		"version":              {expect: ndjsonRejectUnsupported, args: args("version")},
 		"zia admin-audit-logs": {expect: ndjsonRejectUsage, args: args("zia", "admin-audit-logs")},
 		"zia admin-audit-logs status": {

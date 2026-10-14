@@ -26,7 +26,7 @@ Global flags (17):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (295):
+Commands (296):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -83,6 +83,8 @@ Commands (295):
       effects: local_filesystem_write (when --output is set)
   schema list                               list all catalog resources and their supported operations
       effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
+  schema references                         list the fields that point at a resource, with the --filter path for its id (config-free)
+      effects: local_filesystem_write (when --output is set)
   version                                   print version, commit, build date, and runtime info
       effects: local_filesystem_write (when --output is set)
   zcc fail-open-policy list                 list zcc fail-open-policy

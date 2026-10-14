@@ -73,12 +73,9 @@ type CollectionSemantics struct {
 }
 
 // ReferenceSemantics identifies the catalog resource represented by a
-// reference object. Target fields are intentionally not inferred beyond the
-// verified resource target.
-type ReferenceSemantics struct {
-	Product  Product `json:"product"`
-	Resource string  `json:"resource"`
-}
+// reference object. It is the catalog field's single References target, so
+// the semantics pilot and `schema references` cannot disagree.
+type ReferenceSemantics = ResourceRef
 
 // SemanticSource records the repository primary sources used to review a
 // field's type/description and its catalog exposure. These are static source
@@ -132,7 +129,6 @@ type semanticFieldDefinition struct {
 	description string
 	sdkPath     string
 	collection  bool
-	reference   *ReferenceSemantics
 }
 
 const (
@@ -277,10 +273,6 @@ var pilotSemanticDefinitions = map[string][]semanticFieldDefinition{
 			description: "The URL filtering rule's labels; labels logically group policy rules.",
 			sdkPath:     semanticURLRuleSDK,
 			collection:  true,
-			reference: &ReferenceSemantics{
-				Product:  ProductZIA,
-				Resource: "rule-labels",
-			},
 		},
 		{
 			name:        "locations",
@@ -288,10 +280,6 @@ var pilotSemanticDefinitions = map[string][]semanticFieldDefinition{
 			description: "Name-ID pairs of locations for which the rule must be applied.",
 			sdkPath:     semanticURLRuleSDK,
 			collection:  true,
-			reference: &ReferenceSemantics{
-				Product:  ProductZIA,
-				Resource: "locations",
-			},
 		},
 	},
 	"zia/rule-labels": {
@@ -384,8 +372,10 @@ func DescribeSemantics(spec ResourceSpec, mode redact.Mode) (Semantics, error) {
 		if definition.collection {
 			semantic.Collection = &CollectionSemantics{Ordering: CollectionOrderingUnknown}
 		}
-		if definition.reference != nil {
-			reference := *definition.reference
+		// The pilot's reference names one verified target; a field whose ids
+		// may belong to several resources has no single target to report.
+		if len(field.References) == 1 {
+			reference := field.References[0]
 			semantic.Reference = &reference
 		}
 		doc.Fields = append(doc.Fields, semantic)

@@ -320,6 +320,14 @@ list all catalog resources and their supported operations
 zscalerctl schema list
 ```
 
+#### schema references
+
+list the fields that point at a resource, with the --filter path for its id (config-free)
+
+```
+zscalerctl schema references <product> <resource>
+```
+
 ### version
 
 print version, commit, build date, and runtime info

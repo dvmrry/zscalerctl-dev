@@ -204,10 +204,13 @@ records by the values at each comma-separated path and returns only those
 values and counts, so an audit can count without pulling records into
 context. A path into a list counts per element, once per record
 (`--count-by groups.id` on `zia users` gives members per group), and records
-with no value count under `null`. JSON output is
-`{"count_by":[...],"records":N,"distinct":D,"counts":[{"groups.id":10,"count":2},...]}`
+with no value count under `null`. Paths through the same list pair values
+from the same element (`groups.id,groups.name` gives each group's own name);
+paths on different branches combine. JSON output is
+`{"count_by":[...],"records":N,"distinct":D,"counts":[{"values":{"groups.id":10},"count":2},...]}`
 with the largest counts first; `--limit N` keeps the top N. `--fields`,
-`--offset`, an object path, or a field the mode omits is a usage error.
+`--offset`, a repeated path, an object path, or a field the mode omits is a
+usage error.
 
 Use NDJSON only when the consumer intentionally handles a complete record
 stream:
@@ -317,3 +320,30 @@ exit 4. Only fields renderable in the requested mode are described; the default
 is `standard`, independent of configuration. Continue using `schema list` to
 validate all available field names. An omitted value never establishes that a
 setting is false, empty, or unconfigured.
+
+## Find what points at a resource
+
+Reference fields name their target in the catalog: `schema list` shows
+`"references": [{"product": ..., "resource": ...}]` on each mapped field,
+usually one target; a field whose ids may belong to either of two resources
+lists both (a ZIA rule's `locations` may name a location or a sublocation).
+To find every field that points at one resource, ask once instead of reading
+every resource:
+
+```sh
+zscalerctl --format json schema references zia locations
+```
+
+It is config-free. Each `referred_by` entry names the resource and field, the
+`match` path to filter on, the modes that render it, and the field's
+`targets`, so the next call is direct:
+
+```sh
+zscalerctl --format json --redaction standard --filter locations.id=12345 zia url-filtering-rules list
+```
+
+A flat id list such as `urlCategories` matches when any one element equals
+the id. A reference no mode renders (a secret one) is listed with no `match`
+and no modes: it shows the relationship exists but cannot be read. A field whose target has not been
+verified is not listed, so an empty `referred_by` does not prove nothing
+points at the resource.

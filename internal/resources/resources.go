@@ -55,13 +55,16 @@ func (o Operation) Mutates() bool {
 }
 
 type FieldSpec struct {
-	Name                   string              `json:"name"`
-	JSONName               string              `json:"json_name,omitempty"`
-	Classification         FieldClassification `json:"classification"`
-	AllowedModes           []redact.Mode       `json:"allowed_modes,omitempty"`
-	Fields                 []FieldSpec         `json:"fields,omitempty"`
-	SensitiveNameReason    string              `json:"sensitive_name_reason,omitempty"`
-	StandardFreeTextReason string              `json:"standard_free_text_reason,omitempty"`
+	Name           string              `json:"name"`
+	JSONName       string              `json:"json_name,omitempty"`
+	Classification FieldClassification `json:"classification"`
+	AllowedModes   []redact.Mode       `json:"allowed_modes,omitempty"`
+	Fields         []FieldSpec         `json:"fields,omitempty"`
+	// References names the catalog resources this field's id may belong to
+	// (usually one); see fieldReferences in references.go.
+	References             []ResourceRef `json:"references,omitempty"`
+	SensitiveNameReason    string        `json:"sensitive_name_reason,omitempty"`
+	StandardFreeTextReason string        `json:"standard_free_text_reason,omitempty"`
 }
 
 type FieldClassification string
@@ -704,7 +707,10 @@ func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, se
 func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool {
 	values := []any(nil)
 	if value, ok := fields[filter.Field]; ok {
-		values = []any{value}
+		// A top-level key matches the whole rendered value, and a list also
+		// matches when any element does, as a dotted path into it would:
+		// --filter urlCategories=X keeps every rule that lists X.
+		values = append([]any{value}, topLevelElements(value)...)
 	} else if strings.Contains(filter.Field, ".") {
 		values = projectedPathValues(fields, strings.Split(filter.Field, "."))
 	}
@@ -721,6 +727,22 @@ func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool 
 		}
 	}
 	return false
+}
+
+// topLevelElements returns a list's own elements, one level deep (an inner
+// list is one element), or nothing for a non-list value.
+func topLevelElements(value any) []any {
+	switch v := value.(type) {
+	case []any:
+		return v
+	case []string:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	}
+	return nil
 }
 
 // projectedPathValues returns the values a dotted path reaches in a projected
@@ -1721,6 +1743,7 @@ func Catalog() ResourceCatalog {
 	c = append(c, catalogZTW()...)
 	c = append(c, catalogZCC()...)
 	c = append(c, catalogZidentity()...)
+	applyFieldReferences(c)
 	return c
 }
 

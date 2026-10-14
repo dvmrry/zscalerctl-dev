@@ -90,6 +90,7 @@ Use an existing complete dump with normal resource commands:
 zscalerctl --format json --from-dump ./scratch-live-dump --fields id,name --limit 20 zia locations list
 zscalerctl --format json --from-dump ./scratch-live-dump zia locations get 12345
 zscalerctl --format json schema describe zia url-filtering-rules
+zscalerctl --format json schema references zia locations
 ```
 
 `--from-dump` bypasses configuration, credentials, secret providers and network
@@ -104,6 +105,8 @@ applies the normal narrowing options. Separate calls reload the directory.
 ZIA locations, URL filtering rules and rule labels. It describes selected
 catalog fields and confirmed references; other known resources explicitly
 report `not_reviewed`. It does not change the existing `schema list` contract.
+`schema references <product> <resource>` lists the catalog fields that point at
+a resource, with the `--filter` path that holds its id.
 These development capabilities must be discovered on the installed binary
 before use. See the [agent workflow](docs/cli/agent-machine-workflow.md),
 [implementation scope and follow-on experiments](docs/CORE_INVESTIGATION_SCOPE.md),
@@ -159,7 +162,7 @@ List results can be narrowed in-process: `--filter key=value` keeps records whos
 
 `--count-by a,b` counts list records instead of listing them: records are grouped by the values at each path, a path into a list such as `groups.id` counts per element (members per group on `zia users`), and records with no value count under `null`. Paths through the same list pair values from the same element. JSON output is `{"count_by", "records", "distinct", "counts"}`, each count `{"values": {path: value}, "count": N}`, largest first; `--limit N` keeps the top N. Filters and search apply first.
 
-A filter key can be a dotted path into nested fields, such as `groups.name` or `groups.id`. A path matches when any element it reaches matches, so `--filter groups.name=APP_DEV` keeps users in a group named exactly `APP_DEV` and not one named `APP_INFOSEC_DEV`. A path must end at a field without nested fields; `schema list` shows nested names under each field's `fields`. Repeated dotted filters are matched independently, so `--filter groups.name=APP_DEV --filter groups.id=11` can be satisfied by two different groups. A top-level key (`groups~DEV`) still matches against the whole rendered value. `--fields` takes top-level names only.
+A filter key can be a dotted path into nested fields, such as `groups.name` or `groups.id`. A path matches when any element it reaches matches, so `--filter groups.name=APP_DEV` keeps users in a group named exactly `APP_DEV` and not one named `APP_INFOSEC_DEV`. A path must end at a field without nested fields; `schema list` shows nested names under each field's `fields`. Repeated dotted filters are matched independently, so `--filter groups.name=APP_DEV --filter groups.id=11` can be satisfied by two different groups. A top-level key (`groups~DEV`) matches against the whole rendered value, and a top-level list also matches when any one element does, so `--filter urlCategories=SOCIAL_NETWORKING` keeps every rule that lists that category. `--fields` takes top-level names only.
 
 ```sh
 zscalerctl zia locations list --filter country=US --filter name~branch
