@@ -407,6 +407,9 @@ func availabilityAlong(chain []FieldSpec) PathAvailability {
 // nothing, which reads as a confident "no such records"; refusing it keeps an
 // omitted field from posing as an empty result.
 type SuppressedFieldError struct {
+	// Flag is the flag that named the field: "--filter" (the default) or
+	// "--count-by".
+	Flag         string
 	Product      Product
 	Resource     string
 	Field        string
@@ -416,16 +419,20 @@ type SuppressedFieldError struct {
 }
 
 func (e SuppressedFieldError) Error() string {
+	flag, use, consequence := "--filter", "filtered on", "so it could never match"
+	if e.Flag == "--count-by" {
+		flag, use, consequence = e.Flag, "counted", "so every record would count as missing"
+	}
 	if e.Secret {
-		return fmt.Sprintf("--filter: %q of %s/%s is secret and never renders, so it cannot be filtered on",
-			e.Field, e.Product, e.Resource)
+		return fmt.Sprintf("%s: %q of %s/%s is secret and never renders, so it cannot be %s",
+			flag, e.Field, e.Product, e.Resource, use)
 	}
 	if len(e.RenderableIn) == 0 {
-		return fmt.Sprintf("--filter: %q of %s/%s renders in no redaction mode, so it cannot be filtered on",
-			e.Field, e.Product, e.Resource)
+		return fmt.Sprintf("%s: %q of %s/%s renders in no redaction mode, so it cannot be %s",
+			flag, e.Field, e.Product, e.Resource, use)
 	}
-	return fmt.Sprintf("--filter: %q of %s/%s is omitted in %s mode, so it could never match; it renders with --redaction %s",
-		e.Field, e.Product, e.Resource, redact.EffectiveMode(e.Mode), modeList(e.RenderableIn))
+	return fmt.Sprintf("%s: %q of %s/%s is omitted in %s mode, %s; it renders with --redaction %s",
+		flag, e.Field, e.Product, e.Resource, redact.EffectiveMode(e.Mode), consequence, modeList(e.RenderableIn))
 }
 
 // Unwrap returns the sentinel error for errors.Is checks.
