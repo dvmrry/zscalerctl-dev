@@ -452,13 +452,15 @@ func TestFromDumpCountByUsesStoredMode(t *testing.T) {
 		t.Fatalf("stdout = %q, want empty", out.String())
 	}
 
+	// share_only renders only in share, so this succeeds only if the check
+	// uses the dump's stored mode rather than the standard default.
 	shareDir, catalog := writeCLISavedDump(t, redact.ModeShare, true, false)
 	app, out, _ = newSavedDumpTestApp(t, catalog)
-	args = []string{"--format", "json", "--from-dump", shareDir, "--count-by", "country", "zia", "locations", "list"}
+	args = []string{"--format", "json", "--from-dump", shareDir, "--count-by", "share_only", "zia", "locations", "list"}
 	if err := app.Run(context.Background(), args); err != nil {
 		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 	}
-	want := `{"count_by":["country"],"records":2,"distinct":2,"counts":[{"values":{"country":"DE"},"count":1},{"values":{"country":"US"},"count":1}]}`
+	want := `{"count_by":["share_only"],"records":2,"distinct":2,"counts":[{"values":{"share_only":"branch-share-value"},"count":1},{"values":{"share_only":"share-value"},"count":1}]}`
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, out.Bytes()); err != nil || compact.String() != want {
 		t.Fatalf("stdout = %s (err %v), want %s", out.String(), err, want)

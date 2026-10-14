@@ -126,7 +126,12 @@ func CountProjectedRecords(records ProjectedRecords, paths []string) []CountRow 
 		if a.Count != b.Count {
 			return b.Count - a.Count
 		}
-		return compareCountValues(a.Values, b.Values)
+		if c := compareCountValues(a.Values, b.Values); c != 0 {
+			return c
+		}
+		// Values that compare equal but are distinct (1 and "1", or int64s
+		// one float64 apart) still get a fixed order.
+		return strings.Compare(countKey(a.Values), countKey(b.Values))
 	})
 	return rows
 }

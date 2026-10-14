@@ -60,7 +60,7 @@ func TestCountByCountsMembersPerGroup(t *testing.T) {
 			}
 			// Only counted values may appear; groups.name is counted in one case.
 			for _, name := range []string{"alice", "bob", "carol", "APP_DEV"} {
-				if name == "APP_DEV" && strings.Contains(strings.Join(tc.args, " "), "groups.name") {
+				if name == "APP_DEV" && countsGroupNames(tc.args) {
 					continue
 				}
 				if strings.Contains(out.String(), name) {
@@ -122,3 +122,12 @@ func TestCountByRejectsInvocationsThatWouldMiscount(t *testing.T) {
 }
 
 func jsonCompact(dst *bytes.Buffer, src []byte) error { return json.Compact(dst, src) }
+
+func countsGroupNames(args []string) bool {
+	for i, arg := range args {
+		if arg == "--count-by" && i+1 < len(args) && strings.Contains(args[i+1], "groups.name") {
+			return true
+		}
+	}
+	return false
+}
