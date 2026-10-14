@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,6 +46,9 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 		{"not subscribed", errors.New("NOT_SUBSCRIBED: Cloud Browser Isolation subscription is required"), FailureNotSubscribed, 0, false},
 		{"decode", fmt.Errorf("decode page: %w", syntaxErr), FailureDecodeFailed, 0, false},
 		{"transport", &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, FailureTransport, 0, true},
+		{"408", sdkStatus(http.StatusRequestTimeout), FailureTimeout, 408, true},
+		{"network timeout", &net.DNSError{Err: "i/o timeout", IsTimeout: true}, FailureTimeout, 0, true},
+		{"wrapped not subscribed", fmt.Errorf("read: %w", errors.New("NOT_SUBSCRIBED: subscription is required")), FailureNotSubscribed, 0, false},
 		{"other", errors.New("something else"), FailureUnknown, 0, false},
 	}
 	for _, tt := range tests {
@@ -70,5 +75,47 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 				t.Errorf("normalizeLiveError(%s) = %q leaks the backend message", tt.name, got.Error())
 			}
 		})
+	}
+}
+
+// TestFailureReasonsMatchPublishedSchemas keeps the reason vocabulary, the
+// error envelope schema and the dump error schema in step.
+func TestFailureReasonsMatchPublishedSchemas(t *testing.T) {
+	t.Parallel()
+
+	want := append([]string(nil), failureReasons...)
+	slices.Sort(want)
+	for _, path := range []string{"../../docs/schema/error.schema.json", "../../docs/schema/dump-error.schema.json"} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		if err := json.Unmarshal(body, &schema); err != nil {
+			t.Fatal(err)
+		}
+		props := schema.Properties
+		if errorObject, ok := props["error"]; ok {
+			var nested struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			}
+			if err := json.Unmarshal(errorObject, &nested); err != nil {
+				t.Fatal(err)
+			}
+			props = nested.Properties
+		}
+		var reason struct {
+			Enum []string `json:"enum"`
+		}
+		if err := json.Unmarshal(props["reason"], &reason); err != nil {
+			t.Fatalf("%s reason: %v", path, err)
+		}
+		got := append([]string(nil), reason.Enum...)
+		slices.Sort(got)
+		if !slices.Equal(got, want) {
+			t.Errorf("%s reason enum = %v, want %v", path, got, want)
+		}
 	}
 }

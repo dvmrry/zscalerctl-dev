@@ -7,7 +7,8 @@ import (
 )
 
 // FailureReasonTimeout is the failure reason for a read that hit its deadline.
-// The live reader supplies every other reason (see zscaler.Failure*).
+// The live reader supplies every other reason (see zscaler.Failure*), and the
+// same "timeout" for an HTTP 408 or a network timeout.
 const FailureReasonTimeout = "timeout"
 
 // FailureDetail says why a live read failed in value-free terms: a reason from
@@ -31,6 +32,10 @@ type failureDetailer interface {
 func FailureDetailOf(err error) FailureDetail {
 	if err == nil {
 		return FailureDetail{}
+	}
+	var machineErr *MachineError
+	if errors.As(err, &machineErr) && machineErr.Detail.Reason != "" {
+		return machineErr.Detail
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return FailureDetail{Reason: FailureReasonTimeout, Retryable: true}
