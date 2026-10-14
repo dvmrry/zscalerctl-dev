@@ -330,7 +330,7 @@ zscalerctl --format json --redaction standard --filter locations.id=12345 zia ur
 ```
 
 A flat id list such as `urlCategories` matches when any one element equals
-the id. A secret reference is listed with no `match` and no modes: it shows
-the relationship exists but cannot be read. A field whose target has not been
+the id. A reference no mode renders (a secret one) is listed with no `match`
+and no modes: it shows the relationship exists but cannot be read. A field whose target has not been
 verified is not listed, so an empty `referred_by` does not prove nothing
 points at the resource.

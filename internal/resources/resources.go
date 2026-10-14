@@ -703,7 +703,7 @@ func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool 
 		// A top-level key matches the whole rendered value, and a list also
 		// matches when any element does, as a dotted path into it would:
 		// --filter urlCategories=X keeps every rule that lists X.
-		values = append([]any{value}, projectedPathValues(value, nil)...)
+		values = append([]any{value}, topLevelElements(value)...)
 	} else if strings.Contains(filter.Field, ".") {
 		values = projectedPathValues(fields, strings.Split(filter.Field, "."))
 	}
@@ -720,6 +720,22 @@ func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool 
 		}
 	}
 	return false
+}
+
+// topLevelElements returns a list's own elements, one level deep (an inner
+// list is one element), or nothing for a non-list value.
+func topLevelElements(value any) []any {
+	switch v := value.(type) {
+	case []any:
+		return v
+	case []string:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	}
+	return nil
 }
 
 // projectedPathValues returns the values a dotted path reaches in a projected

@@ -118,6 +118,9 @@ func FieldReferenceErrors(c ResourceCatalog) []string {
 			if len(targets) == 0 {
 				errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s has no target", key, path))
 			}
+			if len(slices.Compact(slices.SortedFunc(slices.Values(targets), compareRefs))) != len(targets) {
+				errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s lists a target twice", key, path))
+			}
 			for _, ref := range targets {
 				if _, ok := c.FindSpec(ref.Product, ref.Resource); !ok {
 					errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s targets %s, which is not a catalog resource", key, path, ref))
@@ -232,3 +235,5 @@ func findSpecKey(c ResourceCatalog, key string) (ResourceSpec, bool) {
 	product, name, _ := strings.Cut(key, "/")
 	return c.FindSpec(Product(product), name)
 }
+
+func compareRefs(a, b ResourceRef) int { return strings.Compare(a.String(), b.String()) }

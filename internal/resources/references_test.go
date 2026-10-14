@@ -90,6 +90,29 @@ func TestDemotedReferencesStayUnmapped(t *testing.T) {
 	}
 }
 
+// TestCrossProductReferencesArePinned pins the ZIA-to-ZPA links: the SDK
+// documents these externalId values as the ZPA-side ids ("an external
+// identifier used for an entity that is managed outside of ZIA. Examples
+// include zpaServerGroup and zpaAppSegments").
+func TestCrossProductReferencesArePinned(t *testing.T) {
+	t.Parallel()
+
+	for key, want := range map[string]map[string][]ResourceRef{
+		"zia/zpa-gateways": {
+			"zpaServerGroup.externalId": zpaRef("server-groups"),
+			"zpaAppSegments.externalId": zpaRef("application-segments"),
+		},
+		"zia/firewall-filtering-rules": {"zpaAppSegments.externalId": zpaRef("application-segments")},
+		"zia/ssl-inspection-rules":     {"zpaAppSegments.externalId": zpaRef("application-segments")},
+	} {
+		for path, targets := range want {
+			if got := fieldReferences[key][path]; !reflect.DeepEqual(got, targets) {
+				t.Errorf("%s.%s targets %v, want %v", key, path, got, targets)
+			}
+		}
+	}
+}
+
 func TestCatalogFieldsCarryReferences(t *testing.T) {
 	t.Parallel()
 
