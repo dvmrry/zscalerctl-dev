@@ -148,9 +148,11 @@ zscalerctl --format json introspect |
   '
 ```
 
-The field query is a catalog preflight. Validate requested fields against the
-active mode's renderable names before a live call; a known field that the mode
-suppresses is accepted by the CLI but omitted. Secret fields never render.
+The field query is a catalog preflight. Requested `--fields` that the active
+mode omits are dropped from output and named on stderr
+(`zscalerctl: requested zia/users fields omitted in share mode: ...`); a
+`--filter` on such a field is a usage error (exit 2) before any read. Secret
+fields never render.
 
 Then read with separate `list`, `get <id>`, or `show` commands (singletons):
 
@@ -255,9 +257,14 @@ environment, provider choice, and platform are reviewed and pinned.
 
 `list` operations narrow in-process (no `jq` needed); field names come from
 `schema list`. Unknown `--filter` and `--fields` names are usage errors (exit
-2) before configuration or live reads. A known field omitted by projection or
-redaction is simply unavailable: it cannot be recovered and does not match a
-filter. An absent field is not false, empty, or unconfigured.
+2) before configuration or live reads. A `--filter` on a known field that the
+active mode omits, or on a secret field, is also a usage error (exit 2), naming
+the mode that renders it; it would otherwise match nothing and read as "no such
+records". When the mode omits fields, a successful read names them on stderr
+(`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`). A
+key missing from a record is therefore empty or null in the source unless that
+notice names it; it is never false or unconfigured. Omitted fields cannot be
+recovered except by reading in a mode that renders them.
 
 ```sh
 zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive

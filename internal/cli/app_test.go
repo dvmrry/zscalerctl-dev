@@ -1832,31 +1832,29 @@ func TestResourceNarrowingPreflightRunsBeforeConfigAndReader(t *testing.T) {
 	}
 }
 
-func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
+// TestResourceListRejectsFilterOnFieldTheModeOmits pins the mode-aware filter
+// contract: a filter on a real catalog field that the active mode never renders
+// (secret, or standard-only under share) is a usage error before any read. A
+// silent empty result would read as a confident "no such records". The error
+// names the field and the mode that renders it, never the filter value.
+func TestResourceListRejectsFilterOnFieldTheModeOmits(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		filter string
+		name     string
+		filter   string
+		value    string
+		wantText string
 	}{
-		{name: "secret field", filter: "internalToken=raw-token-value"},
-		{name: "standard only field in share", filter: "hostname=host-01"},
+		{name: "secret field", filter: "internalToken=raw-token-value", value: "raw-token-value", wantText: "is secret and never renders"},
+		{name: "standard only field in share", filter: "hostname=host-01", value: "host-01", wantText: "renders with --redaction standard"},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			reader := fakeResourceReader{
-				list: []resources.SourceRecord{
-					resources.NewSourceRecord(map[string]any{
-						"id":            "1",
-						"name":          "HQ",
-						"hostname":      "host-01",
-						"internalToken": "raw-token-value",
-					}),
-				},
-			}
+			reader := &countingResourceReader{}
 			var out, errOut bytes.Buffer
 			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
 				Reader:  reader,
@@ -1869,17 +1867,45 @@ func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
 				"zia", "locations", "list",
 				"--filter", tt.filter,
 			})
-			if err != nil {
-				t.Fatalf("App.Run(list --filter catalog field dropped by mode) error = %v, want nil", err)
+			var usage cli.UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("App.Run(list --filter omitted field) error = %v, want UsageError", err)
 			}
-			if got := strings.TrimSpace(out.String()); got != "[]" {
-				t.Fatalf("App.Run(list --filter catalog field dropped by mode) stdout = %q, want []", out.String())
+			if !strings.Contains(usage.Message, tt.wantText) {
+				t.Errorf("usage message = %q, want it to contain %q", usage.Message, tt.wantText)
 			}
-			if errOut.Len() != 0 {
-				t.Errorf("App.Run(list --filter catalog field dropped by mode) stderr = %q, want empty", errOut.String())
+			if strings.Contains(usage.Message, tt.value) {
+				t.Errorf("usage message = %q echoes the filter value", usage.Message)
+			}
+			if reader.calls != 0 {
+				t.Errorf("reader calls = %d, want 0 (rejected before any read)", reader.calls)
+			}
+			if out.Len() != 0 {
+				t.Errorf("stdout = %q, want empty", out.String())
 			}
 		})
 	}
+}
+
+// countingResourceReader records reads so tests can prove a request was
+// rejected before reaching the reader.
+type countingResourceReader struct {
+	calls int
+}
+
+func (r *countingResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	r.calls++
+	return nil, nil
+}
+
+func (r *countingResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	r.calls++
+	return resources.SourceRecord{}, nil
+}
+
+func (r *countingResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
+	r.calls++
+	return resources.SourceRecord{}, nil
 }
 
 // TestNonRecordCommandsRejectNDJSON asserts every non-record command rejects

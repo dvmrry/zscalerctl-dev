@@ -940,6 +940,7 @@ func (a *App) runProductWithRuntime(
 	if err != nil {
 		return err
 	}
+	a.noteOmittedFields(spec, rt.Redaction(), opts.fields, opts.fromDumpSet || opts.fromDump != "")
 	renderOpts := opts
 	// The machine/core path has already applied row narrowing. The render path
 	// only keeps fields for text-format presentation order.

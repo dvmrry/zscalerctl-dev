@@ -34,8 +34,11 @@ func TestFromDumpUsesSavedCollectionWithoutLiveRuntime(t *testing.T) {
 	if len(list) != 2 || list[0]["name"] != "HQ" || list[1]["name"] != "Branch" {
 		t.Fatalf("list output = %#v, want saved records in source order", list)
 	}
-	if errOut.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", errOut.String())
+	// The fixture catalog has a share-only field, so a standard-mode dump
+	// names it as omitted; the hint points at a dump, not --redaction.
+	wantNotice := "zscalerctl: standard mode omits zia/locations fields: share_only; they render in a share-mode dump\n"
+	if errOut.String() != wantNotice {
+		t.Fatalf("stderr = %q, want %q", errOut.String(), wantNotice)
 	}
 
 	out.Reset()

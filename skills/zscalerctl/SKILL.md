@@ -8,7 +8,7 @@ description: Use when asked about Zscaler tenant configuration, inventory, or au
 Use `zscalerctl` for authorized, tenant-read-only Zscaler inventory and
 configuration reads. The allow-list projection and redaction layers are the
 output boundary: a field absent from machine output is intentionally
-unavailable.
+unavailable, and a read names any field the active mode omits on stderr.
 
 ## Version and capability preflight
 
@@ -102,9 +102,9 @@ jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" \
 ' "$SCHEMA"
 ```
 
-The CLI itself accepts a known field that the active mode suppresses, then
-omits it; the preflight above deliberately asks the caller to choose only
-renderable fields. Secret fields are never recoverable through `--fields`,
+The CLI drops a requested field that the active mode suppresses and names it
+on stderr (`zscalerctl: requested ... fields omitted in share mode: ...`); the
+preflight above still lets the caller choose renderable fields up front. Secret fields are never recoverable through `--fields`,
 `jq`, raw SDK values, config, or credentials.
 
 ## Read a small, explicit result
@@ -187,9 +187,13 @@ be a dotted path ending at a nested leaf field listed by `schema list`
 `--search term` scans rendered field values; filters
 and search apply to resource `list` only. Unknown `--fields` or
 `--filter` names are usage errors (exit 2) before config and live reads. A
-known field omitted by redaction is silently unavailable for output or
-matching. An absent field therefore means omitted or unknown; it does not mean
-false, empty, or unconfigured. No matches is a successful empty result.
+`--filter` on a known field the active mode omits, or on a secret field, is a
+usage error (exit 2) before any read, naming the mode that renders it. When
+the mode omits fields, a successful read names them on stderr (`zscalerctl:
+share mode omits zia/users fields: ...`), including nested paths such as
+`groups.name`. A key missing from a record is empty or null in the source
+unless that notice names it; it never means false or unconfigured. No matches
+is a successful empty result.
 
 Use NDJSON only when the consumer intentionally handles a complete record
 stream:

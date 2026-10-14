@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -2590,4 +2591,105 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestFieldPathAvailabilityIntersectsAlongThePath(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	for _, tc := range []struct {
+		path   string
+		want   []redact.Mode
+		secret bool
+	}{
+		{"id", []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}, false},
+		// groups.id lists every mode, but its parent excludes paranoid.
+		{"groups.id", []redact.Mode{redact.ModeStandard, redact.ModeShare}, false},
+		{"groups.name", []redact.Mode{redact.ModeStandard}, false},
+		{"owner.manager.name", []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}, false},
+	} {
+		got, ok := resources.FieldPathAvailability(spec, tc.path)
+		if !ok {
+			t.Fatalf("FieldPathAvailability(%q) ok = false, want true", tc.path)
+		}
+		if !slices.Equal(got.RenderableIn, tc.want) || got.Secret != tc.secret {
+			t.Errorf("FieldPathAvailability(%q) = %+v, want RenderableIn %v secret %v", tc.path, got, tc.want, tc.secret)
+		}
+	}
+	if _, ok := resources.FieldPathAvailability(spec, "groups.missing"); ok {
+		t.Error("FieldPathAvailability(groups.missing) ok = true, want false")
+	}
+}
+
+func TestValidateNarrowOptionsInModeRejectsFiltersTheModeOmits(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	for _, tc := range []struct {
+		mode   redact.Mode
+		field  string
+		reject bool
+		secret bool
+	}{
+		{redact.ModeStandard, "groups.name", false, false},
+		{redact.ModeShare, "groups.id", false, false},
+		{redact.ModeShare, "groups.name", true, false},
+		{redact.ModeParanoid, "groups.id", true, false},
+		{redact.ModeStandard, "token", true, true},
+	} {
+		err := resources.ValidateNarrowOptionsInMode(spec, tc.mode, resources.NarrowOptions{
+			Filters: []resources.ProjectedFilter{{Field: tc.field, Value: "v"}},
+		})
+		if !tc.reject {
+			if err != nil {
+				t.Errorf("%s %s: error = %v, want nil", tc.mode, tc.field, err)
+			}
+			continue
+		}
+		var suppressed resources.SuppressedFieldError
+		if !errors.As(err, &suppressed) || !errors.Is(err, resources.ErrSuppressedField) {
+			t.Fatalf("%s %s: error = %v, want SuppressedFieldError", tc.mode, tc.field, err)
+		}
+		if suppressed.Secret != tc.secret || suppressed.Field != tc.field {
+			t.Errorf("%s %s: error = %+v, want field %q secret %v", tc.mode, tc.field, suppressed, tc.field, tc.secret)
+		}
+	}
+	// Requested --fields the mode omits stay valid; unknown names still fail first.
+	if err := resources.ValidateNarrowOptionsInMode(spec, redact.ModeParanoid, resources.NarrowOptions{Fields: []string{"groups", "token"}}); err != nil {
+		t.Errorf("omitted --fields error = %v, want nil", err)
+	}
+	if err := resources.ValidateNarrowOptionsInMode(spec, redact.ModeShare, resources.NarrowOptions{
+		Filters: []resources.ProjectedFilter{{Field: "nope", Value: "v"}},
+	}); !errors.Is(err, resources.ErrUnknownField) {
+		t.Errorf("unknown filter error = %v, want ErrUnknownField", err)
+	}
+}
+
+func TestOmittedFields(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	omitted, secret := resources.OmittedFields(spec, redact.ModeParanoid, nil)
+	if !slices.Equal(omitted, []string{"groups"}) || secret != nil {
+		t.Errorf("OmittedFields(paranoid) = %v, %v; want [groups], nil (secret fields never listed unrequested)", omitted, secret)
+	}
+	if omitted, _ := resources.OmittedFields(spec, redact.ModeStandard, nil); omitted != nil {
+		t.Errorf("OmittedFields(standard) = %v, want nil", omitted)
+	}
+	omitted, secret = resources.OmittedFields(spec, redact.ModeParanoid, []string{"id", "groups", "token"})
+	if !slices.Equal(omitted, []string{"groups"}) || !slices.Equal(secret, []string{"token"}) {
+		t.Errorf("OmittedFields(paranoid, requested) = %v, %v; want [groups], [token]", omitted, secret)
+	}
+	// Share keeps groups but drops two of its nested fields; they are named by
+	// path so an absent nested key is never mistaken for an empty one.
+	omitted, _ = resources.OmittedFields(spec, redact.ModeShare, nil)
+	if !slices.Equal(omitted, []string{"groups.name", "groups.comments"}) {
+		t.Errorf("OmittedFields(share) = %v, want [groups.name groups.comments]", omitted)
+	}
+	omitted, _ = resources.OmittedFields(spec, redact.ModeShare, []string{"id", "groups"})
+	if !slices.Equal(omitted, []string{"groups.name", "groups.comments"}) {
+		t.Errorf("OmittedFields(share, requested groups) = %v, want [groups.name groups.comments]", omitted)
+	}
 }

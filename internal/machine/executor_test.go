@@ -1030,3 +1030,47 @@ func assertResponseError(t *testing.T, got machine.Response, wantKind string) {
 		t.Fatalf("Executor.Execute response error kind = %q, want %q", got.Error.Kind, wantKind)
 	}
 }
+
+// TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader keeps the
+// machine contract in step with the CLI: a filter on a field the executor's
+// redaction mode never renders is a usage error before any load, not an empty
+// success.
+func TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123"}),
+	}
+	spec := testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id")
+	spec.Fields = append(spec.Fields, resources.FieldSpec{
+		Name:           "hostname",
+		Classification: resources.ClassSensitiveIdentifier,
+		AllowedModes:   []redact.Mode{redact.ModeStandard},
+	})
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeShare,
+	}
+	req := machine.Request{
+		RequestID:  "req-omitted-filter",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			Filters:  []machine.Filter{{Field: "hostname", Operator: "=", Value: "host-canary-01"}},
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(omitted-field filter) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(omitted-field filter) loader calls = %#v, want none", loader.calls)
+	}
+	if strings.Contains(err.Error(), "host-canary-01") {
+		t.Fatalf("Executor.Execute(omitted-field filter) error = %q echoes the filter value", err.Error())
+	}
+}

@@ -100,9 +100,10 @@ jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" \
 ' "$SCHEMA"
 ```
 
-This preflight is intentionally stricter than the output narrowing operation:
-the CLI accepts a known field that the active mode suppresses, then omits it.
-Choose only fields in the active mode's renderable set. Secrets are never
+This preflight lets the caller choose renderable fields up front. The CLI
+itself drops a requested field the active mode suppresses and names it on
+stderr (`zscalerctl: requested ... fields omitted in share mode: ...`); a
+`--filter` on one is a usage error (exit 2). Secrets are never
 recoverable through field selection, `jq`, config, credentials, raw SDK
 responses, or another redaction mode. A nested catalog field does not imply a
 stable top-level `--fields` name; use the field names returned for the target
@@ -217,9 +218,12 @@ be a dotted path ending at a nested leaf field listed by `schema list`
 `--search term` searches rendered field values.
 Filters and search apply to resource `list` only. Unknown `--fields` or
 `--filter` names are usage errors (exit 2) before configuration and live
-reads. A known field that projection or redaction omits is unavailable for
-output or matching. An absent field means omitted or unknown; do not interpret
-it as false, empty, or unconfigured. No matches is a successful empty result.
+reads. A `--filter` on a known field the active mode omits, or on a secret
+field, is a usage error (exit 2) before any read, naming the mode that renders
+it. When the mode omits fields, a successful read names them on stderr,
+including nested paths such as `groups.name`. A key missing from a record is
+empty or null in the source unless that notice names it; do not interpret it
+as false or unconfigured. No matches is a successful empty result.
 
 Use NDJSON only when a consumer intentionally handles the complete record
 stream:

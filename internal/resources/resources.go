@@ -20,6 +20,7 @@ var (
 	ErrInvalidProjectedValue = errors.New("invalid projected value")
 	ErrUnexpectedField       = errors.New("unexpected rendered field")
 	ErrUnknownField          = errors.New("unknown projected field")
+	ErrSuppressedField       = errors.New("field is not rendered in the active redaction mode")
 	ErrUnknownResource       = errors.New("unknown browser resource")
 	ErrMissingID             = errors.New("browser resource id is required")
 	ErrInvalidResourceID     = errors.New("invalid zscaler resource id")
@@ -303,12 +304,11 @@ type NarrowOptions struct {
 
 // ValidateNarrowOptions validates all catalog names used by --fields and
 // --filter before a caller performs any read. A filter name is a top-level
-// field or a dotted path through nested catalog fields ("groups.name"). Validation is intentionally
-// independent of the active redaction mode: a catalog field that is known but
-// omitted from the mode remains valid, and later projection/filtering makes it
-// non-renderable and therefore non-matching. Empty names are left to the
-// adapter's request-shape validation, which owns parsing and required-value
-// errors.
+// field or a dotted path through nested catalog fields ("groups.name"). This
+// check is catalog-only, so it can run before configuration (and therefore the
+// redaction mode) is known; ValidateNarrowOptionsInMode adds the mode check
+// once it is. Empty names are left to the adapter's request-shape validation,
+// which owns parsing and required-value errors.
 func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
 	catalog := make(map[string]struct{}, len(spec.Fields))
 	for _, field := range spec.Fields {
@@ -339,6 +339,167 @@ func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
 		}
 	}
 	return nil
+}
+
+// PathAvailability says whether a catalog field or dotted filter path renders
+// in a redaction mode. A nested field renders only where every field above it
+// also renders, so RenderableIn is the intersection along the path.
+type PathAvailability struct {
+	Secret       bool
+	RenderableIn []redact.Mode
+}
+
+// RenderedIn reports whether the path renders in mode.
+func (a PathAvailability) RenderedIn(mode redact.Mode) bool {
+	mode = redact.EffectiveMode(mode)
+	for _, m := range a.RenderableIn {
+		if m == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// FieldPathAvailability returns the availability of a top-level field or a
+// dotted path whose segments are nested catalog fields. ok is false when the
+// name is not in the catalog.
+func FieldPathAvailability(spec ResourceSpec, name string) (PathAvailability, bool) {
+	if field, ok := fieldByJSONName(spec.Fields, name); ok {
+		return availabilityAlong([]FieldSpec{field}), true
+	}
+	var chain []FieldSpec
+	fields := spec.Fields
+	for _, segment := range strings.Split(name, ".") {
+		field, ok := fieldByJSONName(fields, segment)
+		if !ok {
+			return PathAvailability{}, false
+		}
+		chain = append(chain, field)
+		fields = field.Fields
+	}
+	return availabilityAlong(chain), true
+}
+
+func availabilityAlong(chain []FieldSpec) PathAvailability {
+	var out PathAvailability
+	for _, field := range chain {
+		if field.Classification == ClassSecret {
+			out.Secret = true
+		}
+	}
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		renders := true
+		for _, field := range chain {
+			if !field.AllowedIn(mode) {
+				renders = false
+				break
+			}
+		}
+		if renders {
+			out.RenderableIn = append(out.RenderableIn, mode)
+		}
+	}
+	return out
+}
+
+// SuppressedFieldError reports a --filter path naming a real catalog field
+// that the active mode never renders. Filtering on it could only match
+// nothing, which reads as a confident "no such records"; refusing it keeps an
+// omitted field from posing as an empty result.
+type SuppressedFieldError struct {
+	Product      Product
+	Resource     string
+	Field        string
+	Mode         redact.Mode
+	Secret       bool
+	RenderableIn []redact.Mode
+}
+
+func (e SuppressedFieldError) Error() string {
+	if e.Secret || len(e.RenderableIn) == 0 {
+		return fmt.Sprintf("--filter: %q of %s/%s is secret and never renders, so it cannot be filtered on",
+			e.Field, e.Product, e.Resource)
+	}
+	return fmt.Sprintf("--filter: %q of %s/%s is omitted in %s mode, so it could never match; it renders with --redaction %s",
+		e.Field, e.Product, e.Resource, redact.EffectiveMode(e.Mode), modeList(e.RenderableIn))
+}
+
+// Unwrap returns the sentinel error for errors.Is checks.
+func (e SuppressedFieldError) Unwrap() error { return ErrSuppressedField }
+
+func modeList(modes []redact.Mode) string {
+	names := make([]string, len(modes))
+	for i, m := range modes {
+		names[i] = string(m)
+	}
+	return strings.Join(names, " or ")
+}
+
+// ValidateNarrowOptionsInMode runs ValidateNarrowOptions and then rejects any
+// filter path the mode does not render. Requested --fields that the mode omits
+// stay valid, since the caller still gets the fields that do render;
+// OmittedFields reports them.
+func ValidateNarrowOptionsInMode(spec ResourceSpec, mode redact.Mode, opts NarrowOptions) error {
+	if err := ValidateNarrowOptions(spec, opts); err != nil {
+		return err
+	}
+	for _, filter := range opts.Filters {
+		if filter.Field == "" {
+			continue
+		}
+		availability, _ := FieldPathAvailability(spec, filter.Field)
+		if !availability.RenderedIn(mode) {
+			return SuppressedFieldError{
+				Product:      spec.Product,
+				Resource:     spec.Name,
+				Field:        filter.Field,
+				Mode:         mode,
+				Secret:       availability.Secret,
+				RenderableIn: availability.RenderableIn,
+			}
+		}
+	}
+	return nil
+}
+
+// OmittedFields lists the catalog fields a mode leaves out of output, as
+// top-level names or dotted paths for nested fields under a parent that does
+// render. With requested fields it covers only those; without, every field.
+// Secret fields never render in any mode and the schema says so, so they are
+// listed only when requested, and then separately.
+func OmittedFields(spec ResourceSpec, mode redact.Mode, requested []string) (omitted []string, secret []string) {
+	fields := spec.Fields
+	if len(requested) > 0 {
+		fields = nil
+		for _, name := range requested {
+			field, ok := fieldByJSONName(spec.Fields, name)
+			if !ok {
+				continue
+			}
+			if field.Classification == ClassSecret {
+				secret = append(secret, name)
+				continue
+			}
+			fields = append(fields, field)
+		}
+	}
+	return omittedPaths(fields, mode, ""), secret
+}
+
+func omittedPaths(fields []FieldSpec, mode redact.Mode, prefix string) []string {
+	var out []string
+	for _, field := range fields {
+		if field.Classification == ClassSecret {
+			continue
+		}
+		path := prefix + field.JSONField()
+		if !field.AllowedIn(mode) {
+			out = append(out, path)
+			continue
+		}
+		out = append(out, omittedPaths(field.Fields, mode, path+".")...)
+	}
+	return out
 }
 
 func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
@@ -469,7 +630,7 @@ func NarrowProjectedRecords(
 	records ProjectedRecords,
 	opts NarrowOptions,
 ) (ProjectedRecords, error) {
-	if err := ValidateNarrowOptions(spec, opts); err != nil {
+	if err := ValidateNarrowOptionsInMode(spec, mode, opts); err != nil {
 		return ProjectedRecords{}, err
 	}
 	fields, err := EffectiveFields(spec, mode, opts.Fields)

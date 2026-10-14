@@ -181,10 +181,10 @@ func TestFilterNoMatchIsEmptySuccess(t *testing.T) {
 }
 
 // TestFilterSearchCannotReachSecretOrDroppedFields proves the safety property:
-// narrowing runs strictly post-projection, so a --filter naming a secret or
-// unmodeled field, or a --search for a secret's value, matches nothing — the
-// data was already dropped by the allow-list before narrowing ran, in every
-// redaction mode.
+// a --filter naming a secret or unmodeled field is a usage error before any
+// read (a filter that can never match would pose as an empty result), and a
+// --search for a secret's value matches nothing because narrowing runs
+// strictly post-projection, after the allow-list dropped the data.
 func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 	t.Parallel()
 
@@ -195,11 +195,11 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 	}{
 		{
 			name: "exact filter on secret field",
-			args: []string{"--filter", "preSharedKey=" + filterSecretCanary},
+			args: []string{"--filter", "preSharedKey=" + filterSecretCanary}, wantUsage: true,
 		},
 		{
 			name: "substring filter on secret field",
-			args: []string{"--filter", "preSharedKey~psk"},
+			args: []string{"--filter", "preSharedKey~psk"}, wantUsage: true,
 		},
 		{
 			name: "filter on unmodeled field",
@@ -233,6 +233,9 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 				}
 				if out.Len() != 0 || errOut.Len() != 0 {
 					t.Fatalf("App.Run(%v) output = stdout=%q stderr=%q, want empty", args, out.String(), errOut.String())
+				}
+				if strings.Contains(err.Error(), filterSecretCanary) {
+					t.Errorf("App.Run(%v) error = %q echoes the secret canary", args, err.Error())
 				}
 				return
 			}

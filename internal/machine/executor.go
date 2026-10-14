@@ -425,7 +425,7 @@ func (e Executor) validateRequestNarrowing(req Request, product, resource string
 			Resource:  resource,
 		}
 	}
-	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+	if err := resources.ValidateNarrowOptionsInMode(spec, e.Redaction, resources.NarrowOptions{
 		Fields:  fieldsFromInput(req.Input.Fields),
 		Filters: filters,
 	}); err != nil {
@@ -551,7 +551,8 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Resource:  resource,
 			cause:     resources.ErrInvalidResourceID,
 		}
-	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField):
+	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField),
+		errors.Is(err, resources.ErrSuppressedField):
 		return MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   sanitizedMachineMessage(err.Error()),
