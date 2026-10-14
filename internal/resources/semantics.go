@@ -73,8 +73,8 @@ type CollectionSemantics struct {
 }
 
 // ReferenceSemantics identifies the catalog resource represented by a
-// reference object. It is the catalog field's References, so the semantics
-// pilot and `schema references` cannot disagree.
+// reference object. It is the catalog field's single References target, so
+// the semantics pilot and `schema references` cannot disagree.
 type ReferenceSemantics = ResourceRef
 
 // SemanticSource records the repository primary sources used to review a
@@ -372,8 +372,10 @@ func DescribeSemantics(spec ResourceSpec, mode redact.Mode) (Semantics, error) {
 		if definition.collection {
 			semantic.Collection = &CollectionSemantics{Ordering: CollectionOrderingUnknown}
 		}
-		if field.References != nil {
-			reference := *field.References
+		// The pilot's reference names one verified target; a field whose ids
+		// may belong to several resources has no single target to report.
+		if len(field.References) == 1 {
+			reference := field.References[0]
 			semantic.Reference = &reference
 		}
 		doc.Fields = append(doc.Fields, semantic)

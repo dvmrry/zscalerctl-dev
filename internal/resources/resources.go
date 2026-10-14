@@ -60,11 +60,11 @@ type FieldSpec struct {
 	Classification FieldClassification `json:"classification"`
 	AllowedModes   []redact.Mode       `json:"allowed_modes,omitempty"`
 	Fields         []FieldSpec         `json:"fields,omitempty"`
-	// References names the catalog resource this field points at; see
-	// fieldReferences in references.go.
-	References             *ResourceRef `json:"references,omitempty"`
-	SensitiveNameReason    string       `json:"sensitive_name_reason,omitempty"`
-	StandardFreeTextReason string       `json:"standard_free_text_reason,omitempty"`
+	// References names the catalog resources this field's id may belong to
+	// (usually one); see fieldReferences in references.go.
+	References             []ResourceRef `json:"references,omitempty"`
+	SensitiveNameReason    string        `json:"sensitive_name_reason,omitempty"`
+	StandardFreeTextReason string        `json:"standard_free_text_reason,omitempty"`
 }
 
 type FieldClassification string
@@ -700,7 +700,10 @@ func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, se
 func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool {
 	values := []any(nil)
 	if value, ok := fields[filter.Field]; ok {
-		values = []any{value}
+		// A top-level key matches the whole rendered value, and a list also
+		// matches when any element does, as a dotted path into it would:
+		// --filter urlCategories=X keeps every rule that lists X.
+		values = append([]any{value}, projectedPathValues(value, nil)...)
 	} else if strings.Contains(filter.Field, ".") {
 		values = projectedPathValues(fields, strings.Split(filter.Field, "."))
 	}

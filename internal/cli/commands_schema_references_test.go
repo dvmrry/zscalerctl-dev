@@ -44,7 +44,7 @@ func TestSchemaReferencesTextNamesFilterOrSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "url-filtering-rules\tlastModifiedBy\tsecret; not rendered in any mode") {
+	if !strings.Contains(text, "url-filtering-rules\tlastModifiedBy\tnot rendered in any mode\n") {
 		t.Errorf("text output = %q, want the secret lastModifiedBy reference without a --filter hint", text)
 	}
 
@@ -52,8 +52,16 @@ func TestSchemaReferencesTextNamesFilterOrSecret(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"--format", "table", "schema", "references", "zia", "users"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter users.id=<id>\tstandard") {
+	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter users.id=<id>\tstandard\n") {
 		t.Errorf("text output = %q, want a --filter users.id hint", out.String())
+	}
+
+	app, out, _ = testConfigApp(t)
+	if err := app.Run(context.Background(), []string{"--format", "table", "schema", "references", "zia", "sublocations"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter locations.id=<id>\tstandard\tid is one of zia/locations, zia/sublocations\n") {
+		t.Errorf("text output = %q, want the locations field with both targets", out.String())
 	}
 }
 

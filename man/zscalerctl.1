@@ -100,7 +100,8 @@ Narrow list results to records whose rendered field value matches:
 substring match. A key may be a dotted path ending at a nested leaf field,
 such as \fBgroups.name\fR; it matches when any list element it reaches
 matches, and a path ending at an object is a usage error. A top-level key
-still matches the whole rendered value. Repeatable; all filters must match
+matches the whole rendered value, and a top-level list also matches when any
+one element does. Repeatable; all filters must match
 (AND), and each dotted filter may be satisfied by a different element. Valid for
 \fBlist\fR operations only; anywhere else it is a usage error. Filtering runs
 strictly after projection and redaction, so it can only narrow the sanitized
@@ -187,7 +188,8 @@ the default is standard, independent of configuration. JSON is recommended.
 .B schema references <product> <resource>
 List the catalog fields that point at one resource: each entry names the
 resource and field, the \fB\-\-filter\fR path that holds the target's id
-(\fBmatch\fR), and the redaction modes that render it. A secret reference is
+(\fBmatch\fR), the redaction modes that render it, and every resource the
+field's ids may belong to (\fBtargets\fR). A reference no mode renders is
 listed without a match path. Fields whose target is not verified are not
 listed, so an empty list does not prove nothing refers to the resource.
 Config-free; unknown resources exit 4.

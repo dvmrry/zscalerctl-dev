@@ -369,8 +369,10 @@ setting is false, empty, or unconfigured.
 ## Find what points at a resource
 
 Reference fields name their target in the catalog: `schema list` shows
-`"references": {"product": ..., "resource": ...}` on each mapped field. To
-find every field that points at one resource, ask once instead of reading
+`"references": [{"product": ..., "resource": ...}]` on each mapped field,
+usually one target; a field whose ids may belong to either of two resources
+lists both (a ZIA rule's `locations` may name a location or a sublocation).
+To find every field that points at one resource, ask once instead of reading
 every resource:
 
 ```sh
@@ -378,14 +380,15 @@ zscalerctl --format json schema references zia locations
 ```
 
 It is config-free. Each `referred_by` entry names the resource and field, the
-`match` path to filter on, and the modes that render it, so the next call is
-direct:
+`match` path to filter on, the modes that render it, and the field's
+`targets`, so the next call is direct:
 
 ```sh
 zscalerctl --format json --redaction standard --filter locations.id=12345 zia url-filtering-rules list
 ```
 
-A secret reference is listed with no `match` and no modes: it shows the
-relationship exists but cannot be read. A field whose target has not been
+A flat id list such as `urlCategories` matches when any one element equals
+the id. A secret reference is listed with no `match` and no modes: it shows
+the relationship exists but cannot be read. A field whose target has not been
 verified is not listed, so an empty `referred_by` does not prove nothing
 points at the resource.

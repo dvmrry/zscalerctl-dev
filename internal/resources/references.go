@@ -9,10 +9,12 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 )
 
-// ResourceRef names the catalog resource whose records a reference field
+// ResourceRef names a catalog resource whose records a reference field
 // points at: the field's id (or, for a scalar or string-list reference, its
 // value) identifies one of that resource's records. The target need not
-// support get; `--filter <key>=<id>` on its list finds the record.
+// support get; `--filter <key>=<id>` on its list finds the record. A field
+// whose ids may belong to either of two resources (a ZIA rule's locations
+// can name a location or a sublocation) lists both.
 type ResourceRef struct {
 	Product  Product `json:"product"`
 	Resource string  `json:"resource"`
@@ -20,8 +22,8 @@ type ResourceRef struct {
 
 func (r ResourceRef) String() string { return string(r.Product) + "/" + r.Resource }
 
-// fieldReferences records which catalog resource each reference field points
-// at, keyed by product/resource and then by dotted field path. Every entry is
+// fieldReferences records which catalog resources each reference field
+// points at, keyed by product/resource and then by dotted field path. Every entry is
 // checked against the vendored SDK, never inferred from the field name: two
 // fields with the same name can point at different resources. A field that
 // is reference-shaped but has no catalog target, or whose target is not
@@ -52,12 +54,20 @@ func mergeReferenceTables[V any](tables ...map[string]map[string]V) map[string]m
 	return merged
 }
 
-func ziaRef(resource string) ResourceRef { return ResourceRef{Product: ProductZIA, Resource: resource} }
-func zpaRef(resource string) ResourceRef { return ResourceRef{Product: ProductZPA, Resource: resource} }
-func ztwRef(resource string) ResourceRef { return ResourceRef{Product: ProductZTW, Resource: resource} }
-func zccRef(resource string) ResourceRef { return ResourceRef{Product: ProductZCC, Resource: resource} }
-func zidentityRef(resource string) ResourceRef {
-	return ResourceRef{Product: ProductZidentity, Resource: resource}
+// ziaRef and its siblings build a field's targets: one resource, or several
+// when the field's ids may belong to any of them.
+func ziaRef(resources ...string) []ResourceRef       { return productRefs(ProductZIA, resources) }
+func zpaRef(resources ...string) []ResourceRef       { return productRefs(ProductZPA, resources) }
+func ztwRef(resources ...string) []ResourceRef       { return productRefs(ProductZTW, resources) }
+func zccRef(resources ...string) []ResourceRef       { return productRefs(ProductZCC, resources) }
+func zidentityRef(resources ...string) []ResourceRef { return productRefs(ProductZidentity, resources) }
+
+func productRefs(product Product, resources []string) []ResourceRef {
+	refs := make([]ResourceRef, len(resources))
+	for i, resource := range resources {
+		refs[i] = ResourceRef{Product: product, Resource: resource}
+	}
+	return refs
 }
 
 // applyFieldReferences sets FieldSpec.References from fieldReferences. A
@@ -66,10 +76,9 @@ func zidentityRef(resource string) ResourceRef {
 func applyFieldReferences(c ResourceCatalog) {
 	for i := range c {
 		refs := fieldReferences[specKey(c[i])]
-		for path, ref := range refs {
+		for path, targets := range refs {
 			if field := fieldAtPath(c[i].Fields, path); field != nil {
-				ref := ref
-				field.References = &ref
+				field.References = slices.Clone(targets)
 			}
 		}
 	}
@@ -102,12 +111,17 @@ func FieldReferenceErrors(c ResourceCatalog) []string {
 			errs = append(errs, fmt.Sprintf("fieldReferences: %s is not a catalog resource", key))
 			continue
 		}
-		for path, ref := range refs {
+		for path, targets := range refs {
 			if fieldAtPath(spec.Fields, path) == nil {
 				errs = append(errs, fmt.Sprintf("fieldReferences: %s has no field %q", key, path))
 			}
-			if _, ok := c.FindSpec(ref.Product, ref.Resource); !ok {
-				errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s targets %s, which is not a catalog resource", key, path, ref))
+			if len(targets) == 0 {
+				errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s has no target", key, path))
+			}
+			for _, ref := range targets {
+				if _, ok := c.FindSpec(ref.Product, ref.Resource); !ok {
+					errs = append(errs, fmt.Sprintf("fieldReferences: %s.%s targets %s, which is not a catalog resource", key, path, ref))
+				}
 			}
 			if _, both := unmappedReferences[key][path]; both {
 				errs = append(errs, fmt.Sprintf("%s.%s is in both fieldReferences and unmappedReferences", key, path))
@@ -133,15 +147,18 @@ func FieldReferenceErrors(c ResourceCatalog) []string {
 // ReferenceSite is one catalog field that points at a resource. Match is the
 // --filter path that holds the target's id, and AllowedModes are the modes
 // that render it, so an agent can go straight to
-// `<product> <resource> list --filter <match>=<id>`. A field no mode renders
-// (a secret reference) is still listed, with no modes and no Match: it
-// cannot be filtered on.
+// `<product> <resource> list --filter <match>=<id>`. Targets lists every
+// resource the field's ids may belong to, so an agent sees when an id there
+// may be a sublocation rather than a location. A field no mode renders (a
+// secret reference) is still listed, with no modes and no Match: it cannot be
+// filtered on.
 type ReferenceSite struct {
 	Product      Product       `json:"product"`
 	Resource     string        `json:"resource"`
 	Field        string        `json:"field"`
 	Match        string        `json:"match,omitempty"`
 	AllowedModes []redact.Mode `json:"allowed_modes"`
+	Targets      []ResourceRef `json:"targets"`
 }
 
 // References is the `schema references` document: every catalog field that
@@ -161,7 +178,7 @@ func ReferencesTo(c ResourceCatalog, target ResourceRef) References {
 	for _, spec := range c {
 		walkReferences(spec.Fields, nil, func(path string, chain []FieldSpec) {
 			field := chain[len(chain)-1]
-			if *field.References != target {
+			if !slices.Contains(field.References, target) {
 				return
 			}
 			match, matchChain := path, chain
@@ -178,6 +195,7 @@ func ReferencesTo(c ResourceCatalog, target ResourceRef) References {
 				Field:        path,
 				Match:        match,
 				AllowedModes: modes,
+				Targets:      slices.Clone(field.References),
 			})
 		})
 	}

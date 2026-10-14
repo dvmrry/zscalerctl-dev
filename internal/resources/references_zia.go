@@ -2,7 +2,7 @@ package resources
 
 // ZIA reference targets for resources other than rules and policies (those
 // are in references_zia_rules.go); see fieldReferences in references.go.
-var ziaFieldReferences = map[string]map[string]ResourceRef{
+var ziaFieldReferences = map[string]map[string][]ResourceRef{
 	"zia/admin-users": {
 		"role": ziaRef("admin-roles"),
 	},
@@ -21,7 +21,7 @@ var ziaFieldReferences = map[string]map[string]ResourceRef{
 		"groups":              ziaRef("groups"),
 		"labels":              ziaRef("rule-labels"),
 		"locationGroups":      ziaRef("location-groups"),
-		"locations":           ziaRef("locations"),
+		"locations":           ziaRef("locations", "sublocations"),
 		"tenancyProfileIds":   ziaRef("tenancy-restriction-profiles"),
 		"users":               ziaRef("users"),
 	},
@@ -33,6 +33,9 @@ var ziaFieldReferences = map[string]map[string]ResourceRef{
 	},
 	"zia/dlp-edm-schemas-lite": {
 		"schema": ziaRef("dlp-edm-schemas"),
+	},
+	"zia/location-groups": {
+		"locations": ziaRef("locations", "sublocations"),
 	},
 	"zia/locations": {
 		"dynamiclocationGroups": ziaRef("location-groups"),
@@ -73,6 +76,10 @@ var ziaFieldReferences = map[string]map[string]ResourceRef{
 	"zia/vzen-clusters": {
 		"virtualZenNodes": ziaRef("vzen-nodes"),
 	},
+	"zia/zpa-gateways": {
+		"zpaServerGroup.externalId": zpaRef("server-groups"),
+		"zpaAppSegments.externalId": zpaRef("application-segments"),
+	},
 }
 
 var ziaUnmappedReferences = map[string]map[string]string{
@@ -84,7 +91,9 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"smartIsolationProfileId": "an integer id; browser-isolation-profiles is keyed by UUID",
 	},
 	"zia/c2c-incident-receivers": {
-		"onboardableEntity": "an onboarded SaaS tenant; the match to casb-tenants is not verified",
+		"onboardableEntity.zscalerAppTenantId": "a tenant id, not a catalog record",
+		"onboardableEntity.enterpriseTenantId": "the SaaS vendor's tenant id, not a catalog record",
+		"onboardableEntity":                    "an onboarded SaaS tenant; the match to casb-tenants is not verified",
 	},
 	"zia/casb-tenants": {
 		"enterpriseTenantId": "the SaaS vendor's tenant id, not a catalog record",
@@ -117,6 +126,9 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"edmClient": "no Index Tool resource in the catalog",
 		"schemaId":  "the record's own id",
 	},
+	"zia/dlp-edm-schemas-lite": {
+		"schema.externalId": "an id outside ZIA, not a catalog record",
+	},
 	"zia/dlp-idm-profile-lite": {
 		"clientVm":  "no Index Tool resource in the catalog",
 		"profileId": "the record's own id",
@@ -143,7 +155,6 @@ var ziaUnmappedReferences = map[string]map[string]string{
 	},
 	"zia/location-groups": {
 		"dynamicLocationGroupCriteria.managedBy": "a predefined SD-WAN partner, not a catalog record",
-		"locations":                              "holds location and sublocation ids; zia/locations lists parent locations only",
 	},
 	"zia/locations": {
 		"extranet":       "no extranet resource in the catalog",
@@ -168,10 +179,16 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"zpaTenantId": "a tenant id, not a catalog record",
 	},
 	"zia/proxies": {
-		"cert": "no root certificate resource in the catalog",
+		"cert.externalId": "an id outside ZIA, not a catalog record",
+		"cert":            "no root certificate resource in the catalog",
+	},
+	"zia/proxy-gateways": {
+		"secondaryProxy.externalId": "an id outside ZIA, not a catalog record",
+		"primaryProxy.externalId":   "an id outside ZIA, not a catalog record",
 	},
 	"zia/risk-profiles": {
-		"customTags": "no cloud application tag resource in the catalog",
+		"customTags.externalId": "an id outside ZIA, not a catalog record",
+		"customTags":            "no cloud application tag resource in the catalog",
 	},
 	"zia/static-ips": {
 		"city": "a geographic city id, not a catalog record",
@@ -189,6 +206,9 @@ var ziaUnmappedReferences = map[string]map[string]string{
 	"zia/url-categories": {
 		"scopes.ScopeEntities":            "target depends on the admin scope type (departments, locations or location groups)",
 		"scopes.scopeGroupMemberEntities": "holds location and sublocation ids; zia/locations lists parent locations only",
+	},
+	"zia/vzen-clusters": {
+		"virtualZenNodes.externalId": "an id outside ZIA, not a catalog record",
 	},
 	"zia/vzen-nodes": {
 		"zgatewayId": "a Zscaler service gateway id, not a catalog record",

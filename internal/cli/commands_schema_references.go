@@ -44,15 +44,23 @@ func (a *App) newSchemaReferencesCmd(opts globalOptions) *cobra.Command {
 				fmt.Fprintf(&body, "No catalog field is known to point at %s.\n", doc.Target)
 			}
 			for _, site := range doc.ReferredBy {
+				targets := ""
+				if len(site.Targets) > 1 {
+					names := make([]string, len(site.Targets))
+					for i, target := range site.Targets {
+						names[i] = target.String()
+					}
+					targets = "\tid is one of " + strings.Join(names, ", ")
+				}
 				if site.Match == "" {
-					fmt.Fprintf(&body, "%s %s\t%s\tsecret; not rendered in any mode\n", site.Product, site.Resource, site.Field)
+					fmt.Fprintf(&body, "%s %s\t%s\tnot rendered in any mode%s\n", site.Product, site.Resource, site.Field, targets)
 					continue
 				}
 				modes := make([]string, len(site.AllowedModes))
 				for i, mode := range site.AllowedModes {
 					modes[i] = string(mode)
 				}
-				fmt.Fprintf(&body, "%s %s\t--filter %s=<id>\t%s\n", site.Product, site.Resource, site.Match, strings.Join(modes, ","))
+				fmt.Fprintf(&body, "%s %s\t--filter %s=<id>\t%s%s\n", site.Product, site.Resource, site.Match, strings.Join(modes, ","), targets)
 			}
 			return renderer.WriteText(a.out, output.NewSafeText(body.String()))
 		},

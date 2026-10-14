@@ -1,7 +1,7 @@
 package resources
 
 // ZTW reference targets; see fieldReferences in references.go.
-var ztwFieldReferences = map[string]map[string]ResourceRef{
+var ztwFieldReferences = map[string]map[string][]ResourceRef{
 	"ztw/account-groups": {
 		"cloudConnectorGroups": ztwRef("ec-groups"),
 	},
@@ -54,30 +54,40 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"adminScopescopeGroupMemberEntities": "locations of a location group; ZTW has no location group resource to scope them",
 	},
 	"ztw/ec-groups": {
-		"provTemplate": "no provisioning template resource in the catalog",
+		"provTemplate.externalId": "an id outside ZTW, not a catalog record",
+		"location.externalId":     "an id outside ZTW, not a catalog record",
+		"provTemplate":            "no provisioning template resource in the catalog",
 	},
 	"ztw/forwarding-gateways": {
-		"subcloudPrimary":   "not applicable to Cloud & Branch Connector per the SDK",
-		"subcloudSecondary": "not applicable to Cloud & Branch Connector per the SDK",
+		"subcloudSecondary.externalId": "an id outside ZTW, not a catalog record",
+		"subcloudPrimary.externalId":   "an id outside ZTW, not a catalog record",
+		"subcloudPrimary":              "not applicable to Cloud & Branch Connector per the SDK",
+		"subcloudSecondary":            "not applicable to Cloud & Branch Connector per the SDK",
 	},
 	"ztw/forwarding-rules": {
-		"appServiceGroups":            "no app service group resource in the catalog",
-		"departments":                 "no ZTW user directory resource in the catalog",
-		"destIpv6Groups":              "no ZTW IPv6 group resource in the catalog",
-		"groups":                      "no ZTW user directory resource in the catalog",
-		"labels":                      "no ZTW rule label resource in the catalog",
-		"locationGroups":              "no ZTW location group resource in the catalog",
-		"nwApplicationGroups":         "no network application group resource in the catalog",
-		"srcIpv6Groups":               "no ZTW IPv6 group resource in the catalog",
-		"users":                       "no ZTW user directory resource in the catalog",
-		"zpaApplicationSegmentGroups": "no ZPA application segment group resource in the ZTW catalog",
+		"zpaApplicationSegmentGroups.zpaId": "the ZPA tenant id, not a record id",
+		"zpaApplicationSegments.zpaId":      "the ZPA tenant id, not a record id",
+		"appServiceGroups":                  "no app service group resource in the catalog",
+		"departments":                       "no ZTW user directory resource in the catalog",
+		"destIpv6Groups":                    "no ZTW IPv6 group resource in the catalog",
+		"groups":                            "no ZTW user directory resource in the catalog",
+		"labels":                            "no ZTW rule label resource in the catalog",
+		"locationGroups":                    "no ZTW location group resource in the catalog",
+		"nwApplicationGroups":               "no network application group resource in the catalog",
+		"srcIpv6Groups":                     "no ZTW IPv6 group resource in the catalog",
+		"users":                             "no ZTW user directory resource in the catalog",
+		"zpaApplicationSegmentGroups":       "no ZPA application segment group resource in the ZTW catalog",
 	},
 	"ztw/locations": {
-		"dynamiclocationGroups": "not applicable to Cloud & Branch Connector per the SDK",
-		"publicCloudAccountId":  "public-cloud-accounts and public-cloud-info both list cloud accounts; which one the ids belong to is not verified",
-		"staticLocationGroups":  "not applicable to Cloud & Branch Connector per the SDK",
-		"virtualZenClusters":    "not applicable to Cloud & Branch Connector per the SDK",
-		"virtualZens":           "not applicable to Cloud & Branch Connector per the SDK",
+		"virtualZens.externalId":           "an id outside ZTW, not a catalog record",
+		"virtualZenClusters.externalId":    "an id outside ZTW, not a catalog record",
+		"staticLocationGroups.externalId":  "an id outside ZTW, not a catalog record",
+		"dynamiclocationGroups.externalId": "an id outside ZTW, not a catalog record",
+		"dynamiclocationGroups":            "not applicable to Cloud & Branch Connector per the SDK",
+		"publicCloudAccountId":             "public-cloud-accounts and public-cloud-info both list cloud accounts; which one the ids belong to is not verified",
+		"staticLocationGroups":             "not applicable to Cloud & Branch Connector per the SDK",
+		"virtualZenClusters":               "not applicable to Cloud & Branch Connector per the SDK",
+		"virtualZens":                      "not applicable to Cloud & Branch Connector per the SDK",
 	},
 	"ztw/public-cloud-accounts": {
 		"accountId":  "a cloud provider account or subscription id, not a record id",

@@ -45,6 +45,10 @@ func TestEveryReferenceFieldIsClassified(t *testing.T) {
 	}
 }
 
+// referenceShapedPaths lists the fields that look like references: an object
+// or list with an id child, or a scalar named ...Id/...Ids. It descends into
+// every object, including reference objects, so a reference nested inside
+// another (cloudApplicationTenant.tenantId) is found too.
 func referenceShapedPaths(fields []FieldSpec, prefix string) []string {
 	var out []string
 	for _, field := range fields {
@@ -54,11 +58,36 @@ func referenceShapedPaths(fields []FieldSpec, prefix string) []string {
 		idNamed := name != "id" && (strings.HasSuffix(name, "Id") || strings.HasSuffix(name, "Ids"))
 		if hasID || (idNamed && len(field.Fields) == 0) {
 			out = append(out, path)
-			continue
 		}
 		out = append(out, referenceShapedPaths(field.Fields, path+".")...)
 	}
 	return out
+}
+
+// TestDemotedReferencesStayUnmapped pins mappings removed in review because
+// the id cannot belong to the target, so a later table edit cannot quietly
+// bring them back.
+func TestDemotedReferencesStayUnmapped(t *testing.T) {
+	t.Parallel()
+
+	for key, paths := range map[string][]string{
+		// An integer id; browser-isolation-profiles is keyed by UUID.
+		"zia/url-filtering-rules": {"cbiProfileId"},
+		// No evidence these ids are casb-tenants tenantIds.
+		"zia/casb-dlp-rules":     {"cloudAppTenants"},
+		"zia/casb-malware-rules": {"cloudAppTenants", "cloudAppTenantIds"},
+		// The SDK comment is copied from proxyGateway.
+		"ztw/traffic-dns-rules": {"zpaIpGroup"},
+	} {
+		for _, path := range paths {
+			if targets, ok := fieldReferences[key][path]; ok {
+				t.Errorf("%s.%s maps to %v; it was demoted in review", key, path, targets)
+			}
+			if _, ok := unmappedReferences[key][path]; !ok {
+				t.Errorf("%s.%s is missing from unmappedReferences", key, path)
+			}
+		}
+	}
 }
 
 func TestCatalogFieldsCarryReferences(t *testing.T) {
@@ -68,9 +97,10 @@ func TestCatalogFieldsCarryReferences(t *testing.T) {
 	if !ok {
 		t.Fatal("zia/url-filtering-rules missing from catalog")
 	}
+	// A rule's locations may name a location or a sublocation.
 	locations := fieldAtPath(spec.Fields, "locations")
-	if locations == nil || locations.References == nil || *locations.References != ziaRef("locations") {
-		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations", locations)
+	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations")) {
+		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations and zia/sublocations", locations)
 	}
 	if timeWindows := fieldAtPath(spec.Fields, "timeWindows"); timeWindows == nil || timeWindows.References != nil {
 		t.Errorf("url-filtering-rules.timeWindows References = %+v, want unmapped", timeWindows)
@@ -80,8 +110,9 @@ func TestCatalogFieldsCarryReferences(t *testing.T) {
 func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 	t.Parallel()
 
-	doc := ReferencesTo(Catalog(), ziaRef("locations"))
-	if doc.Target != ziaRef("locations") {
+	location := ziaRef("locations")[0]
+	doc := ReferencesTo(Catalog(), location)
+	if doc.Target != location {
 		t.Errorf("Target = %v, want zia/locations", doc.Target)
 	}
 	want := ReferenceSite{
@@ -90,26 +121,32 @@ func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 		Field:        "locations",
 		Match:        "locations.id",
 		AllowedModes: []redact.Mode{redact.ModeStandard},
+		Targets:      ziaRef("locations", "sublocations"),
 	}
 	if !containsSite(doc.ReferredBy, want) {
 		t.Errorf("ReferredBy = %+v, want it to contain %+v", doc.ReferredBy, want)
 	}
+	// The same field is listed under its other target.
+	if !containsSite(ReferencesTo(Catalog(), ziaRef("sublocations")[0]).ReferredBy, want) {
+		t.Errorf("ReferredBy(zia/sublocations) is missing %+v", want)
+	}
 
 	// A flat string list matches on the field itself.
-	categories := ReferencesTo(Catalog(), ziaRef("url-categories"))
+	categories := ReferencesTo(Catalog(), ziaRef("url-categories")[0])
 	wantCategories := ReferenceSite{
 		Product:      ProductZIA,
 		Resource:     "url-filtering-rules",
 		Field:        "urlCategories",
 		Match:        "urlCategories",
 		AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare},
+		Targets:      ziaRef("url-categories"),
 	}
 	if !containsSite(categories.ReferredBy, wantCategories) {
 		t.Errorf("ReferredBy = %+v, want it to contain %+v", categories.ReferredBy, wantCategories)
 	}
 
 	// A secret reference is listed, with no mode that renders it.
-	admins := ReferencesTo(Catalog(), ziaRef("admin-users"))
+	admins := ReferencesTo(Catalog(), ziaRef("admin-users")[0])
 	for _, site := range admins.ReferredBy {
 		if site.Resource == "url-filtering-rules" && site.Field == "lastModifiedBy" {
 			if len(site.AllowedModes) != 0 || site.Match != "" {

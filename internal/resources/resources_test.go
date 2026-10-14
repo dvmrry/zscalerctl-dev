@@ -677,6 +677,10 @@ func TestNestedFilterPathsMatchListElements(t *testing.T) {
 		{"exact never spans elements", resources.ProjectedFilter{Field: "groups.name", Value: "APP_INFOSEC_DEV,Ops"}, nil},
 		{"substring never matches key names", resources.ProjectedFilter{Field: "groups.name", Value: "name", Substring: true}, nil},
 		{"top-level list keeps whole-value matching", resources.ProjectedFilter{Field: "tags", Value: "dev-ops,ops"}, []string{"bob"}},
+		// A top-level list also matches any one element exactly, so a flat id
+		// list (urlCategories) supports membership filters.
+		{"top-level list matches one element", resources.ProjectedFilter{Field: "tags", Value: "ops"}, []string{"bob"}},
+		{"top-level element match is exact", resources.ProjectedFilter{Field: "tags", Value: "dev"}, []string{"alice"}},
 		{"two-level object path", resources.ProjectedFilter{Field: "owner.manager.name", Value: "dave"}, []string{"carol"}},
 	} {
 		got := resources.FilterProjectedRecords(records, []resources.ProjectedFilter{tc.filter}, "")

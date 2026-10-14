@@ -1,7 +1,7 @@
 package resources
 
 // ZCC reference targets; see fieldReferences in references.go.
-var zccFieldReferences = map[string]map[string]ResourceRef{
+var zccFieldReferences = map[string]map[string][]ResourceRef{
 	"zcc/application-profiles": {
 		"forwardingProfileId": zccRef("forwarding-profiles"),
 	},
