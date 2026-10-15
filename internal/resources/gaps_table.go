@@ -90,7 +90,7 @@ var coverageGaps = []CoverageGap{
 		Instead: ztwRef("locations"), Aliases: []string{"location-lite"}},
 
 	// Zidentity
-	{Product: ProductZidentity, Surface: "group-members", Reason: GapNotModeled, Note: "Listing a group's members needs a child-query command design; each user's groups render on zidentity/users in standard mode.",
+	{Product: ProductZidentity, Surface: "group-members", Reason: GapNotModeled, Note: "Group membership needs a child-query command design; user reads did not return membership on the validation tenant.",
 		Aliases: []string{"memberships", "user-groups", "members"}},
 	{Product: ProductZidentity, Surface: "entitlements", Reason: GapNotModeled, Note: "User admin and service entitlements need a per-user child-query command design."},
 }

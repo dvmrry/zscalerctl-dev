@@ -47,8 +47,9 @@ func catalogZidentity() ResourceCatalog {
 				operationalField("belongInternalDomain", allModes()),
 				operationalField("hostedIdp", allModes()),
 				operationalField("entityType", allModes()),
-				// Membership as reported on the user read; standard-only
-				// like zia/users groups.
+				// Membership as the SDK models it on the user read;
+				// standard-only like zia/users groups. The validation
+				// tenant's user reads did not return it (2026-10-15).
 				{
 					Name:           "groups",
 					Classification: ClassTenantConfig,
