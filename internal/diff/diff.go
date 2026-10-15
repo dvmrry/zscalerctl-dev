@@ -479,7 +479,7 @@ func admitRecords(ctx context.Context, spec resources.ResourceSpec, mode redact.
 			return nil, err
 		}
 		fields := verifiedRecords[i].Fields()
-		projected, _, err := resources.ProjectRecordAndVerify(spec, mode, resources.NewSourceRecord(fields))
+		projected, _, err := resources.ProjectRecordAndVerify(spec, mode, resources.NewSourceRecordFromProjected(fields))
 		if err != nil {
 			if ctxErr := checkContext(ctx); ctxErr != nil {
 				return nil, ctxErr

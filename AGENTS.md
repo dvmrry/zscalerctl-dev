@@ -271,8 +271,10 @@ including nested paths such as `groups.name`; standard mode omits only secrets,
 so it prints no mode-omission notice. Secret fields never render in any mode and are named
 only when requested; `schema list` marks them. Any other missing key means the
 source had no renderable value for it (empty, null, or a value outside the
-catalog's projection). For a list field such as `ipAddresses` or `groups`, a
-missing key normally means none are set; it never means false. Omitted fields
+catalog's projection). A list field renders `[]` only when the API itself returned an empty list,
+so `[]` means none. A missing list key means the API did not send it, the
+mode omits it, or it is not modeled: it does not prove none are set, and it
+never means false. Omitted fields
 cannot be recovered except by reading in a mode that renders them.
 
 Count instead of listing with `--count-by` (list only): it groups the narrowed
