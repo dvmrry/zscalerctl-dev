@@ -103,7 +103,10 @@ func permanentTransportFailure(err error) bool {
 // stayed session-invalid ("Resource Access Blocked") through every token
 // refresh. The SDK returns it as a plain error without the response, so no
 // status survives; the refreshed token was accepted and the request still
-// refused, which is an access verdict, as the 403 classified before.
+// refused, which is an access verdict, as the 403 classified before. A
+// persistent 401 gets the same forbidden label (the two cannot be told apart
+// here); either way it is not retryable. TestSessionRetriesExhaustedMatches-
+// TheRealSDKError pins the text to the vendored SDK.
 func sessionRetriesExhausted(err error) bool {
 	return strings.Contains(err.Error(), "max SESSION_NOT_VALID retries exceeded")
 }
