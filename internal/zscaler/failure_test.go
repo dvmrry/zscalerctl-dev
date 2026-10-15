@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -56,6 +57,7 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 		{"untrusted certificate (intercepting proxy)", &url.Error{Op: "Get", URL: "https://api.example.test", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, FailureTransport, 0, false},
 		{"host not found", &url.Error{Op: "Get", URL: "https://api.example.test", Err: &net.DNSError{Err: "no such host", Name: "api.example.test", IsNotFound: true}}, FailureTransport, 0, false},
 		{"redirect loop", &url.Error{Op: "Get", URL: "https://api.example.test", Err: errors.New("stopped after 10 redirects")}, FailureTransport, 0, false},
+		{"session retries exhausted (persistent Resource Access Blocked)", fmt.Errorf("list: %w", errors.New("max SESSION_NOT_VALID retries exceeded (1), possible authentication issue")), FailureForbidden, 0, false},
 		{"connection refused stays retryable", &url.Error{Op: "Get", URL: "https://api.example.test", Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}}, FailureTransport, 0, true},
 		{"text mentioning NOT_SUBSCRIBED", errors.New("backend said NOT_SUBSCRIBED somewhere"), FailureUnknown, 0, false},
 		{"decode", fmt.Errorf("decode page: %w", syntaxErr), FailureDecodeFailed, 0, false},
@@ -96,4 +98,36 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 // ErrorResponse.Error dereferences it.
 func httptestRequest() *http.Request {
 	return &http.Request{Method: http.MethodGet, URL: &url.URL{Scheme: "https", Host: "api.example.test", Path: "/zia/api/v1/x"}}
+}
+
+// TestPermanentTransportFailureMatchesRealNetHTTPErrors produces the redirect
+// loop and proxy-authentication errors from net/http itself, so a Go release
+// that rewords them (they are untyped, matched by text) fails here instead of
+// silently turning them retryable again.
+func TestPermanentTransportFailureMatchesRealNetHTTPErrors(t *testing.T) {
+	t.Parallel()
+
+	var loop *httptest.Server
+	loop = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, loop.URL+"/again", http.StatusFound)
+	}))
+	t.Cleanup(loop.Close)
+	_, err := loop.Client().Get(loop.URL)
+	if err == nil || !permanentTransportFailure(err) {
+		t.Errorf("redirect loop error %v: permanentTransportFailure = false, want true", err)
+	}
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusProxyAuthRequired)
+	}))
+	t.Cleanup(proxy.Close)
+	proxyURL, _ := url.Parse(proxy.URL)
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+	_, err = client.Get("https://api.example.test/zia/api/v1/x")
+	if err == nil || !permanentTransportFailure(err) {
+		t.Errorf("proxy 407 error %v: permanentTransportFailure = false, want true", err)
+	}
+	if reason, retryable := classifyFailure(err, 0); reason != FailureTransport || retryable {
+		t.Errorf("classifyFailure(proxy 407) = (%q, %v), want (transport, false)", reason, retryable)
+	}
 }
