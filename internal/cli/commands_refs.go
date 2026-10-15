@@ -162,9 +162,7 @@ func refsFailure(err error) string {
 
 func renderRefsTo(doc resources.RefsTo) output.SafeText {
 	var body strings.Builder
-	if len(doc.ReferencedBy) == 0 {
-		fmt.Fprintf(&body, "No record read references this %s id.\n", doc.Target)
-	}
+	fmt.Fprintf(&body, "%s: %d reference fields checked, %d records reference the id.\n", doc.Target, doc.SitesChecked, len(doc.ReferencedBy))
 	for _, hit := range doc.ReferencedBy {
 		fmt.Fprintf(&body, "%s %s\t%s\t%s\n", hit.Product, hit.Resource, hit.Field, refsRecordText(hit.Record))
 	}
@@ -182,7 +180,7 @@ func renderRefsCheck(doc resources.RefsCheck) output.SafeText {
 			targets[i] = target.String()
 		}
 		fmt.Fprintf(&body, "%s\t%s=%s\tnot in %s\n", refsRecordText(miss.Record), miss.Field,
-			resources.ProjectedValueText(miss.ID), strings.Join(targets, ", "))
+			output.TerminalCell(resources.ProjectedValueText(miss.ID)), strings.Join(targets, ", "))
 	}
 	writeRefsNotChecked(&body, doc.NotChecked)
 	return output.NewSafeText(body.String())
@@ -192,7 +190,7 @@ func refsRecordText(record resources.ProjectedRecord) string {
 	parts := []string{}
 	for _, key := range []string{"id", "name"} {
 		if value, ok := record.Value(key); ok {
-			parts = append(parts, key+"="+resources.ProjectedValueText(value))
+			parts = append(parts, key+"="+output.TerminalCell(resources.ProjectedValueText(value)))
 		}
 	}
 	return strings.Join(parts, " ")

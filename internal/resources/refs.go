@@ -59,6 +59,7 @@ type RefHit struct {
 type RefsTo struct {
 	Target       ResourceRef `json:"target"`
 	Redaction    redact.Mode `json:"redaction"`
+	SitesChecked int         `json:"sites_checked"`
 	ReferencedBy []RefHit    `json:"referenced_by"`
 	NotChecked   []RefSkip   `json:"not_checked"`
 }
@@ -114,6 +115,7 @@ func FindRefsTo(c ResourceCatalog, target ResourceRef, id string, mode redact.Mo
 			doc.NotChecked = append(doc.NotChecked, skip)
 			continue
 		}
+		doc.SitesChecked++
 		for _, record := range records.Records() {
 			for _, value := range recordPathValues(record, site.Match) {
 				if key, ok := refIDKey(value); ok && key == want {

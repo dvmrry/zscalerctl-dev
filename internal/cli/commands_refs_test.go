@@ -141,3 +141,31 @@ func TestRefsRejectsUnknownResourceAndBadArity(t *testing.T) {
 		}
 	}
 }
+
+// Record values reach the terminal in text output: control characters must be
+// escaped so a hostile name cannot forge result lines or send escape codes.
+func TestRefsTextEscapesRecordValues(t *testing.T) {
+	t.Parallel()
+	hostile := "Evil\nzia firewall-rules\tgroups\tid=9 name=Forged\x1b[2J"
+	reader := refsResourceReader{lists: map[string][]map[string]any{
+		"zia/url-filtering-rules": {{"id": 1, "name": hostile, "groups": []any{map[string]any{"id": 42}, map[string]any{"id": 99}}}},
+		"zia/groups":              {{"id": 42, "name": "Finance"}},
+	}}
+	for _, args := range [][]string{
+		{"--format", "pretty", "--redaction", "standard", "refs", "to", "zia", "groups", "42"},
+		{"--format", "pretty", "--redaction", "standard", "refs", "check", "zia", "url-filtering-rules"},
+	} {
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("Run(%v) error = %v", args, err)
+		}
+		text := out.String()
+		if strings.ContainsRune(text, '\x1b') || strings.Contains(text, "\nzia firewall-rules") {
+			t.Errorf("Run(%v) wrote unescaped control characters:\n%q", args, text)
+		}
+		if !strings.Contains(text, `Evil\nzia`) {
+			t.Errorf("Run(%v) output = %q, want the escaped name", args, text)
+		}
+	}
+}
