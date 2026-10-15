@@ -11,6 +11,24 @@ configuration reads. The allow-list projection and redaction layers are the
 output boundary: a field absent from machine output is intentionally
 unavailable, and a read names any field the active mode omits on stderr.
 
+## Quick start
+
+```sh
+zscalerctl zia --help                                    # resources and operations for a product
+zscalerctl --format json schema list | jq '.[] | select(.product=="zia" and .name=="users")'
+zscalerctl --format json --redaction standard --count-by groups.id,department.id zia users list
+zscalerctl --format json --redaction standard --filter groups.id=<id> zia url-filtering-rules list
+zscalerctl --format json schema references zia groups   # every field that points at a group
+zscalerctl --format json schema gaps zpa                 # what zscalerctl does not read
+```
+
+The default mode is `share`; identity and location fields need
+`--redaction standard`, and a usage error names the mode when you ask for an
+omitted field. `--count-by` takes several comma-separated paths at once, so
+"members per group, and how many have no department" is one call. Exit codes:
+0 ok, 2 usage, 3 credentials, 4 not found or not read (see `schema gaps`),
+5 live failure (with `reason`), 6 partial dump.
+
 ## Version and capability preflight
 
 Pair the installed binary with the installed copy of this skill. Start with
@@ -338,7 +356,7 @@ zscalerctl --format json schema references zia locations
 ```
 
 It is config-free. Each `referred_by` entry names the resource and field, the
-`match` path to filter on, the modes that render it, and the field's
+`match` path to filter on, the modes that render it (`allowed_modes`), and the field's
 `targets`, so the next call is direct:
 
 ```sh

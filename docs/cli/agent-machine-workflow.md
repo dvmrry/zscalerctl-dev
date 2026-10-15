@@ -381,7 +381,7 @@ zscalerctl --format json schema references zia locations
 ```
 
 It is config-free. Each `referred_by` entry names the resource and field, the
-`match` path to filter on, the modes that render it, and the field's
+`match` path to filter on, the modes that render it (`allowed_modes`), and the field's
 `targets`, so the next call is direct:
 
 ```sh
