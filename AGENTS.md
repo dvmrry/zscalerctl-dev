@@ -268,8 +268,12 @@ the mode that renders it; it would otherwise match nothing and read as "no such
 records". When the mode omits fields, a successful read names them on stderr
 (`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`),
 including nested paths such as `groups.name`; standard mode omits only secrets,
-so it prints no mode-omission notice. Secret fields never render in any mode and are named
-only when requested; `schema list` marks them. Any other missing key means the
+so it prints no mode-omission notice. Secret fields are credential material only (passwords,
+pre-shared keys, client secrets, tokens, key material, opaque blobs that may
+embed them, and unmodeled free-form maps such as `extensions`); they never
+render in any mode and are named only when requested. `schema list` marks
+each with its `secret_reason`. Link ids, settings and structure are not
+secret. Any other missing key means the
 source had no renderable value for it (empty, null, or a value outside the
 catalog's projection). A list field renders `[]` only when the API itself returned an empty list,
 so `[]` means none. A missing list key means the API did not send it, the

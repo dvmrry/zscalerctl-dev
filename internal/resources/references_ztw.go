@@ -11,9 +11,13 @@ var ztwFieldReferences = map[string]map[string][]ResourceRef{
 	"ztw/ec-groups": {
 		"location": ztwRef("locations"),
 	},
+	"ztw/forwarding-gateways": {
+		"lastModifiedBy": ztwRef("admin-users"),
+	},
 	"ztw/forwarding-rules": {
 		"destIpGroups":           ztwRef("ip-destination-groups"),
 		"ecGroups":               ztwRef("ec-groups"),
+		"lastModifiedBy":         ztwRef("admin-users"),
 		"locations":              ztwRef("locations"),
 		"nwServiceGroups":        ztwRef("network-service-groups"),
 		"nwServices":             ztwRef("network-services"),
@@ -32,16 +36,21 @@ var ztwFieldReferences = map[string]map[string][]ResourceRef{
 		"accountGroups": ztwRef("account-groups"),
 	},
 	"ztw/traffic-dns-rules": {
-		"destIpGroups": ztwRef("ip-destination-groups"),
-		"dnsGateway":   ztwRef("dns-gateways"),
-		"ecGroups":     ztwRef("ec-groups"),
-		"locations":    ztwRef("locations"),
-		"srcIpGroups":  ztwRef("ip-source-groups"),
+		"destIpGroups":   ztwRef("ip-destination-groups"),
+		"dnsGateway":     ztwRef("dns-gateways"),
+		"ecGroups":       ztwRef("ec-groups"),
+		"lastModifiedBy": ztwRef("admin-users"),
+		"locations":      ztwRef("locations"),
+		"srcIpGroups":    ztwRef("ip-source-groups"),
 	},
 	"ztw/traffic-log-rules": {
-		"ecGroups":     ztwRef("ec-groups"),
-		"locations":    ztwRef("locations"),
-		"proxyGateway": ztwRef("forwarding-gateways"),
+		"ecGroups":       ztwRef("ec-groups"),
+		"lastModifiedBy": ztwRef("admin-users"),
+		"locations":      ztwRef("locations"),
+		"proxyGateway":   ztwRef("forwarding-gateways"),
+	},
+	"ztw/workload-groups": {
+		"lastModifiedBy": ztwRef("admin-users"),
 	},
 }
 
@@ -52,6 +61,10 @@ var ztwUnmappedReferences = map[string]map[string]string{
 	"ztw/admin-users": {
 		"adminScopeScopeEntities":            "departments, locations or location groups depending on adminScopeType",
 		"adminScopescopeGroupMemberEntities": "locations of a location group; ZTW has no location group resource to scope them",
+	},
+	"ztw/dns-gateways": {
+		"lastModifiedBy":            "an admin audit reference; the SDK does not say which admin resource",
+		"lastModifiedBy.externalId": "an id outside ZTW, not a catalog record",
 	},
 	"ztw/ec-groups": {
 		"provTemplate.externalId": "an id outside ZTW, not a catalog record",
@@ -77,6 +90,13 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"srcIpv6Groups":                     "no ZTW IPv6 group resource in the catalog",
 		"users":                             "no ZTW user directory resource in the catalog",
 		"zpaApplicationSegmentGroups":       "no ZPA application segment group resource in the ZTW catalog",
+		"proxyGateway.parent":               "parent of a reference, not modeled as its own resource",
+	},
+	"ztw/location-templates": {
+		"lastModUid":                     "a user id per the SDK; match to ztw/admin-users is not verified",
+		"lastModUid.externalId":          "an id outside ZTW, not a catalog record",
+		"template.lastModUid":            "a user id per the SDK; match to ztw/admin-users is not verified",
+		"template.lastModUid.externalId": "an id outside ZTW, not a catalog record",
 	},
 	"ztw/locations": {
 		"virtualZens.externalId":           "an id outside ZTW, not a catalog record",
@@ -88,19 +108,34 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"staticLocationGroups":             "not applicable to Cloud & Branch Connector per the SDK",
 		"virtualZenClusters":               "not applicable to Cloud & Branch Connector per the SDK",
 		"virtualZens":                      "not applicable to Cloud & Branch Connector per the SDK",
+		"publicCloudAccountId.parent":      "parent of a reference, not modeled as its own resource",
+		"vpcInfo.cloudMeta":                "cloud VPC metadata, no catalog resource",
+	},
+	"ztw/network-service-groups": {
+		"services.parent": "parent of a reference, not modeled as its own resource",
 	},
 	"ztw/public-cloud-accounts": {
 		"accountId":  "a cloud provider account or subscription id, not a record id",
 		"platformId": "a cloud platform name (AWS or Azure), not a record id",
 	},
 	"ztw/public-cloud-info": {
-		"externalId":       "an external id issued for the cloud account, not a record id",
-		"regionStatus":     "a cloud region id, not a catalog record",
-		"supportedRegions": "a cloud region id, not a catalog record",
+		"externalId":                      "an external id issued for the cloud account, not a record id",
+		"accountDetails.awsAccountId":     "a cloud provider account id, not a record id",
+		"accountDetails.externalId":       "an external id issued for the cloud account, not a record id",
+		"accountDetails.trustedAccountId": "the Zscaler cloud provider account id, not a record id",
+		"lastModUser":                     "a ZIA admin user per the SDK; match to ztw/admin-users is not verified",
+		"lastModUser.externalId":          "an id outside ZTW, not a catalog record",
+		"regionStatus":                    "a cloud region id, not a catalog record",
+		"supportedRegions":                "a cloud region id, not a catalog record",
 	},
 	"ztw/traffic-dns-rules": {
-		"zpaIpGroup":     "SDK comment is copied from proxyGateway; target unverified",
-		"locationGroups": "no ZTW location group resource in the catalog",
+		"zpaIpGroup":        "SDK comment is copied from proxyGateway; target unverified",
+		"locationGroups":    "no ZTW location group resource in the catalog",
+		"dnsGateway.parent": "parent of a reference, not modeled as its own resource",
+		"zpaIpGroup.parent": "parent of a reference, not modeled as its own resource",
+	},
+	"ztw/traffic-log-rules": {
+		"proxyGateway.parent": "parent of a reference, not modeled as its own resource",
 	},
 	"ztw/zpa-application-segments": {
 		"zpaId": "the ZPA tenant id per the SDK, not a record id",

@@ -9,7 +9,9 @@ func catalogZTW() ResourceCatalog {
 			Fields: []FieldSpec{
 				operationalField("orgEditStatus", standardShareModes()),
 				operationalField("orgLastActivateStatus", standardShareModes()),
-				secretField("adminStatusMap"),
+				// Untyped map (SDK map[string]interface{}) keyed by admin;
+				// its keys and values are not modeled.
+				unstructuredField("adminStatusMap"),
 				operationalField("adminActivateStatus", standardShareModes()),
 			},
 		},
@@ -21,10 +23,46 @@ func catalogZTW() ResourceCatalog {
 				operationalField("id", allModes()),
 				tenantConfigField("name", standardShareModes()),
 				freeTextField("description", "ZTW workload group description"),
-				secretField("expression"),
+				// Tag expression text carries workload tag keys and values:
+				// standard-only, like zia/workload-groups expression.
+				sensitiveIdentifierField("expression"),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
-				secretField("expressionJson"),
+				ztwAdminRefField("lastModifiedBy"),
+				{
+					Name:           "expressionJson",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						{
+							Name:           "expressionContainers",
+							Classification: ClassTenantConfig,
+							AllowedModes:   allModes(),
+							Fields: []FieldSpec{
+								operationalField("tagType", allModes()),
+								operationalField("operator", allModes()),
+								{
+									Name:           "tagContainer",
+									Classification: ClassTenantConfig,
+									AllowedModes:   allModes(),
+									Fields: []FieldSpec{
+										operationalField("operator", allModes()),
+										{
+											Name:           "tags",
+											Classification: ClassTenantConfig,
+											AllowedModes:   standardOnlyMode(),
+											Fields: []FieldSpec{
+												// Workload tag key/value pairs, the same
+												// content as expression: standard-only.
+												sensitiveIdentifierField("key"),
+												ztwWorkloadTagValueField(),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 		{
@@ -45,13 +83,15 @@ func catalogZTW() ResourceCatalog {
 				operationalField("id", allModes()),
 				tenantConfigField("name", standardShareModes()),
 				operationalField("dnsGatewayType", allModes()),
-				secretField("ecDnsGatewayOptionsPrimary"),
-				secretField("ecDnsGatewayOptionsSecondary"),
+				// DNS gateway option enums (LAN_DNS, WAN_DNS, ...); the
+				// addresses themselves are primaryIp/secondaryIp.
+				operationalField("ecDnsGatewayOptionsPrimary", allModes()),
+				operationalField("ecDnsGatewayOptionsSecondary", allModes()),
 				tenantConfigField("failureBehavior", standardShareModes()),
 				sensitiveIdentifierField("primaryIp"),
 				sensitiveIdentifierField("secondaryIp"),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ztwAdminRefExternalIDField("lastModifiedBy"),
 			},
 		},
 		{
@@ -74,9 +114,9 @@ func catalogZTW() ResourceCatalog {
 				operationalField("dnsGatewayType", allModes()),
 				sensitiveIdentifierField("primaryIp"),
 				sensitiveIdentifierField("secondaryIp"),
-				secretField("ecDnsGatewayOptionsPrimary"),
-				secretField("ecDnsGatewayOptionsSecondary"),
-				secretField("lastModifiedBy"),
+				operationalField("ecDnsGatewayOptionsPrimary", allModes()),
+				operationalField("ecDnsGatewayOptionsSecondary", allModes()),
+				ztwAdminRefField("lastModifiedBy"),
 				operationalField("lastModifiedTime", standardShareModes()),
 			},
 		},
@@ -97,7 +137,8 @@ func catalogZTW() ResourceCatalog {
 				tenantConfigField("tunnelMode", standardShareModes()),
 				idNameExternalIDField("location", standardOnlyMode()),
 				idNameExternalIDField("provTemplate", standardOnlyMode()),
-				secretField("ecVMs"),
+				// The reader emits the VM count, not the VM records.
+				operationalField("ecVMs", allModes()),
 			},
 		},
 		{
@@ -184,11 +225,11 @@ func catalogZTW() ResourceCatalog {
 				sensitiveIdentifierField("email"),
 				freeTextField("comments", "ZTW admin user comments"),
 				operationalField("disabled", allModes()),
-				secretField("password"),
+				credentialField("password"),
 				operationalField("pwdLastModifiedTime", standardOnlyMode()),
 				operationalField("isNonEditable", allModes()),
-				secretField("isPasswordLoginAllowed"),
-				secretField("isPasswordExpired"),
+				namedOperationalField("isPasswordLoginAllowed", allModes(), "boolean: whether password login is allowed for the admin, not a password"),
+				namedOperationalField("isPasswordExpired", allModes(), "boolean: whether the admin's password has expired, not a password"),
 				operationalField("isAuditor", allModes()),
 				tenantConfigField("isSecurityReportCommEnabled", standardShareModes()),
 				tenantConfigField("isServiceUpdateCommEnabled", standardShareModes()),
@@ -205,10 +246,10 @@ func catalogZTW() ResourceCatalog {
 						operationalField("id", allModes()),
 						tenantConfigField("name", standardShareModes()),
 						operationalField("isNameL10nTag", allModes()),
-						secretField("extensions"),
+						unstructuredField("extensions"),
 					},
 				},
-				secretField("execMobileAppTokens"),
+				tokenField("execMobileAppTokens"),
 			},
 		},
 		{
@@ -232,7 +273,9 @@ func catalogZTW() ResourceCatalog {
 				operationalField("isNonEditable", allModes()),
 				tenantConfigField("logsLimit", standardOnlyMode()),
 				tenantConfigField("roleType", standardShareModes()),
-				secretField("featurePermissions"),
+				// Untyped map (SDK map[string]interface{}) of feature to
+				// permission; its keys are not modeled.
+				unstructuredField("featurePermissions"),
 			},
 		},
 		{
@@ -287,13 +330,30 @@ func catalogZTW() ResourceCatalog {
 				tenantConfigField("matchInChild", standardOnlyMode()),
 				tenantConfigField("excludeFromDynamicGroups", standardOnlyMode()),
 				tenantConfigField("excludeFromManualGroups", standardOnlyMode()),
-				secretField("vpnCredentials"),
+				credentialField("vpnCredentials"),
 				idNameExternalIDField("virtualZens", standardOnlyMode()),
 				idNameExternalIDField("virtualZenClusters", standardOnlyMode()),
 				idNameExternalIDField("staticLocationGroups", standardOnlyMode()),
 				idNameExternalIDField("dynamiclocationGroups", standardOnlyMode()),
 				idNameField("publicCloudAccountId", standardOnlyMode()),
-				secretField("vpcInfo"),
+				{
+					Name:           "vpcInfo",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						tenantConfigField("cloudProvider", standardShareModes()),
+						{
+							Name:           "cloudMeta",
+							Classification: ClassTenantConfig,
+							AllowedModes:   allModes(),
+							Fields: []FieldSpec{
+								operationalField("id", allModes()),
+								// Cloud VPC/VNet placement: standard-only.
+								sensitiveIdentifierField("name"),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
@@ -327,12 +387,12 @@ func catalogZTW() ResourceCatalog {
 						operationalField("surrogateRefreshTimeInMinutes", standardOnlyMode()),
 						tenantConfigField("surrogateIP", standardOnlyMode()),
 						operationalField("editable", standardOnlyMode()),
-						secretField("lastModUid"),
+						ztwAdminRefExternalIDField("lastModUid"),
 					},
 				},
 				operationalField("editable", allModes()),
 				operationalField("lastModTime", standardShareModes()),
-				secretField("lastModUid"),
+				ztwAdminRefExternalIDField("lastModUid"),
 			},
 		},
 		{
@@ -356,11 +416,14 @@ func catalogZTW() ResourceCatalog {
 				operationalField("id", allModes()),
 				sensitiveIdentifierField("name"),
 				tenantConfigField("cloudType", standardShareModes()),
-				secretField("externalId"),
+				// AWS sts:ExternalId for the trust role: a cloud account
+				// detail, not a credential (the trust also pins
+				// trustedAccountId). Standard-only.
+				sensitiveIdentifierField("externalId"),
 				operationalField("lastModTime", standardShareModes()),
 				operationalField("lastSyncTime", standardShareModes()),
 				idNameExtensionsField("accountGroups", standardOnlyMode()),
-				secretField("lastModUser"),
+				ztwAdminRefExternalIDField("lastModUser"),
 				{
 					Name:           "regionStatus",
 					Classification: ClassTenantConfig,
@@ -382,7 +445,25 @@ func catalogZTW() ResourceCatalog {
 						tenantConfigField("cloudType", standardShareModes()),
 					},
 				},
-				secretField("accountDetails"),
+				{
+					Name:           "accountDetails",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						// Cloud account details: standard-only, like
+						// accountId and name above.
+						sensitiveIdentifierField("name"),
+						sensitiveIdentifierField("awsAccountId"),
+						sensitiveIdentifierField("awsRoleName"),
+						sensitiveIdentifierField("cloudWatchGroupArn"),
+						sensitiveIdentifierField("eventBusName"),
+						sensitiveIdentifierField("externalId"),
+						operationalField("logInfoType", allModes()),
+						operationalField("troubleShootingLogging", allModes()),
+						sensitiveIdentifierField("trustedAccountId"),
+						sensitiveIdentifierField("trustedRole"),
+					},
+				},
 			},
 		},
 		{
@@ -430,7 +511,7 @@ func catalogZTW() ResourceCatalog {
 				idNameExtensionsField("departments", standardOnlyMode()),
 				idNameExtensionsField("groups", standardOnlyMode()),
 				idNameExtensionsField("users", standardOnlyMode()),
-				secretField("lastModifiedBy"),
+				ztwAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("srcIpGroups", standardOnlyMode()),
 				idNameExtensionsField("srcIpv6Groups", standardOnlyMode()),
 				idNameExtensionsField("destIpGroups", standardOnlyMode()),
@@ -493,7 +574,7 @@ func catalogZTW() ResourceCatalog {
 				idNameField("dnsGateway", standardOnlyMode()),
 				idNameField("zpaIpGroup", standardOnlyMode()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ztwAdminRefField("lastModifiedBy"),
 			},
 		},
 		{
@@ -513,9 +594,39 @@ func catalogZTW() ResourceCatalog {
 				idNameExtensionsField("locations", standardOnlyMode()),
 				idNameField("proxyGateway", standardOnlyMode()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ztwAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("ecGroups", standardOnlyMode()),
 			},
 		},
 	}
+}
+
+// ztwAdminRefField is an {id, name} admin audit reference: the admin id
+// renders in every mode, the admin name is a person (standard-only).
+func ztwAdminRefField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			sensitiveIdentifierField("name"),
+		},
+	}
+}
+
+// ztwAdminRefExternalIDField is ztwAdminRefField for a CommonIDNameExternalID
+// audit reference, whose externalId identifies the admin outside ZTW.
+func ztwAdminRefExternalIDField(name string) FieldSpec {
+	field := ztwAdminRefField(name)
+	field.Fields = append(field.Fields, sensitiveIdentifierField("externalId"))
+	return field
+}
+
+// ztwWorkloadTagValueField is a workload tag value matched by a ZTW workload
+// group expression: standard-only like the expression text.
+func ztwWorkloadTagValueField() FieldSpec {
+	field := sensitiveIdentifierField("value")
+	field.SensitiveNameReason = "a workload tag value matched by the group expression"
+	return field
 }

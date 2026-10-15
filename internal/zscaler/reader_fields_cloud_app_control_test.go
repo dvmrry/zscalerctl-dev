@@ -5,8 +5,8 @@ package zscaler
 // lists plus the nested cbiProfile, cloudAppRiskProfile, and
 // cloudAppInstances structures) projects in standard mode with the right
 // key and sub-fields, that mode gating matches each field's AllowedModes,
-// and that secret sub-fields (cbiProfile.url, reference extensions) never
-// leak in any mode.
+// that the secret reference extensions never leak in any mode, and that the
+// standard-only cbiProfile.url never leaks outside standard mode.
 
 import (
 	"testing"
@@ -113,13 +113,13 @@ func TestCloudAppControlPromotedFieldsAcrossModes(t *testing.T) {
 	if cbi["defaultProfile"] != true || cbi["sandboxMode"] != true {
 		t.Errorf("projected cloud-app-control cbiProfile = %#v, want defaultProfile true sandboxMode true", cbi)
 	}
-	if _, ok := cbi["url"]; ok {
-		t.Errorf("projected cloud-app-control cbiProfile = %#v, want no url (secret sub-field)", cbi)
+	if _, ok := cbi["url"]; !ok {
+		t.Errorf("projected cloud-app-control cbiProfile = %#v, want url (standard-only sensitive identifier)", cbi)
 	}
 
-	// Secret sub-fields must stay out of standard output too: the CBI
-	// profile URL and the reference-list extensions map never project.
-	assertNoCanaries(t, "cloud-app-control", standard, cbiURLCanary, extensionCanary)
+	// The secret reference-list extensions map never projects, even in
+	// standard output.
+	assertNoCanaries(t, "cloud-app-control", standard, extensionCanary)
 
 	// Mode gating: every promoted parent field is standard-only and must
 	// disappear in share and paranoid, taking all nested canaries with it.

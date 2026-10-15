@@ -17,7 +17,8 @@ const (
 
 // wave1ForwardingRuleFixture carries a distinctive value in every field
 // promoted for zia/forwarding-rules in wave 1, plus canaries in the
-// excluded lastModifiedBy reference and the secret externalId sub-field.
+// lastModifiedBy admin name and the zpaAppSegments externalId, both of which
+// render in standard mode only.
 func wave1ForwardingRuleFixture() forwardingrules.ForwardingRules {
 	return forwardingrules.ForwardingRules{
 		ID:            707,
@@ -113,8 +114,13 @@ func TestForwardingRulesPromotedFieldsRenderInStandardMode(t *testing.T) {
 	if _, ok := segment["id"]; !ok {
 		t.Errorf("projected forwarding-rules zpaAppSegments[0] missing id")
 	}
-	if _, ok := segment["externalId"]; ok {
-		t.Errorf("projected forwarding-rules zpaAppSegments[0] = %#v, want no externalId (secret)", segment)
+	if segment["externalId"] != wave1FwdExternalIDCanary {
+		t.Errorf("projected forwarding-rules zpaAppSegments[0] = %#v, want externalId %q (the ZPA segment id)", segment, wave1FwdExternalIDCanary)
+	}
+
+	lastModifiedBy := assertAuditRefID(t, "forwarding-rules", got, "lastModifiedBy", 9100)
+	if lastModifiedBy["name"] != wave1FwdAdminCanary {
+		t.Errorf("projected forwarding-rules lastModifiedBy = %#v, want name %q", lastModifiedBy, wave1FwdAdminCanary)
 	}
 
 	appSegment := wave1ProjectedEntry(t, got, "zpaApplicationSegments")
@@ -181,16 +187,13 @@ func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 		}
 	}
 
-	// lastModifiedBy is classified secret and must never render, and no
-	// canary value from an excluded or secret field may leak in any mode.
+	// The lastModifiedBy admin reference keeps only its id outside standard
+	// mode, and no standard-only canary value may leak there.
 	for mode, record := range map[string]map[string]any{
-		"standard": standard,
 		"share":    share,
 		"paranoid": paranoid,
 	} {
-		if _, ok := record["lastModifiedBy"]; ok {
-			t.Errorf("projected forwarding-rules %s mode = %#v, want no lastModifiedBy", mode, record)
-		}
+		assertAuditRefIDOnly(t, "forwarding-rules "+mode, record, "lastModifiedBy", 9100)
 		assertNoCanaries(t, "forwarding-rules "+mode, record, wave1FwdAdminCanary, wave1FwdExternalIDCanary)
 	}
 }

@@ -71,7 +71,7 @@ func TestValidateCountByPaths(t *testing.T) {
 	t.Parallel()
 
 	spec := nestedNarrowingSpec()
-	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	if err := resources.ValidateCountByPaths(spec, []string{"groups.id", "tags", "name"}); err != nil {
 		t.Errorf("valid paths error = %v", err)
 	}

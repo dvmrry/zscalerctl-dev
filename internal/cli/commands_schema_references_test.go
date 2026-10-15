@@ -44,8 +44,10 @@ func TestSchemaReferencesTextNamesFilterOrSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "url-filtering-rules\tlastModifiedBy\tnot rendered in any mode\n") {
-		t.Errorf("text output = %q, want the secret lastModifiedBy reference without a --filter hint", text)
+	// Admin audit references render their id in every mode, so the
+	// reverse index gives the --filter path.
+	if !strings.Contains(text, "zia url-filtering-rules\t--filter lastModifiedBy.id=<id>\tstandard,share,paranoid\n") {
+		t.Errorf("text output = %q, want a --filter lastModifiedBy.id hint in every mode", text)
 	}
 
 	app, out, _ = testConfigApp(t)

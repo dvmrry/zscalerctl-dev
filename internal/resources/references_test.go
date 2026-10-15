@@ -168,12 +168,13 @@ func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 		t.Errorf("ReferredBy = %+v, want it to contain %+v", categories.ReferredBy, wantCategories)
 	}
 
-	// A secret reference is listed, with no mode that renders it.
+	// An admin audit reference: the id renders in every mode, so the
+	// reverse index gives its filter path.
 	admins := ReferencesTo(Catalog(), ziaRef("admin-users")[0])
 	for _, site := range admins.ReferredBy {
 		if site.Resource == "url-filtering-rules" && site.Field == "lastModifiedBy" {
-			if len(site.AllowedModes) != 0 || site.Match != "" {
-				t.Errorf("lastModifiedBy = %+v, want no modes and no match (secret)", site)
+			if site.Match != "lastModifiedBy.id" || len(site.AllowedModes) != 3 {
+				t.Errorf("lastModifiedBy = %+v, want match lastModifiedBy.id in every mode", site)
 			}
 			return
 		}

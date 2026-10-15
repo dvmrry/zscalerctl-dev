@@ -8,7 +8,8 @@ package zscaler
 // expression string (sensitiveIdentifierField, standard-only). Modeling the
 // tree would either duplicate that standard-only exposure or widen it into
 // share mode. These tests pin the exclusion and the existing mode boundaries
-// so the decision cannot regress silently.
+// so the decision cannot regress silently. The lastModifiedBy admin
+// reference renders its id in every mode and the admin name in standard only.
 
 import (
 	"testing"
@@ -79,12 +80,16 @@ func TestWorkloadGroupsStandardProjectsClassifiedFieldsOnly(t *testing.T) {
 			t.Errorf("standard projected workload-groups %s = %v, want %v", field, got[field], value)
 		}
 	}
-	for _, field := range []string{"expressionJson", "lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("standard projected workload-groups includes %s, want dropped", field)
-		}
+	if _, ok := got["expressionJson"]; ok {
+		t.Errorf("standard projected workload-groups includes expressionJson, want dropped")
 	}
-	assertNoCanaries(t, "workload-groups standard", got, canaries...)
+	// canaries[0] is the admin name, which renders in standard mode; the
+	// expressionJson canaries must not.
+	lastModifiedBy := assertAuditRefID(t, "workload-groups standard", got, "lastModifiedBy", 9001)
+	if lastModifiedBy["name"] != canaries[0] {
+		t.Errorf("standard projected workload-groups lastModifiedBy = %v, want name %q", lastModifiedBy, canaries[0])
+	}
+	assertNoCanaries(t, "workload-groups standard", got, canaries[1:]...)
 }
 
 func TestWorkloadGroupsModeBoundaries(t *testing.T) {
@@ -103,13 +108,13 @@ func TestWorkloadGroupsModeBoundaries(t *testing.T) {
 			// sensitive-identifier expression and free-text description drop.
 			mode:    redact.ModeShare,
 			present: []string{"id", "name", "lastModifiedTime"},
-			absent:  []string{"expression", "description", "expressionJson", "lastModifiedBy"},
+			absent:  []string{"expression", "description", "expressionJson"},
 		},
 		{
-			// Only the operational id survives paranoid mode.
+			// Only the operational ids survive paranoid mode.
 			mode:    redact.ModeParanoid,
 			present: []string{"id"},
-			absent:  []string{"name", "lastModifiedTime", "expression", "description", "expressionJson", "lastModifiedBy"},
+			absent:  []string{"name", "lastModifiedTime", "expression", "description", "expressionJson"},
 		},
 	}
 
@@ -129,15 +134,17 @@ func TestWorkloadGroupsModeBoundaries(t *testing.T) {
 					t.Errorf("%s projected workload-groups includes %s, want dropped", tc.mode, field)
 				}
 			}
+			// The admin reference keeps only its id outside standard mode.
+			assertAuditRefIDOnly(t, "workload-groups "+string(tc.mode), got, "lastModifiedBy", 9001)
 			assertNoCanaries(t, "workload-groups "+string(tc.mode), got, canaries...)
 		})
 	}
 }
 
-// TestWorkloadGroupLastModifiedBySecretPin pins lastModifiedBy as secretField:
-// the admin identity must drop in every mode (see assertWave4SecretPin in
-// reader_fields_admin_identity_test.go).
-func TestWorkloadGroupLastModifiedBySecretPin(t *testing.T) {
+// TestWorkloadGroupLastModifiedByAuditRefPin pins lastModifiedBy as an admin
+// audit reference: the id renders in every mode, the admin name only in
+// standard (see assertAuditRefPin in reader_fields_admin_identity_test.go).
+func TestWorkloadGroupLastModifiedByAuditRefPin(t *testing.T) {
 	t.Parallel()
 
 	const canary = "wave4-workload-group-last-modified-by-canary"
@@ -151,6 +158,6 @@ func TestWorkloadGroupLastModifiedBySecretPin(t *testing.T) {
 	}
 	records := []resources.SourceRecord{workloadGroupSourceRecord(group)}
 
-	assertWave4SecretPin(t, resourceWorkloadGroups, records,
-		[]string{"lastModifiedBy"}, "id", canary)
+	assertAuditRefPin(t, resourceWorkloadGroups, records,
+		[]auditRef{{field: "lastModifiedBy", id: 9110}}, "id", canary)
 }

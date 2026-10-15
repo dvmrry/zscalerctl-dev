@@ -1,21 +1,19 @@
 package zscaler
 
-// Cross-resource field-coverage tests for promoted admin-identity fields.
-// Each resource in the table below had exactly one remaining ignored field,
-// and every one of them is an admin-identity shape: lastModifiedBy admin
-// references on six ZIA resources and the admin-by-name adminStatusMap on
-// ztw/activation-status. All seven are promoted as secretField
-// (lastModifiedBy/lastModUser/managedBy = admin identity = secret), so the
-// catalog classifies them explicitly and they must never render in ANY mode.
-// Because the promoted class is secret, the "presence" assertion is inverted:
-// each test seeds a distinctive canary in the promoted field, projects
-// through the catalog, and asserts the canary never survives and the field
-// key is absent in standard mode plus one additional mode (share). A
-// per-resource control field is asserted present so the projection is
-// provably non-vacuous.
+// Cross-resource field-coverage tests for admin-identity fields.
+// lastModifiedBy admin references on six ZIA resources are {id, name}
+// audit references (ziaAdminRefField): the admin id renders in every mode
+// like any other reference id, while the admin name (and an external id,
+// where present) is a person and renders in standard mode only. Each test
+// seeds a distinctive canary in the admin name, projects through the catalog,
+// and asserts the reference keeps only its id outside standard mode and the
+// canary never survives there. The admin-by-name adminStatusMap on
+// ztw/activation-status is unstructured and stays secret: it must never
+// render in ANY mode. A per-resource control field is asserted present so the
+// projection is provably non-vacuous.
 //
-// This file also hosts assertWave4SecretPin, the shared helper behind the
-// per-resource admin-identity secret-pin tests in the reader_fields_* files
+// This file also hosts assertAuditRefPin, the shared helper behind the
+// per-resource audit-reference pin tests in the reader_fields_* files
 // (rule-labels, static-ips, gre-tunnels, url/firewall filtering rules,
 // location-groups, workload-groups).
 //
@@ -51,14 +49,17 @@ const (
 	wave3AdminStatusValCanary  = "wave3-activation-status-admin-status-canary"
 )
 
-// wave3TailCase describes one promoted secret field: the source record carrying
+// wave3TailCase describes one admin-identity field: the source record carrying
 // canaries in that field, the canary strings that must never survive
-// projection, and a control field/value that must render in standard mode so
-// the projection is provably exercising the catalog entry.
+// projection outside standard mode, and a control field/value that must
+// render so the projection is provably exercising the catalog entry.
+// adminRefID is the admin id of an {id, name} audit reference; zero means the
+// field is secret and never renders.
 type wave3TailCase struct {
 	product      resources.Product
 	resource     string
-	secretField  string
+	field        string
+	adminRefID   int
 	canaries     []string
 	record       resources.SourceRecord
 	controlField string
@@ -68,10 +69,11 @@ type wave3TailCase struct {
 func wave3TailCases() []wave3TailCase {
 	return []wave3TailCase{
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceProxies,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3ProxiesCanary, wave3ProxiesExternalCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceProxies,
+			field:      "lastModifiedBy",
+			adminRefID: 900,
+			canaries:   []string{wave3ProxiesCanary, wave3ProxiesExternalCanary},
 			record: proxySourceRecord(proxies.Proxies{
 				ID:          7301,
 				Name:        "Upstream chain proxy",
@@ -90,10 +92,11 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  8080,
 		},
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceProxyGateways,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3ProxyGatewaysCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceProxyGateways,
+			field:      "lastModifiedBy",
+			adminRefID: 901,
+			canaries:   []string{wave3ProxyGatewaysCanary},
 			record: proxyGatewaySourceRecord(proxygateways.ProxyGateways{
 				ID:             7302,
 				Name:           "Chain gateway",
@@ -112,10 +115,11 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  true,
 		},
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceDedicatedIPGWs,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3DedicatedIPGWCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceDedicatedIPGWs,
+			field:      "lastModifiedBy",
+			adminRefID: 902,
+			canaries:   []string{wave3DedicatedIPGWCanary},
 			record: dedicatedIPGatewaySourceRecord(proxies.DedicatedIPGateways{
 				Id:                  7303,
 				Name:                "Dedicated egress gateway",
@@ -134,10 +138,11 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  true,
 		},
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceDNSGateways,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3DNSGatewaysCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceDNSGateways,
+			field:      "lastModifiedBy",
+			adminRefID: 903,
+			canaries:   []string{wave3DNSGatewaysCanary},
 			record: dnsGatewaySourceRecord(dnsgateways.DNSGateways{
 				ID:                7304,
 				Name:              "Resolver gateway",
@@ -161,10 +166,11 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  true,
 		},
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceBandwidthRules,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3BandwidthRulesCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceBandwidthRules,
+			field:      "lastModifiedBy",
+			adminRefID: 904,
+			canaries:   []string{wave3BandwidthRulesCanary},
 			record: bandwidthControlRuleSourceRecord(bandwidthcontrolrules.BandwidthControlRules{
 				ID:                7305,
 				Name:              "Throttle streaming",
@@ -189,10 +195,11 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  "ENABLED",
 		},
 		{
-			product:     resources.ProductZIA,
-			resource:    resourceNATRules,
-			secretField: "lastModifiedBy",
-			canaries:    []string{wave3NATRulesCanary},
+			product:    resources.ProductZIA,
+			resource:   resourceNATRules,
+			field:      "lastModifiedBy",
+			adminRefID: 905,
+			canaries:   []string{wave3NATRulesCanary},
 			record: natControlRuleSourceRecord(natcontrol.NatControlPolicies{
 				ID:                  7306,
 				Name:                "Redirect guest DNS",
@@ -217,10 +224,10 @@ func wave3TailCases() []wave3TailCase {
 			controlWant:  true,
 		},
 		{
-			product:     resources.ProductZTW,
-			resource:    resourceZTWActivationStat,
-			secretField: "adminStatusMap",
-			canaries:    []string{wave3AdminStatusKeyCanary, wave3AdminStatusValCanary},
+			product:  resources.ProductZTW,
+			resource: resourceZTWActivationStat,
+			field:    "adminStatusMap",
+			canaries: []string{wave3AdminStatusKeyCanary, wave3AdminStatusValCanary},
 			record: structSourceRecord(ztwactivation.ECAdminActivation{
 				OrgEditStatus:         "EDITS_PRESENT",
 				OrgLastActivateStatus: "ACTV_DONE",
@@ -235,10 +242,11 @@ func wave3TailCases() []wave3TailCase {
 	}
 }
 
-// TestAdminIdentitySecretFieldsNeverRender asserts, for every promoted
-// admin-identity field, that the secret classification drops the field and its
-// canary content in standard mode while the rest of the record still renders.
-func TestAdminIdentitySecretFieldsNeverRender(t *testing.T) {
+// TestAdminIdentityFieldsInStandardMode asserts, for every admin-identity
+// field, that a secret field (adminStatusMap) drops with its canary content
+// while an admin audit reference renders its id and admin name in standard
+// mode, and the rest of the record still renders.
+func TestAdminIdentityFieldsInStandardMode(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range wave3TailCases() {
@@ -248,8 +256,15 @@ func TestAdminIdentitySecretFieldsNeverRender(t *testing.T) {
 
 			got := projectOneRecord(t, tc.product, tc.resource, []resources.SourceRecord{tc.record})
 
-			assertNoCanaries(t, tc.resource, got, tc.canaries...)
-			assertFieldsAbsent(t, tc.resource, got, tc.secretField)
+			if tc.adminRefID == 0 {
+				assertNoCanaries(t, tc.resource, got, tc.canaries...)
+				assertFieldsAbsent(t, tc.resource, got, tc.field)
+			} else {
+				ref := assertAuditRefID(t, tc.resource, got, tc.field, tc.adminRefID)
+				if _, ok := ref["name"]; !ok {
+					t.Errorf("projected %s %s = %#v, want admin name in standard mode", tc.resource, tc.field, ref)
+				}
+			}
 			if got[tc.controlField] != tc.controlWant {
 				t.Errorf("projected %s %s = %v, want %v (control field must render in standard mode)",
 					tc.resource, tc.controlField, got[tc.controlField], tc.controlWant)
@@ -258,11 +273,12 @@ func TestAdminIdentitySecretFieldsNeverRender(t *testing.T) {
 	}
 }
 
-// TestAdminIdentitySecretFieldsAbsentInShareMode is the mode-visibility check:
-// the promoted secret fields must also be absent (and their canaries
-// unrecoverable) in share mode, where each control field remains visible
-// because every control here is classified for standard+share or all modes.
-func TestAdminIdentitySecretFieldsAbsentInShareMode(t *testing.T) {
+// TestAdminIdentityFieldsInShareMode is the mode-visibility check: in share
+// mode a secret field must be absent, and an admin audit reference must keep
+// only its id, with every admin-name canary unrecoverable. Each control field
+// remains visible because every control here is classified for standard+share
+// or all modes.
+func TestAdminIdentityFieldsInShareMode(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range wave3TailCases() {
@@ -273,7 +289,11 @@ func TestAdminIdentitySecretFieldsAbsentInShareMode(t *testing.T) {
 			got := projectOneRecordInMode(t, tc.product, tc.resource, redact.ModeShare, []resources.SourceRecord{tc.record})
 
 			assertNoCanaries(t, tc.resource+" share", got, tc.canaries...)
-			assertFieldsAbsent(t, tc.resource+" share", got, tc.secretField)
+			if tc.adminRefID == 0 {
+				assertFieldsAbsent(t, tc.resource+" share", got, tc.field)
+			} else {
+				assertAuditRefIDOnly(t, tc.resource+" share", got, tc.field, tc.adminRefID)
+			}
 			if got[tc.controlField] != tc.controlWant {
 				t.Errorf("projected %s share %s = %v, want %v (control field must render in share mode)",
 					tc.resource, tc.controlField, got[tc.controlField], tc.controlWant)
@@ -284,25 +304,81 @@ func TestAdminIdentitySecretFieldsAbsentInShareMode(t *testing.T) {
 
 var wave4AllModes = []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid}
 
-// assertWave4SecretPin projects the records in every mode and asserts that
-// each secret-pinned field is absent, that none of the canaries leak, and
-// that the control field is present (so an empty projection cannot pass).
-func assertWave4SecretPin(
+// auditRef is one {id, name} audit reference planted in a fixture: the
+// admin (lastModifiedBy, createdBy, lastModUser) or partner (managedBy)
+// reference, its id, and whether its name renders in share mode. Admin names
+// are people and render in standard mode only; a managedBy name is a
+// partner/org reference that renders in standard and share.
+type auditRef struct {
+	field       string
+	id          int
+	nameInShare bool
+}
+
+// assertAuditRefPin projects the records in every mode and asserts that each
+// audit reference renders its id in every mode, its name in standard mode,
+// and nothing but its id where its name is excluded; that none of the
+// canaries (planted in names excluded from share/paranoid) leak outside
+// standard mode; and that the control field is present (so an empty
+// projection cannot pass).
+func assertAuditRefPin(
 	t *testing.T,
 	resourceName string,
 	records []resources.SourceRecord,
-	secretFields []string,
+	refs []auditRef,
 	controlField string,
 	canaries ...string,
 ) {
 	t.Helper()
 
 	for _, mode := range wave4AllModes {
+		label := resourceName + " (" + string(mode) + ")"
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceName, mode, records)
 		if _, ok := got[controlField]; !ok {
-			t.Errorf("projected %s (%v) = %#v, want control field %s present", resourceName, mode, got, controlField)
+			t.Errorf("projected %s = %#v, want control field %s present", label, got, controlField)
 		}
-		assertFieldsAbsent(t, resourceName+" ("+string(mode)+")", got, secretFields...)
-		assertNoCanaries(t, resourceName+" ("+string(mode)+")", got, canaries...)
+		for _, ref := range refs {
+			nameRenders := mode == redact.ModeStandard || (mode == redact.ModeShare && ref.nameInShare)
+			if !nameRenders {
+				assertAuditRefIDOnly(t, label, got, ref.field, ref.id)
+				continue
+			}
+			rendered := assertAuditRefID(t, label, got, ref.field, ref.id)
+			if _, ok := rendered["name"]; !ok {
+				t.Errorf("projected %s %s = %#v, want name present", label, ref.field, rendered)
+			}
+		}
+		if mode != redact.ModeStandard {
+			assertNoCanaries(t, label, got, canaries...)
+		}
+	}
+}
+
+// assertAuditRefID asserts that field is a rendered reference map carrying
+// the wanted id, and returns it.
+func assertAuditRefID(t *testing.T, label string, got map[string]any, field string, wantID int) map[string]any {
+	t.Helper()
+
+	ref, ok := got[field].(map[string]any)
+	if !ok {
+		t.Errorf("projected %s %s = %T(%v), want an id reference map", label, field, got[field], got[field])
+		return nil
+	}
+	if fmt.Sprint(ref["id"]) != fmt.Sprint(wantID) {
+		t.Errorf("projected %s %s.id = %v, want %d", label, field, ref["id"], wantID)
+	}
+	return ref
+}
+
+// assertAuditRefIDOnly asserts that field renders as a reference carrying
+// only its id: the name (and any external id) must be dropped.
+func assertAuditRefIDOnly(t *testing.T, label string, got map[string]any, field string, wantID int) {
+	t.Helper()
+
+	ref := assertAuditRefID(t, label, got, field, wantID)
+	for key := range ref {
+		if key != "id" {
+			t.Errorf("projected %s %s = %#v, want only id (key %q must not render)", label, field, ref, key)
+		}
 	}
 }

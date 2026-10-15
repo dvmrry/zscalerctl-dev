@@ -211,8 +211,9 @@ usage error (exit 2) before any read, naming the mode that renders it. When
 the mode omits fields, a successful read names them on stderr (`zscalerctl:
 share mode omits zia/users fields: ...`), including nested paths such as
 `groups.name`; standard mode omits only secrets and prints no mode-omission notice. Secret
-fields never render and are named only when requested (`schema list` marks
-them). Any other missing key means the source had no renderable value (empty,
+fields are credential material only (passwords, keys, tokens, opaque blobs,
+unmodeled maps such as `extensions`); they never render and are named only
+when requested (`schema list` marks each with its `secret_reason`). Any other missing key means the source had no renderable value (empty,
 null, or outside the catalog's projection). A list field renders `[]` only when the API itself returned an empty list,
 so `[]` means none. A missing list key means the API did not send it, the
 mode omits it, or it is not modeled: it does not prove none are set, and it

@@ -34,7 +34,9 @@ func catalogZidentity() ResourceCatalog {
 				operationalField("status", allModes()),
 				idNameDisplayNameField("department", standardShareModes()),
 				idNameDisplayNameField("idp", standardShareModes()),
-				secretField("customAttrsInfo"),
+				// Free-form custom attribute map; keys and values are
+				// tenant-defined and not modeled.
+				unstructuredField("customAttrsInfo"),
 				// HR attributes identify a person alongside a name:
 				// standard-only, like the name fields above.
 				sensitiveIdentifierField("title"),

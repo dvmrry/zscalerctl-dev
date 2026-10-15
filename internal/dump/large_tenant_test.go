@@ -272,7 +272,7 @@ func largeTenantSpec() resources.ResourceSpec {
 				},
 			},
 			freeText("changeSummary"),
-			{Name: "secretValue", Classification: resources.ClassSecret},
+			{Name: "secretValue", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }

@@ -7,9 +7,11 @@ package zscaler
 // every promoted field, project through the catalog, and assert that (a) each
 // promoted field appears in standard mode under the right key, (b) the
 // standard-only promoted fields drop in share and paranoid per their
-// AllowedModes while wider-mode fields survive, (c) never-promoted secret
-// fields (lastModifiedBy, nested extensions/externalId) stay absent, and
-// (d) no canary planted in an excluded field leaks into any projection.
+// AllowedModes while wider-mode fields survive, (c) the secret nested
+// extensions stay absent while the lastModifiedBy admin reference and the
+// zpaAppSegments externalId (the ZPA segment id) render, and (d) no canary
+// planted in a secret field leaks into any projection, nor any canary in a
+// standard-only value outside standard mode.
 //
 // The file reuses shared helpers from this package (projectOneRecord,
 // projectOneRecordInMode, mustProjectedList, assertNoCanaries) instead of
@@ -107,23 +109,25 @@ func TestFirewallFilteringRulePromotedFieldsProjectInStandardMode(t *testing.T) 
 		}
 	}
 
-	// Secret-classified nested sub-fields never survive projection.
+	// The secret nested extensions never survive projection.
 	departments := mustFirstWave1Item(t, got, "departments")
 	if _, ok := departments["extensions"]; ok {
 		t.Errorf("projected firewall-filtering-rules departments[0] = %#v, want no extensions", departments)
 	}
+	// The externalId is the referenced ZPA segment's id: it renders.
 	zpaAppSegments := mustFirstWave1Item(t, got, "zpaAppSegments")
-	if _, ok := zpaAppSegments["externalId"]; ok {
-		t.Errorf("projected firewall-filtering-rules zpaAppSegments[0] = %#v, want no externalId", zpaAppSegments)
+	if _, ok := zpaAppSegments["externalId"]; !ok {
+		t.Errorf("projected firewall-filtering-rules zpaAppSegments[0] = %#v, want externalId", zpaAppSegments)
 	}
 
-	// Never-promoted admin identity stays absent.
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected firewall-filtering-rules = %#v, want no lastModifiedBy", got)
+	// The admin audit reference renders its id and admin name in standard.
+	lastModifiedBy := assertAuditRefID(t, "firewall-filtering-rules", got, "lastModifiedBy", 9001)
+	if _, ok := lastModifiedBy["name"]; !ok {
+		t.Errorf("projected firewall-filtering-rules lastModifiedBy = %#v, want name", lastModifiedBy)
 	}
 
-	// No canary planted in an excluded or secret field leaks anywhere.
-	assertNoCanaries(t, "firewall-filtering-rules standard", got, adminCanary, extensionsCanary, externalIDCanary)
+	// No canary planted in a secret field leaks anywhere.
+	assertNoCanaries(t, "firewall-filtering-rules standard", got, extensionsCanary)
 }
 
 func TestFirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.T) {
@@ -177,10 +181,10 @@ func TestFirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.T) {
 	assertNoCanaries(t, "firewall-filtering-rules paranoid", paranoid, adminCanary, extensionsCanary, externalIDCanary)
 }
 
-// TestFirewallFilteringRuleLastModifiedBySecretPin pins lastModifiedBy as
-// secretField: the admin identity must drop in every mode (see
-// assertWave4SecretPin in reader_fields_admin_identity_test.go).
-func TestFirewallFilteringRuleLastModifiedBySecretPin(t *testing.T) {
+// TestFirewallFilteringRuleLastModifiedByAuditRefPin pins lastModifiedBy as
+// an admin audit reference: the id renders in every mode, the admin name only
+// in standard (see assertAuditRefPin in reader_fields_admin_identity_test.go).
+func TestFirewallFilteringRuleLastModifiedByAuditRefPin(t *testing.T) {
 	t.Parallel()
 
 	const canary = "wave4-firewall-rule-last-modified-by-canary"
@@ -195,6 +199,6 @@ func TestFirewallFilteringRuleLastModifiedBySecretPin(t *testing.T) {
 	}
 	records := []resources.SourceRecord{firewallFilteringRuleSourceRecord(rule)}
 
-	assertWave4SecretPin(t, resourceFirewallRules, records,
-		[]string{"lastModifiedBy"}, "id", canary)
+	assertAuditRefPin(t, resourceFirewallRules, records,
+		[]auditRef{{field: "lastModifiedBy", id: 9109}}, "id", canary)
 }

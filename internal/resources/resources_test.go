@@ -385,15 +385,20 @@ func TestProjectedRecordsRejectUnsupportedCompositeValues(t *testing.T) {
 		t.Fatalf("json.Marshal(privateProjectedBytes) error = %v, want valid custom JSON", err)
 	}
 
+	// sourceNormalized marks SDK-struct values: a source record normalizes
+	// them through their JSON encoding (to a map), and a map in a leaf field
+	// is dropped, so the source path drops them instead of failing. Projected
+	// output must still never hold a Go struct.
 	tests := []struct {
-		name  string
-		value any
+		name             string
+		value            any
+		sourceNormalized bool
 	}{
 		{name: "cyclic pointer", value: cyclePointer},
 		{name: "cyclic map", value: cycleMap},
 		{name: "cyclic slice", value: cycleSlice},
-		{name: "mutable unexported field", value: privateBytes},
-		{name: "exported struct fields", value: exportedStruct},
+		{name: "mutable unexported field", value: privateBytes, sourceNormalized: true},
+		{name: "exported struct fields", value: exportedStruct, sourceNormalized: true},
 		{name: "ordinary pointer", value: &pointerTarget},
 		{name: "defined pointer", value: definedPointer},
 		{name: "typed map", value: map[string][]byte{"payload": {1, 2, 3}}},
@@ -433,11 +438,20 @@ func TestProjectedRecordsRejectUnsupportedCompositeValues(t *testing.T) {
 			); !errors.Is(err, resources.ErrInvalidProjectedValue) {
 				t.Fatalf("NewVerifiedProjectedRecordsFromProjectedFields(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
 			}
-			if _, _, err := resources.ProjectRecordsAndVerify(
+			sourceProjected, _, err := resources.ProjectRecordsAndVerify(
 				spec,
 				redact.ModeStandard,
 				[]resources.SourceRecord{resources.NewSourceRecord(input[0])},
-			); !errors.Is(err, resources.ErrInvalidProjectedValue) {
+			)
+			switch {
+			case tt.sourceNormalized:
+				if err != nil {
+					t.Fatalf("ProjectRecordsAndVerify(%s) error = %v, want the normalized struct dropped from the leaf", tt.name, err)
+				}
+				if _, ok := sourceProjected.Records()[0].Value("id"); ok {
+					t.Fatalf("ProjectRecordsAndVerify(%s) rendered a struct in a leaf field", tt.name)
+				}
+			case !errors.Is(err, resources.ErrInvalidProjectedValue):
 				t.Fatalf("ProjectRecordsAndVerify(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
 			}
 			body, err := json.Marshal(projected)
@@ -1475,7 +1489,7 @@ func TestProjectRecordDropsContextSensitiveValueWhenClassifiedSecret(t *testing.
 			},
 			{
 				Name:           "value",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -1620,7 +1634,7 @@ func TestProjectRecordAllowsExplicitNestedSpecOnly(t *testing.T) {
 					},
 					{
 						Name:           "preSharedKey",
-						Classification: resources.ClassSecret,
+						Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 					},
 				},
 			},
@@ -1673,7 +1687,7 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 				},
 				{
 					Name:           "preSharedKey",
-					Classification: resources.ClassSecret,
+					Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 				},
 				{
 					Name:           "validationInfo",
@@ -1720,7 +1734,9 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 		t.Fatalf("json.Marshal(projected unsupported secret child) = %s, want no canary", body)
 	}
 
-	_, _, err = resources.ProjectRecordAndVerify(
+	// An SDK struct under an allowed leaf child is normalized through JSON to a
+	// map, and a map in a leaf is dropped: no error, and nothing of it renders.
+	structChild, _, err := resources.ProjectRecordAndVerify(
 		spec,
 		redact.ModeStandard,
 		resources.NewSourceRecord(map[string]any{
@@ -1731,8 +1747,11 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 			},
 		}),
 	)
-	if !errors.Is(err, resources.ErrInvalidProjectedValue) {
-		t.Fatalf("ProjectRecordAndVerify(unsupported allowed child) error = %v, want ErrInvalidProjectedValue", err)
+	if err != nil {
+		t.Fatalf("ProjectRecordAndVerify(struct under allowed leaf child) error = %v, want nil", err)
+	}
+	if body, _ := json.Marshal(structChild); strings.Contains(string(body), canary) {
+		t.Fatalf("ProjectRecordAndVerify(struct under allowed leaf child) = %s, want no canary", body)
 	}
 
 	tests := []struct {
@@ -1754,15 +1773,20 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 			},
 		},
 	}
+	// SDK structs normalize through JSON; their keys match no declared child,
+	// so nothing of them renders.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := resources.ProjectRecordAndVerify(
+			projected, _, err := resources.ProjectRecordAndVerify(
 				spec,
 				redact.ModeStandard,
 				resources.NewSourceRecord(tt.fields),
 			)
-			if !errors.Is(err, resources.ErrInvalidProjectedValue) {
-				t.Fatalf("ProjectRecordAndVerify(%s) error = %v, want ErrInvalidProjectedValue", tt.name, err)
+			if err != nil {
+				t.Fatalf("ProjectRecordAndVerify(%s) error = %v, want nil", tt.name, err)
+			}
+			if body, _ := json.Marshal(projected); strings.Contains(string(body), canary) {
+				t.Fatalf("ProjectRecordAndVerify(%s) = %s, want no canary", tt.name, body)
 			}
 		})
 	}
@@ -1849,8 +1873,8 @@ func TestResourceSpecValidationRejectsSecretAllowedMode(t *testing.T) {
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{{
 			Name:           "client_secret",
-			Classification: resources.ClassSecret,
-			AllowedModes:   []redact.Mode{redact.ModeStandard},
+			Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
+			AllowedModes: []redact.Mode{redact.ModeStandard},
 		}},
 	}
 	err := spec.Validate()
@@ -1896,7 +1920,7 @@ func TestResourceSpecValidationAllowsSensitiveNameAsSecret(t *testing.T) {
 			testIDField(),
 			{
 				Name:           "token",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -2224,7 +2248,7 @@ func narrowingSpec() resources.ResourceSpec {
 			{Name: "country", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "authRequired", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }
@@ -2279,7 +2303,7 @@ func verifiedProjectedFieldsSpec() resources.ResourceSpec {
 			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allModes},
 			{Name: "standardOnly", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }
@@ -2340,7 +2364,7 @@ func TestCatalogIncludesRuleLabelsGeneralizationProbe(t *testing.T) {
 	if err := resources.AssertReadOnly(spec); err != nil {
 		t.Fatalf("AssertReadOnly(zia rule-labels) error = %v, want nil", err)
 	}
-	wantFields := []string{"id", "name", "description", "lastModifiedTime", "referencedRuleCount"}
+	wantFields := []string{"id", "name", "description", "lastModifiedTime", "referencedRuleCount", "createdBy", "lastModifiedBy"}
 	if got := spec.FieldOrder(redact.ModeStandard); !reflect.DeepEqual(got, wantFields) {
 		t.Errorf("ResourceSpec.FieldOrder(zia rule-labels, standard) = %#v, want %#v", got, wantFields)
 	}
@@ -2408,7 +2432,7 @@ func testSpec() resources.ResourceSpec {
 			},
 			{
 				Name:           "client_secret",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -2629,7 +2653,7 @@ func TestValidateNarrowOptionsInModeRejectsFiltersTheModeOmits(t *testing.T) {
 	t.Parallel()
 
 	spec := nestedNarrowingSpec()
-	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	for _, tc := range []struct {
 		mode   redact.Mode
 		field  string
@@ -2674,7 +2698,7 @@ func TestOmittedFields(t *testing.T) {
 	t.Parallel()
 
 	spec := nestedNarrowingSpec()
-	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	omitted, secret := resources.OmittedFields(spec, redact.ModeParanoid, nil)
 	if !slices.Equal(omitted, []string{"groups"}) || secret != nil {
 		t.Errorf("OmittedFields(paranoid) = %v, %v; want [groups], nil (secret fields never listed unrequested)", omitted, secret)
@@ -2731,11 +2755,11 @@ func TestSuppressedFieldErrorDistinguishesSecretFromNeverRendered(t *testing.T) 
 func TestFieldSpecJSONAlwaysStatesAllowedModes(t *testing.T) {
 	t.Parallel()
 
-	secret, err := json.Marshal(resources.FieldSpec{Name: "preSharedKey", Classification: resources.ClassSecret})
+	secret, err := json.Marshal(resources.FieldSpec{Name: "preSharedKey", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"name":"preSharedKey","classification":"secret","allowed_modes":[]}`; string(secret) != want {
+	if want := `{"name":"preSharedKey","classification":"secret","allowed_modes":[],"secret_reason":"credential"}`; string(secret) != want {
 		t.Errorf("secret FieldSpec JSON = %s, want %s", secret, want)
 	}
 	shown, err := json.Marshal(resources.FieldSpec{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}})

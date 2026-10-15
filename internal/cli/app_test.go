@@ -2228,8 +2228,10 @@ func TestResourceListRuleLabelsUsesCatalogProjection(t *testing.T) {
 	if len(decoded) != 1 {
 		t.Fatalf("decoded rule-labels list length = %d, want 1", len(decoded))
 	}
-	if _, ok := decoded[0]["createdBy"]; ok {
-		t.Errorf("decoded rule-labels list = %#v, want no unmodeled createdBy", decoded[0])
+	// createdBy is an admin reference: its name renders in standard mode
+	// (the default here) and is a person, so it is standard-only.
+	if createdBy, ok := decoded[0]["createdBy"].(map[string]any); !ok || createdBy["name"] != "admin@example.invalid" {
+		t.Errorf("decoded rule-labels createdBy = %#v, want the admin reference with its name", decoded[0]["createdBy"])
 	}
 	for _, field := range []string{"name", "description"} {
 		value, ok := decoded[0][field].(string)
@@ -3333,7 +3335,7 @@ func filterWarningCatalog() resources.ResourceCatalog {
 			},
 			{
 				Name:           "internalToken",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}}
