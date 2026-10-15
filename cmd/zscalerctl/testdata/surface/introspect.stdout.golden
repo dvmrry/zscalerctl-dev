@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json",
-  "introspect_version": "2",
+  "$schema": "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v3.schema.json",
+  "introspect_version": "3",
   "cli_version": "<VERSION>",
   "read_only": true,
   "global_flags": [
@@ -128,7 +128,6 @@
       "short": "inspect authentication configuration",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -165,7 +164,6 @@
       "short": "show authentication status for the active profile",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -206,7 +204,6 @@
       "short": "Generate the autocompletion script for the specified shell",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -243,7 +240,6 @@
       "short": "Generate the autocompletion script for bash",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -287,7 +283,6 @@
       "short": "Generate the autocompletion script for fish",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -331,7 +326,6 @@
       "short": "Generate the autocompletion script for powershell",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -375,7 +369,6 @@
       "short": "Generate the autocompletion script for zsh",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -419,7 +412,6 @@
       "short": "manage zscalerctl configuration",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -456,7 +448,6 @@
       "short": "write a starter config file with owner-only permissions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_delete",
@@ -513,7 +504,6 @@
       "short": "show the active configuration (redacted)",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -554,7 +544,6 @@
       "short": "compare two dump directories and report configuration drift",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -631,7 +620,6 @@
       "short": "check configuration, credentials, and connectivity",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -672,7 +660,6 @@
       "short": "write a full or filtered resource dump to a directory",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_delete",
@@ -759,7 +746,6 @@
       "long": "Help provides help for any command in the application.\nSimply type zscalerctl help [path to command] for full details.",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -796,7 +782,6 @@
       "short": "print a machine-readable map of all commands, flags, and resources (JSON)",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -833,7 +818,6 @@
       "short": "inspect machine-readable capability contracts",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -871,7 +855,6 @@
       "long": "Print the catalog-derived machine capability manifest as JSON.\n\nThis command is config-free and never contacts Zscaler.",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -908,7 +891,6 @@
       "short": "inspect the resource catalog schema",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -945,7 +927,6 @@
       "short": "describe reviewed field semantics for one resource (config-free pilot)",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -983,7 +964,6 @@
       "short": "list the Zscaler surfaces zscalerctl does not read, and why (config-free)",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -1021,7 +1001,6 @@
       "short": "list all catalog resources and their supported operations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1062,7 +1041,6 @@
       "short": "list the fields that point at a resource, with the --filter path for its id (config-free)",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -1100,7 +1078,6 @@
       "short": "print version, commit, build date, and runtime info",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -1137,7 +1114,6 @@
       "short": "list zcc fail-open-policy",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1192,7 +1168,6 @@
       "short": "list zcc forwarding-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1247,7 +1222,6 @@
       "short": "list zcc trusted-networks",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1302,7 +1276,6 @@
       "short": "list zcc web-app-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1357,7 +1330,6 @@
       "short": "list zcc application-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1412,7 +1384,6 @@
       "short": "list zcc custom-ip-apps",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1467,7 +1438,6 @@
       "short": "list zcc predefined-ip-apps",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1522,7 +1492,6 @@
       "short": "list zcc process-based-apps",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1577,7 +1546,6 @@
       "short": "list zcc devices",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1632,7 +1600,6 @@
       "short": "list zcc admin-roles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1687,7 +1654,6 @@
       "short": "show zcc company-info",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1742,7 +1708,6 @@
       "short": "list zia locations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1797,7 +1762,6 @@
       "short": "get zia locations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1853,7 +1817,6 @@
       "short": "list zia location-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1908,7 +1871,6 @@
       "short": "get zia location-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -1964,7 +1926,6 @@
       "short": "list zia rule-labels",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2019,7 +1980,6 @@
       "short": "get zia rule-labels",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2075,7 +2035,6 @@
       "short": "list zia auth-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2130,7 +2089,6 @@
       "short": "list zia static-ips",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2185,7 +2143,6 @@
       "short": "get zia static-ips",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2241,7 +2198,6 @@
       "short": "list zia gre-tunnels",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2296,7 +2252,6 @@
       "short": "get zia gre-tunnels",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2352,7 +2307,6 @@
       "short": "list zia sublocations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2407,7 +2361,6 @@
       "short": "get zia sublocations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2463,7 +2416,6 @@
       "short": "list zia ssl-inspection-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2518,7 +2470,6 @@
       "short": "get zia ssl-inspection-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2574,7 +2525,6 @@
       "short": "list zia url-categories",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2629,7 +2579,6 @@
       "short": "get zia url-categories",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2685,7 +2634,6 @@
       "short": "list zia url-filtering-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2740,7 +2688,6 @@
       "short": "get zia url-filtering-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2796,7 +2743,6 @@
       "short": "list zia firewall-filtering-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2851,7 +2797,6 @@
       "short": "get zia firewall-filtering-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2907,7 +2852,6 @@
       "short": "list zia ips-signature-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -2962,7 +2906,6 @@
       "short": "get zia ips-signature-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3018,7 +2961,6 @@
       "short": "list zia ips-policies",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3073,7 +3015,6 @@
       "short": "get zia ips-policies",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3129,7 +3070,6 @@
       "short": "list zia forwarding-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3184,7 +3124,6 @@
       "short": "get zia forwarding-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3240,7 +3179,6 @@
       "short": "list zia ip-source-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3295,7 +3233,6 @@
       "short": "get zia ip-source-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3351,7 +3288,6 @@
       "short": "list zia ip-destination-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3406,7 +3342,6 @@
       "short": "get zia ip-destination-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3462,7 +3397,6 @@
       "short": "list zia network-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3517,7 +3451,6 @@
       "short": "get zia network-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3573,7 +3506,6 @@
       "short": "list zia network-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3628,7 +3560,6 @@
       "short": "get zia network-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3684,7 +3615,6 @@
       "short": "list zia network-applications",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3739,7 +3669,6 @@
       "short": "get zia network-applications",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3795,7 +3724,6 @@
       "short": "list zia application-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3850,7 +3778,6 @@
       "short": "get zia application-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3906,7 +3833,6 @@
       "short": "list zia application-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -3961,7 +3887,6 @@
       "short": "get zia application-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4017,7 +3942,6 @@
       "short": "list zia network-application-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4072,7 +3996,6 @@
       "short": "get zia network-application-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4128,7 +4051,6 @@
       "short": "list zia time-windows",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4183,7 +4105,6 @@
       "short": "get zia time-windows",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4239,7 +4160,6 @@
       "short": "list zia proxies",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4294,7 +4214,6 @@
       "short": "get zia proxies",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4350,7 +4269,6 @@
       "short": "list zia proxy-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4405,7 +4323,6 @@
       "short": "get zia proxy-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4461,7 +4378,6 @@
       "short": "list zia dedicated-ip-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4516,7 +4432,6 @@
       "short": "get zia dedicated-ip-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4572,7 +4487,6 @@
       "short": "list zia time-intervals",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4627,7 +4541,6 @@
       "short": "get zia time-intervals",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4683,7 +4596,6 @@
       "short": "list zia bandwidth-classes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4738,7 +4650,6 @@
       "short": "get zia bandwidth-classes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4794,7 +4705,6 @@
       "short": "list zia bandwidth-control-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4849,7 +4759,6 @@
       "short": "get zia bandwidth-control-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4905,7 +4814,6 @@
       "short": "list zia dns-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -4960,7 +4868,6 @@
       "short": "get zia dns-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5016,7 +4923,6 @@
       "short": "list zia nat-control-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5071,7 +4977,6 @@
       "short": "get zia nat-control-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5127,7 +5032,6 @@
       "short": "list zia groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5182,7 +5086,6 @@
       "short": "get zia groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5238,7 +5141,6 @@
       "short": "list zia departments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5293,7 +5195,6 @@
       "short": "get zia departments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5349,7 +5250,6 @@
       "short": "list zia users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5404,7 +5304,6 @@
       "short": "get zia users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5460,7 +5359,6 @@
       "short": "list zia device-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5515,7 +5413,6 @@
       "short": "get zia device-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5571,7 +5468,6 @@
       "short": "list zia devices",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5626,7 +5522,6 @@
       "short": "get zia devices",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5682,7 +5577,6 @@
       "short": "list zia workload-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5737,7 +5631,6 @@
       "short": "get zia workload-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5793,7 +5686,6 @@
       "short": "list zia alert-subscriptions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5848,7 +5740,6 @@
       "short": "get zia alert-subscriptions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5904,7 +5795,6 @@
       "short": "show zia activation-status",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -5959,7 +5849,6 @@
       "short": "show zia eusa-status",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6014,7 +5903,6 @@
       "short": "show zia auth-exempted-urls",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6069,7 +5957,6 @@
       "short": "list zia intermediate-ca-certificates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6124,7 +6011,6 @@
       "short": "get zia intermediate-ca-certificates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6180,7 +6066,6 @@
       "short": "list zia cloud-app-instances",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6235,7 +6120,6 @@
       "short": "get zia cloud-app-instances",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6291,7 +6175,6 @@
       "short": "list zia tenancy-restriction-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6346,7 +6229,6 @@
       "short": "get zia tenancy-restriction-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6402,7 +6284,6 @@
       "short": "list zia vzen-clusters",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6457,7 +6338,6 @@
       "short": "get zia vzen-clusters",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6513,7 +6393,6 @@
       "short": "list zia vzen-nodes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6568,7 +6447,6 @@
       "short": "get zia vzen-nodes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6624,7 +6502,6 @@
       "short": "list zia dlp-engines",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6679,7 +6556,6 @@
       "short": "get zia dlp-engines",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6735,7 +6611,6 @@
       "short": "list zia dlp-dictionaries",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6790,7 +6665,6 @@
       "short": "get zia dlp-dictionaries",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6846,7 +6720,6 @@
       "short": "list zia dlp-edm-schemas",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6901,7 +6774,6 @@
       "short": "get zia dlp-edm-schemas",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -6957,7 +6829,6 @@
       "short": "list zia dlp-idm-profile-lite",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7012,7 +6883,6 @@
       "short": "get zia dlp-idm-profile-lite",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7068,7 +6938,6 @@
       "short": "list zia dlp-idm-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7123,7 +6992,6 @@
       "short": "get zia dlp-idm-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7179,7 +7047,6 @@
       "short": "list zia dlp-web-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7234,7 +7101,6 @@
       "short": "get zia dlp-web-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7290,7 +7156,6 @@
       "short": "list zia dlp-icap-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7345,7 +7210,6 @@
       "short": "get zia dlp-icap-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7401,7 +7265,6 @@
       "short": "list zia dlp-incident-receiver-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7456,7 +7319,6 @@
       "short": "get zia dlp-incident-receiver-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7512,7 +7374,6 @@
       "short": "list zia dlp-notification-templates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7567,7 +7428,6 @@
       "short": "get zia dlp-notification-templates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7623,7 +7483,6 @@
       "short": "list zia c2c-incident-receivers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7678,7 +7537,6 @@
       "short": "get zia c2c-incident-receivers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7734,7 +7592,6 @@
       "short": "list zia risk-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7789,7 +7646,6 @@
       "short": "get zia risk-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7845,7 +7701,6 @@
       "short": "list zia nss-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7900,7 +7755,6 @@
       "short": "get zia nss-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -7956,7 +7810,6 @@
       "short": "list zia nss-feeds",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8011,7 +7864,6 @@
       "short": "get zia nss-feeds",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8067,7 +7919,6 @@
       "short": "list zia file-type-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8122,7 +7973,6 @@
       "short": "get zia file-type-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8178,7 +8028,6 @@
       "short": "list zia sandbox-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8233,7 +8082,6 @@
       "short": "get zia sandbox-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8289,7 +8137,6 @@
       "short": "list zia firewall-dns-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8344,7 +8191,6 @@
       "short": "get zia firewall-dns-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8400,7 +8246,6 @@
       "short": "list zia custom-file-types",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8455,7 +8300,6 @@
       "short": "get zia custom-file-types",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8511,7 +8355,6 @@
       "short": "list zia zpa-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8566,7 +8409,6 @@
       "short": "get zia zpa-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8622,7 +8464,6 @@
       "short": "list zia browser-isolation-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8677,7 +8518,6 @@
       "short": "list zia dlp-edm-schemas-lite",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8732,7 +8572,6 @@
       "short": "list zia dc-exclusions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8787,7 +8626,6 @@
       "short": "list zia sub-clouds",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8842,7 +8680,6 @@
       "short": "show zia ipv6-config",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8897,7 +8734,6 @@
       "short": "list zia ipv6-dns64-prefixes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -8952,7 +8788,6 @@
       "short": "list zia ipv6-nat64-prefixes",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9007,7 +8842,6 @@
       "short": "list zia pac-files",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9062,7 +8896,6 @@
       "short": "list zia cloud-app-control",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9117,7 +8950,6 @@
       "short": "list zia cloud-application-policy",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9172,7 +9004,6 @@
       "short": "list zia cloud-application-ssl-policy",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9227,7 +9058,6 @@
       "short": "list zia domain-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9282,7 +9112,6 @@
       "short": "list zia casb-tombstone-templates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9337,7 +9166,6 @@
       "short": "list zia casb-email-labels",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9392,7 +9220,6 @@
       "short": "list zia casb-tenants",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9447,7 +9274,6 @@
       "short": "list zia casb-dlp-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9502,7 +9328,6 @@
       "short": "list zia casb-malware-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9557,7 +9382,6 @@
       "short": "show zia browser-control-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9612,7 +9436,6 @@
       "short": "list zia supported-browser-versions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9667,7 +9490,6 @@
       "short": "show zia ftp-control-policy",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9722,7 +9544,6 @@
       "short": "show zia remote-assistance",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9777,7 +9598,6 @@
       "short": "list zia admin-users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9832,7 +9652,6 @@
       "short": "get zia admin-users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9888,7 +9707,6 @@
       "short": "list zia admin-roles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9943,7 +9761,6 @@
       "short": "get zia admin-roles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -9999,7 +9816,6 @@
       "short": "list zia email-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10054,7 +9870,6 @@
       "short": "get zia email-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10110,7 +9925,6 @@
       "short": "show zia advanced-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10165,7 +9979,6 @@
       "short": "show zia advanced-threat-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10220,7 +10033,6 @@
       "short": "show zia mobile-threat-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10275,7 +10087,6 @@
       "short": "show zia sandbox-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10330,7 +10141,6 @@
       "short": "show zia end-user-notification-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10385,7 +10195,6 @@
       "short": "show zia org-information",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10440,7 +10249,6 @@
       "short": "show zia atp-malware-policy",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10495,7 +10303,6 @@
       "short": "show zia atp-malware-settings",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10550,7 +10357,6 @@
       "short": "show zia atp-malware-inspection",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10605,7 +10411,6 @@
       "short": "show zia atp-malware-protocols",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10660,7 +10465,6 @@
       "short": "show zia malicious-urls",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10715,7 +10519,6 @@
       "short": "show zia security-exceptions",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10770,7 +10573,6 @@
       "short": "show zia url-allow-list",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10825,7 +10627,6 @@
       "short": "show zia url-deny-list",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10880,7 +10681,6 @@
       "short": "inspect administrator audit-log report status",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_write",
@@ -10917,7 +10717,6 @@
       "short": "show current administrator audit-log report status",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -10967,7 +10766,6 @@
       "short": "look up URL categories for one or more URLs",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11018,7 +10816,6 @@
       "short": "list zidentity groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11073,7 +10870,6 @@
       "short": "get zidentity groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11129,7 +10925,6 @@
       "short": "list zidentity users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11184,7 +10979,6 @@
       "short": "get zidentity users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11240,7 +11034,6 @@
       "short": "list zidentity resource-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11295,7 +11088,6 @@
       "short": "get zidentity resource-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11351,7 +11143,6 @@
       "short": "list zpa microtenants",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11406,7 +11197,6 @@
       "short": "get zpa microtenants",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11462,7 +11252,6 @@
       "short": "list zpa version-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11517,7 +11306,6 @@
       "short": "list zpa client-types",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11572,7 +11360,6 @@
       "short": "list zpa platforms",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11627,7 +11414,6 @@
       "short": "list zpa isolation-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11682,7 +11468,6 @@
       "short": "list zpa branch-connectors",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11737,7 +11522,6 @@
       "short": "list zpa user-portals",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11792,7 +11576,6 @@
       "short": "get zpa user-portals",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11848,7 +11631,6 @@
       "short": "list zpa user-portal-aups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11903,7 +11685,6 @@
       "short": "get zpa user-portal-aups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -11959,7 +11740,6 @@
       "short": "list zpa user-portal-links",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12014,7 +11794,6 @@
       "short": "get zpa user-portal-links",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12070,7 +11849,6 @@
       "short": "list zpa browser-access",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12125,7 +11903,6 @@
       "short": "get zpa browser-access",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12181,7 +11958,6 @@
       "short": "list zpa inspection-app-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12236,7 +12012,6 @@
       "short": "get zpa inspection-app-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12292,7 +12067,6 @@
       "short": "list zpa pra-app-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12347,7 +12121,6 @@
       "short": "get zpa pra-app-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12403,7 +12176,6 @@
       "short": "list zpa server-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12458,7 +12230,6 @@
       "short": "get zpa server-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12514,7 +12285,6 @@
       "short": "list zpa segment-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12569,7 +12339,6 @@
       "short": "get zpa segment-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12625,7 +12394,6 @@
       "short": "list zpa application-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12680,7 +12448,6 @@
       "short": "get zpa application-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12736,7 +12503,6 @@
       "short": "list zpa app-connectors",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12791,7 +12557,6 @@
       "short": "get zpa app-connectors",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12847,7 +12612,6 @@
       "short": "list zpa app-connector-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12902,7 +12666,6 @@
       "short": "get zpa app-connector-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -12958,7 +12721,6 @@
       "short": "list zpa app-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13013,7 +12775,6 @@
       "short": "get zpa app-servers",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13069,7 +12830,6 @@
       "short": "list zpa machine-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13124,7 +12884,6 @@
       "short": "get zpa machine-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13180,7 +12939,6 @@
       "short": "list zpa trusted-networks",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13235,7 +12993,6 @@
       "short": "get zpa trusted-networks",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13291,7 +13048,6 @@
       "short": "list zpa service-edge-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13346,7 +13102,6 @@
       "short": "get zpa service-edge-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13402,7 +13157,6 @@
       "short": "list zpa service-edges",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13457,7 +13211,6 @@
       "short": "get zpa service-edges",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13513,7 +13266,6 @@
       "short": "list zpa cloud-connector-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13568,7 +13320,6 @@
       "short": "get zpa cloud-connector-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13624,7 +13375,6 @@
       "short": "list zpa cloud-connectors",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13679,7 +13429,6 @@
       "short": "list zpa posture-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13734,7 +13483,6 @@
       "short": "get zpa posture-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13790,7 +13538,6 @@
       "short": "list zpa cbi-zpa-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13845,7 +13592,6 @@
       "short": "get zpa cbi-zpa-profiles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13901,7 +13647,6 @@
       "short": "list zpa c2c-ip-ranges",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -13956,7 +13701,6 @@
       "short": "get zpa c2c-ip-ranges",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14012,7 +13756,6 @@
       "short": "list zpa config-overrides",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14067,7 +13810,6 @@
       "short": "show ztw activation-status",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14122,7 +13864,6 @@
       "short": "list ztw workload-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14177,7 +13918,6 @@
       "short": "get ztw workload-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14233,7 +13973,6 @@
       "short": "list ztw public-cloud-accounts",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14288,7 +14027,6 @@
       "short": "get ztw public-cloud-accounts",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14344,7 +14082,6 @@
       "short": "list ztw dns-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14399,7 +14136,6 @@
       "short": "get ztw dns-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14455,7 +14191,6 @@
       "short": "list ztw forwarding-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14510,7 +14245,6 @@
       "short": "get ztw forwarding-gateways",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14566,7 +14300,6 @@
       "short": "list ztw ec-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14621,7 +14354,6 @@
       "short": "get ztw ec-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14677,7 +14409,6 @@
       "short": "list ztw ip-source-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14732,7 +14463,6 @@
       "short": "get ztw ip-source-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14788,7 +14518,6 @@
       "short": "list ztw ip-destination-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14843,7 +14572,6 @@
       "short": "get ztw ip-destination-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14899,7 +14627,6 @@
       "short": "list ztw ip-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -14954,7 +14681,6 @@
       "short": "get ztw ip-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15010,7 +14736,6 @@
       "short": "list ztw network-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15065,7 +14790,6 @@
       "short": "get ztw network-services",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15121,7 +14845,6 @@
       "short": "list ztw network-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15176,7 +14899,6 @@
       "short": "get ztw network-service-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15232,7 +14954,6 @@
       "short": "list ztw admin-users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15287,7 +15008,6 @@
       "short": "get ztw admin-users",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15343,7 +15063,6 @@
       "short": "list ztw admin-roles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15398,7 +15117,6 @@
       "short": "get ztw admin-roles",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15454,7 +15172,6 @@
       "short": "list ztw locations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15509,7 +15226,6 @@
       "short": "get ztw locations",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15565,7 +15281,6 @@
       "short": "list ztw location-templates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15620,7 +15335,6 @@
       "short": "get ztw location-templates",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15676,7 +15390,6 @@
       "short": "list ztw account-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15731,7 +15444,6 @@
       "short": "get ztw account-groups",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15787,7 +15499,6 @@
       "short": "list ztw public-cloud-info",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15842,7 +15553,6 @@
       "short": "get ztw public-cloud-info",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15898,7 +15608,6 @@
       "short": "list ztw zpa-application-segments",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -15953,7 +15662,6 @@
       "short": "list ztw forwarding-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -16008,7 +15716,6 @@
       "short": "get ztw forwarding-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -16064,7 +15771,6 @@
       "short": "list ztw traffic-dns-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -16119,7 +15825,6 @@
       "short": "get ztw traffic-dns-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -16175,7 +15880,6 @@
       "short": "list ztw traffic-log-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",
@@ -16230,7 +15934,6 @@
       "short": "get ztw traffic-log-rules",
       "aliases": [],
       "hidden": false,
-      "mutating": true,
       "effects": [
         {
           "kind": "local_filesystem_read",

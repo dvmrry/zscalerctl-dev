@@ -21,8 +21,8 @@ func TestIntrospectTree(t *testing.T) {
 	doc := cli.IntrospectTree(a)
 
 	// Contract version
-	if doc.IntrospectVersion != "2" {
-		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "2")
+	if doc.IntrospectVersion != "3" {
+		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "3")
 	}
 
 	// CLI-wide read-only guarantee
@@ -37,8 +37,7 @@ func TestIntrospectTree(t *testing.T) {
 
 	// The CLI-wide read_only guarantee is tenant-scoped. Per-command effects
 	// describe local writes/deletes and network access, including side effects
-	// that occur only when a flag is set. Mutating remains a conservative summary
-	// for older consumers: any possible local or tenant mutation makes it true.
+	// that occur only when a flag is set.
 	findByPath := func(path string) *cli.CommandDoc {
 		for i := range doc.Commands {
 			if doc.Commands[i].Path == path {
@@ -135,9 +134,6 @@ func TestIntrospectTree(t *testing.T) {
 		}
 		if !slices.Equal(got.Effects, tc.want) {
 			t.Errorf("command %q effects = %#v, want %#v", tc.path, got.Effects, tc.want)
-		}
-		if !got.Mutating {
-			t.Errorf("command %q mutating = false, want true for possible local filesystem effects", tc.path)
 		}
 	}
 
@@ -258,7 +254,6 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 		}
 
 		seen := make(map[cli.EffectDoc]bool, len(command.Effects))
-		mutating := false
 		hasNetworkAccess := false
 		hasConfiguredLocalRead := false
 		hasConfiguredProcessExecution := false
@@ -290,18 +285,14 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 
 			switch effect.Kind {
 			case "tenant_mutation":
-				mutating = true
 				if doc.ReadOnly {
 					t.Errorf("command %q has tenant_mutation effect while document read_only = true", command.Path)
 				}
-			case "local_filesystem_write", "local_filesystem_delete":
-				mutating = true
 			case "network_access":
 				hasNetworkAccess = true
 			case "local_filesystem_read":
 				hasConfiguredLocalRead = hasConfiguredLocalRead || effect.When == "configuration_dependent"
 			case "process_execution":
-				mutating = true
 				hasConfiguredProcessExecution = effect.When == "configuration_dependent"
 			}
 		}
@@ -325,9 +316,6 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 			}
 		}) {
 			t.Errorf("command %q effects = %#v, want stable sorted order", command.Path, command.Effects)
-		}
-		if command.Mutating != mutating {
-			t.Errorf("command %q mutating = %t, want derived value %t from effects %#v", command.Path, command.Mutating, mutating, command.Effects)
 		}
 		if len(command.OutputFields) > 0 && !hasNetworkAccess {
 			t.Errorf("command %q exposes live output fields without a network_access effect", command.Path)
@@ -518,7 +506,7 @@ func TestIntrospectTableFormat(t *testing.T) {
 				}
 			}
 			for _, effectLandmark := range []string{
-				"introspect-version: 2",
+				"introspect-version: 3",
 				"Effect conditions:",
 				"local_filesystem_read",
 				"local_filesystem_write (when --output is set)",

@@ -1,8 +1,8 @@
 zscalerctl CLI surface map
   version:   <VERSION>
-  introspect-version: 2
+  introspect-version: 3
   read-only: true
-  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json
+  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v3.schema.json
 
 Global flags (17):
   --color (string, default "auto")  color output: auto, always, never
