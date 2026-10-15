@@ -26,7 +26,7 @@ Global flags (17):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (297):
+Commands (300):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -77,6 +77,12 @@ Commands (297):
       effects: local_filesystem_write (when --output is set)
   machine manifest                          print the machine capability manifest
       effects: local_filesystem_write (when --output is set)
+  refs                                      find the records that reference an object, or referenced ids not found in what was read
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  refs check                                list reference ids on <product> <resource> records that are not in the target lists as read
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  refs to                                   list the records whose reference fields hold <id> of <product> <resource>
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   schema                                    inspect the resource catalog schema
       effects: local_filesystem_write (when --output is set)
   schema describe                           describe reviewed field semantics for one resource (config-free pilot)

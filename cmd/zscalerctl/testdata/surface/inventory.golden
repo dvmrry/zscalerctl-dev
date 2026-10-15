@@ -17,6 +17,8 @@
   help
   introspect
   machine manifest
+  refs check
+  refs to
   schema describe
   schema gaps
   schema list

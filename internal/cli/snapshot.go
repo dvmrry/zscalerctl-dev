@@ -156,16 +156,31 @@ func (a *App) runProductFromDump(
 	productName string,
 	args []string,
 ) error {
+	rt, cfg, err := a.savedDumpRuntime(ctx, opts, productName, args)
+	if err != nil {
+		return err
+	}
+	return a.runProductWithRuntime(ctx, cfg, opts, productName, args, rt)
+}
+
+// savedDumpRuntime opens --from-dump as a read runtime in the dump's own
+// redaction mode. productName and args only shape context errors.
+func (a *App) savedDumpRuntime(
+	ctx context.Context,
+	opts globalOptions,
+	productName string,
+	args []string,
+) (machineRuntime, config.Config, error) {
 	collection, err := diff.LoadCollection(ctx, opts.fromDump, a.resourceCatalog())
 	if err != nil {
 		if contextErr := savedDumpContextError(err, productName, args); contextErr != nil {
-			return contextErr
+			return nil, config.Config{}, contextErr
 		}
-		return newFromDumpUsageError(err)
+		return nil, config.Config{}, newFromDumpUsageError(err)
 	}
 	mode := redact.EffectiveMode(collection.Redaction())
 	if opts.redactionSet && redact.EffectiveMode(opts.redaction) != mode {
-		return fromDumpUsageError{
+		return nil, config.Config{}, fromDumpUsageError{
 			message: fmt.Sprintf(
 				"--redaction %s does not match dump redaction mode %s",
 				opts.redaction,
@@ -184,5 +199,5 @@ func (a *App) runProductFromDump(
 	}
 	cfg := config.Config{Defaults: config.Defaults{Redaction: mode}}
 	applyOptions(&cfg, opts)
-	return a.runProductWithRuntime(ctx, cfg, opts, productName, args, rt)
+	return rt, cfg, nil
 }

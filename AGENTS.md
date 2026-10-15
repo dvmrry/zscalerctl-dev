@@ -414,6 +414,21 @@ and no modes: it shows the relationship exists but cannot be read. A field whose
 verified is not listed, so an empty `referred_by` does not prove nothing
 points at the resource.
 
+`refs` does those reads for you, live or with `--from-dump`:
+
+```sh
+zscalerctl --format json refs to zia groups 12345        # records whose fields hold that id
+zscalerctl --format json refs check zia url-filtering-rules  # referenced ids not in the target lists
+```
+
+`refs to` lists each referencing record's id and name with the field that
+holds the id. `refs check` lists each referenced id that is not in its target
+lists as read; that is all it claims, not that the object is missing from the
+tenant. Both list under `not_checked` every field the redaction mode omits,
+every resource that could not be read (with the failure reason), and every
+field whose target could not be read. They report what references what, never
+what a reference does.
+
 Some Zscaler surfaces are not read at all: ZPA policy rule sets, entitlement-
 gated modules, credential material, reports. Before concluding a tenant has
 none of something, check that zscalerctl reads it:

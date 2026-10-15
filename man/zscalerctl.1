@@ -61,7 +61,8 @@ making many requests is not capped end-to-end. Impose a whole-run limit
 externally (for example with \fBtimeout(1)\fR) if you need one.
 .TP
 .BI \-\-from-dump " dir"
-Read a complete saved dump with ordinary resource list/get/show commands.
+Read a complete saved dump with ordinary resource list/get/show commands and
+\fBrefs\fR.
 Bypasses configuration, credential providers, SDK construction, and network
 access. Cannot be combined with --profile or --config. Uses the stored redaction
 mode and rejects an explicitly different mode. Admission validates all saved
@@ -164,6 +165,19 @@ per-resource files, and errors.ndjson on failure) into a new directory.
 \fB\-\-force\fR replaces an existing destination, but only after verifying it is
 itself a zscalerctl dump directory; it refuses to follow symlinks and refuses
 the current working directory, the home directory, and the filesystem root.
+.TP
+.B refs to <product> <resource> <id>
+Read every resource with a field that points at <product> <resource> and list
+the records whose field holds <id>, with each record's id and name. Fields the
+redaction mode omits, resources without a list or show operation, and failed
+reads are listed as not checked. It reports what references what; it never says
+what a reference does. Works with \fB\-\-from-dump\fR.
+.TP
+.B refs check <product> <resource>
+Read <product> <resource> and every resource its reference fields point at, and
+list each referenced id that is not in its target lists as read. A field whose
+target could not be read is listed as not checked and contributes nothing.
+"Not found in what was read" is all it claims. Works with \fB\-\-from-dump\fR.
 .TP
 .B diff <old-dump-dir> <new-dump-dir> [\-\-products ...] [\-\-resources ...] [\-\-ignore-operational] [\-\-detail] [\-\-allow-partial] [\-\-fail-on-drift]
 Compare two existing dump directories and emit a local drift report. List and

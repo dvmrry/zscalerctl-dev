@@ -386,15 +386,15 @@ func TestIntrospectEffectCounts(t *testing.T) {
 
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
-		"local_filesystem_read":   551,
-		"local_filesystem_write":  298,
-		"network_access":          274,
-		"process_execution":       275,
+		"local_filesystem_read":   554,
+		"local_filesystem_write":  301,
+		"network_access":          277,
+		"process_execution":       278,
 	}
 	wantWhen := map[string]int{
-		"always":                  277,
-		"configuration_dependent": 553,
-		"flag_set":                570,
+		"always":                  280,
+		"configuration_dependent": 559,
+		"flag_set":                573,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)
@@ -402,8 +402,8 @@ func TestIntrospectEffectCounts(t *testing.T) {
 	if !maps.Equal(byWhen, wantWhen) {
 		t.Errorf("effect condition counts = %v, want %v", byWhen, wantWhen)
 	}
-	if commandsWithRead != 279 {
-		t.Errorf("commands with local reads = %d, want 279", commandsWithRead)
+	if commandsWithRead != 282 {
+		t.Errorf("commands with local reads = %d, want 282", commandsWithRead)
 	}
 }
 

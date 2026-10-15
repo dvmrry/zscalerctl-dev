@@ -12,6 +12,7 @@ Available Commands:
   help        Help about any command
   introspect  print a machine-readable map of all commands, flags, and resources (JSON)
   machine     inspect machine-readable capability contracts
+  refs        find the records that reference an object, or referenced ids not found in what was read
   schema      inspect the resource catalog schema
   version     print version, commit, build date, and runtime info
   zcc         read zcc resources
