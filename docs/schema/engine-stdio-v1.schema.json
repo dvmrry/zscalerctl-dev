@@ -1068,8 +1068,12 @@
         "product": { "$ref": "#/$defs/product" },
         "resource": { "$ref": "#/$defs/resourceName" },
         "phase": { "const": "list" },
-        "kind": { "const": "list_failed" }
-      }
+        "kind": { "const": "list_failed" },
+        "reason": { "$ref": "#/$defs/failureReason" },
+        "status": { "$ref": "#/$defs/failureStatus" },
+        "retryable": { "$ref": "#/$defs/failureRetryable" }
+      },
+      "dependentRequired": { "status": ["reason"], "retryable": ["reason"] }
     },
     "dumpShowFailure": {
       "type": "object",
@@ -1079,8 +1083,12 @@
         "product": { "$ref": "#/$defs/product" },
         "resource": { "$ref": "#/$defs/resourceName" },
         "phase": { "const": "show" },
-        "kind": { "const": "show_failed" }
-      }
+        "kind": { "const": "show_failed" },
+        "reason": { "$ref": "#/$defs/failureReason" },
+        "status": { "$ref": "#/$defs/failureStatus" },
+        "retryable": { "$ref": "#/$defs/failureRetryable" }
+      },
+      "dependentRequired": { "status": ["reason"], "retryable": ["reason"] }
     },
     "dumpProjectFailure": {
       "type": "object",
@@ -1441,8 +1449,42 @@
             "response_too_large",
             "internal"
           ]
-        }
-      }
+        },
+        "reason": { "$ref": "#/$defs/failureReason" },
+        "status": { "$ref": "#/$defs/failureStatus" },
+        "retryable": { "$ref": "#/$defs/failureRetryable" }
+      },
+      "dependentRequired": { "status": ["reason"], "retryable": ["reason"] },
+      "if": { "required": ["reason"] },
+      "then": { "properties": { "kind": { "const": "live_access_failed" } } }
+    },
+    "failureReason": {
+      "type": "string",
+      "description": "Why a live read failed, from a closed value-free vocabulary. Omitted when unknown.",
+      "enum": [
+        "unauthorized",
+        "forbidden",
+        "not_found",
+        "rate_limited",
+        "server_error",
+        "client_error",
+        "transport",
+        "timeout",
+        "pagination_incomplete",
+        "decode_failed",
+        "not_subscribed",
+        "unknown"
+      ]
+    },
+    "failureStatus": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599,
+      "description": "HTTP status of the failed response, when there was one. Only with reason."
+    },
+    "failureRetryable": {
+      "type": "boolean",
+      "description": "Whether a retry could plausibly succeed. Only with reason; omitted when false."
     },
     "canceled": {
       "type": "object",

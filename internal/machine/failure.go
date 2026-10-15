@@ -6,10 +6,36 @@ import (
 	"fmt"
 )
 
-// FailureReasonTimeout is the failure reason for a read that hit its deadline.
-// The live reader supplies every other reason (see zscaler.Failure*), and the
-// same "timeout" for an HTTP 408 or a network timeout.
-const FailureReasonTimeout = "timeout"
+// Failure reasons are a closed, value-free vocabulary describing why a live
+// read failed. They let a caller choose between retrying, fixing the API role,
+// or giving up, without exposing the backend message (which can carry tenant
+// values). This package owns the vocabulary: the live reader classifies into
+// it, and the CLI error envelope, dump error records and the stdio engine wire
+// carry it. Tests keep the published schemas and the wire's copy equal to
+// FailureReasons.
+const (
+	FailureReasonUnauthorized         = "unauthorized"
+	FailureReasonForbidden            = "forbidden"
+	FailureReasonNotFound             = "not_found"
+	FailureReasonRateLimited          = "rate_limited"
+	FailureReasonServerError          = "server_error"
+	FailureReasonClientError          = "client_error"
+	FailureReasonTransport            = "transport"
+	FailureReasonTimeout              = "timeout"
+	FailureReasonPaginationIncomplete = "pagination_incomplete"
+	FailureReasonDecodeFailed         = "decode_failed"
+	FailureReasonNotSubscribed        = "not_subscribed"
+	FailureReasonUnknown              = "unknown"
+)
+
+// FailureReasons returns the whole vocabulary.
+func FailureReasons() []string {
+	return []string{
+		FailureReasonUnauthorized, FailureReasonForbidden, FailureReasonNotFound, FailureReasonRateLimited,
+		FailureReasonServerError, FailureReasonClientError, FailureReasonTransport, FailureReasonTimeout,
+		FailureReasonPaginationIncomplete, FailureReasonDecodeFailed, FailureReasonNotSubscribed, FailureReasonUnknown,
+	}
+}
 
 // FailureDetail says why a live read failed in value-free terms: a reason from
 // a closed vocabulary, the HTTP status when there was a response, and whether

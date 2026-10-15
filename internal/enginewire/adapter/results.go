@@ -277,6 +277,11 @@ func ToDumpSummary(source machine.DumpResult) (enginewire.DumpSummary, error) {
 		failures[i] = enginewire.DumpFailure{
 			Product: enginewire.Product(failure.Product), Resource: failure.Resource,
 			Phase: string(failure.Operation), Kind: failure.Kind,
+			Reason: failure.Detail.Reason, Status: failure.Detail.Status, Retryable: failure.Detail.Retryable,
+		}
+		if failures[i].Validate() != nil {
+			// Only a well-formed, value-free detail crosses the wire.
+			failures[i].Reason, failures[i].Status, failures[i].Retryable = "", 0, false
 		}
 		probe := enginewire.Warning{Type: "warning", ID: 1, Sequence: 1, Warning: failures[i]}
 		if err := probe.Validate(); err != nil {

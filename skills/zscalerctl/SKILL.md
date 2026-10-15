@@ -245,7 +245,8 @@ do not retry, report it. `rate_limited`, `server_error`, `transport` and
 `timeout` are retryable: back off, and raise `--timeout` for `timeout`.
 `pagination_incomplete` means the CLI refused a list it could not prove
 complete; `decode_failed` means the response did not match the expected shape.
-A dump's `errors.ndjson` records carry the same three fields. `--timeout 30s` caps each HTTP request, not the
+A dump's `errors.ndjson` records carry the same three fields, and so do
+stdio engine `live_access_failed` errors and `list`/`show` dump warnings. `--timeout 30s` caps each HTTP request, not the
 whole list or dump run; apply a separate process or orchestration deadline
 when the total operation must be bounded.
 

@@ -841,19 +841,14 @@ func TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1(t *testing.T) {
 		t.Fatalf("ValidateArtifactContext(v2) error = %v", err)
 	}
 
-	v1 := `{"schema":"zscalerctl.dump.error.v1","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed"}` + "\n"
-	if err := os.WriteFile(errorsPath, []byte(v1), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ValidateArtifactContext(context.Background(), dir); err != nil {
-		t.Fatalf("ValidateArtifactContext(v1 record) error = %v, want v1 still readable", err)
-	}
-
-	unknown := strings.Replace(v1, "error.v1", "error.v9", 1)
-	if err := os.WriteFile(errorsPath, []byte(unknown), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ValidateArtifactContext(context.Background(), dir); !errors.Is(err, ErrInvalidArtifact) {
-		t.Fatalf("ValidateArtifactContext(unknown schema) error = %v, want ErrInvalidArtifact", err)
+	// Only v2 is read; v1 (pre-failure-detail) and unknown versions are invalid.
+	for _, schema := range []string{"zscalerctl.dump.error.v1", "zscalerctl.dump.error.v9"} {
+		line := `{"schema":"` + schema + `","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed"}` + "\n"
+		if err := os.WriteFile(errorsPath, []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ValidateArtifactContext(context.Background(), dir); !errors.Is(err, ErrInvalidArtifact) {
+			t.Fatalf("ValidateArtifactContext(%s) error = %v, want ErrInvalidArtifact", schema, err)
+		}
 	}
 }

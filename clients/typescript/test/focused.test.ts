@@ -187,3 +187,19 @@ test("process adapter refuses PATH-resolved executables", async () => {
     (error: unknown) => error instanceof EngineClientError && error.kind === "request",
   );
 });
+
+test("live failure detail decodes only where a live read failed", () => {
+  const frame = (error: object) => new TextEncoder().encode(JSON.stringify({ type: "failed", id: 1, seq: 1, error }));
+  const decoded = decodeServerFrame(frame({ kind: "live_access_failed", reason: "rate_limited", status: 429, retryable: true }));
+  assert.equal(decoded.type, "failed");
+  assert.deepEqual((decoded as { error: unknown }).error, { kind: "live_access_failed", reason: "rate_limited", status: 429, retryable: true });
+  assert.deepEqual((decodeServerFrame(frame({ kind: "live_access_failed" })) as { error: unknown }).error, { kind: "live_access_failed" });
+  for (const invalid of [
+    { kind: "usage", reason: "forbidden" },
+    { kind: "live_access_failed", reason: "made_up" },
+    { kind: "live_access_failed", status: 403 },
+    { kind: "live_access_failed", reason: "forbidden", status: 42 },
+  ]) {
+    assert.throws(() => decodeServerFrame(frame(invalid)), (error: unknown) => errorKind(error) === ERROR_KINDS.INVALID_FRAME, JSON.stringify(invalid));
+  }
+});

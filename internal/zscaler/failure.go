@@ -5,35 +5,25 @@ import (
 	"errors"
 	"net"
 	"net/http"
+
+	"github.com/dvmrry/zscalerctl/internal/machine"
 )
 
-// Failure reasons are a closed, value-free vocabulary describing why a live
-// read failed. They let a caller choose between retrying, fixing the API
-// role, or giving up, without exposing the backend message (which can carry
-// tenant values). Keep in sync with docs/schema/error.schema.json and
-// docs/schema/dump-error.schema.json.
+// The reader classifies into machine's failure-reason vocabulary.
 const (
-	FailureUnauthorized         = "unauthorized"
-	FailureForbidden            = "forbidden"
-	FailureNotFound             = "not_found"
-	FailureRateLimited          = "rate_limited"
-	FailureServerError          = "server_error"
-	FailureClientError          = "client_error"
-	FailureTransport            = "transport"
-	FailureTimeout              = "timeout"
-	FailurePaginationIncomplete = "pagination_incomplete"
-	FailureDecodeFailed         = "decode_failed"
-	FailureNotSubscribed        = "not_subscribed"
-	FailureUnknown              = "unknown"
+	FailureUnauthorized         = machine.FailureReasonUnauthorized
+	FailureForbidden            = machine.FailureReasonForbidden
+	FailureNotFound             = machine.FailureReasonNotFound
+	FailureRateLimited          = machine.FailureReasonRateLimited
+	FailureServerError          = machine.FailureReasonServerError
+	FailureClientError          = machine.FailureReasonClientError
+	FailureTransport            = machine.FailureReasonTransport
+	FailureTimeout              = machine.FailureReasonTimeout
+	FailurePaginationIncomplete = machine.FailureReasonPaginationIncomplete
+	FailureDecodeFailed         = machine.FailureReasonDecodeFailed
+	FailureNotSubscribed        = machine.FailureReasonNotSubscribed
+	FailureUnknown              = machine.FailureReasonUnknown
 )
-
-// failureReasons is the whole vocabulary; a test keeps the published error
-// and dump-error schema enums equal to it.
-var failureReasons = []string{
-	FailureUnauthorized, FailureForbidden, FailureNotFound, FailureRateLimited,
-	FailureServerError, FailureClientError, FailureTransport, FailureTimeout,
-	FailurePaginationIncomplete, FailureDecodeFailed, FailureNotSubscribed, FailureUnknown,
-}
 
 // errNotSubscribed marks a read the tenant's licence does not include. Its text
 // keeps the SDK wrapper's status-free "NOT_SUBSCRIBED: ..." operator message.

@@ -14,11 +14,8 @@
   ],
   "properties": {
     "schema": {
-      "enum": [
-        "zscalerctl.dump.error.v2",
-        "zscalerctl.dump.error.v1"
-      ],
-      "description": "Versioned schema identifier. New dumps write v2; v1 records (no reason, status, or retryable) remain readable."
+      "const": "zscalerctl.dump.error.v2",
+      "description": "Versioned schema identifier."
     },
     "product": {
       "type": "string",
