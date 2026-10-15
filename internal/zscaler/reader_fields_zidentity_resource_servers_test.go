@@ -17,7 +17,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
 )
 
 func wave2ResourceServerFixture() (zidresourceservers.ResourceServers, map[string]string) {

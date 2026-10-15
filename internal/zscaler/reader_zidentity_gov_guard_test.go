@@ -60,6 +60,7 @@ func TestUnsupportedOneAPIZidentityCloud(t *testing.T) {
 				return cfg
 			}(),
 			product: resources.ProductZidentity,
+			wantErr: true,
 		},
 		{
 			name: "government ZIA remains supported",

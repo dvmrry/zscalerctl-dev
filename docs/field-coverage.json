@@ -2,15 +2,26 @@
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
     "resources": 165,
-    "total_fields": 3010,
-    "classified_fields": 2982,
-    "ignored_fields": 28,
-    "deliberate_fields": 28,
+    "total_fields": 3041,
+    "classified_fields": 2995,
+    "ignored_fields": 46,
+    "deliberate_fields": 46,
     "deferred_fields": 0,
-    "coverage_percent": 99.1,
+    "coverage_percent": 98.5,
     "decided_coverage_percent": 100
   },
   "products": [
+    {
+      "product": "zidentity",
+      "resources": 3,
+      "total_fields": 74,
+      "classified_fields": 56,
+      "ignored_fields": 18,
+      "deliberate_fields": 18,
+      "deferred_fields": 0,
+      "coverage_percent": 75.7,
+      "decided_coverage_percent": 100
+    },
     {
       "product": "zia",
       "resources": 102,
@@ -45,17 +56,6 @@
       "decided_coverage_percent": 100
     },
     {
-      "product": "zidentity",
-      "resources": 3,
-      "total_fields": 43,
-      "classified_fields": 43,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100
-    },
-    {
       "product": "ztw",
       "resources": 21,
       "total_fields": 292,
@@ -68,6 +68,89 @@
     }
   ],
   "resources": [
+    {
+      "product": "zidentity",
+      "resource": "users",
+      "sdk_types": [
+        "zidcommon.IDNameDisplayName (users)",
+        "zidusers.UserGroup",
+        "zidusers.Users"
+      ],
+      "total_fields": 44,
+      "classified_fields": 27,
+      "ignored_fields": 17,
+      "deliberate_fields": 17,
+      "deferred_fields": 0,
+      "coverage_percent": 61.4,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 8
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 9
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 9
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: group attributes belong to zidentity/groups; a user's membership renders id and name only",
+          "bucket": "deliberate",
+          "fields": [
+            "adminEntitlementDisabled",
+            "dynamicGroup",
+            "emergencyGroup",
+            "entityType",
+            "objectName",
+            "readOnly",
+            "serviceEntitlementDisabled",
+            "source",
+            "status"
+          ]
+        },
+        {
+          "reason": "deliberate: mirrors loginName on every user observed; loginName renders",
+          "bucket": "deliberate",
+          "fields": [
+            "name",
+            "objectName"
+          ]
+        },
+        {
+          "reason": "deliberate: org-chart relationship returned as a bare user id; not configuration",
+          "bucket": "deliberate",
+          "fields": [
+            "manager"
+          ]
+        },
+        {
+          "reason": "deliberate: per-user display preference with no configuration value",
+          "bucket": "deliberate",
+          "fields": [
+            "language",
+            "timeZone"
+          ]
+        },
+        {
+          "reason": "deliberate: personal contact data with no configuration value; never read into output",
+          "bucket": "deliberate",
+          "fields": [
+            "addresses",
+            "mobilePhone",
+            "primaryPhone"
+          ]
+        }
+      ]
+    },
     {
       "product": "zia",
       "resource": "users",
@@ -319,6 +402,50 @@
           "fields": [
             "endPointApplicationGroups",
             "endPointApplications"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zidentity",
+      "resource": "resource-servers",
+      "sdk_types": [
+        "zidresourceservers.ResourceServers",
+        "zidresourceservers.Scopes",
+        "zidresourceservers.Service",
+        "zidresourceservers.ServiceScopes"
+      ],
+      "total_fields": 18,
+      "classified_fields": 17,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 94.4,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 9
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: undocumented flag whose meaning is unknown",
+          "bucket": "deliberate",
+          "fields": [
+            "zapsOnboarded"
           ]
         }
       ]
@@ -2346,42 +2473,6 @@
       "ignored_by_reason": []
     },
     {
-      "product": "zidentity",
-      "resource": "resource-servers",
-      "sdk_types": [
-        "zidresourceservers.ResourceServers",
-        "zidresourceservers.Scopes",
-        "zidresourceservers.Service",
-        "zidresourceservers.ServiceScopes"
-      ],
-      "total_fields": 16,
-      "classified_fields": 16,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 8
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
       "product": "zpa",
       "resource": "posture-profiles",
       "sdk_types": [
@@ -2480,40 +2571,6 @@
         {
           "class": "tenant_configuration",
           "count": 5
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zidentity",
-      "resource": "users",
-      "sdk_types": [
-        "zidcommon.IDNameDisplayName (users)",
-        "zidusers.Users"
-      ],
-      "total_fields": 15,
-      "classified_fields": 15,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 5
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 6
         }
       ],
       "ignored_by_reason": []

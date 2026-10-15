@@ -92,8 +92,8 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
 	zpaapplicationsegmentbrowseraccess "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
 	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
@@ -294,9 +294,9 @@ const (
 	resourceZidentityGroups            = "groups"
 	resourceZidentityUsers             = "users"
 	resourceZidentityResourceServers   = "resource-servers"
-	zidentityGroupsEndpoint            = "/admin/api/v1/groups"
-	zidentityUsersEndpoint             = "/admin/api/v1/users"
-	zidentityResourceServersEndpoint   = "/admin/api/v1/resource-servers"
+	zidentityGroupsEndpoint            = "/ziam/admin/api/v1/groups"
+	zidentityUsersEndpoint             = "/ziam/admin/api/v1/users"
+	zidentityResourceServersEndpoint   = "/ziam/admin/api/v1/resource-servers"
 )
 
 type AuthMode string
@@ -1137,16 +1137,18 @@ func (s fixedService) service(ctx context.Context, product resources.Product) (*
 }
 
 // unsupportedOneAPIZidentityCloud keeps the OneAPI Zidentity admin path
-// fail-closed on government clouds. The SDK's government OAuth and product
-// API routes are reviewed, but its /admin/api/v1 host is still derived from
-// the vanity domain without a verified government admin origin. Do not create
-// a client for this product/cloud pair until that endpoint is established.
+// fail-closed where its gateway is unverified. Since SDK v3.8.49 Zidentity is
+// served by the OneAPI gateway under /ziam/admin/api/v1. No government
+// gateway has been verified to serve that prefix, and for ZPATWO the SDK now
+// targets the ZPA-specific gateway (api.zpatwo.zsapi.net), where Zidentity
+// previously lived on the production identity host. Do not create a client
+// for these product/cloud pairs until the route is established.
 func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product) error {
 	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI || product != resources.ProductZidentity {
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.Cloud)) {
-	case "gov", "govus":
+	case "gov", "govus", "zpatwo":
 		return fmt.Errorf(
 			"%w: %s is unsupported for OneAPI cloud %q",
 			ErrUnsupportedResource,
@@ -1351,13 +1353,12 @@ type zpaTwoIdentityTransport struct {
 	base             http.RoundTripper
 	invalidOAuthHost string
 	validOAuthHost   string
-	invalidAdminHost string
-	validAdminHost   string
 }
 
 // oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
 // identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
-// OneAPI token and ZIdentity admin endpoints remain on zslogin.net.
+// OneAPI token endpoint remains on zslogin.net. (Zidentity admin calls go
+// through the OneAPI gateway since SDK v3.8.49 and need no rewrite.)
 func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
 	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
 		return base
@@ -1367,8 +1368,6 @@ func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string)
 		base:             base,
 		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
 		validOAuthHost:   vanityDomain + ".zslogin.net",
-		invalidAdminHost: vanityDomain + "-admin.zsloginzpatwo.net",
-		validAdminHost:   vanityDomain + "-admin.zslogin.net",
 	}
 }
 
@@ -1382,8 +1381,6 @@ func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Respon
 	switch {
 	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
 		validHost = t.validOAuthHost
-	case strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
-		validHost = t.validAdminHost
 	default:
 		return t.base.RoundTrip(request)
 	}
@@ -1392,10 +1389,6 @@ func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Respon
 	cloned.URL = &clonedURL
 	cloned.URL.Host = validHost
 	return t.base.RoundTrip(cloned)
-}
-
-func isZidentityAdminPath(path string) bool {
-	return path == "/admin/api/v1" || strings.HasPrefix(path, "/admin/api/v1/")
 }
 
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
@@ -4374,11 +4367,12 @@ func zidentityServiceScopesSource(values []zidresourceservers.ServiceScopes) []a
 
 func zidentityServiceRefSource(value zidresourceservers.Service) map[string]any {
 	return map[string]any{
-		"id":          value.ID,
-		"name":        value.Name,
-		"displayName": value.DisplayName,
-		"cloudName":   value.CloudName,
-		"orgName":     value.OrgName,
+		"id":           value.ID,
+		"name":         value.Name,
+		"displayName":  value.DisplayName,
+		"externalName": value.ExternalName,
+		"cloudName":    value.CloudName,
+		"orgName":      value.OrgName,
 	}
 }
 
