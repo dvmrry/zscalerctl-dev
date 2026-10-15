@@ -54,7 +54,7 @@ func TestSchemaReferencesTextNamesFilterOrSecret(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"--format", "table", "schema", "references", "zia", "users"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter users.id=<id>\tstandard\n") {
+	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter users.id=<id>\tstandard,share\n") {
 		t.Errorf("text output = %q, want a --filter users.id hint", out.String())
 	}
 
@@ -62,7 +62,7 @@ func TestSchemaReferencesTextNamesFilterOrSecret(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"--format", "table", "schema", "references", "zia", "sublocations"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter locations.id=<id>\tstandard\tid is one of zia/locations, zia/sublocations\n") {
+	if !strings.Contains(out.String(), "zia url-filtering-rules\t--filter locations.id=<id>\tstandard,share\tid is one of zia/locations, zia/sublocations\n") {
 		t.Errorf("text output = %q, want the locations field with both targets", out.String())
 	}
 }

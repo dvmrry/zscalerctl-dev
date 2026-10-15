@@ -138,10 +138,17 @@ func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 	rule := sslInspectionRuleWave1Fixture()
 	records := []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)}
 
-	standardOnlyFields := []string{
-		"locations", "locationGroups", "groups", "departments", "users",
-		"deviceGroups", "devices", "destIpGroups", "sourceIpGroups",
-		"proxyGateways", "zpaAppSegments", "workloadGroups",
+	// Reference lists whose names are standard-only: share keeps their ids
+	// (never their names), paranoid drops them.
+	shareIDOnlyRefs := map[string]int{
+		"locations": 101, "locationGroups": 102, "groups": 103, "departments": 104,
+		"users": 105, "deviceGroups": 106, "devices": 107, "destIpGroups": 108,
+		"sourceIpGroups": 109, "proxyGateways": 110,
+	}
+	shareDroppedFields := []string{"zpaAppSegments", "workloadGroups"}
+	standardOnlyFields := append([]string{}, shareDroppedFields...)
+	for field := range shareIDOnlyRefs {
+		standardOnlyFields = append(standardOnlyFields, field)
 	}
 	standardShareFields := []string{"userAgentTypes", "deviceTrustLevels", "labels", "timeWindows"}
 
@@ -151,7 +158,11 @@ func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 		sslWave1ExternalIDCanary,
 	)
 	assertAuditRefIDOnly(t, "ssl-inspection-rules share", share, "lastModifiedBy", 900)
-	assertFieldsAbsent(t, "ssl-inspection-rules share", share, standardOnlyFields...)
+	assertFieldsAbsent(t, "ssl-inspection-rules share", share, shareDroppedFields...)
+	for field, wantID := range shareIDOnlyRefs {
+		assertRefListIDsOnly(t, "ssl-inspection-rules share", share, field, wantID)
+		assertNoCanaries(t, "ssl-inspection-rules share", share, sslWave1ReferenceListNames[field])
+	}
 	for _, field := range standardShareFields {
 		if _, ok := share[field]; !ok {
 			t.Errorf("projected ssl-inspection-rules share record missing %s, want present per standard+share modes", field)

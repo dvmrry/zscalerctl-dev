@@ -3665,14 +3665,21 @@ func TestReaderZTWAdminGovernanceProjectsSDKShapesThroughAllowList(t *testing.T)
 		"email",
 		"comments",
 		"pwdLastModifiedTime",
-		"adminScopescopeGroupMemberEntities",
-		"adminScopeScopeEntities",
 		"role",
 	} {
 		if _, ok := userShareGot[field]; ok {
 			t.Errorf("ProjectRecordsAndVerify(ztw/admin-users share) includes %s, want dropped", field)
 		}
 		assertReportContains(t, userShareReports[0].DroppedFields, field)
+	}
+	// The admin scope reference lists keep their ids in share; the
+	// standard-only names (carrying the canary) are dropped.
+	for field, wantID := range map[string]int{
+		"adminScopescopeGroupMemberEntities": 10,
+		"adminScopeScopeEntities":            11,
+	} {
+		assertRefListIDsOnly(t, "ztw/admin-users share", userShareGot, field, wantID)
+		assertReportContains(t, userShareReports[0].DroppedFields, field+"[0].name")
 	}
 	assertNoCanaries(t, "ztw/admin-users share", userShareGot, canary, "admin@example.internal", "cloud-admin")
 
@@ -3926,7 +3933,9 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 	}
 }
 
-func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
+// TestReaderZTWCloseoutBatchShareModeKeepsCriteriaIDsOnly asserts share
+// mode drops sensitive criteria values and keeps reference lists as ids only.
+func TestReaderZTWCloseoutBatchShareModeKeepsCriteriaIDsOnly(t *testing.T) {
 	t.Parallel()
 
 	const canary = "ztw-closeout-share-psk-canary"
@@ -3934,6 +3943,7 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 		name         string
 		record       resources.SourceRecord
 		absentFields []string
+		idOnlyRefs   map[string]int
 	}{
 		{
 			name: resourceLocations,
@@ -3963,7 +3973,8 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 				DestAddresses: []string{"example.internal psk=" + canary},
 				Locations:     []ztwcommon.IDNameExtensions{{ID: 13, Name: "location psk=" + canary}},
 			}),
-			absentFields: []string{"srcIps", "destAddresses", "locations"},
+			absentFields: []string{"srcIps", "destAddresses"},
+			idOnlyRefs:   map[string]int{"locations": 13},
 		},
 	}
 
@@ -3983,6 +3994,9 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 				if _, ok := got[field]; ok {
 					t.Errorf("ProjectRecordsAndVerify(ztw/%s share) includes %s, want dropped", tc.name, field)
 				}
+			}
+			for field, wantID := range tc.idOnlyRefs {
+				assertRefListIDsOnly(t, "ztw "+tc.name+" share", got, field, wantID)
 			}
 		})
 	}
@@ -4298,6 +4312,9 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
 		// shareForbidden are values that render in standard mode only.
 		shareForbidden []string
 	}{
@@ -4373,7 +4390,8 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 			}),
 			standardPresent: []string{"externalAuditorEmail", "receiver", "users"},
 			standardAbsent:  []string{"subRules"},
-			shareAbsent:     []string{"externalAuditorEmail", "receiver", "users", "subRules"},
+			shareAbsent:     []string{"externalAuditorEmail", "receiver", "subRules"},
+			shareIDOnly:     map[string]int{"users": 1},
 			shareForbidden:  []string{"receiver-tenant-name"},
 		},
 		{
@@ -4428,6 +4446,7 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
@@ -4446,6 +4465,9 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
 		// shareForbidden are values that render in standard mode only.
 		shareForbidden []string
 	}{
@@ -4481,7 +4503,8 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 				DcName:      &ziacommon.IDNameExtensions{ID: 2, Name: "Datacenter"},
 			}),
 			standardPresent: []string{"dcName"},
-			shareAbsent:     []string{"description", "dcName"},
+			shareAbsent:     []string{"description"},
+			shareIDOnly:     map[string]int{"dcName": 2},
 		},
 		{
 			name:     "sub-cloud nested topology and admin name are standard-only",
@@ -4560,6 +4583,7 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
@@ -4578,6 +4602,9 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
 		// shareForbidden are values that render in standard mode only.
 		shareForbidden []string
 	}{
@@ -4720,7 +4747,8 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				},
 			}),
 			standardPresent: []string{"pluginCheckFrequency", "bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
-			shareAbsent:     []string{"bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
+			shareAbsent:     []string{"bypassPlugins", "smartIsolationProfile"},
+			shareIDOnly:     map[string]int{"smartIsolationUsers": 1},
 		},
 		{
 			name:     "supported browser versions remain shareable",
@@ -4782,6 +4810,7 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
@@ -4890,6 +4919,9 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
 	}{
 		{
 			name:     "ips policy selectors and admin name are standard-only",
@@ -4909,7 +4941,8 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 				ZPAAppSegments:   []ziacommon.ZPAAppSegments{{ID: 9, Name: "App Segment", ExternalID: "external-zpa-segment"}},
 			}),
 			standardPresent: []string{"name", "srcIps", "destAddresses", "users", "zpaAppSegments", "lastModifiedBy.name"},
-			shareAbsent:     []string{"description", "srcIps", "destAddresses", "destIpCategories", "resCategories", "users", "zpaAppSegments", "lastModifiedBy.name"},
+			shareAbsent:     []string{"description", "srcIps", "destAddresses", "destIpCategories", "resCategories", "zpaAppSegments", "lastModifiedBy.name"},
+			shareIDOnly:     map[string]int{"users": 8},
 		},
 		{
 			name:     "auth exempted URLs are standard-only",
@@ -4984,6 +5017,7 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary, token)
 			}
 		})

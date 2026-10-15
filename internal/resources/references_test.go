@@ -143,7 +143,7 @@ func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 		Resource:     "url-filtering-rules",
 		Field:        "locations",
 		Match:        "locations.id",
-		AllowedModes: []redact.Mode{redact.ModeStandard},
+		AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare},
 		Targets:      ziaRef("locations", "sublocations"),
 	}
 	if !containsSite(doc.ReferredBy, want) {

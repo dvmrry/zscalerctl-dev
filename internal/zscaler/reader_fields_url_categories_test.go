@@ -6,8 +6,8 @@ package zscaler
 // its admin scope type enum (ORGANIZATION/DEPARTMENT/LOCATION/LOCATION_GROUP)
 // is non-identifying operational data in all modes, and the department/
 // location/location-group references inside ScopeEntities and
-// scopeGroupMemberEntities follow the standard-only id/name reference
-// precedent from the rule families. The catalog sub-keys mirror the SDK JSON
+// scopeGroupMemberEntities follow the id/name reference precedent from the
+// rule families: ids render in standard and share, names in standard only. The catalog sub-keys mirror the SDK JSON
 // tags verbatim ("Type" and "ScopeEntities" are capitalized upstream). val
 // stays ignored as an opaque SDK helper. These tests pin the new mode
 // boundaries so the decision cannot regress silently.
@@ -124,16 +124,13 @@ func TestURLCategoriesScopeModeBoundaries(t *testing.T) {
 		if !ok {
 			t.Fatalf("share projected url-categories scopes[0] = %T, want map[string]any", scopes[0])
 		}
-		// The non-identifying scope type survives share mode; the
-		// standard-only entity references must drop.
+		// The non-identifying scope type survives share mode; the entity
+		// references keep their ids but never their standard-only names.
 		if scope["Type"] != "LOCATION_GROUP" {
 			t.Errorf("share projected scopes[0].Type = %v, want LOCATION_GROUP", scope["Type"])
 		}
-		for _, field := range []string{"ScopeEntities", "scopeGroupMemberEntities"} {
-			if _, ok := scope[field]; ok {
-				t.Errorf("share projected scopes[0] includes %s, want dropped", field)
-			}
-		}
+		assertRefListIDsOnly(t, "url-categories share scopes[0]", scope, "ScopeEntities", 6101)
+		assertRefListIDsOnly(t, "url-categories share scopes[0]", scope, "scopeGroupMemberEntities", 6102)
 		if _, ok := got["val"]; ok {
 			t.Errorf("share projected url-categories includes val, want dropped")
 		}

@@ -75,6 +75,69 @@ func mustFirstProjectedItem(t *testing.T, record map[string]any, field string) m
 	return object
 }
 
+// assertRefListIDsOnly asserts record[field] rendered as a non-empty list of
+// {id} references: every element carries an id and nothing else (no name, no
+// extensions). Reference lists ({id, name, extensions}) render their ids in
+// share mode even where the referenced names are standard-only. When wantIDs
+// is given, the element ids must print as those values, in order.
+func assertRefListIDsOnly(t *testing.T, resource string, record map[string]any, field string, wantIDs ...any) {
+	t.Helper()
+
+	value, ok := record[field]
+	if !ok {
+		t.Errorf("projected %s missing %s, want id-only reference list", resource, field)
+		return
+	}
+	items, ok := value.([]any)
+	if !ok || len(items) == 0 {
+		t.Errorf("projected %s %s = %T(%v), want non-empty reference list", resource, field, value, value)
+		return
+	}
+	if len(wantIDs) > 0 && len(items) != len(wantIDs) {
+		t.Errorf("projected %s %s = %#v, want %d references", resource, field, items, len(wantIDs))
+	}
+	for i, item := range items {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			t.Errorf("projected %s %s[%d] = %T, want reference map", resource, field, i, item)
+			continue
+		}
+		id, hasID := ref["id"]
+		if !hasID {
+			t.Errorf("projected %s %s[%d] = %#v, want id", resource, field, i, ref)
+		}
+		if i < len(wantIDs) && fmt.Sprint(id) != fmt.Sprint(wantIDs[i]) {
+			t.Errorf("projected %s %s[%d].id = %v, want %v", resource, field, i, id, wantIDs[i])
+		}
+		for key := range ref {
+			if key != "id" {
+				t.Errorf("projected %s %s[%d] = %#v, want only id (key %q must not render)", resource, field, i, ref, key)
+			}
+		}
+	}
+}
+
+// assertRefIDsOnlyInShare checks reference fields whose names are
+// standard-only: in share mode each renders as id-only (a single {id} map or a
+// list of them) with the wanted id; in paranoid mode each is absent.
+func assertRefIDsOnlyInShare(t *testing.T, resource string, mode redact.Mode, record map[string]any, refs map[string]int) {
+	t.Helper()
+
+	for field, wantID := range refs {
+		if mode != redact.ModeShare {
+			if _, ok := record[field]; ok {
+				t.Errorf("%s projected %s includes %s, want dropped", mode, resource, field)
+			}
+			continue
+		}
+		if _, ok := record[field].(map[string]any); ok {
+			assertAuditRefIDOnly(t, resource+" share", record, field, wantID)
+			continue
+		}
+		assertRefListIDsOnly(t, resource+" share", record, field, wantID)
+	}
+}
+
 // projectSourceRecordInModes projects records in share and paranoid mode,
 // asserts that none of the canaries survive in either, and returns the
 // projections keyed by mode. Use it for values that render in standard mode

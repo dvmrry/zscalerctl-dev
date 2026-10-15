@@ -99,26 +99,25 @@ func TestURLFilteringRulePromotedFieldsAcrossModes(t *testing.T) {
 		t.Errorf("projected url-filtering-rules lastModifiedBy = %#v, want name %q", lastModifiedBy, adminCanary)
 	}
 
-	// Mode gating: every promoted field is standard-only — including
-	// browserEunTemplateId, a tenant-specific EUN template reference
-	// (sensitiveIdentifierField) — and must disappear in share and paranoid.
-	standardOnlyFields := []string{
-		"departments",
-		"groups",
-		"users",
-		"deviceGroups",
-		"devices",
-		"overrideUsers",
-		"overrideGroups",
-		"cbiProfile",
-		"browserEunTemplateId",
-	}
+	// Mode gating: cbiProfile and browserEunTemplateId (a tenant-specific EUN
+	// template reference, sensitiveIdentifierField) are standard-only and must
+	// disappear in share and paranoid. The reference lists keep their ids (never
+	// their names) in share and disappear in paranoid.
+	standardOnlyFields := []string{"cbiProfile", "browserEunTemplateId"}
 	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceURLRules, mode, records)
 		for _, field := range standardOnlyFields {
 			if _, ok := got[field]; ok {
 				t.Errorf("projected url-filtering-rules (%v) = %#v, want no %s", mode, got, field)
 			}
+		}
+		for _, want := range refLists {
+			if mode == redact.ModeShare {
+				assertRefListIDsOnly(t, "url-filtering-rules (share)", got, want.field, want.id)
+			} else if _, ok := got[want.field]; ok {
+				t.Errorf("projected url-filtering-rules (%v) = %#v, want no %s", mode, got, want.field)
+			}
+			assertNoCanaries(t, "url-filtering-rules ("+string(mode)+")", got, want.name)
 		}
 		assertAuditRefIDOnly(t, "url-filtering-rules ("+string(mode)+")", got, "lastModifiedBy", 9001)
 		assertNoCanaries(t, "url-filtering-rules", got, adminCanary, cbiURLCanary)
