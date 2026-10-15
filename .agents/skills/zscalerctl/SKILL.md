@@ -25,8 +25,11 @@ zscalerctl --format json schema gaps zpa                 # what zscalerctl does 
 The default mode is `share`: a rule's user, group, department and location
 references render there as ids only (`[{"id": ...}]`), so rule scope is
 visible; names, emails and other identifying values need `--redaction
-standard`, and a usage error names the mode when you ask for an omitted field. `--count-by` takes several comma-separated paths at once, so
-"members per group, and how many have no department" is one call. Exit codes:
+standard`, and a usage error names the mode when you ask for an omitted field.
+How a ZIA rule's criteria combine, and what an empty one means, is in
+`schema describe zia <rule-resource>` under `matching`. `--count-by` takes
+several comma-separated paths at once, so "members per group, and how many
+have no department" is one call. Exit codes:
 0 success, 1 internal or canceled, 2 usage, 3 missing or invalid credentials,
 4 not found or unsupported (a resource zscalerctl does not read names its
 gap), 5 live API failure (with `reason`), 6 partial dump, 7 drift.
@@ -344,6 +347,23 @@ exit 4. Only fields renderable in the requested mode are described; the default
 is `standard`, independent of configuration. Continue using `schema list` to
 validate all available field names. An omitted value never establishes that a
 setting is false, empty, or unconfigured.
+
+Twelve ZIA rule resources (`url-filtering-rules`, `firewall-filtering-rules`,
+`ssl-inspection-rules`, `cloud-app-control`, `dlp-web-rules`,
+`firewall-dns-rules`, `file-type-rules`, `forwarding-rules`,
+`bandwidth-control-rules`, `ips-policies`, `sandbox-rules`,
+`nat-control-rules`) also carry `matching`, transcribed from the Policy
+Execution section of Zscaler's documentation (`source`). `groups` are ANDed;
+a group's fields combine by its `operator`: `or`, or `admin_selected` where
+the console lets the admin choose AND or OR and the API does not return the
+choice (URL filtering users, groups and departments). A field with no value is
+ignored, so a rule with no criteria matches all traffic its policy evaluates,
+and a field listing every value it can take does not restrict either (URL
+rules usually list every request method and protocol). In a mode that renders a field, its absence from a rule record means the API
+returned no value. Before saying a rule applies to everyone, check
+`unplaced_criteria` (criteria the documentation does not place),
+`not_rendered` (omitted in this mode, not empty), `not_read` (criteria the API
+does not return) and `notes` (exclusion lists, AND-ed second fields).
 
 ## Find what points at a resource
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/resource-semantics-v1.schema.json",
   "title": "zscalerctl resource semantics output",
-  "description": "Candidate v1 schema for the config-free, tenant-value-free resource semantics pilot. The pilot currently reviews only zia/locations, zia/url-filtering-rules, and zia/rule-labels; known resources outside the pilot are emitted with review_status not_reviewed and an empty fields array.",
+  "description": "Candidate v1 schema for the config-free, tenant-value-free resource semantics pilot. The pilot currently reviews only zia/locations, zia/url-filtering-rules, and zia/rule-labels; known resources outside the pilot are emitted with review_status not_reviewed and an empty fields array. Policy rule resources with documented criteria logic also carry matching, whatever their review status.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -72,6 +72,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/fieldSemantics" },
       "description": "Reviewed, active-mode field descriptors. Empty when review_status is not_reviewed or when the catalog mode omits every reviewed field."
+    },
+    "matching": {
+      "$ref": "#/$defs/ruleMatching",
+      "description": "Documented criteria logic of a policy rule resource, independent of the field review pilot. Omitted for resources without documented logic."
     }
   },
   "$defs": {
@@ -206,6 +210,72 @@
           "type": "string",
           "minLength": 1,
           "description": "Repository path to the existing catalog field allow-list and mode gate."
+        }
+      }
+    },
+    "ruleMatching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "logic", "groups"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Zscaler help page whose Policy Execution section this logic transcribes."
+        },
+        "logic": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fixed reading: groups are ANDed, a group's fields use its operator, empty fields are ignored, and not_rendered fields are absent from output rather than empty."
+        },
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/criteriaGroup" },
+          "description": "ANDed criteria groups."
+        },
+        "unplaced_criteria": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Criteria fields the documentation does not place; when set they can restrict the rule, but their grouping is undocumented."
+        },
+        "not_rendered": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Grouped or unplaced fields omitted from output in this redaction mode; their absence in output does not mean they are empty."
+        },
+        "not_read": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Documented criteria the API, as the SDK models it, does not return."
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Documented exceptions, such as exclusion lists or fields that are not match criteria."
+        }
+      }
+    },
+    "criteriaGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "operator", "fields"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Documentation category, such as who, where, when or destination."
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["or", "admin_selected"],
+          "description": "How the group's fields combine: or; or admin_selected when the console lets the admin choose AND or OR and the API does not return the choice."
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Top-level catalog field names."
         }
       }
     }
