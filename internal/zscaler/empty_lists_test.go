@@ -62,6 +62,13 @@ func TestPreserveEmptyListsOnlyForIdentityMappedFields(t *testing.T) {
 		t.Error("an always-empty initialized key was confirmed as the API's []")
 	}
 
+	// A constant non-empty list does not track the input either.
+	if got := identityListFields(func(p emptyListProbe) resources.SourceRecord {
+		return resources.NewSourceRecord(map[string]any{"id": p.ID, "tags": []string{"always"}})
+	}); len(got) != 0 {
+		t.Errorf("identityListFields(constant list mapper) = %v, want none", got)
+	}
+
 	panicky := preserveEmptyLists(func(p emptyListProbe) resources.SourceRecord {
 		if len(p.Tags) == 1 && p.Tags[0] == "" {
 			panic("probe value")

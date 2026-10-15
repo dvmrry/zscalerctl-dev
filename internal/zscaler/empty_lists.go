@@ -52,10 +52,11 @@ type emptyListField struct {
 }
 
 // identityListFields returns T's top-level slice fields that mapper copies
-// under their JSON name: mapping a value whose list holds one zero element
-// yields a non-empty list under that key. A key that is merely present (always
-// initialized, or derived and empty) does not count, and a mapper that panics
-// on the probe value confirms nothing for that field.
+// element by element under their JSON name: probes whose list holds one and
+// then two zero elements must map to lists of length one and two under that
+// key. A key that is merely present, always initialized, constant, derived or
+// deduplicated does not track the input and so does not count; a mapper that
+// panics on a probe confirms nothing for that field.
 func identityListFields[T any](mapper func(T) resources.SourceRecord) []emptyListField {
 	var zero T
 	typ := reflect.TypeOf(zero)
@@ -72,20 +73,27 @@ func identityListFields[T any](mapper func(T) resources.SourceRecord) []emptyLis
 		if name == "" || name == "-" {
 			continue
 		}
-		probe := reflect.New(typ).Elem()
-		probe.Field(i).Set(reflect.MakeSlice(field.Type, 1, 1))
-		if mapsUnderName(mapper, probe.Interface().(T), name) {
+		tracks := true
+		for _, n := range []int{1, 2} {
+			probe := reflect.New(typ).Elem()
+			probe.Field(i).Set(reflect.MakeSlice(field.Type, n, n))
+			if mappedListLen(mapper, probe.Interface().(T), name) != n {
+				tracks = false
+				break
+			}
+		}
+		if tracks {
 			out = append(out, emptyListField{index: i, name: name})
 		}
 	}
 	return out
 }
 
-func mapsUnderName[T any](mapper func(T) resources.SourceRecord, probe T, name string) (ok bool) {
+func mappedListLen[T any](mapper func(T) resources.SourceRecord, probe T, name string) (n int) {
 	defer func() {
 		if recover() != nil {
-			ok = false
+			n = -1
 		}
 	}()
-	return mapper(probe).HasNonEmptyList(name)
+	return mapper(probe).ListLen(name)
 }

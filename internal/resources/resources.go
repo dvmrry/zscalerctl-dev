@@ -272,11 +272,14 @@ func confirmEmptyLists(value any) any {
 	return value
 }
 
-// HasNonEmptyList reports whether the record's value for key is a list with
-// at least one element.
-func (r SourceRecord) HasNonEmptyList(key string) bool {
+// ListLen returns the length of the record's value for key when it is a list,
+// and -1 otherwise (absent or not a list).
+func (r SourceRecord) ListLen(key string) int {
 	v := reflect.ValueOf(r.fields[key])
-	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Len() > 0
+	if !v.IsValid() || (v.Kind() != reflect.Slice && v.Kind() != reflect.Array) {
+		return -1
+	}
+	return v.Len()
 }
 
 // Has reports whether the record has a value for key.
