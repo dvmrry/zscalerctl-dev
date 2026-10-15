@@ -48,7 +48,34 @@ func (a *App) newSchemaDescribeCmd(opts globalOptions) *cobra.Command {
 			for _, field := range doc.Fields {
 				fmt.Fprintf(&body, "%s\t%s\t%s\n", field.Name, field.Type, field.Description)
 			}
+			writeRuleMatchingText(&body, doc.Matching)
 			return renderer.WriteText(a.out, output.NewSafeText(body.String()))
 		},
 	}
+}
+
+func writeRuleMatchingText(body *strings.Builder, matching *resources.RuleMatching) {
+	if matching == nil {
+		return
+	}
+	fmt.Fprintf(body, "\nMatching (%s):\n", matching.Source)
+	for _, group := range matching.Groups {
+		fmt.Fprintf(body, "%s\t%s\t%s\n", group.Category, group.Operator, strings.Join(group.Fields, ", "))
+	}
+	for _, line := range []struct {
+		label  string
+		values []string
+	}{
+		{"Unplaced criteria", matching.Unplaced},
+		{"Not rendered in this mode", matching.NotRendered},
+		{"Not read", matching.NotRead},
+	} {
+		if len(line.values) > 0 {
+			fmt.Fprintf(body, "%s: %s\n", line.label, strings.Join(line.values, ", "))
+		}
+	}
+	for _, note := range matching.Notes {
+		fmt.Fprintf(body, "Note: %s\n", note)
+	}
+	fmt.Fprintf(body, "%s\n", matching.Logic)
 }

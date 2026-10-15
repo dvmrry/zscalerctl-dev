@@ -369,6 +369,23 @@ is `standard`, independent of configuration. Continue using `schema list` to
 validate all available field names. An omitted value never establishes that a
 setting is false, empty, or unconfigured.
 
+Twelve ZIA rule resources (`url-filtering-rules`, `firewall-filtering-rules`,
+`ssl-inspection-rules`, `cloud-app-control`, `dlp-web-rules`,
+`firewall-dns-rules`, `file-type-rules`, `forwarding-rules`,
+`bandwidth-control-rules`, `ips-policies`, `sandbox-rules`,
+`nat-control-rules`) also carry `matching`, transcribed from the Policy
+Execution section of Zscaler's documentation (`source`). `groups` are ANDed;
+a group's fields combine by its `operator`: `or`, or `admin_selected` where
+the console lets the admin choose AND or OR and the API does not return the
+choice (URL filtering users, groups and departments). A field with no value is
+ignored, so a rule with no criteria matches all traffic its policy evaluates,
+and a field listing every value it can take does not restrict either (URL
+rules usually list every request method and protocol). In a mode that renders a field, its absence from a rule record means the API
+returned no value. Before saying a rule applies to everyone, check
+`unplaced_criteria` (criteria the documentation does not place),
+`not_rendered` (omitted in this mode, not empty), `not_read` (criteria the API
+does not return) and `notes` (exclusion lists, AND-ed second fields).
+
 ## Find what points at a resource
 
 Reference fields name their target in the catalog: `schema list` shows
