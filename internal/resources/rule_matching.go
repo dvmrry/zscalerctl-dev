@@ -19,7 +19,7 @@ const RuleMatchingLogic = "A rule matches traffic only when every group matches;
 	"A field that lists every value it can take is set but does not restrict the rule either. " +
 	"Fields in unplaced_criteria are criteria the cited documentation does not place: when set they can restrict the rule, but how they combine with the groups is undocumented. " +
 	"A field in not_rendered is omitted from output in this redaction mode, so its absence there does not mean it is empty. " +
-	"Other catalog fields are not match criteria."
+	"A field named in notes modifies matching as the note says (an exclusion flag or a validity window); other catalog fields are not documented as match criteria."
 
 // MatchOperator joins the fields of one criteria group.
 type MatchOperator string
@@ -151,6 +151,9 @@ var ruleMatchingDefinitions = map[string]ruleMatchingDefinition{
 			orGroup("when", "timeWindows"),
 			orGroup("devices_and_agents", "devices", "deviceGroups", "deviceTrustLevels", "userAgentTypes", "userRiskScoreLevels"),
 		},
+		notes: []string{
+			"With enforceTimeValidity true the rule applies only between validityStartTime and validityEndTime.",
+		},
 		unplaced: []string{"tenancyProfileIds"},
 	},
 	"zia/dlp-web-rules": {
@@ -214,9 +217,9 @@ var ruleMatchingDefinitions = map[string]ruleMatchingDefinition{
 			orGroup("device", "deviceGroups"),
 			orGroup("services", "nwServiceGroups", "nwServices"),
 			orGroup("source", "srcIpGroups", "srcIps"),
-			orGroup("destination", "destIpGroups", "destAddresses", "destCountries", "destIpCategories", "resCategories"),
+			orGroup("destination", "destIpGroups", "destAddresses", "destCountries", "destIpCategories"),
 		},
-		unplaced: []string{"srcIpv6Groups", "destIpv6Groups", "ecGroups", "nwApplicationGroups", "appServiceGroups", "zpaAppSegments", "zpaApplicationSegments", "zpaApplicationSegmentGroups"},
+		unplaced: []string{"resCategories", "srcIpv6Groups", "destIpv6Groups", "ecGroups", "nwApplicationGroups", "appServiceGroups", "zpaAppSegments", "zpaApplicationSegments", "zpaApplicationSegmentGroups"},
 	},
 	"zia/bandwidth-control-rules": {
 		source: ziaHelp + "adding-rules-bandwidth-control-policy",
@@ -241,9 +244,9 @@ var ruleMatchingDefinitions = map[string]ruleMatchingDefinition{
 			orGroup("services", "nwServiceGroups", "nwServices"),
 			orGroup("threats", "threatCategories"),
 			orGroup("source", "srcIpGroups", "srcIpv6Groups", "srcIps"),
-			orGroup("destination", "destIpGroups", "destIpv6Groups", "destAddresses", "destCountries", "destIpCategories", "resCategories"),
+			orGroup("destination", "destIpGroups", "destIpv6Groups", "destAddresses", "destCountries", "destIpCategories"),
 		},
-		unplaced: []string{"devices", "deviceGroups", "sourceCountries", "zpaAppSegments"},
+		unplaced: []string{"resCategories", "devices", "deviceGroups", "sourceCountries", "zpaAppSegments"},
 	},
 	"zia/sandbox-rules": {
 		source: ziaHelp + "configuring-sandbox-policy",

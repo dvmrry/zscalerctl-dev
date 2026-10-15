@@ -37,6 +37,23 @@ func TestRuleMatchingPlacesEveryCriteriaField(t *testing.T) {
 	}
 }
 
+// modifierFields change how other criteria match. Every one a documented
+// rule resource has must be explained by one of its notes.
+var modifierFields = []string{"excludeSrcCountries", "enforceTimeValidity", "excludedUsers", "excludedGroups", "excludedDepartments"}
+
+func TestRuleMatchingNotesExplainEveryModifierField(t *testing.T) {
+	t.Parallel()
+	for key, definition := range ruleMatchingDefinitions {
+		spec := mustRuleSpec(t, key)
+		notes := strings.Join(definition.notes, "\n")
+		for _, name := range modifierFields {
+			if _, ok := findTopLevelField(spec.Fields, name); ok && !strings.Contains(notes, name) {
+				t.Errorf("%s: catalog modifier field %q is not explained by a note", key, name)
+			}
+		}
+	}
+}
+
 func TestRuleMatchingDescribedInEveryMode(t *testing.T) {
 	t.Parallel()
 	for key := range ruleMatchingDefinitions {
