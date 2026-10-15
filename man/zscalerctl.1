@@ -120,11 +120,11 @@ counts under null, so the counts cover every record. Paths through the same
 list pair values from the same element, so \fBgroups.id,groups.name\fR gives
 each group its own name; paths on different branches combine. JSON output is
 an object with \fBcount_by\fR, \fBrecords\fR (records counted),
-\fBdistinct\fR (value combinations) and \fBcounts\fR (largest first), each
+\fBdistinct\fR (value combinations), \fBtruncated\fR and \fBcounts\fR (largest first), each
 count \fB{"values": {...}, "count": N}\fR; NDJSON emits one count row per
 line. Filters and search apply first; \fB\-\-limit\fR \fIN\fR keeps the
-\fIN\fR largest counts. Valid for \fBlist\fR operations only; combining it with
-\fB\-\-fields\fR or \fB\-\-offset\fR, repeating a path, naming an object rather than a leaf, or
+\fIN\fR largest counts and sets \fBtruncated\fR when it dropped any. Valid for \fBlist\fR operations only; combining it with
+\fB\-\-fields\fR or \fB\-\-offset\fR, an empty or repeated \fB\-\-count\-by\fR, repeating a path, naming an object rather than a leaf, or
 naming a field the active mode omits is a usage error (exit 2) before any read.
 .TP
 .BI \-\-search " term"

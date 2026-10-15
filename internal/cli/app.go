@@ -539,6 +539,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
 	}
+	if err := validateCountByFlag(fs, globalArgs, *countByFlag); err != nil {
+		return globalOptions{}, nil, err
+	}
 	var fromDumpSet, limitSet, offsetSet bool
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {

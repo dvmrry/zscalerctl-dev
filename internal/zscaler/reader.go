@@ -4807,16 +4807,23 @@ func (e resourceNotFoundError) ErrorContext() ErrorContext {
 	return ErrorContext{Product: string(e.product), Resource: e.resource, Operation: "get"}
 }
 
+// sdkStatusCode returns the HTTP status of a failed SDK call, or 0 when there
+// is none. A status outside 100..599 (a body-parsed value can be anything) is
+// treated as no status, so the reason, the error envelope, errors.ndjson and
+// the stdio wire all agree with the published 100..599 range.
 func sdkStatusCode(err error) int {
 	var sdkErr *sdkerrorx.ErrorResponse
 	if !errors.As(err, &sdkErr) || sdkErr == nil {
 		return 0
 	}
+	status := 0
 	if sdkErr.Response != nil && sdkErr.Response.StatusCode > 0 {
-		return sdkErr.Response.StatusCode
+		status = sdkErr.Response.StatusCode
+	} else if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
+		status = sdkErr.Parsed.Status
 	}
-	if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
-		return sdkErr.Parsed.Status
+	if status < 100 || status > 599 {
+		return 0
 	}
-	return 0
+	return status
 }

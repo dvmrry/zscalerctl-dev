@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -28,14 +29,41 @@ func validateCountByInvocation(opts globalOptions) error {
 	return nil
 }
 
+// validateCountByFlag rejects a --count-by that names no path (an empty or
+// comma-only value would otherwise silently list every record) and a repeated
+// --count-by (a plain string flag keeps only the last occurrence).
+func validateCountByFlag(fs *flag.FlagSet, args []string, value string) error {
+	set := false
+	fs.Visit(func(f *flag.Flag) { set = set || f.Name == "count-by" })
+	if !set {
+		return nil
+	}
+	occurrences := 0
+	for _, arg := range args {
+		name := strings.TrimLeft(arg, "-")
+		if strings.HasPrefix(arg, "-") && (name == "count-by" || strings.HasPrefix(name, "count-by=")) {
+			occurrences++
+		}
+	}
+	if occurrences > 1 {
+		return UsageError{Message: "--count-by was given more than once; pass one comma-separated list, such as --count-by groups.id,department.name"}
+	}
+	if len(parseFieldsList(value)) == 0 {
+		return UsageError{Message: "--count-by needs at least one field path, such as --count-by groups.id"}
+	}
+	return nil
+}
+
 // countResult is the --count-by output: how many records were counted, how
 // many distinct value combinations they hold, and the counts, largest first.
 // Values come from projected, redacted records; nothing else is emitted.
 type countResult struct {
-	CountBy  []string   `json:"count_by"`
-	Records  int        `json:"records"`
-	Distinct int        `json:"distinct"`
-	Counts   []countRow `json:"counts"`
+	CountBy  []string `json:"count_by"`
+	Records  int      `json:"records"`
+	Distinct int      `json:"distinct"`
+	// Truncated is true when --limit kept fewer rows than Distinct.
+	Truncated bool       `json:"truncated"`
+	Counts    []countRow `json:"counts"`
 }
 
 func (countResult) OutputSafe() {}
@@ -79,6 +107,7 @@ func (a *App) writeCounts(cfg config.Config, opts globalOptions, records resourc
 	result := countResult{CountBy: opts.countBy, Records: records.Len(), Distinct: len(rows)}
 	if opts.limitSet && opts.limit < len(rows) {
 		rows = rows[:opts.limit]
+		result.Truncated = true
 	}
 	result.Counts = make([]countRow, len(rows))
 	for i, row := range rows {
@@ -121,6 +150,10 @@ func renderCountTable(result countResult, style output.Style) output.SafeText {
 		}
 		fmt.Fprintf(&body, "%d\n", row.row.Count)
 	}
-	fmt.Fprintf(&body, "%d records, %d distinct\n", result.Records, result.Distinct)
+	fmt.Fprintf(&body, "%d records, %d distinct", result.Records, result.Distinct)
+	if result.Truncated {
+		fmt.Fprintf(&body, ", showing the %d largest", len(result.Counts))
+	}
+	body.WriteByte('\n')
 	return output.NewSafeText(body.String())
 }

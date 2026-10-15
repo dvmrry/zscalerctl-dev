@@ -460,7 +460,7 @@ func TestFromDumpCountByUsesStoredMode(t *testing.T) {
 	if err := app.Run(context.Background(), args); err != nil {
 		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
 	}
-	want := `{"count_by":["share_only"],"records":2,"distinct":2,"counts":[{"values":{"share_only":"branch-share-value"},"count":1},{"values":{"share_only":"share-value"},"count":1}]}`
+	want := `{"count_by":["share_only"],"records":2,"distinct":2,"truncated":false,"counts":[{"values":{"share_only":"branch-share-value"},"count":1},{"values":{"share_only":"share-value"},"count":1}]}`
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, out.Bytes()); err != nil || compact.String() != want {
 		t.Fatalf("stdout = %s (err %v), want %s", out.String(), err, want)

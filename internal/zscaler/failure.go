@@ -1,10 +1,13 @@
 package zscaler
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
 )
@@ -61,10 +64,35 @@ func classifyFailure(err error, status int) (reason string, retryable bool) {
 		return FailureNotSubscribed, false
 	case errors.As(err, &syntaxErr), errors.As(err, &typeErr):
 		return FailureDecodeFailed, false
+	case permanentTransportFailure(err):
+		return FailureTransport, false
 	case errors.As(err, &netErr) && netErr.Timeout():
 		return FailureTimeout, true
 	case errors.As(err, &netErr):
 		return FailureTransport, true
 	}
 	return FailureUnknown, false
+}
+
+// permanentTransportFailure reports transport failures a retry cannot fix:
+// an untrusted or mismatched TLS certificate (often a TLS-intercepting proxy),
+// a host that does not resolve (wrong vanity domain or cloud), a redirect
+// loop, and proxy authentication. *url.Error implements net.Error, so without
+// this check every one of them would read as a retryable transport failure.
+func permanentTransportFailure(err error) bool {
+	var unknownAuthority x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	var verification *tls.CertificateVerificationError
+	var dnsErr *net.DNSError
+	switch {
+	case errors.As(err, &unknownAuthority), errors.As(err, &hostname), errors.As(err, &invalid), errors.As(err, &verification):
+		return true
+	case errors.As(err, &dnsErr) && dnsErr.IsNotFound:
+		return true
+	}
+	// net/http reports these two as untyped errors.
+	text := err.Error()
+	return strings.Contains(text, "stopped after") && strings.Contains(text, "redirects") ||
+		strings.Contains(text, "Proxy Authentication Required")
 }

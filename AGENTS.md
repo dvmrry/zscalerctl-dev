@@ -283,10 +283,11 @@ context. A path into a list counts per element, once per record
 with no value count under `null`. Paths through the same list pair values
 from the same element (`groups.id,groups.name` gives each group's own name);
 paths on different branches combine. JSON output is
-`{"count_by":[...],"records":N,"distinct":D,"counts":[{"values":{"groups.id":10},"count":2},...]}`
-with the largest counts first; `--limit N` keeps the top N. `--fields`,
-`--offset`, a repeated path, an object path, or a field the mode omits is a
-usage error.
+`{"count_by":[...],"records":N,"distinct":D,"truncated":false,"counts":[{"values":{"groups.id":10},"count":2},...]}`
+with the largest counts first; `--limit N` keeps the top N and sets
+`truncated` when it dropped any. `--fields`,
+`--offset`, an empty or repeated `--count-by`, a repeated path, an object
+path, or a field the mode omits is a usage error.
 
 ```sh
 zscalerctl --redaction standard --format json --count-by groups.id zia users list  # members per group

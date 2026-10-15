@@ -116,10 +116,7 @@ func (b *eventBridge) Accept(event machine.Event) error {
 		if event.Product != event.Err.Product || event.Resource != event.Err.Resource {
 			return fmt.Errorf("%w: warning scope mismatch", errInvalidEngineEvents)
 		}
-		warning := enginewire.DumpFailure{
-			Product: enginewire.Product(event.Product), Resource: event.Resource,
-			Phase: string(event.Err.Operation), Kind: event.Err.Kind,
-		}
+		warning := adapter.DumpFailure(event.Product, event.Resource, string(event.Err.Operation), event.Err.Kind, event.Err.Detail)
 		probe := provisionalWarning{warning: warning}.serverFrame(1, 1)
 		if _, err := enginewire.MarshalServerFrame(probe); err != nil {
 			return fmt.Errorf("%w: invalid warning conversion: %v", errInvalidEngineEvents, err)

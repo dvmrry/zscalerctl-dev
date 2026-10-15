@@ -265,3 +265,70 @@ func TestExecuteOperationCoversDumpAndDiffEventFamilies(t *testing.T) {
 		})
 	}
 }
+
+// TestExecuteDumpWithClassifiedFailureMatchesSummary pins the host path for a
+// partial dump whose failed resource carries a reason: the streamed warning
+// and the completed summary are built by one conversion, so the host's
+// warning/summary equality holds and the reason reaches both. Before the
+// shared conversion the warning dropped the detail and every such dump failed
+// with "dump warnings do not match completed summary".
+func TestExecuteDumpWithClassifiedFailureMatchesSummary(t *testing.T) {
+	t.Parallel()
+
+	spec := hostListSpec()
+	machineManifest := machine.EngineManifestFromCatalog(resources.ResourceCatalog{spec})
+	wireManifest, err := adapter.ToEngineManifest(machineManifest)
+	if err != nil {
+		t.Fatalf("ToEngineManifest() error = %v", err)
+	}
+	detail := machine.FailureDetail{Reason: "forbidden", Status: 403}
+	engine := &fakeEngine{
+		manifest: machineManifest,
+		dump: func(_ context.Context, _ machine.DumpRequest, sink machine.EventSink) (machine.DumpResult, error) {
+			failed := &machine.MachineError{
+				Kind: "list_failed", Message: "dump resource failed", Operation: machine.OperationList,
+				Product: "zia", Resource: "locations", Detail: detail,
+			}
+			for _, event := range []machine.Event{
+				{Kind: machine.EventStarted, Total: 1},
+				{Kind: machine.EventProgress, Done: 1, Total: 1, Product: "zia", Resource: "locations"},
+				{Kind: machine.EventWarning, Product: "zia", Resource: "locations", Err: failed},
+				{Kind: machine.EventCompleted, Records: 0, Resources: 0, Warnings: 1},
+			} {
+				if err := sink(event); err != nil {
+					return machine.DumpResult{}, err
+				}
+			}
+			return machine.NewDumpResult(0, 0, "standard", []machine.DumpResourceError{{
+				Product: "zia", Resource: "locations", Operation: machine.OperationList, Kind: "list_failed", Detail: detail,
+			}}), nil
+		},
+	}
+	request, ok := requestFromFrame(enginewire.DumpRequest{
+		Type: "request", ID: 1, Capability: enginewire.CapabilityDumpWrite, Operation: enginewire.OperationDump,
+		Input: enginewire.DumpInput{OutputDir: "out", Products: []enginewire.Product{}, Resources: []enginewire.ResourceSelector{}},
+	})
+	if !ok {
+		t.Fatal("requestFromFrame(dump) ok = false")
+	}
+	var warnings []enginewire.DumpFailure
+	data, err := executeOperation(context.Background(), engine, request, wireManifest, func(frame provisionalFrame) error {
+		if warning, ok := frame.(provisionalWarning); ok {
+			warnings = append(warnings, warning.warning)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("executeOperation(dump with 403) error = %v", err)
+	}
+	want := enginewire.DumpFailure{
+		Product: enginewire.ProductZIA, Resource: "locations", Phase: "list", Kind: "list_failed", Reason: "forbidden", Status: 403,
+	}
+	if len(warnings) != 1 || warnings[0] != want {
+		t.Fatalf("streamed warnings = %#v, want [%#v]", warnings, want)
+	}
+	summary, ok := data.result.(enginewire.DumpSummary)
+	if !ok || len(summary.Failures) != 1 || summary.Failures[0] != want {
+		t.Fatalf("summary = %#v, want one failure %#v", data.result, want)
+	}
+}
