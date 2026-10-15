@@ -367,6 +367,11 @@ func validateFromDumpInvocation(
 	if opts.configPath != "" {
 		return UsageError{Message: "--from-dump cannot be used with --config"}
 	}
+	if len(rest) > 0 && rest[0] == "refs" {
+		// refs reads whole resources through the same saved-dump runtime;
+		// its own command validates the rest of the invocation.
+		return nil
+	}
 	if len(rest) < 3 || !knownProductCommand(rest[0], catalog) {
 		return UsageError{Message: "--from-dump applies only to resource read operations; use it with \"<product> <resource> list|get|show\""}
 	}
@@ -718,7 +723,7 @@ func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	configureHelp(root, a.style(opts))
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
 		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
-		a.newMachineCmd(opts))
+		a.newMachineCmd(opts), a.newRefsCmd(opts))
 	catalog := a.resourceCatalog()
 	for _, p := range knownProducts(catalog) {
 		root.AddCommand(a.newProductCmd(p, opts))

@@ -30,7 +30,7 @@ func knownProductCommand(name string, catalog resources.ResourceCatalog) bool {
 
 func isRunnableCommand(name string, catalog resources.ResourceCatalog) bool {
 	switch name {
-	case "doctor", "auth", "config", "schema", "dump", "diff":
+	case "doctor", "auth", "config", "schema", "dump", "diff", "refs":
 		return true
 	default:
 		return knownProductCommand(name, catalog)

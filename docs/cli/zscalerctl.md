@@ -296,6 +296,30 @@ Print the catalog-derived machine capability manifest as JSON.
 
 This command is config-free and never contacts Zscaler.
 
+### refs
+
+find the records that reference an object, or referenced ids not found in what was read
+
+```
+zscalerctl refs
+```
+
+#### refs check
+
+list reference ids on <product> <resource> records that are not in the target lists as read
+
+```
+zscalerctl refs check <product> <resource>
+```
+
+#### refs to
+
+list the records whose reference fields hold <id> of <product> <resource>
+
+```
+zscalerctl refs to <product> <resource> <id>
+```
+
 ### schema
 
 inspect the resource catalog schema

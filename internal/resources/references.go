@@ -184,14 +184,7 @@ func ReferencesTo(c ResourceCatalog, target ResourceRef) References {
 			if !slices.Contains(field.References, target) {
 				return
 			}
-			match, matchChain := path, chain
-			if id := fieldAtPath(field.Fields, "id"); id != nil {
-				match, matchChain = path+".id", append(slices.Clone(chain), *id)
-			}
-			modes := availabilityAlong(matchChain).RenderableIn
-			if len(modes) == 0 {
-				match, modes = "", []redact.Mode{}
-			}
+			match, modes := referenceMatch(path, chain)
 			doc.ReferredBy = append(doc.ReferredBy, ReferenceSite{
 				Product:      spec.Product,
 				Resource:     spec.Name,
