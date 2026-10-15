@@ -69,6 +69,20 @@ func TestPreserveEmptyListsOnlyForIdentityMappedFields(t *testing.T) {
 		t.Errorf("identityListFields(constant list mapper) = %v, want none", got)
 	}
 
+	// A mapper that copies element by element but writes a default for an
+	// empty input passes the identity check; the marker never overrides the
+	// mapper's non-empty value, so the API's [] does not become a claim.
+	defaulted := preserveEmptyLists(func(p emptyListProbe) resources.SourceRecord {
+		tags := p.Tags
+		if len(tags) == 0 {
+			tags = []string{"default"}
+		}
+		return resources.NewSourceRecord(map[string]any{"id": p.ID, "tags": tags})
+	})
+	if got := defaulted(emptyListProbe{ID: 1, Tags: []string{}}).ListLen("tags"); got != 1 {
+		t.Errorf("defaulting mapper with API [] gives tags of length %d, want the mapper's default (1)", got)
+	}
+
 	panicky := preserveEmptyLists(func(p emptyListProbe) resources.SourceRecord {
 		if len(p.Tags) == 1 && p.Tags[0] == "" {
 			panic("probe value")
