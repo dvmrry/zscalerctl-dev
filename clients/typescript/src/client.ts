@@ -362,7 +362,8 @@ class StartupGate {
 
 function warningEqual(left: DumpFailure, right: DumpFailure): boolean {
   return left.product === right.product && left.resource === right.resource &&
-    left.phase === right.phase && left.kind === right.kind;
+    left.phase === right.phase && left.kind === right.kind && left.reason === right.reason &&
+    left.status === right.status && left.retryable === right.retryable;
 }
 
 function manifestsEqual(left: EngineManifest, right: EngineManifest): boolean {

@@ -17,7 +17,7 @@ const (
 	BootstrapSchemaID     = "urn:zscalerctl:engine-stdio:bootstrap:1"
 	BootstrapSchemaSHA256 = "e559b5568159568978b8b6fdaef9a75cd4022d2cefd1895338e890b7633720cf"
 	V1SchemaID            = "urn:zscalerctl:engine-stdio:protocol:1"
-	V1SchemaSHA256        = "6cba5a8170e538bd6eacde38c84526873f691421d6dc5f57cacfbd5f9438c522"
+	V1SchemaSHA256        = "9040b0862c2b77c3cf2ecd440417363649f0ee8448835c3c9e80030734849c46"
 	V1Version             = "1"
 
 	BootstrapFrameBytes = 64 << 10

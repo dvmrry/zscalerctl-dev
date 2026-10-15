@@ -20,9 +20,6 @@ import (
 const (
 	RedactionReportSchemaID = "zscalerctl.redaction_report.v1"
 	ResourceErrorSchemaID   = "zscalerctl.dump.error.v2"
-	// ResourceErrorSchemaIDV1 is the earlier error record shape (no failure
-	// detail). Readers accept it so dumps written before v2 stay readable.
-	ResourceErrorSchemaIDV1 = "zscalerctl.dump.error.v1"
 
 	maxArtifactManifestBytes int64 = 1 << 20
 	maxArtifactReportBytes   int64 = 64 << 20
@@ -640,7 +637,7 @@ func validateArtifactErrors(
 		if err := decodeStrictJSON(line, &resourceError); err != nil {
 			return nil, fmt.Errorf("%w: parse errors.ndjson: %v", ErrInvalidArtifact, err)
 		}
-		if resourceError.Schema != ResourceErrorSchemaID && resourceError.Schema != ResourceErrorSchemaIDV1 {
+		if resourceError.Schema != ResourceErrorSchemaID {
 			return nil, fmt.Errorf(
 				"%w: unsupported dump error schema (want %s)",
 				ErrInvalidArtifact,

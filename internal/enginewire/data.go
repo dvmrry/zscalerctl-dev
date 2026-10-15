@@ -306,7 +306,15 @@ type DumpFailure struct {
 	Resource string  `json:"resource" wire:"required"`
 	Phase    string  `json:"phase" wire:"required"`
 	Kind     string  `json:"kind" wire:"required"`
+	// Reason, Status and Retryable say why a list or show read failed; see
+	// NonCredentialFailure.
+	Reason    string `json:"reason,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
 }
+
+// Validate reports whether the failure is a well-formed wire value.
+func (f DumpFailure) Validate() error { return f.validate() }
 
 func (f DumpFailure) validate() error {
 	if err := validateProduct("dump failure product", f.Product); err != nil {
@@ -322,7 +330,7 @@ func (f DumpFailure) validate() error {
 	if !valid {
 		return fmt.Errorf("%w: invalid dump failure phase/kind", ErrInvalidFrame)
 	}
-	return nil
+	return validateFailureDetail(f.Phase == "list" || f.Phase == "show", f.Reason, f.Status, f.Retryable)
 }
 
 // AuthMode identifies the selected OneAPI or legacy ZIA credential family.

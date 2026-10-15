@@ -60,6 +60,8 @@ import type {
   DiffSummary,
   DoctorStatus,
   DumpFailure,
+  FailureDetail,
+  FailureReason,
   DumpInput,
   Effect,
   EngineCapability,
@@ -105,6 +107,7 @@ const REDACTIONS = new Set(["standard", "share", "paranoid"]);
 const ITEM_KINDS = new Set(["catalog_resource", "url_classification", "projected_record", "diff_resource", "diff_added", "diff_removed", "diff_field_change"]);
 const CAPABILITIES = new Set(["engine.manifest", "catalog.schema", "status.inspect", "zia.url_lookup", "resources.read", "dump.write", "diff.compare"]);
 const OPERATIONS = new Set(["manifest", "list", "get", "show", "doctor", "auth_status", "config_status", "lookup", "dump", "diff"]);
+const FAILURE_REASONS = new Set(["unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error", "transport", "timeout", "pagination_incomplete", "decode_failed", "not_subscribed", "unknown"]);
 const FAILURE_KINDS = new Set(["usage", "unsupported_capability", "unsupported_operation", "unknown_resource", "not_found", "invalid_resource_id", "live_access_failed", "deadline_exceeded", "invalid_config", "invalid_proxy_config", "unsupported_resource", "response_too_large", "internal"]);
 const MISSING_CREDENTIAL_NAMES = new Set(["ZSCALERCTL_CLIENT_ID", "ZSCALERCTL_CLIENT_SECRET", "ZSCALERCTL_VANITY_DOMAIN", "ZSCALERCTL_ZPA_CUSTOMER_ID", "ZSCALERCTL_ZIA_USERNAME", "ZSCALERCTL_ZIA_PASSWORD", "ZSCALERCTL_ZIA_API_KEY", "ZSCALERCTL_ZIA_CLOUD"]);
 
@@ -1331,13 +1334,36 @@ function readConfigStatus(value: unknown): ConfigStatus {
   return result;
 }
 
+// readFailureDetail reads the optional live-failure detail: allowed only when
+// live, status and retryable only with a reason, the reason from the closed
+// vocabulary, and an HTTP status in range.
+function readFailureDetail(object: JsonObject, live: boolean): FailureDetail {
+  const has = (key: string) => hasOwn(object, key);
+  if (!has("reason")) {
+    if (has("status") || has("retryable")) fail(ERROR_KINDS.INVALID_FRAME, "failure status or retryable without a reason");
+    return {};
+  }
+  if (!live) fail(ERROR_KINDS.INVALID_FRAME, "failure reason on a failure that is not a live read");
+  const reason = readString(object.reason);
+  if (!FAILURE_REASONS.has(reason)) fail(ERROR_KINDS.INVALID_FRAME, "invalid failure reason");
+  const detail: { reason: FailureReason; status?: number; retryable?: boolean } = { reason: reason as FailureReason };
+  if (has("status")) {
+    const status = safeInteger(object.status);
+    if (status < 100 || status > 599) fail(ERROR_KINDS.INVALID_FRAME, "invalid failure status");
+    detail.status = status;
+  }
+  if (has("retryable")) detail.retryable = readBoolean(object.retryable);
+  return detail;
+}
+
 function readDumpFailure(value: unknown): DumpFailure {
-  const object = readExact(value, ["product", "resource", "phase", "kind"]);
+  const object = readExact(value, ["product", "resource", "phase", "kind"], ["reason", "status", "retryable"]);
   const phase = readString(object.phase);
   const kind = readString(object.kind);
   const valid = phase === "list" && kind === "list_failed" || phase === "show" && kind === "show_failed" || phase === "project" && kind === "projection_failed" || phase === "validate" && kind === "subset_failed";
   if (!valid) fail(ERROR_KINDS.INVALID_FRAME, "invalid dump failure phase/kind");
-  return { product: product(object.product), resource: resourceName(object.resource), phase, kind } as DumpFailure;
+  const detail = readFailureDetail(object, phase === "list" || phase === "show");
+  return { product: product(object.product), resource: resourceName(object.resource), phase, kind, ...detail } as DumpFailure;
 }
 
 export function decodeCanonicalBase64(value: string): Uint8Array {
@@ -1550,10 +1576,10 @@ function readOperationFailure(value: unknown): OperationFailure {
     }
     return missing === undefined ? { kind: "missing_credentials" } : { kind: "missing_credentials", missing };
   }
-  const exact = readExact(object, ["kind"]);
+  const exact = readExact(object, ["kind"], ["reason", "status", "retryable"]);
   const failureKind = readString(exact.kind);
   if (!FAILURE_KINDS.has(failureKind)) fail(ERROR_KINDS.INVALID_FRAME, "invalid operation failure kind");
-  return { kind: failureKind as FailureKind };
+  return { kind: failureKind as FailureKind, ...readFailureDetail(exact, failureKind === "live_access_failed") };
 }
 
 function readFailed(value: unknown): Failed {

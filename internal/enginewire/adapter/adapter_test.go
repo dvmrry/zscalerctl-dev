@@ -276,40 +276,50 @@ func adapterTestSpec() resources.ResourceSpec {
 	}
 }
 
-// TestLiveFailureDetailDoesNotReachTheStdioWire pins the stdio protocol: a
-// live failure carrying a described message and a FailureDetail still becomes
-// the static live-access failure, and a dump failure's detail is dropped, so
-// the wire bytes are unchanged by error envelope v2.
-func TestLiveFailureDetailDoesNotReachTheStdioWire(t *testing.T) {
+// TestLiveFailureDetailReachesTheStdioWire pins that an engine client learns
+// why a live read failed, as the CLI error envelope and errors.ndjson do: the
+// closed reason, HTTP status and retry hint cross the wire on live-access
+// failures and live dump failures, never on other kinds, and a detail the wire
+// would reject is dropped rather than failing the conversion.
+func TestLiveFailureDetailReachesTheStdioWire(t *testing.T) {
 	t.Parallel()
 
-	converted := adapter.ToOperationError(&machine.MachineError{
-		Kind:      machine.ErrorKindLiveAccessFailed,
-		Message:   "resource read failed: forbidden (HTTP 403)",
-		Operation: machine.OperationList,
-		Product:   "zia",
-		Resource:  "locations",
-		Detail:    machine.FailureDetail{Reason: "forbidden", Status: 403},
-	})
-	want := enginewire.NonCredentialFailure{Kind: enginewire.FailureLiveAccess}
-	if !reflect.DeepEqual(converted.Failure, want) {
-		t.Fatalf("ToOperationError(live failure with detail) = %#v, want %#v", converted.Failure, want)
+	live := func(kind string, detail machine.FailureDetail) enginewire.OperationFailure {
+		return adapter.ToOperationError(&machine.MachineError{
+			Kind:      kind,
+			Message:   "resource read failed: forbidden (HTTP 403)",
+			Operation: machine.OperationList,
+			Product:   "zia",
+			Resource:  "locations",
+			Detail:    detail,
+		}).Failure
+	}
+	if got, want := live(machine.ErrorKindLiveAccessFailed, machine.FailureDetail{Reason: "forbidden", Status: 403}),
+		(enginewire.NonCredentialFailure{Kind: enginewire.FailureLiveAccess, Reason: "forbidden", Status: 403}); !reflect.DeepEqual(got, want) {
+		t.Errorf("live failure = %#v, want %#v", got, want)
+	}
+	if got, want := live(machine.ErrorKindNotFound, machine.FailureDetail{Reason: "forbidden", Status: 403}),
+		(enginewire.NonCredentialFailure{Kind: enginewire.FailureNotFound}); !reflect.DeepEqual(got, want) {
+		t.Errorf("non-live failure = %#v, want %#v (no detail)", got, want)
+	}
+	if got, want := live(machine.ErrorKindLiveAccessFailed, machine.FailureDetail{Reason: "made_up", Status: 403}),
+		(enginewire.NonCredentialFailure{Kind: enginewire.FailureLiveAccess}); !reflect.DeepEqual(got, want) {
+		t.Errorf("invalid detail = %#v, want %#v (detail dropped)", got, want)
 	}
 
-	summary, err := adapter.ToDumpSummary(machine.NewDumpResult(0, 0, "standard", []machine.DumpResourceError{{
-		Product: "zia", Resource: "locations", Operation: machine.OperationList, Kind: "list_failed",
-		Detail: machine.FailureDetail{Reason: "rate_limited", Status: 429, Retryable: true},
-	}}))
+	summary, err := adapter.ToDumpSummary(machine.NewDumpResult(0, 0, "standard", []machine.DumpResourceError{
+		{Product: "zia", Resource: "locations", Operation: machine.OperationList, Kind: "list_failed",
+			Detail: machine.FailureDetail{Reason: "rate_limited", Status: 429, Retryable: true}},
+		{Product: "zia", Resource: "users", Operation: "project", Kind: "projection_failed",
+			Detail: machine.FailureDetail{Reason: "rate_limited", Status: 429}},
+	}))
 	if err != nil {
 		t.Fatalf("ToDumpSummary() error = %v", err)
 	}
-	encoded, err := json.Marshal(summary)
-	if err != nil {
-		t.Fatal(err)
+	if got := summary.Failures[0]; got.Reason != "rate_limited" || got.Status != 429 || !got.Retryable {
+		t.Errorf("live dump failure = %#v, want rate_limited/429/retryable", got)
 	}
-	for _, leaked := range []string{"rate_limited", "429", "retryable", "Detail"} {
-		if strings.Contains(string(encoded), leaked) {
-			t.Errorf("dump summary %s carries %q", encoded, leaked)
-		}
+	if got := summary.Failures[1]; got.Reason != "" || got.Status != 0 || got.Retryable {
+		t.Errorf("projection dump failure = %#v, want no detail", got)
 	}
 }

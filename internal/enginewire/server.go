@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // ServerFrame is the sealed post-ready server-to-client frame union.
@@ -630,20 +631,59 @@ func (f MissingCredentialsFailure) validateFailure() error {
 	return nil
 }
 
-// NonCredentialFailure carries one static non-credential failure kind.
+// NonCredentialFailure carries one static non-credential failure kind. A
+// live_access_failed failure may also say why, in value-free terms: a Reason
+// from FailureReasons, the HTTP Status when there was a response, and whether
+// a retry could plausibly succeed.
 type NonCredentialFailure struct {
-	Kind OperationFailureKind `json:"kind" wire:"required"`
+	Kind      OperationFailureKind `json:"kind" wire:"required"`
+	Reason    string               `json:"reason,omitempty"`
+	Status    int                  `json:"status,omitempty"`
+	Retryable bool                 `json:"retryable,omitempty"`
 }
+
+// FailureReasons is the closed live-failure reason vocabulary the wire
+// accepts. It mirrors machine.FailureReasons (this package imports no other
+// zscalerctl package); a test keeps the two and the published schema equal.
+var FailureReasons = []string{
+	"unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error",
+	"transport", "timeout", "pagination_incomplete", "decode_failed", "not_subscribed", "unknown",
+}
+
+// Validate reports whether the failure is a well-formed wire value.
+func (f NonCredentialFailure) Validate() error { return f.validateFailure() }
 
 func (f NonCredentialFailure) validateFailure() error {
 	switch f.Kind {
 	case FailureUsage, FailureUnsupportedCapability, FailureUnsupportedOperation, FailureUnknownResource, FailureNotFound,
 		FailureInvalidResourceID, FailureLiveAccess, FailureDeadlineExceeded, FailureInvalidConfig, FailureInvalidProxyConfig,
 		FailureUnsupportedResource, FailureResponseTooLarge, FailureInternal:
-		return nil
 	default:
 		return fmt.Errorf("%w: invalid operation failure kind", ErrInvalidFrame)
 	}
+	return validateFailureDetail(f.Kind == FailureLiveAccess, f.Reason, f.Status, f.Retryable)
+}
+
+// validateFailureDetail checks the optional live-failure detail: allowed only
+// where live is true, status and retryable only with a reason, the reason from
+// FailureReasons, and an HTTP status in range.
+func validateFailureDetail(live bool, reason string, status int, retryable bool) error {
+	if reason == "" {
+		if status != 0 || retryable {
+			return fmt.Errorf("%w: failure status or retryable without a reason", ErrInvalidFrame)
+		}
+		return nil
+	}
+	if !live {
+		return fmt.Errorf("%w: failure reason on a failure that is not a live read", ErrInvalidFrame)
+	}
+	if !slices.Contains(FailureReasons, reason) {
+		return fmt.Errorf("%w: invalid failure reason", ErrInvalidFrame)
+	}
+	if status != 0 && (status < 100 || status > 599) {
+		return fmt.Errorf("%w: invalid failure status", ErrInvalidFrame)
+	}
+	return nil
 }
 
 // Failed closes one request with a value-free operation failure.
