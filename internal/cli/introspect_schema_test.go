@@ -5,7 +5,7 @@ package cli_test
 //
 // TestIntrospectSchemaMatchesStructs: field-name sync between IntrospectDoc /
 // CommandDoc / FlagDoc / ArgsDoc / CatalogDoc / ResourceDoc / ExitCodeDoc and
-// docs/schema/introspect-v2.schema.json. Mirrors the pattern in
+// docs/schema/introspect-v3.schema.json. Mirrors the pattern in
 // internal/dump/published_schema_test.go.
 //
 // TestIntrospectAndDocsAgree: proves that the real Cobra commands (WalkCobraTree)
@@ -35,7 +35,7 @@ import (
 
 // TestIntrospectSchemaMatchesStructs asserts that every JSON-tagged field on
 // each IntrospectDoc sub-type appears in the corresponding $defs section of
-// docs/schema/introspect-v2.schema.json, and vice versa.
+// docs/schema/introspect-v3.schema.json, and vice versa.
 func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 	t.Parallel()
 
@@ -54,10 +54,10 @@ func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 		{"ExitCodeDoc", reflect.TypeOf(cli.ExitCodeDoc{}), []string{"$defs", "exitCodeDoc", "properties"}},
 	}
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v3.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect-v2.schema.json: %v", err)
+		t.Fatalf("read introspect-v3.schema.json: %v", err)
 	}
 
 	for _, tc := range cases {
@@ -88,26 +88,26 @@ func TestIntrospectSchemaMatchesStructs(t *testing.T) {
 func TestIntrospectSchemaRequiredPresentInOutput(t *testing.T) {
 	t.Parallel()
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v3.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect-v2.schema.json: %v", err)
+		t.Fatalf("read introspect-v3.schema.json: %v", err)
 	}
 
 	// Walk to top-level "required".
 	var schemaDoc map[string]any
 	if err := json.Unmarshal(body, &schemaDoc); err != nil {
-		t.Fatalf("parse introspect-v2.schema.json: %v", err)
+		t.Fatalf("parse introspect-v3.schema.json: %v", err)
 	}
 	rawReq, ok := schemaDoc["required"].([]any)
 	if !ok {
-		t.Fatal("introspect-v2.schema.json: top-level \"required\" is missing or not an array")
+		t.Fatal("introspect-v3.schema.json: top-level \"required\" is missing or not an array")
 	}
 	requiredKeys := make([]string, 0, len(rawReq))
 	for _, v := range rawReq {
 		s, ok := v.(string)
 		if !ok {
-			t.Fatalf("introspect-v2.schema.json: non-string entry in required: %v", v)
+			t.Fatalf("introspect-v3.schema.json: non-string entry in required: %v", v)
 		}
 		requiredKeys = append(requiredKeys, s)
 	}
@@ -153,14 +153,14 @@ func TestIntrospectSchemaRequiredDepth(t *testing.T) {
 		{"exitCodeDoc", reflect.TypeOf(cli.ExitCodeDoc{}), []string{"$defs", "exitCodeDoc"}},
 	}
 
-	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
+	schemaFile := filepath.Join("..", "..", "docs", "schema", "introspect-v3.schema.json")
 	body, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read introspect-v2.schema.json: %v", err)
+		t.Fatalf("read introspect-v3.schema.json: %v", err)
 	}
 	var schemaDoc map[string]any
 	if err := json.Unmarshal(body, &schemaDoc); err != nil {
-		t.Fatalf("parse introspect-v2.schema.json: %v", err)
+		t.Fatalf("parse introspect-v3.schema.json: %v", err)
 	}
 
 	for _, tc := range cases {
@@ -227,22 +227,37 @@ func TestLegacyIntrospectV1SchemaIsImmutable(t *testing.T) {
 	}
 }
 
-func TestIntrospectV2SchemaIdentity(t *testing.T) {
+func TestIntrospectV2SchemaIsImmutable(t *testing.T) {
 	t.Parallel()
-
-	const wantURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json"
-	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
-	if doc.IntrospectVersion != "2" {
-		t.Fatalf("introspect version = %q, want 2", doc.IntrospectVersion)
-	}
-	if doc.Schema != wantURL {
-		t.Fatalf("introspect schema URL = %q, want %q", doc.Schema, wantURL)
-	}
 
 	path := filepath.Join("..", "..", "docs", "schema", "introspect-v2.schema.json")
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read v2 introspect schema: %v", err)
+	}
+	got := fmt.Sprintf("%x", sha256.Sum256(body))
+	const want = "66512018f2ec34dd0d4966bdcb363e83d52d79c395efbc2f615509aff49219ba"
+	if got != want {
+		t.Fatalf("v2 introspect schema hash = %s, want %s; published schemas are immutable, so add a new versioned schema instead of changing introspect-v2.schema.json", got, want)
+	}
+}
+
+func TestIntrospectV3SchemaIdentity(t *testing.T) {
+	t.Parallel()
+
+	const wantURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v3.schema.json"
+	doc := cli.IntrospectTree(cli.New(io.Discard, io.Discard, nil))
+	if doc.IntrospectVersion != "3" {
+		t.Fatalf("introspect version = %q, want 3", doc.IntrospectVersion)
+	}
+	if doc.Schema != wantURL {
+		t.Fatalf("introspect schema URL = %q, want %q", doc.Schema, wantURL)
+	}
+
+	path := filepath.Join("..", "..", "docs", "schema", "introspect-v3.schema.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read v3 introspect schema: %v", err)
 	}
 	var schema map[string]any
 	if err := json.Unmarshal(body, &schema); err != nil {

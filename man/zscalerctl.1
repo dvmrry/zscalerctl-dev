@@ -237,9 +237,9 @@ Print a shell completion script.
 .TP
 .B introspect
 Print a machine-readable JSON map of all commands, flags, resources, and exit
-codes. Version 2 includes structured command effects for local filesystem,
-network, and configuration-dependent provider process activity; the
-compatibility \fBmutating\fR field is a conservative summary. Config-free and
+codes. Version 3 describes each command's possible effects (local filesystem,
+network, and configuration-dependent provider process activity) as structured
+\fBeffects\fR; the tenant itself is never changed (\fBread_only\fR). Config-free and
 network-free; safe to run without credentials. Use
 \fB\-\-format pretty\fR for a human-readable indented tree.
 .TP

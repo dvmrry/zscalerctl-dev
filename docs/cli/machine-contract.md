@@ -45,13 +45,14 @@ against it. Changing the supported manifest shape after 1.0 requires semver
 treatment.
 
 `zscalerctl introspect` is a separate supported CLI-surface contract, currently
-version `2`. Its top-level `read_only` field is tenant-scoped. Each command has
+version `3`. Its top-level `read_only` field is tenant-scoped. Each command has
 structured `effects` with a `kind`, an `always` or `flag_set` condition, and an
 optional flag name, plus `configuration_dependent` effects enabled by effective
 config, environment, provider choice, or platform. Local reads and configured
-provider process execution are explicit. The legacy `mutating` boolean remains
-as a conservative derived summary so older consumers fail closed; new consumers
-should evaluate the effect conditions directly. This metadata belongs to the
+provider process execution are explicit. Version `3` removed the derived
+`mutating` boolean: it was true for every command (any `--output` write or
+credential-provider execution counted), so it read as "changes the tenant";
+evaluate the effect conditions directly. This metadata belongs to the
 CLI adapter and does not change the transport-neutral `machine.v1`
 resource-read manifest.
 
