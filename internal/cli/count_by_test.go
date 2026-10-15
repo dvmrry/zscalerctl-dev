@@ -153,3 +153,16 @@ func TestCountByRejectsEmptyAndRepeatedFlag(t *testing.T) {
 		}
 	}
 }
+
+// TestCountBySetOnceIsNotARepeat pins that a flag-shaped value of another
+// flag (here --search's value "--count-by") is not mistaken for a repeat.
+func TestCountBySetOnceIsNotARepeat(t *testing.T) {
+	t.Parallel()
+	app, _, _ := testConfigApp(t)
+	args := []string{"--format", "json", "--count-by", "groups.id", "--search", "--count-by", "zia", "users", "list"}
+	// The app has no credentials, so the run fails later; what matters is
+	// that parsing did not reject it as a repeated --count-by.
+	if err := app.Run(context.Background(), args); errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(%q) error = %v, want no usage error", args, err)
+	}
+}

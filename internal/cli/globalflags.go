@@ -196,7 +196,7 @@ type globalFlagPointers struct {
 	noColor     *bool
 	logLevel    *string
 	fieldsFlag  *string
-	countByFlag *string
+	countBy     *countedStringFlag
 	filterFlags *repeatableFlag // points at the Var registered on fs
 	searchFlag  *string
 }
@@ -214,6 +214,15 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 	for _, d := range globalFlagDefs {
 		switch d.kind {
 		case "string":
+			if d.name == "count-by" {
+				// A counted Var, so a repeat is detected by the parser itself
+				// rather than by scanning arguments, where a flag-shaped value
+				// of another flag would look like a repeat.
+				counted := &countedStringFlag{}
+				fs.Var(counted, d.name, d.usage)
+				p.countBy = counted
+				continue
+			}
 			ptr := fs.String(d.name, d.defaultVal, d.usage)
 			switch d.name {
 			case "profile":
@@ -234,8 +243,6 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 				p.logLevel = ptr
 			case "fields":
 				p.fieldsFlag = ptr
-			case "count-by":
-				p.countByFlag = ptr
 			case "search":
 				p.searchFlag = ptr
 			}

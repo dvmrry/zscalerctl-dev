@@ -922,7 +922,7 @@ func TestNormalizeZIABrowserIsolationListError(t *testing.T) {
 	}
 	// The text alone is not a licence verdict: a 5xx or 429 keeps its own
 	// (retryable) classification, and so does an error with no status.
-	for _, code := range []int{http.StatusInternalServerError, http.StatusTooManyRequests} {
+	for _, code := range []int{http.StatusInternalServerError, http.StatusTooManyRequests, http.StatusRequestTimeout} {
 		if got := normalizeZIABrowserIsolationListError(withStatus(code)); errors.Is(got, errNotSubscribed) {
 			t.Errorf("normalize %d with subscription text = %v, want not NOT_SUBSCRIBED", code, got)
 		}

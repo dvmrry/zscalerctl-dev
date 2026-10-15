@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"strings"
 
@@ -29,26 +28,33 @@ func validateCountByInvocation(opts globalOptions) error {
 	return nil
 }
 
+// countedStringFlag is a string flag that records how many times it was set.
+type countedStringFlag struct {
+	value string
+	sets  int
+}
+
+func (f *countedStringFlag) String() string { return f.value }
+
+// Get makes it a flag.Getter of a string, like the stdlib string flag.
+func (f *countedStringFlag) Get() any { return f.value }
+
+func (f *countedStringFlag) Set(value string) error {
+	f.value = value
+	f.sets++
+	return nil
+}
+
 // validateCountByFlag rejects a --count-by that names no path (an empty or
 // comma-only value would otherwise silently list every record) and a repeated
 // --count-by (a plain string flag keeps only the last occurrence).
-func validateCountByFlag(fs *flag.FlagSet, args []string, value string) error {
-	set := false
-	fs.Visit(func(f *flag.Flag) { set = set || f.Name == "count-by" })
-	if !set {
+func validateCountByFlag(f *countedStringFlag) error {
+	switch {
+	case f.sets == 0:
 		return nil
-	}
-	occurrences := 0
-	for _, arg := range args {
-		name := strings.TrimLeft(arg, "-")
-		if strings.HasPrefix(arg, "-") && (name == "count-by" || strings.HasPrefix(name, "count-by=")) {
-			occurrences++
-		}
-	}
-	if occurrences > 1 {
+	case f.sets > 1:
 		return UsageError{Message: "--count-by was given more than once; pass one comma-separated list, such as --count-by groups.id,department.name"}
-	}
-	if len(parseFieldsList(value)) == 0 {
+	case len(parseFieldsList(f.value)) == 0:
 		return UsageError{Message: "--count-by needs at least one field path, such as --count-by groups.id"}
 	}
 	return nil

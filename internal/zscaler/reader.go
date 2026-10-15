@@ -4816,14 +4816,12 @@ func sdkStatusCode(err error) int {
 	if !errors.As(err, &sdkErr) || sdkErr == nil {
 		return 0
 	}
-	status := 0
-	if sdkErr.Response != nil && sdkErr.Response.StatusCode > 0 {
-		status = sdkErr.Response.StatusCode
-	} else if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
-		status = sdkErr.Parsed.Status
+	valid := func(status int) bool { return status >= 100 && status <= 599 }
+	if sdkErr.Response != nil && valid(sdkErr.Response.StatusCode) {
+		return sdkErr.Response.StatusCode
 	}
-	if status < 100 || status > 599 {
-		return 0
+	if sdkErr.Parsed != nil && valid(sdkErr.Parsed.Status) {
+		return sdkErr.Parsed.Status
 	}
-	return status
+	return 0
 }
