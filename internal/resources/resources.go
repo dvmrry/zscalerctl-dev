@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1759,7 +1760,7 @@ func idNameExtensionsField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			secretField("extensions"),
+			unstructuredField("extensions"),
 		},
 	}
 }
@@ -1815,8 +1816,10 @@ func idNameExternalIDField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			secretField("externalId"),
-			secretField("extensions"),
+			// The external id is the referenced object's id in the other
+			// product (a ZPA application segment id on a ZIA rule).
+			operationalField("externalId", allModes()),
+			unstructuredField("extensions"),
 		},
 	}
 }
@@ -1982,7 +1985,41 @@ func copyAnyForDomain(value any, domain valueCopyDomain) any {
 	if !ok {
 		return unsupportedProjectedValue{}
 	}
+	if !cloned.IsValid() {
+		// A nil struct pointer normalizes to JSON null.
+		return nil
+	}
 	return cloned.Interface()
+}
+
+// structShaped reports a struct, a pointer to one, or a slice/array of
+// either: SDK shapes that reach projection only through their JSON form.
+func structShaped(value reflect.Value) bool {
+	typ := value.Type()
+	if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		typ = typ.Elem()
+	}
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ.Kind() == reflect.Struct
+}
+
+func jsonNormalized(value reflect.Value) (any, bool) {
+	if !value.CanInterface() {
+		return nil, false
+	}
+	body, err := json.Marshal(value.Interface())
+	if err != nil {
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var out any
+	if err := decoder.Decode(&out); err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 type valueCopyDomain uint8
@@ -2026,6 +2063,17 @@ func cloneCompositeValue(
 			}
 			return value, true
 		}
+	}
+	if domain == sourceValueDomain && structShaped(value) {
+		// A reader may hand over an SDK struct (or a list of them) for a
+		// nested field. Copy it as the plain maps and lists its JSON encoding
+		// describes, numbers kept exact; the catalog still decides which keys
+		// render. Values JSON cannot encode stay unsupported.
+		normalized, ok := jsonNormalized(value)
+		if !ok {
+			return reflect.Value{}, false
+		}
+		return cloneCompositeValue(reflect.ValueOf(normalized), active, domain)
 	}
 	switch value.Kind() {
 	case reflect.Interface:

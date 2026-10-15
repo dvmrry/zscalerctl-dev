@@ -3,7 +3,7 @@ package zscaler
 // Wave-1 field-coverage promotion tests for zia/url-filtering-rules.
 // Verifies that every newly promoted field projects in standard mode with
 // the right key, that mode gating matches each field's AllowedModes, and
-// that secret/never-promoted and excluded fields never leak.
+// that standard-only and excluded fields never leak outside standard mode.
 
 import (
 	"testing"
@@ -88,16 +88,16 @@ func TestURLFilteringRulePromotedFieldsAcrossModes(t *testing.T) {
 	if toString(cbi["id"]) != "wave1-cbi-id" || toString(cbi["name"]) != "wave1-cbi-profile" || cbi["profileSeq"] != 3 {
 		t.Errorf("projected url-filtering-rules cbiProfile = %#v, want id wave1-cbi-id name wave1-cbi-profile profileSeq 3", cbi)
 	}
-	if _, ok := cbi["url"]; ok {
-		t.Errorf("projected url-filtering-rules cbiProfile = %#v, want no url (secret sub-field)", cbi)
+	if _, ok := cbi["url"]; !ok {
+		t.Errorf("projected url-filtering-rules cbiProfile = %#v, want url (standard-only sensitive identifier)", cbi)
 	}
 
-	// Secret-classified admin identity must stay out of standard output, and
-	// none of its canaries may leak.
-	if _, ok := standard["lastModifiedBy"]; ok {
-		t.Errorf("projected url-filtering-rules = %#v, want no lastModifiedBy", standard)
+	// The admin audit reference renders its id and admin name in standard
+	// mode; outside standard only the id may survive (asserted below).
+	lastModifiedBy := assertAuditRefID(t, "url-filtering-rules", standard, "lastModifiedBy", 9001)
+	if lastModifiedBy["name"] != adminCanary {
+		t.Errorf("projected url-filtering-rules lastModifiedBy = %#v, want name %q", lastModifiedBy, adminCanary)
 	}
-	assertNoCanaries(t, "url-filtering-rules", standard, adminCanary, cbiURLCanary)
 
 	// Mode gating: every promoted field is standard-only — including
 	// browserEunTemplateId, a tenant-specific EUN template reference
@@ -120,17 +120,15 @@ func TestURLFilteringRulePromotedFieldsAcrossModes(t *testing.T) {
 				t.Errorf("projected url-filtering-rules (%v) = %#v, want no %s", mode, got, field)
 			}
 		}
-		if _, ok := got["lastModifiedBy"]; ok {
-			t.Errorf("projected url-filtering-rules (%v) = %#v, want no lastModifiedBy", mode, got)
-		}
+		assertAuditRefIDOnly(t, "url-filtering-rules ("+string(mode)+")", got, "lastModifiedBy", 9001)
 		assertNoCanaries(t, "url-filtering-rules", got, adminCanary, cbiURLCanary)
 	}
 }
 
-// TestURLFilteringRuleLastModifiedBySecretPin pins lastModifiedBy as
-// secretField: the admin identity must drop in every mode (see
-// assertWave4SecretPin in reader_fields_admin_identity_test.go).
-func TestURLFilteringRuleLastModifiedBySecretPin(t *testing.T) {
+// TestURLFilteringRuleLastModifiedByAuditRefPin pins lastModifiedBy as an
+// admin audit reference: the id renders in every mode, the admin name only in
+// standard (see assertAuditRefPin in reader_fields_admin_identity_test.go).
+func TestURLFilteringRuleLastModifiedByAuditRefPin(t *testing.T) {
 	t.Parallel()
 
 	const canary = "wave4-url-rule-last-modified-by-canary"
@@ -145,8 +143,8 @@ func TestURLFilteringRuleLastModifiedBySecretPin(t *testing.T) {
 	}
 	records := []resources.SourceRecord{urlFilteringRuleSourceRecord(rule)}
 
-	assertWave4SecretPin(t, resourceURLRules, records,
-		[]string{"lastModifiedBy"}, "id", canary)
+	assertAuditRefPin(t, resourceURLRules, records,
+		[]auditRef{{field: "lastModifiedBy", id: 9108}}, "id", canary)
 }
 
 // TestURLFilteringRuleDeviceTrustLevelsModes asserts deviceTrustLevels is

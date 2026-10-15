@@ -7,8 +7,9 @@ package zscaler
 // resources catalog, and asserts the per-mode posture: full VIP detail in
 // standard mode, infrastructure-only detail (no VIP address, no geo/location:
 // latitude, longitude, city, region, and countryCode all drop) in share mode,
-// nothing in paranoid mode, and never any admin-identity leakage from the
-// excluded managedBy/lastModifiedBy references.
+// nothing in paranoid mode. The managedBy/lastModifiedBy audit references
+// render their ids in every mode; the admin name never survives outside
+// standard mode.
 //
 // This file owns its tests so reader_test.go and reader_sourcerecord_test.go
 // stay untouched by the wave; it reuses package helpers (projectOneRecord,
@@ -203,30 +204,38 @@ func TestGRETunnelSourceRecordDestVipModeBehaviour(t *testing.T) {
 		greWave1PrimaryVIPCanary, greWave1SecondaryVIPCanary, "FRA4", "AMS2", "Frankfurt", "Amsterdam", "EMEA")
 }
 
-func TestGRETunnelSourceRecordExcludedAdminIdentitiesStayDropped(t *testing.T) {
+// TestGRETunnelSourceRecordAuditReferencesFollowAllowedModes pins the
+// managedBy (partner) and lastModifiedBy (admin) references: ids render in
+// every mode, the admin name never survives outside standard mode, and the
+// managedBy name never survives in paranoid mode or bleeds into the comment.
+func TestGRETunnelSourceRecordAuditReferencesFollowAllowedModes(t *testing.T) {
 	t.Parallel()
 
 	tunnel := greWave1Tunnel()
 	records := []resources.SourceRecord{greTunnelSourceRecord(tunnel)}
 
+	assertAuditRefPin(t, resourceGRETunnels, records,
+		[]auditRef{
+			{field: "managedBy", id: 1001, nameInShare: true},
+			{field: "lastModifiedBy", id: 1002},
+		}, "id", greWave1LastModCanary)
+
 	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceGRETunnels, mode, records)
-		for _, field := range []string{"managedBy", "lastModifiedBy"} {
-			if value, ok := got[field]; ok {
-				t.Errorf("%s-mode gre-tunnels %s = %v, want excluded field absent", mode, field, value)
-			}
+		if mode == redact.ModeParanoid {
+			assertNoCanaries(t, "gre-tunnels paranoid", got, greWave1ManagedByCanary, greWave1LastModCanary)
 		}
-		assertNoCanaries(t, "gre-tunnels", got, greWave1ManagedByCanary, greWave1LastModCanary)
 		if strings.Contains(toString(got["comment"]), greWave1ManagedByCanary) {
 			t.Errorf("%s-mode gre-tunnels comment leaked managedBy canary", mode)
 		}
 	}
 }
 
-// TestGRETunnelAdminIdentitySecretPins pins managedBy and lastModifiedBy as
-// secretField: the admin identities must drop in every mode (see
-// assertWave4SecretPin in reader_fields_admin_identity_test.go).
-func TestGRETunnelAdminIdentitySecretPins(t *testing.T) {
+// TestGRETunnelAuditReferencePins pins managedBy and lastModifiedBy as audit
+// references: ids render in every mode, the managedBy name in standard and
+// share, the admin name only in standard (see assertAuditRefPin in
+// reader_fields_admin_identity_test.go).
+func TestGRETunnelAuditReferencePins(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -247,7 +256,9 @@ func TestGRETunnelAdminIdentitySecretPins(t *testing.T) {
 	}
 	records := []resources.SourceRecord{greTunnelSourceRecord(tunnel)}
 
-	assertWave4SecretPin(t, resourceGRETunnels, records,
-		[]string{"managedBy", "lastModifiedBy"}, "id",
-		managedByCanary, lastModifiedByCanary)
+	assertAuditRefPin(t, resourceGRETunnels, records,
+		[]auditRef{
+			{field: "managedBy", id: 9106, nameInShare: true},
+			{field: "lastModifiedBy", id: 9107},
+		}, "id", lastModifiedByCanary)
 }

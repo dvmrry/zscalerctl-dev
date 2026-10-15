@@ -101,30 +101,34 @@ func TestStaticIPModeMatrix(t *testing.T) {
 	}
 }
 
-func TestStaticIPExcludedFieldsNeverLeak(t *testing.T) {
-	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
-		got := projectOneRecordInMode(t, resources.ProductZIA, resourceStaticIPs, mode, wave1StaticIPRecords())
+// TestStaticIPAuditReferencesFollowAllowedModes pins managedBy (a partner
+// reference: name in standard and share) and lastModifiedBy (an admin
+// reference: name in standard only). Both ids render in every mode; each name
+// canary must not survive in a mode that excludes the name.
+func TestStaticIPAuditReferencesFollowAllowedModes(t *testing.T) {
+	assertAuditRefPin(t, resourceStaticIPs, wave1StaticIPRecords(),
+		[]auditRef{
+			{field: "managedBy", id: 555, nameInShare: true},
+			{field: "lastModifiedBy", id: 556},
+		}, "id", wave1StaticIPLastModifiedByCanary)
 
-		if _, ok := got["managedBy"]; ok {
-			t.Errorf("mode %s managedBy present, want absent (excluded admin identity)", mode)
-		}
-		if _, ok := got["lastModifiedBy"]; ok {
-			t.Errorf("mode %s lastModifiedBy present, want absent (excluded admin identity)", mode)
-		}
-
-		rendered := fmt.Sprintf("%v", got)
-		for _, canary := range []string{wave1StaticIPManagedByCanary, wave1StaticIPLastModifiedByCanary} {
-			if strings.Contains(rendered, canary) {
-				t.Errorf("mode %s projection leaked excluded-field canary %q: %s", mode, canary, rendered)
-			}
+	got := projectOneRecordInMode(t, resources.ProductZIA, resourceStaticIPs, redact.ModeStandard, wave1StaticIPRecords())
+	if managedBy, _ := got["managedBy"].(map[string]any); managedBy["name"] != wave1StaticIPManagedByCanary {
+		t.Errorf("mode standard managedBy = %v, want name %q", got["managedBy"], wave1StaticIPManagedByCanary)
+	}
+	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceStaticIPs, redact.ModeParanoid, wave1StaticIPRecords())
+	rendered := fmt.Sprintf("%v", paranoid)
+	for _, canary := range []string{wave1StaticIPManagedByCanary, wave1StaticIPLastModifiedByCanary} {
+		if strings.Contains(rendered, canary) {
+			t.Errorf("mode paranoid projection leaked audit-name canary %q: %s", canary, rendered)
 		}
 	}
 }
 
-// TestStaticIPAdminIdentitySecretPins pins managedBy and lastModifiedBy as
-// secretField: the admin identities must drop in every mode (see
-// assertWave4SecretPin in reader_fields_admin_identity_test.go).
-func TestStaticIPAdminIdentitySecretPins(t *testing.T) {
+// TestStaticIPAuditReferencePins pins managedBy and lastModifiedBy as audit
+// references: ids render in every mode, the admin name only in standard (see
+// assertAuditRefPin in reader_fields_admin_identity_test.go).
+func TestStaticIPAuditReferencePins(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -146,7 +150,9 @@ func TestStaticIPAdminIdentitySecretPins(t *testing.T) {
 	}
 	records := []resources.SourceRecord{staticIPSourceRecord(staticIP)}
 
-	assertWave4SecretPin(t, resourceStaticIPs, records,
-		[]string{"managedBy", "lastModifiedBy"}, "id",
-		managedByCanary, lastModifiedByCanary)
+	assertAuditRefPin(t, resourceStaticIPs, records,
+		[]auditRef{
+			{field: "managedBy", id: 9104, nameInShare: true},
+			{field: "lastModifiedBy", id: 9105},
+		}, "id", lastModifiedByCanary)
 }
