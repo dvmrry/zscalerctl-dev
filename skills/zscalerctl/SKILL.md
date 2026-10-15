@@ -25,8 +25,9 @@ The default mode is `share`; identity and location fields need
 `--redaction standard`, and a usage error names the mode when you ask for an
 omitted field. `--count-by` takes several comma-separated paths at once, so
 "members per group, and how many have no department" is one call. Exit codes:
-0 ok, 2 usage, 3 credentials, 4 not found or not read (see `schema gaps`),
-5 live failure (with `reason`), 6 partial dump.
+0 success, 1 internal or canceled, 2 usage, 3 missing or invalid credentials,
+4 not found or unsupported (a resource zscalerctl does not read names its
+gap), 5 live API failure (with `reason`), 6 partial dump, 7 drift.
 
 ## Version and capability preflight
 
