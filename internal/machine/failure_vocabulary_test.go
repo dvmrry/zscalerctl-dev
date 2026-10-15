@@ -3,6 +3,7 @@ package machine_test
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -12,14 +13,30 @@ import (
 
 // TestFailureReasonsMatchEveryCarrier keeps the one reason vocabulary equal
 // everywhere it is published: the stdio wire's copy (enginewire imports no
-// other zscalerctl package), the CLI error envelope schema, the dump error
-// schema, and the stdio engine schema.
+// other zscalerctl package), the TypeScript client's copy, the CLI error
+// envelope schema, the dump error schema, and the stdio engine schema.
 func TestFailureReasonsMatchEveryCarrier(t *testing.T) {
 	t.Parallel()
 
 	want := slices.Sorted(slices.Values(machine.FailureReasons()))
 	if got := slices.Sorted(slices.Values(enginewire.FailureReasons)); !slices.Equal(got, want) {
 		t.Errorf("enginewire.FailureReasons = %v, want %v", got, want)
+	}
+	// The TypeScript reference client validates frames with its own set.
+	codec, err := os.ReadFile("../../clients/typescript/src/codec.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`const FAILURE_REASONS = new Set\(\[([^\]]*)\]\)`).FindSubmatch(codec)
+	if match == nil {
+		t.Fatal("clients/typescript/src/codec.ts has no FAILURE_REASONS set")
+	}
+	var tsReasons []string
+	for _, quoted := range regexp.MustCompile(`"([a-z_]+)"`).FindAllSubmatch(match[1], -1) {
+		tsReasons = append(tsReasons, string(quoted[1]))
+	}
+	if got := slices.Sorted(slices.Values(tsReasons)); !slices.Equal(got, want) {
+		t.Errorf("TypeScript FAILURE_REASONS = %v, want %v", got, want)
 	}
 	for _, carrier := range []struct {
 		path string

@@ -394,12 +394,14 @@ export interface Progress {
 /** Why a live read failed, in value-free terms; every field is optional. */
 export type FailureReason = "unauthorized" | "forbidden" | "not_found" | "rate_limited" | "server_error" | "client_error" | "transport" | "timeout" | "pagination_incomplete" | "decode_failed" | "not_subscribed" | "unknown";
 export interface FailureDetail { readonly reason?: FailureReason; readonly status?: number; readonly retryable?: boolean; }
+/** Failures that are not live reads never carry a detail. */
+export interface NoFailureDetail { readonly reason?: undefined; readonly status?: undefined; readonly retryable?: undefined; }
 
 export type DumpFailure =
   | ({ readonly product: Product; readonly resource: string; readonly phase: "list"; readonly kind: "list_failed" } & FailureDetail)
   | ({ readonly product: Product; readonly resource: string; readonly phase: "show"; readonly kind: "show_failed" } & FailureDetail)
-  | { readonly product: Product; readonly resource: string; readonly phase: "project"; readonly kind: "projection_failed" }
-  | { readonly product: Product; readonly resource: string; readonly phase: "validate"; readonly kind: "subset_failed" };
+  | ({ readonly product: Product; readonly resource: string; readonly phase: "project"; readonly kind: "projection_failed" } & NoFailureDetail)
+  | ({ readonly product: Product; readonly resource: string; readonly phase: "validate"; readonly kind: "subset_failed" } & NoFailureDetail);
 
 export interface Warning {
   readonly type: "warning";

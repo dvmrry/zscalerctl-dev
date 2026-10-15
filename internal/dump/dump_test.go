@@ -819,7 +819,7 @@ func assertStringSliceEqual(t *testing.T, label string, got []string, want []str
 // TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1 pins the v2 error
 // record (reason, status, retryable) and keeps dumps written with v1 records
 // readable.
-func TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1(t *testing.T) {
+func TestPartialDumpErrorRecordsCarryFailureDetailAndRejectV1(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "dump")
