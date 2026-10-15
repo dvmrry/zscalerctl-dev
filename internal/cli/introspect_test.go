@@ -360,8 +360,8 @@ func TestIntrospectCatalogEffectsAreComplete(t *testing.T) {
 			checked++
 		}
 	}
-	if checked != 271 {
-		t.Errorf("checked catalog operations = %d, want 271", checked)
+	if checked != 272 {
+		t.Errorf("checked catalog operations = %d, want 272", checked)
 	}
 }
 
@@ -386,15 +386,15 @@ func TestIntrospectEffectCounts(t *testing.T) {
 
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
-		"local_filesystem_read":   554,
-		"local_filesystem_write":  301,
-		"network_access":          277,
-		"process_execution":       278,
+		"local_filesystem_read":   556,
+		"local_filesystem_write":  302,
+		"network_access":          278,
+		"process_execution":       279,
 	}
 	wantWhen := map[string]int{
-		"always":                  280,
-		"configuration_dependent": 559,
-		"flag_set":                573,
+		"always":                  281,
+		"configuration_dependent": 561,
+		"flag_set":                575,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)
@@ -402,8 +402,8 @@ func TestIntrospectEffectCounts(t *testing.T) {
 	if !maps.Equal(byWhen, wantWhen) {
 		t.Errorf("effect condition counts = %v, want %v", byWhen, wantWhen)
 	}
-	if commandsWithRead != 282 {
-		t.Errorf("commands with local reads = %d, want 282", commandsWithRead)
+	if commandsWithRead != 283 {
+		t.Errorf("commands with local reads = %d, want 283", commandsWithRead)
 	}
 }
 

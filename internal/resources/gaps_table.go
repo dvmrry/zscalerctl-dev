@@ -62,8 +62,6 @@ var coverageGaps = []CoverageGap{
 		Instead: ziaRef("activation-status"), Aliases: []string{"activate"}},
 	{Product: ProductZIA, Surface: "vpn-credentials", Reason: GapCredentialMaterial, Note: "VPN credentials are credential material."},
 	{Product: ProductZIA, Surface: "scim", Reason: GapPrivacyReview, Note: "SCIM provisioning is an identity-admin boundary."},
-	{Product: ProductZIA, Surface: "locations-lite", Reason: GapAlternateView, Note: "A lite view of locations.",
-		Instead: ziaRef("locations", "sublocations"), Aliases: []string{"location-lite"}},
 	{Product: ProductZIA, Surface: "gre-tunnel-info", Reason: GapAlternateView, Note: "A diagnostic view of GRE tunnels."},
 	{Product: ProductZIA, Surface: "gre-internal-ip-ranges", Reason: GapAlternateView, Note: "A lookup helper for free GRE ranges, not configuration."},
 	{Product: ProductZIA, Surface: "virtual-ip-addresses", Reason: GapAlternateView, Note: "A lookup of Zscaler public service-edge addresses, not tenant configuration.",

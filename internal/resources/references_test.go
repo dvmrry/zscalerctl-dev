@@ -122,7 +122,7 @@ func TestCatalogFieldsCarryReferences(t *testing.T) {
 	}
 	// A rule's locations may name a location or a sublocation.
 	locations := fieldAtPath(spec.Fields, "locations")
-	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations")) {
+	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations", "locations-lite")) {
 		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations and zia/sublocations", locations)
 	}
 	if timeWindows := fieldAtPath(spec.Fields, "timeWindows"); timeWindows == nil || timeWindows.References != nil {
@@ -144,7 +144,7 @@ func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 		Field:        "locations",
 		Match:        "locations.id",
 		AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare},
-		Targets:      ziaRef("locations", "sublocations"),
+		Targets:      ziaRef("locations", "sublocations", "locations-lite"),
 	}
 	if !containsSite(doc.ReferredBy, want) {
 		t.Errorf("ReferredBy = %+v, want it to contain %+v", doc.ReferredBy, want)

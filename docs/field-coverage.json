@@ -1,9 +1,9 @@
 {
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
-    "resources": 165,
-    "total_fields": 3041,
-    "classified_fields": 2995,
+    "resources": 166,
+    "total_fields": 3060,
+    "classified_fields": 3014,
     "ignored_fields": 46,
     "deliberate_fields": 46,
     "deferred_fields": 0,
@@ -24,9 +24,9 @@
     },
     {
       "product": "zia",
-      "resources": 102,
-      "total_fields": 1696,
-      "classified_fields": 1672,
+      "resources": 103,
+      "total_fields": 1715,
+      "classified_fields": 1691,
       "ignored_fields": 24,
       "deliberate_fields": 24,
       "deferred_fields": 0,
@@ -1972,6 +1972,31 @@
         {
           "class": "tenant_configuration",
           "count": 13
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
+      "product": "zia",
+      "resource": "locations-lite",
+      "sdk_types": [
+        "ziaLiteLocation"
+      ],
+      "total_fields": 19,
+      "classified_fields": 19,
+      "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 15
         }
       ],
       "ignored_by_reason": []

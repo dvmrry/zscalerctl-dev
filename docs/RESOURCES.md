@@ -265,6 +265,30 @@ and `secondaryDestVip` objects. The reader maps those objects into source
 records, but the catalog does not allow them to render, so projection drops
 them.
 
+## ZIA Locations Lite
+
+Commands:
+
+```sh
+zscalerctl zia locations-lite list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Location identifier; predefined locations such as Road Warrior (`-3`) appear here and not in `zia locations`. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `parentId` | Operational metadata | `standard`, `share` | Parent location identifier. |
+| `ecLocation`, `otherSubLocation` | Operational metadata | `standard`, `share` | Location kind flags. |
+| `tz` | Tenant configuration | `standard`, `share` | Time zone. |
+| `aupEnabled`, `aupBlockInternetUntilAccepted`, `aupForceSslInspection`, `cautionEnabled`, `digestAuthEnabled`, `kerberosAuth`, `surrogateIP`, `surrogateIPEnforcedForKnownBrowsers`, `xffForwardEnabled`, `ofwEnabled`, `ipsControl`, `iotDiscoveryEnabled`, `zappSslScanEnabled` | Tenant configuration | `standard`, `share` | Location settings, classified as on `zia locations`. |
+
+`GET /locations/lite` is a short view, not a superset of `zia locations`: on a
+test tenant it returned 3 records, one of them a regular location. Rule
+`locations` references list it as a target beside `zia locations` and
+`zia sublocations`, so `refs` resolves predefined location ids.
+
 ## ZIA Sublocations
 
 Commands:

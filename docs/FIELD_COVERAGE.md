@@ -49,9 +49,9 @@ is either rendered by classification or permanently excluded on the record.
 
 ## Repo-Wide Totals
 
-- Resources: 165
-- Total exported SDK fields: 3041
-- Classified: 2995
+- Resources: 166
+- Total exported SDK fields: 3060
+- Classified: 3014
 - Ignored (fail-closed dropped): 46
   - Deliberate (permanently excluded): 46
   - Deferred (awaiting modeling): 0
@@ -65,7 +65,7 @@ Ranked worst coverage first.
 | Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | zidentity | 3 | 74 | 56 | 18 | 0 | 75.7% | 100.0% |
-| zia | 102 | 1696 | 1672 | 24 | 0 | 98.6% | 100.0% |
+| zia | 103 | 1715 | 1691 | 24 | 0 | 98.6% | 100.0% |
 | zpa | 28 | 654 | 650 | 4 | 0 | 99.4% | 100.0% |
 | zcc | 11 | 325 | 325 | 0 | 0 | 100.0% | 100.0% |
 | ztw | 21 | 292 | 292 | 0 | 0 | 100.0% | 100.0% |
@@ -131,6 +131,7 @@ names, buckets, and reasons behind each row.
 | ztw | traffic-dns-rules | 21 | 21 | 0 | 0 | 100.0% | 100.0% |
 | zpa | server-groups | 20 | 20 | 0 | 0 | 100.0% | 100.0% |
 | zia | admin-roles | 19 | 19 | 0 | 0 | 100.0% | 100.0% |
+| zia | locations-lite | 19 | 19 | 0 | 0 | 100.0% | 100.0% |
 | zpa | version-profiles | 19 | 19 | 0 | 0 | 100.0% | 100.0% |
 | ztw | forwarding-gateways | 19 | 19 | 0 | 0 | 100.0% | 100.0% |
 | zia | casb-malware-rules | 18 | 18 | 0 | 0 | 100.0% | 100.0% |

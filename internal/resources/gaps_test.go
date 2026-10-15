@@ -125,21 +125,21 @@ func TestCoverageGapsFilterAndOrder(t *testing.T) {
 func TestCoverageGapsShareNoSlicesWithTable(t *testing.T) {
 	t.Parallel()
 
-	for _, gap := range CoverageGaps(ProductZIA) {
+	for _, gap := range CoverageGaps(ProductZTW) {
 		if gap.Surface == "locations-lite" {
 			gap.Instead[0].Resource = "tampered"
 			gap.Aliases[0] = "tampered"
 		}
 	}
-	found, ok := FindGap(ProductZIA, "locations-lite")
+	found, ok := FindGap(ProductZTW, "locations-lite")
 	if !ok || found.Instead[0].Resource != "locations" {
-		t.Errorf("FindGap(zia, locations-lite) = %+v after editing a returned copy", found)
+		t.Errorf("FindGap(ztw, locations-lite) = %+v after editing a returned copy", found)
 	}
 	found.Aliases[0] = "tampered-again"
-	if _, ok := FindGap(ProductZIA, "location-lite"); !ok {
+	if _, ok := FindGap(ProductZTW, "location-lite"); !ok {
 		t.Error("editing a FindGap result removed an alias from the table")
 	}
-	if _, ok := FindGap(ProductZIA, "tampered"); ok {
+	if _, ok := FindGap(ProductZTW, "tampered"); ok {
 		t.Error("an alias injected through a returned copy matched")
 	}
 }
