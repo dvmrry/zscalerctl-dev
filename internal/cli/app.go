@@ -530,7 +530,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noColor := gp.noColor
 	logLevel := gp.logLevel
 	fieldsFlag := gp.fieldsFlag
-	countByFlag := gp.countByFlag
+	countByFlag := gp.countBy
 	searchFlag := gp.searchFlag
 	globalArgs, rest, help, terminatorIndex, err := splitGlobalArgs(args)
 	if err != nil {
@@ -538,6 +538,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	}
 	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
+	}
+	if err := validateCountByFlag(countByFlag); err != nil {
+		return globalOptions{}, nil, err
 	}
 	var fromDumpSet, limitSet, offsetSet bool
 	fs.Visit(func(f *flag.Flag) {
@@ -605,7 +608,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		colorMode:          colorMode,
 		logLevel:           *logLevel,
 		fields:             parseFieldsList(*fieldsFlag),
-		countBy:            parseFieldsList(*countByFlag),
+		countBy:            parseFieldsList(countByFlag.value),
 		filters:            filters,
 		search:             *searchFlag,
 		help:               help,

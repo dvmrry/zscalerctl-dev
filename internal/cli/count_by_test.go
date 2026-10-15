@@ -33,15 +33,15 @@ func TestCountByCountsMembersPerGroup(t *testing.T) {
 		want string
 	}{
 		{"json", []string{"--format", "json", "--count-by", "groups.id"},
-			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"values":{"groups.id":10},"count":2},{"values":{"groups.id":11},"count":1},{"values":{"groups.id":null},"count":1}]}`},
+			`{"count_by":["groups.id"],"records":3,"distinct":3,"truncated":false,"counts":[{"values":{"groups.id":10},"count":2},{"values":{"groups.id":11},"count":1},{"values":{"groups.id":null},"count":1}]}`},
 		{"json top 1", []string{"--format", "json", "--count-by", "groups.id", "--limit", "1"},
-			`{"count_by":["groups.id"],"records":3,"distinct":3,"counts":[{"values":{"groups.id":10},"count":2}]}`},
+			`{"count_by":["groups.id"],"records":3,"distinct":3,"truncated":true,"counts":[{"values":{"groups.id":10},"count":2}]}`},
 		{"after filter", []string{"--format", "json", "--count-by", "groups.id", "--filter", "groups.name=OPS"},
-			`{"count_by":["groups.id"],"records":1,"distinct":2,"counts":[{"values":{"groups.id":10},"count":1},{"values":{"groups.id":11},"count":1}]}`},
+			`{"count_by":["groups.id"],"records":1,"distinct":2,"truncated":false,"counts":[{"values":{"groups.id":10},"count":1},{"values":{"groups.id":11},"count":1}]}`},
 		// Strata review: paths through the same list pair per element, and a
 		// filter keeps the record, not the element, so both of alice's groups count.
 		{"paired paths", []string{"--format", "json", "--count-by", "groups.id,groups.name", "--filter", "groups.name=OPS"},
-			`{"count_by":["groups.id","groups.name"],"records":1,"distinct":2,"counts":[{"values":{"groups.id":10,"groups.name":"APP_DEV"},"count":1},{"values":{"groups.id":11,"groups.name":"OPS"},"count":1}]}`},
+			`{"count_by":["groups.id","groups.name"],"records":1,"distinct":2,"truncated":false,"counts":[{"values":{"groups.id":10,"groups.name":"APP_DEV"},"count":1},{"values":{"groups.id":11,"groups.name":"OPS"},"count":1}]}`},
 		{"ndjson", []string{"--format", "ndjson", "--count-by", "groups.id"},
 			"{\"values\":{\"groups.id\":10},\"count\":2}\n{\"values\":{\"groups.id\":11},\"count\":1}\n{\"values\":{\"groups.id\":null},\"count\":1}"},
 	} {
@@ -130,4 +130,39 @@ func countsGroupNames(args []string) bool {
 		}
 	}
 	return false
+}
+
+// TestCountByRejectsEmptyAndRepeatedFlag pins that --count-by never silently
+// degrades to a full listing: an empty or comma-only value and a repeated
+// flag (a plain string flag keeps only the last) are usage errors.
+func TestCountByRejectsEmptyAndRepeatedFlag(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"--format", "json", "--count-by", "", "zia", "users", "list"},
+		{"--format", "json", "--count-by", ",", "zia", "users", "list"},
+		{"--format", "json", "--count-by", "groups.id", "--count-by", "department.name", "zia", "users", "list"},
+		{"--format", "json", "--count-by=groups.id", "--count-by=department.name", "zia", "users", "list"},
+	} {
+		app, out, _ := testConfigApp(t)
+		err := app.Run(context.Background(), args)
+		if !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("App.Run(%q) error = %v, want usage error", args, err)
+		}
+		if out.Len() != 0 {
+			t.Errorf("App.Run(%q) stdout = %q, want none", args, out.String())
+		}
+	}
+}
+
+// TestCountBySetOnceIsNotARepeat pins that a flag-shaped value of another
+// flag (here --search's value "--count-by") is not mistaken for a repeat.
+func TestCountBySetOnceIsNotARepeat(t *testing.T) {
+	t.Parallel()
+	app, _, _ := testConfigApp(t)
+	args := []string{"--format", "json", "--count-by", "groups.id", "--search", "--count-by", "zia", "users", "list"}
+	// The app has no credentials, so the run fails later; what matters is
+	// that parsing did not reject it as a repeated --count-by.
+	if err := app.Run(context.Background(), args); errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(%q) error = %v, want no usage error", args, err)
+	}
 }

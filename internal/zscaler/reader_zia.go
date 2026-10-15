@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -442,7 +443,11 @@ func normalizeZIABrowserIsolationListError(err error) error {
 		return nil
 	}
 	const subscriptionMessage = "Cloud Browser Isolation subscription is required"
-	if strings.Contains(err.Error(), subscriptionMessage) {
+	// Only a non-retryable 4xx means the licence is missing; a 5xx, 408 or
+	// 429 that happens to carry the text keeps its retryable classification.
+	if status := sdkStatusCode(err); status >= 400 && status < 500 &&
+		status != http.StatusTooManyRequests && status != http.StatusRequestTimeout &&
+		strings.Contains(err.Error(), subscriptionMessage) {
 		// Match the SDK wrapper's intentionally status-free operator message.
 		return fmt.Errorf("%w: %s", errNotSubscribed, subscriptionMessage)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	"io"
 	"net/http"
 	"os"
@@ -909,12 +910,25 @@ func TestGetZIAAllPagesPreservesQueryAndReadsEveryPage(t *testing.T) {
 func TestNormalizeZIABrowserIsolationListError(t *testing.T) {
 	t.Parallel()
 
-	subscriptionErr := errors.New(
-		"request failed: Cloud Browser Isolation subscription is required (status 403)",
-	)
-	got := normalizeZIABrowserIsolationListError(subscriptionErr)
+	withStatus := func(code int) error {
+		return &sdkerrorx.ErrorResponse{
+			Response: &http.Response{StatusCode: code, Status: http.StatusText(code), Request: httptestRequest()},
+			Message:  "Cloud Browser Isolation subscription is required",
+		}
+	}
+	got := normalizeZIABrowserIsolationListError(withStatus(http.StatusForbidden))
 	if want := "NOT_SUBSCRIBED: Cloud Browser Isolation subscription is required"; got == nil || got.Error() != want {
-		t.Errorf("normalize subscription error = %v, want %q", got, want)
+		t.Errorf("normalize 403 subscription error = %v, want %q", got, want)
+	}
+	// The text alone is not a licence verdict: a 5xx or 429 keeps its own
+	// (retryable) classification, and so does an error with no status.
+	for _, code := range []int{http.StatusInternalServerError, http.StatusTooManyRequests, http.StatusRequestTimeout} {
+		if got := normalizeZIABrowserIsolationListError(withStatus(code)); errors.Is(got, errNotSubscribed) {
+			t.Errorf("normalize %d with subscription text = %v, want not NOT_SUBSCRIBED", code, got)
+		}
+	}
+	if got := normalizeZIABrowserIsolationListError(errors.New("Cloud Browser Isolation subscription is required")); errors.Is(got, errNotSubscribed) {
+		t.Errorf("normalize status-free subscription text = %v, want not NOT_SUBSCRIBED", got)
 	}
 
 	otherErr := errors.New("ordinary browser isolation failure")
