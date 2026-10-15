@@ -242,6 +242,36 @@ func isUnconfirmedEmptyList(value any) bool {
 	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Len() == 0
 }
 
+// NewSourceRecordFromProjected rebuilds a source record from fields that are
+// already projected output, such as a saved dump record, for re-verification.
+// Projection rendered every empty list in them deliberately, so each counts as
+// confirmed and survives re-projection unchanged.
+func NewSourceRecordFromProjected(fields map[string]any) SourceRecord {
+	return SourceRecord{fields: confirmEmptyLists(copySourceMap(fields)).(map[string]any)}
+}
+
+func confirmEmptyLists(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, item := range v {
+			v[key] = confirmEmptyLists(item)
+		}
+		return v
+	case []any:
+		if len(v) == 0 {
+			return confirmedEmptyList{}
+		}
+		for i, item := range v {
+			v[i] = confirmEmptyLists(item)
+		}
+		return v
+	}
+	if isUnconfirmedEmptyList(value) {
+		return confirmedEmptyList{}
+	}
+	return value
+}
+
 // Has reports whether the record has a value for key.
 func (r SourceRecord) Has(key string) bool {
 	_, ok := r.fields[key]
