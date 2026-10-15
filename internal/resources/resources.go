@@ -228,6 +228,41 @@ func NewSourceRecord(fields map[string]any) SourceRecord {
 	return SourceRecord{fields: copySourceMap(fields)}
 }
 
+// confirmedEmptyList marks a list the API itself returned as []. Projection
+// renders it as [] (in a mode that renders the field), so the output says
+// "none" only where the API did. Every other empty list, nil or not, is
+// skipped: a mapper's empty slice cannot tell "sent as []" from "not sent",
+// so a missing key means the list was not sent, not rendered, or not modeled.
+type confirmedEmptyList struct{}
+
+// isUnconfirmedEmptyList reports an empty slice or array that does not carry
+// the confirmed-empty marker; projection skips it.
+func isUnconfirmedEmptyList(value any) bool {
+	v := reflect.ValueOf(value)
+	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Len() == 0
+}
+
+// Has reports whether the record has a value for key.
+func (r SourceRecord) Has(key string) bool {
+	_, ok := r.fields[key]
+	return ok
+}
+
+// WithConfirmedEmptyList returns a copy of r in which key holds a list the
+// API returned as []. A key that already holds a non-empty value is left
+// unchanged.
+func (r SourceRecord) WithConfirmedEmptyList(key string) SourceRecord {
+	if value, ok := r.fields[key]; ok && !isUnconfirmedEmptyList(value) {
+		return r
+	}
+	fields := make(map[string]any, len(r.fields)+1)
+	for k, v := range r.fields {
+		fields[k] = v
+	}
+	fields[key] = confirmedEmptyList{}
+	return SourceRecord{fields: fields}
+}
+
 type ProjectedRecord struct {
 	fields map[string]any
 }
@@ -912,6 +947,9 @@ func projectRecordCore(spec ResourceSpec, mode redact.Mode, record SourceRecord)
 	report := ProjectionReport{}
 
 	for key, value := range record.fields {
+		if isUnconfirmedEmptyList(value) {
+			continue
+		}
 		field, ok := allowed[key]
 		if !ok {
 			report.DroppedFields = append(report.DroppedFields, key)
@@ -952,6 +990,9 @@ func projectValue(
 ) (any, bool, bool) {
 	if _, unsupported := value.(unsupportedProjectedValue); unsupported {
 		return unsupportedProjectedValue{}, false, true
+	}
+	if _, empty := value.(confirmedEmptyList); empty {
+		return []any{}, false, true
 	}
 	if len(field.Fields) > 0 {
 		return projectNestedValue(mode, field, value, path, report)
@@ -1050,6 +1091,9 @@ func projectNestedMap(
 	redacted := false
 
 	for key, value := range values {
+		if isUnconfirmedEmptyList(value) {
+			continue
+		}
 		field, ok := allowed[key]
 		nestedPath := path + "." + key
 		if !ok {
@@ -1793,6 +1837,8 @@ func copyAnyForDomain(value any, domain valueCopyDomain) any {
 		return nil
 	}
 	switch v := value.(type) {
+	case confirmedEmptyList:
+		return v
 	case []string:
 		return slices.Clone(v)
 	case []int:

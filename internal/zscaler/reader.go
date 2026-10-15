@@ -617,7 +617,7 @@ func newListGetHandler[T any](
 		resourceName: resourceName,
 		list:         list,
 		get:          get,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
@@ -629,7 +629,7 @@ func newListOnlyHandler[T any](
 	return listOnlyHandler[T]{
 		resourceName: resourceName,
 		list:         list,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
