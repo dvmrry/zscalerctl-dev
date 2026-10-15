@@ -50,12 +50,12 @@ is either rendered by classification or permanently excluded on the record.
 ## Repo-Wide Totals
 
 - Resources: 165
-- Total exported SDK fields: 3010
-- Classified: 2982
-- Ignored (fail-closed dropped): 28
-  - Deliberate (permanently excluded): 28
+- Total exported SDK fields: 3041
+- Classified: 2995
+- Ignored (fail-closed dropped): 46
+  - Deliberate (permanently excluded): 46
   - Deferred (awaiting modeling): 0
-- Coverage: 99.1%
+- Coverage: 98.5%
 - Decided coverage (classified + deliberate): 100.0%
 
 ## Per-Product Totals
@@ -64,10 +64,10 @@ Ranked worst coverage first.
 
 | Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| zidentity | 3 | 74 | 56 | 18 | 0 | 75.7% | 100.0% |
 | zia | 102 | 1696 | 1672 | 24 | 0 | 98.6% | 100.0% |
 | zpa | 28 | 654 | 650 | 4 | 0 | 99.4% | 100.0% |
 | zcc | 11 | 325 | 325 | 0 | 0 | 100.0% | 100.0% |
-| zidentity | 3 | 43 | 43 | 0 | 0 | 100.0% | 100.0% |
 | ztw | 21 | 292 | 292 | 0 | 0 | 100.0% | 100.0% |
 
 ## Per-Resource Coverage
@@ -79,11 +79,13 @@ names, buckets, and reasons behind each row.
 
 | Product | Resource | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| zidentity | users | 44 | 27 | 17 | 0 | 61.4% | 100.0% |
 | zia | users | 22 | 18 | 4 | 0 | 81.8% | 100.0% |
 | zia | workload-groups | 7 | 6 | 1 | 0 | 85.7% | 100.0% |
 | zia | locations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
 | zia | sublocations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
 | zia | ssl-inspection-rules | 34 | 32 | 2 | 0 | 94.1% | 100.0% |
+| zidentity | resource-servers | 18 | 17 | 1 | 0 | 94.4% | 100.0% |
 | zia | firewall-filtering-rules | 44 | 42 | 2 | 0 | 95.5% | 100.0% |
 | zia | firewall-dns-rules | 48 | 46 | 2 | 0 | 95.8% | 100.0% |
 | zia | url-categories | 27 | 26 | 1 | 0 | 96.3% | 100.0% |
@@ -141,11 +143,9 @@ names, buckets, and reasons behind each row.
 | zia | browser-control-settings | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
 | zia | tenancy-restriction-profiles | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
 | zia | vzen-nodes | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
-| zidentity | resource-servers | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
 | zpa | posture-profiles | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
 | zpa | segment-groups | 16 | 16 | 0 | 0 | 100.0% | 100.0% |
 | zia | intermediate-ca-certificates | 15 | 15 | 0 | 0 | 100.0% | 100.0% |
-| zidentity | users | 15 | 15 | 0 | 0 | 100.0% | 100.0% |
 | zpa | branch-connectors | 15 | 15 | 0 | 0 | 100.0% | 100.0% |
 | zcc | fail-open-policy | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | zcc | web-app-services | 14 | 14 | 0 | 0 | 100.0% | 100.0% |

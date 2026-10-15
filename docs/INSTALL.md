@@ -121,14 +121,14 @@ for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
 reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
 OneAPI credential set without an extra product customer ID.
 
-Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported
-with SDK v3.8.48. Its Zidentity admin URL builder still uses commercial
-`zslogin` suffixes for those clouds, despite the separate government OAuth
-and gateway routes. The CLI rejects that product/cloud combination before
-OAuth or API requests instead of inventing an admin endpoint. Commercial
-Zidentity and the existing ZPATWO routing remain available; other products
-retain their SDK government routing. Government tenant behavior still needs
-an operator smoke test before release.
+Zidentity reads on OneAPI clouds `gov`, `govus` and `ZPATWO` are explicitly
+unsupported. Since SDK v3.8.49 Zidentity is served through the OneAPI gateway
+under `/ziam`; this project has not verified that prefix on the government
+gateways or on the ZPA-specific gateway the SDK selects for `ZPATWO`. The CLI
+rejects those product/cloud combinations before OAuth or API requests instead
+of guessing a route. Commercial Zidentity remains available; other products
+retain their SDK government and `ZPATWO` routing. Government tenant behavior
+still needs an operator smoke test before release.
 
 Product API access is granted per product on the OneAPI OAuth client, not by
 extra environment variables. ZCC and ZTW resources use the same

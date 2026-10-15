@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
 )
 
 const (

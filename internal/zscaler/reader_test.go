@@ -81,10 +81,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
-	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
-	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/groups"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -428,9 +428,11 @@ func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
 			wantURL: "https://acme.zslogin.net/oauth2/v1/token",
 		},
 		{
-			name:    "zidentity admin endpoint",
+			// Zidentity admin calls use the OneAPI gateway since SDK v3.8.49;
+			// the transport no longer rewrites the vanity admin host.
+			name:    "vanity admin host passes through",
 			url:     "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
-			wantURL: "https://acme-admin.zslogin.net/admin/api/v1/users",
+			wantURL: "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
 		},
 		{
 			name:    "non zidentity admin path",
@@ -473,7 +475,12 @@ func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
 	}
 }
 
-func TestNewSDKConfigurationZPATWORoutesZidentityToProductionHost(t *testing.T) {
+// TestNewSDKConfigurationZPATWOZidentityRoute pins where the SDK sends a
+// Zidentity call on ZPATWO: the token on the production identity host (via
+// the transport rewrite), the admin call on the ZPA-specific gateway. That
+// gateway route is unverified, so the reader refuses Zidentity on ZPATWO
+// (unsupportedOneAPIZidentityCloud); a change here should revisit that.
+func TestNewSDKConfigurationZPATWOZidentityRoute(t *testing.T) {
 	cfg := validReaderConfig()
 	cfg.Cloud = "ZPATWO"
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
@@ -508,7 +515,7 @@ func TestNewSDKConfigurationZPATWORoutesZidentityToProductionHost(t *testing.T) 
 	}
 	wantURLs := []string{
 		"https://zscalerctl-vanity.zslogin.net/oauth2/v1/token",
-		"https://zscalerctl-vanity-admin.zslogin.net/admin/api/v1/users/user-1",
+		"https://api.zpatwo.zsapi.net/ziam/admin/api/v1/users/user-1",
 	}
 	if !reflect.DeepEqual(gotURLs, wantURLs) {
 		t.Errorf("ZPATWO identity request URLs = %v, want %v", gotURLs, wantURLs)
@@ -6207,7 +6214,7 @@ func TestReaderListZidentityUsersProjectsSDKShapeThroughAllowList(t *testing.T) 
 						LastName:       "Doe",
 						PrimaryEmail:   "jane.doe@example.internal",
 						SecondaryEmail: "jane.alt@example.internal",
-						Status:         true,
+						Status:         func() *bool { status := true; return &status }(),
 						Department: &zidcommon.IDNameDisplayName{
 							ID:          "dept-1",
 							Name:        "Engineering",

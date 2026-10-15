@@ -184,9 +184,9 @@ catalog:
 
 | Bucket | Surface | Why not covered |
 | --- | --- | --- |
-| Membership child queries | Group-to-user and user-to-group membership reads (`groups.GetUsers`, `users.GetGroupsByUser`) | Membership belongs to an explicit child-query command design, not top-level group/user inventory. Model later if a concrete need appears. |
+| Membership child queries | Group-to-user membership reads (`groups.GetUsers`, typed and paged since SDK v3.8.49) | Membership belongs to an explicit child-query command design. `zidentity/users` catalogs the SDK's `groups` field (standard mode only), but on the validation tenant neither the user list nor a user get returned it (2026-10-15). |
 | Membership or account mutation | Add/remove/update/delete group membership, reset-password, and other mutating helpers that sit next to the read methods | The read-only CLI never wires mutating helpers, and handlers must bind only the specific read functions a resource uses. |
-| Entitlements | User/role entitlement surfaces described in the Zidentity API docs | Absent from the pinned SDK revision (no `user_entitlement` package). Scout from source before queueing if a future SDK release exposes them. |
+| Entitlements | User admin and service entitlements (`user_entitlement.GetAdminEntitlement`, `GetServiceEntitlement`) | Per-user child queries; `GetServiceEntitlement` returned blank records before SDK v3.8.49. Needs a per-user child-query command design. |
 | Credential or administration surfaces | Zidentity admin-API surfaces beyond the three cataloged inventory objects | Out of scope for the current read-only inventory; they need identity/privacy review and an explicit command shape before any read path. |
 
 ## ZTW Non-Coverage Record

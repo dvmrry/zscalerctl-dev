@@ -9,11 +9,24 @@ This project is defensive administration software. It is not an exploitation,
 credential discovery, policy bypass, traffic interception, or offensive
 reconnaissance tool.
 
-Review stamp: last reviewed on 2026-09-07 against
-`github.com/zscaler/zscaler-sdk-go/v3 v3.8.48`. This is a scoped dependency-delta
+Review stamp: last reviewed on 2026-10-14 against
+`github.com/zscaler/zscaler-sdk-go/v3 v3.8.55`. This is a scoped dependency-delta
 review covering SDK response-shape, projection, and adapter changes; it is not a
 full threat-model re-audit. Re-review this threat model on every Zscaler SDK
 version bump.
+
+The v3.8.48 to v3.8.55 delta: Zidentity moved from the vanity admin host to the
+OneAPI gateway under `/ziam` (the bearer token now goes to the same gateway as
+every other product; Zidentity on `gov`, `govus` and `ZPATWO` stays rejected
+before authentication because those gateway routes are unverified). The SDK
+now masks authorization headers in its own debug logs; the CLI's SDK log
+adapter was already fail-closed (allow-listed messages, text arguments
+replaced) and is unchanged. Retry behavior changed (permanent 5xx verdicts are
+not retried, `403 Resource Access Blocked` refreshes the token) without
+widening output. Zidentity users gained personal fields: phones, postal
+addresses, display preferences, manager and login-name mirrors are registered
+as deliberately ignored and never projected; HR attributes render in standard
+mode only.
 
 ## Security Objectives
 
