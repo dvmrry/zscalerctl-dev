@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
@@ -104,32 +103,4 @@ func TestSchemaDescribeAdvertisesExactArguments(t *testing.T) {
 		}
 	}
 	t.Fatal("schema describe missing from introspection")
-}
-
-func TestSchemaDescribeRuleMatchingInJSONAndText(t *testing.T) {
-	t.Parallel()
-	app, out, _ := testConfigApp(t)
-	if err := app.Run(context.Background(), []string{"--format", "json", "--redaction", "paranoid", "schema", "describe", "zia", "url-filtering-rules"}); err != nil {
-		t.Fatal(err)
-	}
-	var got resources.Semantics
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Matching == nil || got.Matching.Groups[0].Operator != resources.MatchAdminSelected {
-		t.Fatalf("matching = %+v, want admin_selected identity group", got.Matching)
-	}
-	if !strings.Contains(strings.Join(got.Matching.NotRendered, ","), "users") {
-		t.Errorf("paranoid not_rendered = %v, want users", got.Matching.NotRendered)
-	}
-
-	app, out, _ = testConfigApp(t)
-	if err := app.Run(context.Background(), []string{"--format", "pretty", "schema", "describe", "zia", "bandwidth-control-rules"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"\nwhere\tor\tlocations\n", "\nwhere\tor\tlocationGroups\n", "Unplaced criteria: devices, deviceGroups, deviceTrustLevels\n", resources.RuleMatchingLogic} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("text output missing %q:\n%s", want, out)
-		}
-	}
 }

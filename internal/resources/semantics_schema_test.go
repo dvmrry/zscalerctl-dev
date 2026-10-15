@@ -83,8 +83,6 @@ func TestPublishedResourceSemanticsSchemaMatchesDTOs(t *testing.T) {
 		{"CollectionSemantics", reflect.TypeOf(resources.CollectionSemantics{}), []string{"$defs", "collectionSemantics", "properties"}},
 		{"ReferenceSemantics", reflect.TypeOf(resources.ReferenceSemantics{}), []string{"$defs", "referenceSemantics", "properties"}},
 		{"SemanticSource", reflect.TypeOf(resources.SemanticSource{}), []string{"$defs", "semanticSource", "properties"}},
-		{"RuleMatching", reflect.TypeOf(resources.RuleMatching{}), []string{"$defs", "ruleMatching", "properties"}},
-		{"CriteriaGroup", reflect.TypeOf(resources.CriteriaGroup{}), []string{"$defs", "criteriaGroup", "properties"}},
 	}
 
 	for _, tc := range cases {

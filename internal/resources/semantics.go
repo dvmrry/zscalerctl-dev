@@ -117,9 +117,6 @@ type Semantics struct {
 	Operations    []Operation           `json:"operations"`
 	GetKey        string                `json:"get_key,omitempty"`
 	Fields        []FieldSemantics      `json:"fields"`
-	// Matching is the documented criteria logic of a policy rule resource,
-	// independent of the field review pilot; nil for other resources.
-	Matching *RuleMatching `json:"matching,omitempty"`
 }
 
 // OutputSafe marks Semantics as safe for the JSON renderer. It contains only
@@ -347,11 +344,6 @@ func DescribeSemantics(spec ResourceSpec, mode redact.Mode) (Semantics, error) {
 		GetKey:        spec.EffectiveGetKey(),
 		Fields:        []FieldSemantics{},
 	}
-	matching, err := describeRuleMatching(spec, effectiveMode)
-	if err != nil {
-		return Semantics{}, err
-	}
-	doc.Matching = matching
 	if !reviewed {
 		return doc, nil
 	}
