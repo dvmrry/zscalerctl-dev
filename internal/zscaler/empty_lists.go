@@ -53,8 +53,9 @@ type emptyListField struct {
 
 // identityListFields returns T's top-level slice fields that mapper copies
 // under their JSON name: mapping a value whose list holds one zero element
-// yields a record with that key. A mapper that panics on the probe value
-// simply confirms nothing for that field.
+// yields a non-empty list under that key. A key that is merely present (always
+// initialized, or derived and empty) does not count, and a mapper that panics
+// on the probe value confirms nothing for that field.
 func identityListFields[T any](mapper func(T) resources.SourceRecord) []emptyListField {
 	var zero T
 	typ := reflect.TypeOf(zero)
@@ -86,5 +87,5 @@ func mapsUnderName[T any](mapper func(T) resources.SourceRecord, probe T, name s
 			ok = false
 		}
 	}()
-	return mapper(probe).Has(name)
+	return mapper(probe).HasNonEmptyList(name)
 }

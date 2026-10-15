@@ -52,6 +52,16 @@ func TestPreserveEmptyListsOnlyForIdentityMappedFields(t *testing.T) {
 		}
 	}
 
+	// A mapper that always initializes the key to an empty list is not an
+	// identity copy: the probe's element does not come out, so nothing is
+	// confirmed and the API's [] does not turn into a claim.
+	alwaysEmpty := preserveEmptyLists(func(p emptyListProbe) resources.SourceRecord {
+		return resources.NewSourceRecord(map[string]any{"id": p.ID, "tags": []string{}})
+	})
+	if record := alwaysEmpty(emptyListProbe{ID: 1, Tags: []string{}}); !isNilOrEmptyList(record, "tags") {
+		t.Error("an always-empty initialized key was confirmed as the API's []")
+	}
+
 	panicky := preserveEmptyLists(func(p emptyListProbe) resources.SourceRecord {
 		if len(p.Tags) == 1 && p.Tags[0] == "" {
 			panic("probe value")

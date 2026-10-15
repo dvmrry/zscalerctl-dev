@@ -272,6 +272,13 @@ func confirmEmptyLists(value any) any {
 	return value
 }
 
+// HasNonEmptyList reports whether the record's value for key is a list with
+// at least one element.
+func (r SourceRecord) HasNonEmptyList(key string) bool {
+	v := reflect.ValueOf(r.fields[key])
+	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Len() > 0
+}
+
 // Has reports whether the record has a value for key.
 func (r SourceRecord) Has(key string) bool {
 	_, ok := r.fields[key]

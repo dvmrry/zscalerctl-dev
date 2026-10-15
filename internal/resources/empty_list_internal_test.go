@@ -61,3 +61,35 @@ func TestProjectionRendersOnlyConfirmedEmptyLists(t *testing.T) {
 		t.Errorf("WithConfirmedEmptyList over a non-empty list = %s, want %s", got, want)
 	}
 }
+
+// TestConfirmedEmptyListInFiltersAndCounts pins how a rendered [] behaves
+// downstream: no filter value matches it (as for a missing key), and
+// --count-by counts it under null, the same as a missing key.
+func TestConfirmedEmptyListInFiltersAndCounts(t *testing.T) {
+	t.Parallel()
+
+	records := NewProjectedRecordsFromProjectedFields([]map[string]any{
+		{"id": 1, "groups": []any{}},
+		{"id": 2},
+		{"id": 3, "groups": []any{map[string]any{"id": 10}}},
+	})
+	for i, record := range records.Records() {
+		matched := projectedRecordMatches(record.Fields(), []ProjectedFilter{{Field: "groups.id", Value: "10"}}, "")
+		if want := i == 2; matched != want {
+			t.Errorf("record %d: groups.id=10 matched = %v, want %v", i+1, matched, want)
+		}
+	}
+	rows := CountProjectedRecords(records, []string{"groups.id"})
+	got := map[string]int{}
+	for _, row := range rows {
+		got[FormatProjectedValue(row.Values[0])] = row.Count
+	}
+	if got["10"] != 1 || len(rows) != 2 {
+		t.Errorf("count by groups.id = %v, want 10:1 and one null row for the [] and missing records", got)
+	}
+	for _, row := range rows {
+		if row.Values[0] == nil && row.Count != 2 {
+			t.Errorf("null row count = %d, want 2 ([] and missing count alike)", row.Count)
+		}
+	}
+}
