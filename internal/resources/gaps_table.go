@@ -1,0 +1,96 @@
+package resources
+
+// coverageGaps declares the Zscaler surfaces zscalerctl does not read. It is
+// the machine-readable form of the non-coverage records and the deferred
+// backlog in docs/RESOURCE_QUEUE.md; a test keeps every backlog row here and
+// keeps every surface and alias distinct from catalog resource names. Notes
+// describe the surface and the blocker in value-free terms only.
+var coverageGaps = []CoverageGap{
+	// ZPA
+	{Product: ProductZPA, Surface: "policy-rules", Reason: GapNotModeled,
+		Note: "ZPA policy rule sets (access, timeout, client forwarding, inspection, isolation, credential, capabilities, redirection) are not read; they need a policy-rule command design.",
+		Aliases: []string{"policies", "policy", "policy-sets", "policy-set", "access-policies", "access-policy", "access-policy-rules", "access-rules",
+			"timeout-policies", "timeout-policy-rules", "forwarding-policies", "client-forwarding-policies", "client-forwarding-policy-rules",
+			"inspection-policies", "inspection-policy-rules", "isolation-policies", "isolation-policy-rules", "credential-policies",
+			"credential-policy-rules", "capabilities-policies", "capabilities-policy-rules", "redirection-policies", "redirection-policy-rules"}},
+	{Product: ProductZPA, Surface: "private-cloud-groups", Reason: GapEntitlement, Note: "Private cloud groups returned 403 on the validation tenant."},
+	{Product: ProductZPA, Surface: "private-cloud-controllers", Reason: GapEntitlement, Note: "Private cloud controllers returned 401 on the validation tenant."},
+	{Product: ProductZPA, Surface: "app-connector-schedule", Reason: GapEntitlement, Note: "The connector-disable schedule answers 400 until a schedule is configured; it is not read as empty."},
+	{Product: ProductZPA, Surface: "service-edge-schedule", Reason: GapEntitlement, Note: "The service-edge schedule answers 400 until a schedule is configured; it is not read as empty."},
+	{Product: ProductZPA, Surface: "cbi-banners", Reason: GapEntitlement, Note: "Cloud Browser Isolation config service answered 400; needs CBI provisioning."},
+	{Product: ProductZPA, Surface: "cbi-profiles", Reason: GapEntitlement, Note: "Cloud Browser Isolation config service answered 400; needs CBI provisioning."},
+	{Product: ProductZPA, Surface: "cbi-regions", Reason: GapEntitlement, Note: "Cloud Browser Isolation config service answered 400; needs CBI provisioning."},
+	{Product: ProductZPA, Surface: "inspection-profiles", Reason: GapEntitlement, Note: "AppProtection inspection profiles returned 401; needs the Inspection module and read scope."},
+	{Product: ProductZPA, Surface: "inspection-custom-controls", Reason: GapEntitlement, Note: "AppProtection custom controls returned 403; needs the Inspection module and read scope."},
+	{Product: ProductZPA, Surface: "inspection-predefined-controls", Reason: GapEntitlement, Note: "AppProtection predefined controls returned 403; needs the Inspection module and read scope."},
+	{Product: ProductZPA, Surface: "pra-approvals", Reason: GapEntitlement, Note: "Privileged Remote Access approvals answered 400; needs the PRA module and read scope."},
+	{Product: ProductZPA, Surface: "pra-consoles", Reason: GapEntitlement, Note: "Privileged Remote Access consoles returned 403; needs the PRA module and read scope."},
+	{Product: ProductZPA, Surface: "pra-portals", Reason: GapEntitlement, Note: "Privileged Remote Access portals returned 403; needs the PRA module and read scope."},
+	{Product: ProductZPA, Surface: "tag-groups", Reason: GapEntitlement, Note: "Resource tagging returned 403; needs the tagging feature and read scope."},
+	{Product: ProductZPA, Surface: "tag-keys", Reason: GapEntitlement, Note: "Resource tagging returned 403; needs the tagging feature and read scope."},
+	{Product: ProductZPA, Surface: "tag-namespaces", Reason: GapEntitlement, Note: "Resource tagging returned 403; needs the tagging feature and read scope."},
+	{Product: ProductZPA, Surface: "provisioning-keys", Reason: GapCredentialMaterial, Note: "Connector and service-edge provisioning keys are enrollment material.",
+		Aliases: []string{"provisioning-key"}},
+	{Product: ProductZPA, Surface: "enrollment-certificates", Reason: GapCredentialMaterial, Note: "Enrollment certificates are certificate material.",
+		Aliases: []string{"enrollment-certs", "enrollment-cert"}},
+	{Product: ProductZPA, Surface: "ba-certificates", Reason: GapCredentialMaterial, Note: "Browser-access certificates are certificate material.",
+		Aliases: []string{"certificates", "browser-access-certificates"}},
+	{Product: ProductZPA, Surface: "api-keys", Reason: GapCredentialMaterial, Note: "API keys are credential material."},
+	{Product: ProductZPA, Surface: "emergency-access-users", Reason: GapAction, Note: "Emergency access is an operational control surface.",
+		Aliases: []string{"emergency-access"}},
+	{Product: ProductZPA, Surface: "admins", Reason: GapPrivacyReview, Note: "ZPA administrators need admin/privacy classification before any read path.",
+		Aliases: []string{"administrators", "admin-users"}},
+	{Product: ProductZPA, Surface: "roles", Reason: GapPrivacyReview, Note: "ZPA admin roles need admin/privacy classification before any read path.",
+		Aliases: []string{"admin-roles"}},
+	{Product: ProductZPA, Surface: "idps", Reason: GapPrivacyReview, Note: "IdP controllers need identity/privacy classification before any read path.",
+		Aliases: []string{"idp-controllers", "identity-providers"}},
+	{Product: ProductZPA, Surface: "scim-groups", Reason: GapPrivacyReview, Note: "SCIM groups need identity/privacy classification before any read path.",
+		Aliases: []string{"scim-attributes", "saml-attributes"}},
+	{Product: ProductZPA, Surface: "lss-configs", Reason: GapNotModeled, Note: "Log streaming configuration has a nonstandard shape and is not modeled yet.",
+		Aliases: []string{"lss", "log-streaming"}},
+
+	// ZIA
+	{Product: ProductZIA, Surface: "traffic-capture-rules", Reason: GapEntitlement, Note: "Traffic capture rules returned 403 under OneAPI and legacy auth; needs the feature and read scope."},
+	{Product: ProductZIA, Surface: "extranets", Reason: GapEntitlement, Note: "Extranets returned 403 under OneAPI and legacy auth; needs the feature and read scope.",
+		Aliases: []string{"extranet"}},
+	{Product: ProductZIA, Surface: "password-expiry-settings", Reason: GapEntitlement, Note: "Password expiry settings returned 403; needs admin-policy read scope."},
+	{Product: ProductZIA, Surface: "reports", Reason: GapTelemetry, Note: "Event, IoT, shadow IT and sandbox reports are telemetry, not configuration.",
+		Aliases: []string{"shadow-it-report", "iot-report", "sandbox-report", "event-log-report"}},
+	{Product: ProductZIA, Surface: "policy-export", Reason: GapTelemetry, Note: "Policy export is an export surface; the rule resources hold the same rules."},
+	{Product: ProductZIA, Surface: "sandbox-submissions", Reason: GapAction, Note: "Sandbox file submission executes; only sandbox rules and settings are read."},
+	{Product: ProductZIA, Surface: "activation", Reason: GapAction, Note: "Activation mutates; only its status is read.",
+		Instead: ziaRef("activation-status"), Aliases: []string{"activate"}},
+	{Product: ProductZIA, Surface: "vpn-credentials", Reason: GapCredentialMaterial, Note: "VPN credentials are credential material."},
+	{Product: ProductZIA, Surface: "scim", Reason: GapPrivacyReview, Note: "SCIM provisioning is an identity-admin boundary."},
+	{Product: ProductZIA, Surface: "locations-lite", Reason: GapAlternateView, Note: "A lite view of locations.",
+		Instead: ziaRef("locations", "sublocations"), Aliases: []string{"location-lite"}},
+	{Product: ProductZIA, Surface: "gre-tunnel-info", Reason: GapAlternateView, Note: "A diagnostic view of GRE tunnels."},
+	{Product: ProductZIA, Surface: "gre-internal-ip-ranges", Reason: GapAlternateView, Note: "A lookup helper for free GRE ranges, not configuration."},
+	{Product: ProductZIA, Surface: "virtual-ip-addresses", Reason: GapAlternateView, Note: "A lookup of Zscaler public service-edge addresses, not tenant configuration.",
+		Aliases: []string{"vips"}},
+	{Product: ProductZIA, Surface: "regions", Reason: GapAlternateView, Note: "A geographic lookup helper, not tenant configuration."},
+	{Product: ProductZIA, Surface: "app-total", Reason: GapAlternateView, Note: "A third-party app lookup, not tenant configuration."},
+
+	// ZCC
+	{Product: ProductZCC, Surface: "notification-templates", Reason: GapEntitlement, Note: "A v2 ZCC route that returned 404 on the validation tenant."},
+	{Product: ProductZCC, Surface: "zia-posture-profiles", Reason: GapEntitlement, Note: "A v2 ZCC route that returned 404 on the validation tenant.",
+		Aliases: []string{"posture-profiles"}},
+	{Product: ProductZCC, Surface: "admin-users", Reason: GapResponseShape, Note: "Answers 400 because the SDK sends an empty userType."},
+	{Product: ProductZCC, Surface: "zpa-group-entitlements", Reason: GapResponseShape, Note: "Answers one object where the reader expects pages, or the feature is off."},
+	{Product: ProductZCC, Surface: "zdx-group-entitlements", Reason: GapResponseShape, Note: "Answers one object where the reader expects pages, or the feature is off."},
+	{Product: ProductZCC, Surface: "passwords", Reason: GapCredentialMaterial, Note: "One-time passcodes and app passwords are credential material.",
+		Aliases: []string{"secrets", "otp", "manage-pass"}},
+	{Product: ProductZCC, Surface: "web-policies", Reason: GapNotModeled, Note: "Returns untyped records; not modeled until the shape and field classes are explicit.",
+		Aliases: []string{"web-policy"}},
+
+	// ZTW
+	{Product: ProductZTW, Surface: "api-keys", Reason: GapCredentialMaterial, Note: "Provisioning API keys are credential material."},
+	{Product: ProductZTW, Surface: "provisioning-urls", Reason: GapCredentialMaterial, Note: "Provisioning URLs are enrollment material."},
+	{Product: ProductZTW, Surface: "locations-lite", Reason: GapAlternateView, Note: "A lite view of locations.",
+		Instead: ztwRef("locations"), Aliases: []string{"location-lite"}},
+
+	// Zidentity
+	{Product: ProductZidentity, Surface: "group-members", Reason: GapNotModeled, Note: "Group and user membership needs a child-query command design.",
+		Aliases: []string{"memberships", "user-groups", "members"}},
+	{Product: ProductZidentity, Surface: "entitlements", Reason: GapNotModeled, Note: "Absent from the pinned SDK."},
+}

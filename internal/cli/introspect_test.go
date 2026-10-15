@@ -399,14 +399,14 @@ func TestIntrospectEffectCounts(t *testing.T) {
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
 		"local_filesystem_read":   551,
-		"local_filesystem_write":  297,
+		"local_filesystem_write":  298,
 		"network_access":          274,
 		"process_execution":       275,
 	}
 	wantWhen := map[string]int{
 		"always":                  277,
 		"configuration_dependent": 553,
-		"flag_set":                569,
+		"flag_set":                570,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)

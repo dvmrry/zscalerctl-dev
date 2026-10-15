@@ -347,3 +347,18 @@ the id. A reference no mode renders (a secret one) is listed with no `match`
 and no modes: it shows the relationship exists but cannot be read. A field whose target has not been
 verified is not listed, so an empty `referred_by` does not prove nothing
 points at the resource.
+
+Some Zscaler surfaces are not read at all: ZPA policy rule sets, entitlement-
+gated modules, credential material, reports. Before concluding a tenant has
+none of something, check that zscalerctl reads it:
+
+```sh
+zscalerctl --format json schema gaps zpa
+```
+
+Each entry names the `surface`, a `status` (`deferred` may be added once its
+blocker clears; `out_of_scope` is not planned), a `reason`, a value-free
+`note`, and, for a lite or alternate view or an action whose status is read,
+the covered resources to read `instead`. Asking for a declared
+gap (or a common alias, such as `zpa access-policies`) exits 4 with a message
+naming it, so an absent resource is not mistaken for an empty one.

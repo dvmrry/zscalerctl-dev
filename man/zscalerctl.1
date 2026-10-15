@@ -211,6 +211,15 @@ listed without a match path. Fields whose target is not verified are not
 listed, so an empty list does not prove nothing refers to the resource.
 Config-free; unknown resources exit 4.
 .TP
+.B schema gaps [product]
+List the Zscaler surfaces zscalerctl does not read: each entry names the
+\fBsurface\fR, a \fBstatus\fR (\fBdeferred\fR may be added once its blocker
+clears; \fBout_of_scope\fR is not planned), a \fBreason\fR, a value-free
+\fBnote\fR, and, for an alternate view or an action whose status is read, the
+covered resources to read \fBinstead\fR. Asking to
+read a declared gap, or a common alias such as \fBzpa access-policies\fR,
+exits 4 with a message naming it. Config-free; an unknown product exits 2.
+.TP
 .B doctor
 Report configuration readiness and the resolved auth mode without exposing
 secrets. \fBdoctor\fR inspects \fBZSCALERCTL_*\fR configuration only and never

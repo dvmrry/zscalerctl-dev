@@ -18,6 +18,7 @@
   introspect
   machine manifest
   schema describe
+  schema gaps
   schema list
   schema references
   version

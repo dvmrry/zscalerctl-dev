@@ -979,6 +979,44 @@
       ]
     },
     {
+      "path": "schema gaps",
+      "short": "list the Zscaler surfaces zscalerctl does not read, and why (config-free)",
+      "aliases": [],
+      "hidden": false,
+      "mutating": true,
+      "effects": [
+        {
+          "kind": "local_filesystem_write",
+          "when": "flag_set",
+          "flag": "output"
+        }
+      ],
+      "args": {
+        "policy": "range",
+        "n": 1
+      },
+      "flags": [],
+      "inherited_flags": [
+        "color",
+        "config",
+        "count-by",
+        "fields",
+        "filter",
+        "format",
+        "from-dump",
+        "limit",
+        "log-level",
+        "no-cache",
+        "no-color",
+        "offset",
+        "output",
+        "profile",
+        "redaction",
+        "search",
+        "timeout"
+      ]
+    },
+    {
       "path": "schema list",
       "short": "list all catalog resources and their supported operations",
       "aliases": [],

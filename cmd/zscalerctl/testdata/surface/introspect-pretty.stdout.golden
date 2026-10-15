@@ -26,7 +26,7 @@ Global flags (17):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (296):
+Commands (297):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -80,6 +80,8 @@ Commands (296):
   schema                                    inspect the resource catalog schema
       effects: local_filesystem_write (when --output is set)
   schema describe                           describe reviewed field semantics for one resource (config-free pilot)
+      effects: local_filesystem_write (when --output is set)
+  schema gaps                               list the Zscaler surfaces zscalerctl does not read, and why (config-free)
       effects: local_filesystem_write (when --output is set)
   schema list                               list all catalog resources and their supported operations
       effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)

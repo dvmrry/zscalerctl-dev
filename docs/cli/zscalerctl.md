@@ -312,6 +312,14 @@ describe reviewed field semantics for one resource (config-free pilot)
 zscalerctl schema describe <product> <resource>
 ```
 
+#### schema gaps
+
+list the Zscaler surfaces zscalerctl does not read, and why (config-free)
+
+```
+zscalerctl schema gaps [product]
+```
+
 #### schema list
 
 list all catalog resources and their supported operations

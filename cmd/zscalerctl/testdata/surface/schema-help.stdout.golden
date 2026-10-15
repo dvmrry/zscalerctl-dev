@@ -6,6 +6,7 @@ Usage:
 
 Available Commands:
   describe    describe reviewed field semantics for one resource (config-free pilot)
+  gaps        list the Zscaler surfaces zscalerctl does not read, and why (config-free)
   list        list all catalog resources and their supported operations
   references  list the fields that point at a resource, with the --filter path for its id (config-free)
 
