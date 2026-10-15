@@ -55,10 +55,16 @@ func TestSDKV348ZIAPromotedPolicyFieldsProjectThroughAdapters(t *testing.T) {
 	}
 	assertNoCanaries(t, "v3.8.48 URL header profiles", urlStandard,
 		"header-extension-canary", "action-extension-canary")
+	// The header profile names are standard-only: share keeps the ids without
+	// names, paranoid drops the lists; the secret extensions never render.
 	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceURLRules, mode, urlRecords)
-		assertFieldsAbsent(t, "v3.8.48 URL header profiles", got,
-			"httpHeaderProfiles", "httpHeaderActionProfiles")
+		assertRefIDsOnlyInShare(t, "v3.8.48 URL header profiles", mode, got, map[string]int{
+			"httpHeaderProfiles":       3802,
+			"httpHeaderActionProfiles": 3803,
+		})
+		assertNoCanaries(t, "v3.8.48 URL header profiles", got,
+			"header-extension-canary", "action-extension-canary", "request headers", "insert headers")
 	}
 
 	firewallRule := filteringrules.FirewallFilteringRules{

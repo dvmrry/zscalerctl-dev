@@ -436,18 +436,26 @@ func TestLocationFamilyHonorsAllowedModes(t *testing.T) {
 		}
 		assertFieldsAbsent(t, res.name+" (paranoid)", paranoid, standardShare...)
 
-		// Standard-only sensitive identifiers and the standard-only reference
-		// lists drop in both share and paranoid.
-		standardOnly := []string{
-			"subLocScopeValues",
-			"subLocAccIds",
-			"dynamiclocationGroups",
-			"staticLocationGroups",
-			"virtualZenClusters",
-			"virtualZens",
-		}
+		// Standard-only sensitive identifiers drop in both share and paranoid.
+		standardOnly := []string{"subLocScopeValues", "subLocAccIds"}
 		assertFieldsAbsent(t, res.name+" (share)", share, standardOnly...)
 		assertFieldsAbsent(t, res.name+" (paranoid)", paranoid, standardOnly...)
+
+		// Reference lists whose names are standard-only keep their ids (never
+		// their names) in share and drop in paranoid.
+		refIDs := map[string]int{
+			"dynamiclocationGroups": 901,
+			"staticLocationGroups":  902,
+			"virtualZenClusters":    903,
+			"virtualZens":           904,
+		}
+		for field, wantID := range refIDs {
+			assertRefListIDsOnly(t, res.name+" (share)", share, field, wantID)
+			assertFieldsAbsent(t, res.name+" (paranoid)", paranoid, field)
+		}
+		for _, got := range []map[string]any{share, paranoid} {
+			assertNoCanaries(t, res.name, got, "dyn-group-a", "static-group-a", "vzen-cluster-a", "vzen-node-a")
+		}
 	}
 }
 

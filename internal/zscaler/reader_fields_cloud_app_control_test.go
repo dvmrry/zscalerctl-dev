@@ -121,22 +121,33 @@ func TestCloudAppControlPromotedFieldsAcrossModes(t *testing.T) {
 	// standard output.
 	assertNoCanaries(t, "cloud-app-control", standard, extensionCanary)
 
-	// Mode gating: every promoted parent field is standard-only and must
-	// disappear in share and paranoid, taking all nested canaries with it.
+	// Mode gating: cloudAppInstances, cloudAppRiskProfile and cbiProfile are
+	// standard-only and must disappear in share and paranoid, taking all nested
+	// canaries with them. The criteria reference lists keep their ids (never
+	// their names) in share and disappear in paranoid.
 	standardOnlyFields := []string{
-		"groups",
-		"users",
-		"departments",
-		"devices",
-		"deviceGroups",
 		"cloudAppInstances",
 		"cloudAppRiskProfile",
 		"cbiProfile",
+	}
+	refIDs := map[string]int{
+		"groups":       7101,
+		"users":        7102,
+		"departments":  7103,
+		"devices":      7104,
+		"deviceGroups": 7105,
 	}
 	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
 		got := projectOneRecordInMode(t, resources.ProductZIA, resourceCloudAppControl, mode, records)
 		for _, field := range standardOnlyFields {
 			if _, ok := got[field]; ok {
+				t.Errorf("projected cloud-app-control (%v) = %#v, want no %s", mode, got, field)
+			}
+		}
+		for field, wantID := range refIDs {
+			if mode == redact.ModeShare {
+				assertRefListIDsOnly(t, "cloud-app-control (share)", got, field, wantID)
+			} else if _, ok := got[field]; ok {
 				t.Errorf("projected cloud-app-control (%v) = %#v, want no %s", mode, got, field)
 			}
 		}

@@ -22,9 +22,10 @@ zscalerctl --format json schema references zia groups   # every field that point
 zscalerctl --format json schema gaps zpa                 # what zscalerctl does not read
 ```
 
-The default mode is `share`; identity and location fields need
-`--redaction standard`, and a usage error names the mode when you ask for an
-omitted field. `--count-by` takes several comma-separated paths at once, so
+The default mode is `share`: a rule's user, group, department and location
+references render there as ids only (`[{"id": ...}]`), so rule scope is
+visible; names, emails and other identifying values need `--redaction
+standard`, and a usage error names the mode when you ask for an omitted field. `--count-by` takes several comma-separated paths at once, so
 "members per group, and how many have no department" is one call. Exit codes:
 0 success, 1 internal or canceled, 2 usage, 3 missing or invalid credentials,
 4 not found or unsupported (a resource zscalerctl does not read names its

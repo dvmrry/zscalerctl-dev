@@ -289,10 +289,12 @@ func TestLocationGroupProjectionHonorsShareModeAllowances(t *testing.T) {
 		t.Errorf("share-mode criteria city matchType = %v, want CONTAINS", cityMatch["matchType"])
 	}
 
-	// managedBy and locations allow [standard] only: dropped in share. The
-	// lastModUser admin reference keeps only its id.
-	assertFieldsAbsent(t, "location-groups criteria (share)", criteria, "managedBy")
-	assertFieldsAbsent(t, "location-groups (share)", got, "locations")
+	// managedBy and locations name their references in standard only: share
+	// keeps the reference ids without names. The lastModUser admin reference
+	// keeps only its id.
+	assertRefListIDsOnly(t, "location-groups criteria (share)", criteria, "managedBy", 7601)
+	assertRefListIDsOnly(t, "location-groups (share)", got, "locations", 8101)
+	assertNoCanaries(t, "location-groups (share)", got, "wave1-sdwan-partner", "wave1-member-location")
 	assertAuditRefIDOnly(t, "location-groups (share)", got, "lastModUser", 9301)
 	assertNoLocationGroupCanaries(t, got)
 }

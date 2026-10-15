@@ -164,13 +164,9 @@ func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 	share := projectOneRecordInMode(t, resources.ProductZIA, resourceForwardingRules, redact.ModeShare, records)
 	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceForwardingRules, redact.ModeParanoid, records)
 
-	// Every promoted field is standard-only: present in standard, dropped in
-	// share and paranoid, exactly per its AllowedModes.
+	// The ZPA segment fields are standard-only: present in standard, dropped in
+	// share and paranoid, exactly per their AllowedModes.
 	promoted := []string{
-		"departments",
-		"groups",
-		"users",
-		"deviceGroups",
 		"zpaAppSegments",
 		"zpaApplicationSegments",
 		"zpaApplicationSegmentGroups",
@@ -185,6 +181,30 @@ func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 		if _, ok := paranoid[field]; ok {
 			t.Errorf("projected forwarding-rules paranoid mode = %#v, want no %s", paranoid, field)
 		}
+	}
+
+	// The criteria reference lists name their references in standard only:
+	// share keeps the ids without names, paranoid drops the lists.
+	refLists := []struct {
+		field string
+		id    int
+		name  string
+	}{
+		{"departments", 7101, "dept-canary-finance"},
+		{"groups", 7102, "group-canary-engineering"},
+		{"users", 7103, "user-canary-jdoe"},
+		{"deviceGroups", 7104, "devicegroup-canary-laptops"},
+	}
+	for _, ref := range refLists {
+		if _, ok := standard[ref.field]; !ok {
+			t.Errorf("projected forwarding-rules standard mode missing %s", ref.field)
+		}
+		assertRefListIDsOnly(t, "forwarding-rules share", share, ref.field, ref.id)
+		if _, ok := paranoid[ref.field]; ok {
+			t.Errorf("projected forwarding-rules paranoid mode = %#v, want no %s", paranoid, ref.field)
+		}
+		assertNoCanaries(t, "forwarding-rules share", share, ref.name)
+		assertNoCanaries(t, "forwarding-rules paranoid", paranoid, ref.name)
 	}
 
 	// The lastModifiedBy admin reference keeps only its id outside standard

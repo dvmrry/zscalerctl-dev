@@ -150,14 +150,21 @@ func TestFirewallFilteringRulePromotedFieldsHonorModeBoundaries(t *testing.T) {
 		}
 	}
 
-	// All promoted fields are standard-only: they must drop in share and
-	// paranoid while wider-mode fields survive per their AllowedModes.
-	share := projectOneRecordInMode(t, resources.ProductZIA, resourceFirewallRules, redact.ModeShare, records)
-	for _, field := range promoted {
-		if _, ok := share[field]; ok {
-			t.Errorf("share projected firewall-filtering-rules includes %s, want dropped", field)
-		}
+	// All promoted fields name their references in standard only. Share keeps
+	// the criteria reference ids (never their names) and drops zpaAppSegments;
+	// paranoid drops them all. Wider-mode fields survive per their AllowedModes.
+	shareRefIDs := map[string]int{
+		"departments": 7411, "groups": 7412, "users": 7413, "deviceGroups": 7414, "devices": 7415,
 	}
+	share := projectOneRecordInMode(t, resources.ProductZIA, resourceFirewallRules, redact.ModeShare, records)
+	for field, wantID := range shareRefIDs {
+		assertRefListIDsOnly(t, "firewall-filtering-rules share", share, field, wantID)
+	}
+	if _, ok := share["zpaAppSegments"]; ok {
+		t.Errorf("share projected firewall-filtering-rules includes zpaAppSegments, want dropped")
+	}
+	assertNoCanaries(t, "firewall-filtering-rules share", share,
+		"Engineering", "Contractors", "user@example.invalid", "Managed laptops", "build-host-01", "Internal wiki")
 	if _, ok := share["labels"]; !ok {
 		t.Errorf("share projected firewall-filtering-rules missing labels, want kept (standard+share)")
 	}

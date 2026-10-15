@@ -1752,17 +1752,33 @@ func namedOperationalField(name string, allowed []redact.Mode, reason string) Fi
 	return field
 }
 
-func idNameExtensionsField(name string, allowed []redact.Mode) FieldSpec {
+// idNameExtensionsField is a reference list of {id, name, extensions}.
+// nameModes bounds the referenced object's name; the list itself, and so its
+// ids, also render in share mode, because reference ids are fine to share and
+// without them a rule's scope (users, groups, locations, ...) is invisible in
+// the default mode. Paranoid mode renders the ids only when nameModes does.
+func idNameExtensionsField(name string, nameModes []redact.Mode) FieldSpec {
 	return FieldSpec{
 		Name:           name,
 		Classification: ClassTenantConfig,
-		AllowedModes:   allowed,
+		AllowedModes:   withShareMode(nameModes),
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
-			tenantConfigField("name", standardShareModes()),
+			tenantConfigField("name", nameModes),
 			unstructuredField("extensions"),
 		},
 	}
+}
+
+// withShareMode returns modes plus share, keeping the canonical mode order.
+func withShareMode(modes []redact.Mode) []redact.Mode {
+	out := []redact.Mode{}
+	for _, mode := range allModes() {
+		if mode == redact.ModeShare || slices.Contains(modes, mode) {
+			out = append(out, mode)
+		}
+	}
+	return out
 }
 
 func idNameField(name string, allowed []redact.Mode) FieldSpec {
