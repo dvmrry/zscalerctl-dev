@@ -169,7 +169,7 @@ func TestRefIDKeyNormalizesWireTypes(t *testing.T) {
 	if key, _ := refIDKey("72000000000000001"); key != "72000000000000001" {
 		t.Errorf("large string id changed: %q", key)
 	}
-	for _, value := range []any{nil, "", true, map[string]any{}} {
+	for _, value := range []any{nil, "", true, map[string]any{}, 0, "0", json.Number("0"), float64(0)} {
 		if _, ok := refIDKey(value); ok {
 			t.Errorf("refIDKey(%#v) accepted a non-id", value)
 		}

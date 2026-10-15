@@ -62,6 +62,7 @@ zia	sandbox-rules	list,get
 zia	firewall-dns-rules	list,get
 zia	custom-file-types	list,get
 zia	zpa-gateways	list,get
+zia	locations-lite	list
 zia	browser-isolation-profiles	list
 zia	dlp-edm-schemas-lite	list
 zia	dc-exclusions	list

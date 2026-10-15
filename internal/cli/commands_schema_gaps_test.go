@@ -63,8 +63,8 @@ func TestUnknownResourceNamesDeclaredGap(t *testing.T) {
 	}{
 		{[]string{"zpa", "access-policies", "list"},
 			[]string{"zscalerctl does not read zpa/policy-rules (deferred: not_modeled)", "schema gaps zpa"}},
-		{[]string{"zia", "locations-lite", "list"},
-			[]string{"(out_of_scope: alternate_view)", "Covered instead: zia/locations, zia/sublocations."}},
+		{[]string{"ztw", "locations-lite", "list"},
+			[]string{"(out_of_scope: alternate_view)", "Covered instead: ztw/locations."}},
 		{[]string{"zpa", "no-such-thing", "list"},
 			[]string{"unsupported resource zpa/no-such-thing", "schema list", "schema gaps zpa"}},
 	} {

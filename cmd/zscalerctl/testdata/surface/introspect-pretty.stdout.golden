@@ -26,7 +26,7 @@ Global flags (17):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (300):
+Commands (301):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -365,6 +365,8 @@ Commands (300):
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia zpa-gateways get                      get zia zpa-gateways
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  zia locations-lite list                   list zia locations-lite
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia browser-isolation-profiles list       list zia browser-isolation-profiles
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-edm-schemas-lite list             list zia dlp-edm-schemas-lite
@@ -644,8 +646,8 @@ Commands (300):
   ztw traffic-log-rules get                 get ztw traffic-log-rules
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
 
-Catalog: 5 products, 165 resources
-  zia: 102 resource(s)
+Catalog: 5 products, 166 resources
+  zia: 103 resource(s)
   zpa: 28 resource(s)
   ztw: 21 resource(s)
   zcc: 11 resource(s)

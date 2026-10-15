@@ -120,10 +120,11 @@ func TestCatalogFieldsCarryReferences(t *testing.T) {
 	if !ok {
 		t.Fatal("zia/url-filtering-rules missing from catalog")
 	}
-	// A rule's locations may name a location or a sublocation.
+	// A rule's locations may name a location, a sublocation or a predefined
+	// location only locations-lite returns.
 	locations := fieldAtPath(spec.Fields, "locations")
-	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations")) {
-		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations and zia/sublocations", locations)
+	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations", "locations-lite")) {
+		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations, zia/sublocations and zia/locations-lite", locations)
 	}
 	if timeWindows := fieldAtPath(spec.Fields, "timeWindows"); timeWindows == nil || timeWindows.References != nil {
 		t.Errorf("url-filtering-rules.timeWindows References = %+v, want unmapped", timeWindows)
@@ -144,7 +145,7 @@ func TestReferencesToListsMatchPathsAndModes(t *testing.T) {
 		Field:        "locations",
 		Match:        "locations.id",
 		AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare},
-		Targets:      ziaRef("locations", "sublocations"),
+		Targets:      ziaRef("locations", "sublocations", "locations-lite"),
 	}
 	if !containsSite(doc.ReferredBy, want) {
 		t.Errorf("ReferredBy = %+v, want it to contain %+v", doc.ReferredBy, want)

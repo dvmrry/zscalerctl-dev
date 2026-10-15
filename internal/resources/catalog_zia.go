@@ -2302,6 +2302,35 @@ func catalogZIA() ResourceCatalog {
 				operationalField("type", allModes()),
 			},
 		},
+		// GET /locations/lite: a short location view that also returns
+		// predefined locations absent from /locations (Road Warrior, id -3).
+		// Fields mirror zia/locations (pinned by test).
+		{
+			Product:    ProductZIA,
+			Name:       "locations-lite",
+			Operations: ListOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("parentId", standardShareModes()),
+				operationalField("ecLocation", standardShareModes()),
+				operationalField("otherSubLocation", standardShareModes()),
+				tenantConfigField("aupBlockInternetUntilAccepted", standardShareModes()),
+				tenantConfigField("aupEnabled", standardShareModes()),
+				tenantConfigField("aupForceSslInspection", standardShareModes()),
+				tenantConfigField("cautionEnabled", standardShareModes()),
+				tenantConfigField("digestAuthEnabled", standardShareModes()),
+				tenantConfigField("iotDiscoveryEnabled", standardShareModes()),
+				tenantConfigField("ipsControl", standardShareModes()),
+				tenantConfigField("kerberosAuth", standardShareModes()),
+				tenantConfigField("ofwEnabled", standardShareModes()),
+				tenantConfigField("surrogateIP", standardShareModes()),
+				tenantConfigField("surrogateIPEnforcedForKnownBrowsers", standardShareModes()),
+				tenantConfigField("tz", standardShareModes()),
+				tenantConfigField("xffForwardEnabled", standardShareModes()),
+				tenantConfigField("zappSslScanEnabled", standardShareModes()),
+			},
+		},
 		{
 			Product:    ProductZIA,
 			Name:       "browser-isolation-profiles",

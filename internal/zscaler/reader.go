@@ -145,6 +145,7 @@ const (
 	resourceStaticIPs         = "static-ips"
 	resourceGRETunnels        = "gre-tunnels"
 	resourceSublocations      = "sublocations"
+	resourceLocationsLite     = "locations-lite"
 	resourceSSLRules          = "ssl-inspection-rules"
 	resourceURLCategories     = "url-categories"
 	resourceURLRules          = "url-filtering-rules"

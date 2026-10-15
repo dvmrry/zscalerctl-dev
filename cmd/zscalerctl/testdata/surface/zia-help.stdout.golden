@@ -67,6 +67,7 @@ Resources (zscalerctl zia <resource> <operation>; add --help after a resource fo
   ipv6-nat64-prefixes             list
   location-groups                 list, get
   locations                       list, get
+  locations-lite                  list
   malicious-urls                  show
   mobile-threat-settings          show
   nat-control-rules               list, get

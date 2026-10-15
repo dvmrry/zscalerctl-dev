@@ -24,7 +24,7 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"groups":              ziaRef("groups"),
 		"labels":              ziaRef("rule-labels"),
 		"locationGroups":      ziaRef("location-groups"),
-		"locations":           ziaRef("locations", "sublocations"),
+		"locations":           ziaRef("locations", "sublocations", "locations-lite"),
 		"tenancyProfileIds":   ziaRef("tenancy-restriction-profiles"),
 		"users":               ziaRef("users"),
 	},
@@ -64,7 +64,7 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 	},
 	"zia/location-groups": {
 		"lastModUser": ziaRef("admin-users"),
-		"locations":   ziaRef("locations", "sublocations"),
+		"locations":   ziaRef("locations", "sublocations", "locations-lite"),
 	},
 	"zia/locations": {
 		"dynamiclocationGroups": ziaRef("location-groups"),
@@ -81,7 +81,7 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"dlpDictionaries": ziaRef("dlp-dictionaries"),
 		"dlpEngines":      ziaRef("dlp-engines"),
 		"locationGroups":  ziaRef("location-groups"),
-		"locations":       ziaRef("locations", "sublocations"),
+		"locations":       ziaRef("locations", "sublocations", "locations-lite"),
 		"nwServices":      ziaRef("network-services"),
 		"users":           ziaRef("users"),
 	},
@@ -108,6 +108,9 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 	},
 	"zia/sub-clouds": {
 		"exclusions.lastModifiedUser": ziaRef("admin-users"),
+	},
+	"zia/locations-lite": {
+		"parentId": ziaRef("locations"),
 	},
 	"zia/sublocations": {
 		"dynamiclocationGroups": ziaRef("location-groups"),

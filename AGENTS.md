@@ -391,8 +391,10 @@ setting is false, empty, or unconfigured.
 
 Reference fields name their target in the catalog: `schema list` shows
 `"references": [{"product": ..., "resource": ...}]` on each mapped field,
-usually one target; a field whose ids may belong to either of two resources
-lists both (a ZIA rule's `locations` may name a location or a sublocation).
+usually one target; a field whose ids may belong to several resources lists
+them all (a ZIA rule's `locations` may name a location, a sublocation, or a
+predefined location such as Road Warrior that only `zia locations-lite`
+returns).
 To find every field that points at one resource, ask once instead of reading
 every resource:
 

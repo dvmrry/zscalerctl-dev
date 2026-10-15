@@ -1070,6 +1070,13 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			}),
 			vzenNodeSourceRecord,
 		),
+		{product: resources.ProductZIA, name: resourceLocationsLite}: newListOnlyHandler(
+			resourceLocationsLite,
+			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]ziaLiteLocation, error) {
+				return getZIAAllPages[ziaLiteLocation](ctx, service, "/zia/api/v1/locations/lite")
+			}),
+			liteLocationSourceRecord,
+		),
 		{product: resources.ProductZIA, name: resourceBrowserIsolation}: newListOnlyHandler(
 			resourceBrowserIsolation,
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]browserisolation.CBIProfile, error) {
@@ -1663,4 +1670,68 @@ func cloudAppControlInstancesSource(values []cloudappcontrol.CloudAppInstances) 
 		})
 	}
 	return out
+}
+
+// ziaLiteLocation is one /locations/lite object, modeled on the keys a live
+// read returned. The SDK's locationlite.LocationLite is not used: its plain
+// booleans would turn omitted keys into false, and it lacks keys the API
+// returns (ecLocation, digestAuthEnabled, kerberosAuth, iotDiscoveryEnabled).
+// Keys it has that no live read returned (ipv6Enabled, other6SubLocation,
+// subLocScope*, subLocAccIds) are not read. Booleans are pointers so a key
+// the API omits stays absent.
+type ziaLiteLocation struct {
+	ID                                  int64  `json:"id"`
+	Name                                string `json:"name,omitempty"`
+	ParentID                            *int64 `json:"parentId,omitempty"`
+	TZ                                  string `json:"tz,omitempty"`
+	ECLocation                          *bool  `json:"ecLocation,omitempty"`
+	OtherSubLocation                    *bool  `json:"otherSubLocation,omitempty"`
+	AUPBlockInternetUntilAccepted       *bool  `json:"aupBlockInternetUntilAccepted,omitempty"`
+	AUPEnabled                          *bool  `json:"aupEnabled,omitempty"`
+	AUPForceSSLInspection               *bool  `json:"aupForceSslInspection,omitempty"`
+	CautionEnabled                      *bool  `json:"cautionEnabled,omitempty"`
+	DigestAuthEnabled                   *bool  `json:"digestAuthEnabled,omitempty"`
+	IOTDiscoveryEnabled                 *bool  `json:"iotDiscoveryEnabled,omitempty"`
+	IPSControl                          *bool  `json:"ipsControl,omitempty"`
+	KerberosAuth                        *bool  `json:"kerberosAuth,omitempty"`
+	OFWEnabled                          *bool  `json:"ofwEnabled,omitempty"`
+	SurrogateIP                         *bool  `json:"surrogateIP,omitempty"`
+	SurrogateIPEnforcedForKnownBrowsers *bool  `json:"surrogateIPEnforcedForKnownBrowsers,omitempty"`
+	XFFForwardEnabled                   *bool  `json:"xffForwardEnabled,omitempty"`
+	ZappSSLScanEnabled                  *bool  `json:"zappSslScanEnabled,omitempty"`
+}
+
+func liteLocationSourceRecord(location ziaLiteLocation) resources.SourceRecord {
+	fields := map[string]any{"id": location.ID}
+	if location.Name != "" {
+		fields["name"] = location.Name
+	}
+	if location.TZ != "" {
+		fields["tz"] = location.TZ
+	}
+	if location.ParentID != nil {
+		fields["parentId"] = *location.ParentID
+	}
+	for key, value := range map[string]*bool{
+		"ecLocation":                          location.ECLocation,
+		"otherSubLocation":                    location.OtherSubLocation,
+		"aupBlockInternetUntilAccepted":       location.AUPBlockInternetUntilAccepted,
+		"aupEnabled":                          location.AUPEnabled,
+		"aupForceSslInspection":               location.AUPForceSSLInspection,
+		"cautionEnabled":                      location.CautionEnabled,
+		"digestAuthEnabled":                   location.DigestAuthEnabled,
+		"iotDiscoveryEnabled":                 location.IOTDiscoveryEnabled,
+		"ipsControl":                          location.IPSControl,
+		"kerberosAuth":                        location.KerberosAuth,
+		"ofwEnabled":                          location.OFWEnabled,
+		"surrogateIP":                         location.SurrogateIP,
+		"surrogateIPEnforcedForKnownBrowsers": location.SurrogateIPEnforcedForKnownBrowsers,
+		"xffForwardEnabled":                   location.XFFForwardEnabled,
+		"zappSslScanEnabled":                  location.ZappSSLScanEnabled,
+	} {
+		if value != nil {
+			fields[key] = *value
+		}
+	}
+	return resources.NewSourceRecord(fields)
 }
