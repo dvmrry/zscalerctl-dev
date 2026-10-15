@@ -87,7 +87,7 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 		Fields: []resources.FieldSpec{
 			{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
 			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 

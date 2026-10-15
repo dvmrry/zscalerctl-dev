@@ -258,11 +258,11 @@ func TestLoadProjectedByIDReturnsProjectedRedactedRecord(t *testing.T) {
 	spec.Fields = append(spec.Fields,
 		resources.FieldSpec{
 			Name:           "apiKey",
-			Classification: resources.ClassSecret,
+			Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 		},
 		resources.FieldSpec{
 			Name:           "password",
-			Classification: resources.ClassSecret,
+			Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 		},
 	)
 	reader := &fakeReader{

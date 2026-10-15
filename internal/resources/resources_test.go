@@ -1475,7 +1475,7 @@ func TestProjectRecordDropsContextSensitiveValueWhenClassifiedSecret(t *testing.
 			},
 			{
 				Name:           "value",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -1620,7 +1620,7 @@ func TestProjectRecordAllowsExplicitNestedSpecOnly(t *testing.T) {
 					},
 					{
 						Name:           "preSharedKey",
-						Classification: resources.ClassSecret,
+						Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 					},
 				},
 			},
@@ -1673,7 +1673,7 @@ func TestProjectRecordQuarantinesUnsupportedNestedSourceValues(t *testing.T) {
 				},
 				{
 					Name:           "preSharedKey",
-					Classification: resources.ClassSecret,
+					Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 				},
 				{
 					Name:           "validationInfo",
@@ -1849,8 +1849,8 @@ func TestResourceSpecValidationRejectsSecretAllowedMode(t *testing.T) {
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{{
 			Name:           "client_secret",
-			Classification: resources.ClassSecret,
-			AllowedModes:   []redact.Mode{redact.ModeStandard},
+			Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
+			AllowedModes: []redact.Mode{redact.ModeStandard},
 		}},
 	}
 	err := spec.Validate()
@@ -1896,7 +1896,7 @@ func TestResourceSpecValidationAllowsSensitiveNameAsSecret(t *testing.T) {
 			testIDField(),
 			{
 				Name:           "token",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -2224,7 +2224,7 @@ func narrowingSpec() resources.ResourceSpec {
 			{Name: "country", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
 			{Name: "authRequired", Classification: resources.ClassOperational, AllowedModes: allTestModes()},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }
@@ -2279,7 +2279,7 @@ func verifiedProjectedFieldsSpec() resources.ResourceSpec {
 			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
 			{Name: "ipAddresses", Classification: resources.ClassOperational, AllowedModes: allModes},
 			{Name: "standardOnly", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard}},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }
@@ -2408,7 +2408,7 @@ func testSpec() resources.ResourceSpec {
 			},
 			{
 				Name:           "client_secret",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}
@@ -2629,7 +2629,7 @@ func TestValidateNarrowOptionsInModeRejectsFiltersTheModeOmits(t *testing.T) {
 	t.Parallel()
 
 	spec := nestedNarrowingSpec()
-	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	for _, tc := range []struct {
 		mode   redact.Mode
 		field  string
@@ -2674,7 +2674,7 @@ func TestOmittedFields(t *testing.T) {
 	t.Parallel()
 
 	spec := nestedNarrowingSpec()
-	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret})
+	spec.Fields = append(spec.Fields, resources.FieldSpec{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	omitted, secret := resources.OmittedFields(spec, redact.ModeParanoid, nil)
 	if !slices.Equal(omitted, []string{"groups"}) || secret != nil {
 		t.Errorf("OmittedFields(paranoid) = %v, %v; want [groups], nil (secret fields never listed unrequested)", omitted, secret)
@@ -2731,11 +2731,11 @@ func TestSuppressedFieldErrorDistinguishesSecretFromNeverRendered(t *testing.T) 
 func TestFieldSpecJSONAlwaysStatesAllowedModes(t *testing.T) {
 	t.Parallel()
 
-	secret, err := json.Marshal(resources.FieldSpec{Name: "preSharedKey", Classification: resources.ClassSecret})
+	secret, err := json.Marshal(resources.FieldSpec{Name: "preSharedKey", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"name":"preSharedKey","classification":"secret","allowed_modes":[]}`; string(secret) != want {
+	if want := `{"name":"preSharedKey","classification":"secret","allowed_modes":[],"secret_reason":"credential"}`; string(secret) != want {
 		t.Errorf("secret FieldSpec JSON = %s, want %s", secret, want)
 	}
 	shown, err := json.Marshal(resources.FieldSpec{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}})

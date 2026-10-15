@@ -30,14 +30,8 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:           []redact.Mode{redact.ModeStandard},
 					StandardFreeTextReason: standardFreeTextReason("ZIA location description"),
 				},
-				{
-					Name:           "preSharedKey",
-					Classification: ClassSecret,
-				},
-				{
-					Name:           "vpnCredentials",
-					Classification: ClassSecret,
-				},
+				credentialField("preSharedKey"),
+				credentialField("vpnCredentials"),
 				operationalField("parentId", standardShareModes()),
 				sensitiveIdentifierField("country"),
 				sensitiveIdentifierField("state"),
@@ -526,10 +520,7 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("staticLocationGroups", standardOnlyMode()),
 				idNameExtensionsField("virtualZenClusters", standardOnlyMode()),
 				idNameExtensionsField("virtualZens", standardOnlyMode()),
-				{
-					Name:           "vpnCredentials",
-					Classification: ClassSecret,
-				},
+				credentialField("vpnCredentials"),
 			},
 		},
 		{

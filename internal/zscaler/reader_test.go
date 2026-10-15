@@ -5266,6 +5266,8 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 			t.Errorf("projected application-segment serverGroups[0] includes %s, want reference only", field)
 		}
 	}
+	// Link ids, settings and structure render: they were catch-all secrets,
+	// and secret now means credential material only.
 	for _, field := range []string{
 		"modifiedBy",
 		"segmentGroupId",
@@ -5278,12 +5280,14 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 		"tcpPortRange",
 		"udpPortRange",
 	} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected application-segment includes %s, want dropped", field)
+		if _, ok := got[field]; !ok {
+			t.Errorf("projected application-segment omits %s, want it rendered in standard mode", field)
 		}
 	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected application-segment = %v, want nested canary absent", got)
+	// Server group references stay {id, name}: the servers and connector
+	// groups nested inside them are not modeled and never render.
+	if strings.Contains(fmt.Sprint(got["serverGroups"]), nestedCanary) {
+		t.Errorf("projected application-segment serverGroups = %v, want nested servers/connector groups absent", got["serverGroups"])
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected application-segment standard) error = %v, want nil", err)
@@ -5291,10 +5295,6 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa application-segments) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "clientlessApps")
-	assertReportContains(t, reports[0].DroppedFields, "sharedMicrotenantDetails")
-	assertReportContains(t, reports[0].DroppedFields, "tags")
-	assertReportContains(t, reports[0].DroppedFields, "zpnErId")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 
 	shareGot := projectApplicationSegmentMode(t, spec, records, redact.ModeShare)
@@ -5316,6 +5316,14 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 	}
 	if shareGot["name"] != "Payroll application" {
 		t.Errorf("share-mode projected application-segment name = %v, want Payroll application", shareGot["name"])
+	}
+	// A clientless app's domain stays standard-only, like domainNames.
+	shareApp := mustProjectedList(t, shareGot, "clientlessApps")[0].(map[string]any)
+	if _, ok := shareApp["domain"]; ok {
+		t.Errorf("share-mode projected clientlessApps[0] = %v, want domain dropped", shareApp)
+	}
+	if _, ok := shareGot["tcpPortRange"]; ok {
+		t.Error("share-mode projected application-segment includes tcpPortRange, want dropped like tcpPortRanges")
 	}
 	shareServerGroup := mustProjectedList(t, shareGot, "serverGroups")[0].(map[string]any)
 	if shareServerGroup["name"] != "Payroll servers" {

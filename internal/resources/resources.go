@@ -68,6 +68,38 @@ type FieldSpec struct {
 	References             []ResourceRef `json:"references,omitempty"`
 	SensitiveNameReason    string        `json:"sensitive_name_reason,omitempty"`
 	StandardFreeTextReason string        `json:"standard_free_text_reason,omitempty"`
+	// SecretReason says why a secret field never renders. It is required on
+	// every secret field and forbidden elsewhere: secret means credential
+	// material, not "unreviewed" or "might be sensitive", so that link ids,
+	// settings and structure stay readable.
+	SecretReason SecretReason `json:"secret_reason,omitempty"`
+}
+
+// SecretReason is the closed set of reasons a field is secret.
+type SecretReason string
+
+const (
+	// SecretCredential: a password, pre-shared key, client secret or other
+	// value that authenticates as someone.
+	SecretCredential SecretReason = "credential"
+	// SecretToken: an access, session, policy or one-time token or passcode.
+	SecretToken SecretReason = "token"
+	// SecretKeyMaterial: private key or certificate key material.
+	SecretKeyMaterial SecretReason = "key_material"
+	// SecretOpaqueBlob: an encoded configuration blob that can embed any of
+	// the above and cannot be inspected field by field.
+	SecretOpaqueBlob SecretReason = "opaque_blob"
+	// SecretUnstructured: a free-form key/value map (such as "extensions")
+	// whose keys and values are not modeled, so nothing in it can be cleared.
+	SecretUnstructured SecretReason = "unstructured"
+)
+
+func validSecretReason(reason SecretReason) bool {
+	switch reason {
+	case SecretCredential, SecretToken, SecretKeyMaterial, SecretOpaqueBlob, SecretUnstructured:
+		return true
+	}
+	return false
 }
 
 type FieldClassification string
@@ -1584,6 +1616,12 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		if field.Classification == ClassSecret && len(field.AllowedModes) != 0 {
 			return fmt.Errorf("%w: %s/%s secret field %s cannot be allowed", ErrInvalidResourceSpec, product, resource, path)
 		}
+		if field.Classification == ClassSecret && !validSecretReason(field.SecretReason) {
+			return fmt.Errorf("%w: %s/%s secret field %s needs a SecretReason (credential, token, key_material, opaque_blob or unstructured)", ErrInvalidResourceSpec, product, resource, path)
+		}
+		if field.Classification != ClassSecret && field.SecretReason != "" {
+			return fmt.Errorf("%w: %s/%s field %s has a SecretReason but is not secret", ErrInvalidResourceSpec, product, resource, path)
+		}
 		if field.Classification != ClassSecret && len(field.AllowedModes) == 0 {
 			return fmt.Errorf("%w: %s/%s field %s has no allowed modes", ErrInvalidResourceSpec, product, resource, path)
 		}
@@ -1692,11 +1730,25 @@ func freeTextField(name string, subject string) FieldSpec {
 	}
 }
 
-func secretField(name string) FieldSpec {
-	return FieldSpec{
-		Name:           name,
-		Classification: ClassSecret,
-	}
+// Secret fields: credential material only, each with its reason.
+func credentialField(name string) FieldSpec  { return secretWithReason(name, SecretCredential) }
+func tokenField(name string) FieldSpec       { return secretWithReason(name, SecretToken) }
+func keyMaterialField(name string) FieldSpec { return secretWithReason(name, SecretKeyMaterial) }
+func opaqueBlobField(name string) FieldSpec  { return secretWithReason(name, SecretOpaqueBlob) }
+func unstructuredField(name string) FieldSpec {
+	return secretWithReason(name, SecretUnstructured)
+}
+
+func secretWithReason(name string, reason SecretReason) FieldSpec {
+	return FieldSpec{Name: name, Classification: ClassSecret, SecretReason: reason}
+}
+
+// namedOperationalField is an operational field whose name looks sensitive
+// (passwordExpiry, provisioningKeyId) but whose value is not: reason says why.
+func namedOperationalField(name string, allowed []redact.Mode, reason string) FieldSpec {
+	field := operationalField(name, allowed)
+	field.SensitiveNameReason = reason
+	return field
 }
 
 func idNameExtensionsField(name string, allowed []redact.Mode) FieldSpec {
@@ -1720,7 +1772,7 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			secretField("parent"),
+			idNameRefField("parent"),
 		},
 	}
 }
@@ -1781,6 +1833,34 @@ func networkPortsField(name string, allowed []redact.Mode) FieldSpec {
 	}
 }
 
+// portRangeListField is a list of {from, to} port ranges. Ports render in
+// standard mode only, like the flat tcpPortRanges/udpPortRanges beside them.
+func portRangeListField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   standardOnlyMode(),
+		Fields: []FieldSpec{
+			operationalField("from", standardOnlyMode()),
+			operationalField("to", standardOnlyMode()),
+		},
+	}
+}
+
+// idNameRefField is an {id, name} reference: the id renders in every mode
+// (ids are fine to share), the name in standard and share.
+func idNameRefField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			tenantConfigField("name", standardShareModes()),
+		},
+	}
+}
+
 func ipv6PrefixFields(descriptionReason string) []FieldSpec {
 	return []FieldSpec{
 		operationalField("id", allModes()),
@@ -1820,14 +1900,6 @@ func sensitiveIdentifierFields(names ...string) []FieldSpec {
 	fields := make([]FieldSpec, 0, len(names))
 	for _, name := range names {
 		fields = append(fields, sensitiveIdentifierField(name))
-	}
-	return fields
-}
-
-func secretFields(names ...string) []FieldSpec {
-	fields := make([]FieldSpec, 0, len(names))
-	for _, name := range names {
-		fields = append(fields, secretField(name))
 	}
 	return fields
 }

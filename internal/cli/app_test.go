@@ -3333,7 +3333,7 @@ func filterWarningCatalog() resources.ResourceCatalog {
 			},
 			{
 				Name:           "internalToken",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}}
