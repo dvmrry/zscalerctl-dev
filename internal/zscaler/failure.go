@@ -64,6 +64,8 @@ func classifyFailure(err error, status int) (reason string, retryable bool) {
 		return FailureNotSubscribed, false
 	case errors.As(err, &syntaxErr), errors.As(err, &typeErr):
 		return FailureDecodeFailed, false
+	case sessionRetriesExhausted(err):
+		return FailureForbidden, false
 	case permanentTransportFailure(err):
 		return FailureTransport, false
 	case errors.As(err, &netErr) && netErr.Timeout():
@@ -95,4 +97,13 @@ func permanentTransportFailure(err error) bool {
 	text := err.Error()
 	return strings.Contains(text, "stopped after") && strings.Contains(text, "redirects") ||
 		strings.Contains(text, "Proxy Authentication Required")
+}
+
+// sessionRetriesExhausted reports the SDK's give-up after a 401 or 403 that
+// stayed session-invalid ("Resource Access Blocked") through every token
+// refresh. The SDK returns it as a plain error without the response, so no
+// status survives; the refreshed token was accepted and the request still
+// refused, which is an access verdict, as the 403 classified before.
+func sessionRetriesExhausted(err error) bool {
+	return strings.Contains(err.Error(), "max SESSION_NOT_VALID retries exceeded")
 }
