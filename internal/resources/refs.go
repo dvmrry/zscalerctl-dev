@@ -292,8 +292,18 @@ func recordPathValues(record ProjectedRecord, path string) []any {
 }
 
 // refIDKey normalizes an id so 123, 123.0, json.Number("123") and "123"
-// compare equal; reference fields and target ids differ in wire type.
+// compare equal; reference fields and target ids differ in wire type. Zero
+// is the APIs' unset value (a top-level location's parentId is 0), not an
+// id, so it is never compared.
 func refIDKey(value any) (string, bool) {
+	key, ok := refIDKeyOf(value)
+	if !ok || key == "0" {
+		return "", false
+	}
+	return key, true
+}
+
+func refIDKeyOf(value any) (string, bool) {
 	switch v := value.(type) {
 	case string:
 		v = strings.TrimSpace(v)

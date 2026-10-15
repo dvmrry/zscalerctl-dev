@@ -1672,9 +1672,13 @@ func cloudAppControlInstancesSource(values []cloudappcontrol.CloudAppInstances) 
 	return out
 }
 
-// ziaLiteLocation is one /locations/lite object. The SDK has no model for
-// the endpoint; the fields are the keys it returns. Booleans are pointers so
-// a key the API omits stays absent rather than reading as false.
+// ziaLiteLocation is one /locations/lite object, modeled on the keys a live
+// read returned. The SDK's locationlite.LocationLite is not used: its plain
+// booleans would turn omitted keys into false, and it lacks keys the API
+// returns (ecLocation, digestAuthEnabled, kerberosAuth, iotDiscoveryEnabled).
+// Keys it has that no live read returned (ipv6Enabled, other6SubLocation,
+// subLocScope*, subLocAccIds) are not read. Booleans are pointers so a key
+// the API omits stays absent.
 type ziaLiteLocation struct {
 	ID                                  int64  `json:"id"`
 	Name                                string `json:"name,omitempty"`

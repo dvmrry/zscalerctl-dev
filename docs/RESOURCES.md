@@ -285,7 +285,10 @@ Fields:
 | `aupEnabled`, `aupBlockInternetUntilAccepted`, `aupForceSslInspection`, `cautionEnabled`, `digestAuthEnabled`, `kerberosAuth`, `surrogateIP`, `surrogateIPEnforcedForKnownBrowsers`, `xffForwardEnabled`, `ofwEnabled`, `ipsControl`, `iotDiscoveryEnabled`, `zappSslScanEnabled` | Tenant configuration | `standard`, `share` | Location settings, classified as on `zia locations`. |
 
 `GET /locations/lite` is a short view, not a superset of `zia locations`: on a
-test tenant it returned 3 records, one of them a regular location. Rule
+test tenant it returned 3 records, one of them a regular location. The fields
+are the keys a live read returned; keys the SDK model lists but no live read
+returned (`ipv6Enabled`, `other6SubLocation`, `subLocScope*`, `subLocAccIds`)
+are not read. Rule
 `locations` references list it as a target beside `zia locations` and
 `zia sublocations`, so `refs` resolves predefined location ids.
 
