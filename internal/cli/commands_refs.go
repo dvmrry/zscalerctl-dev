@@ -162,7 +162,7 @@ func refsFailure(err error) string {
 
 func renderRefsTo(doc resources.RefsTo) output.SafeText {
 	var body strings.Builder
-	fmt.Fprintf(&body, "%s: %d reference fields checked, %d records reference the id.\n", doc.Target, doc.SitesChecked, len(doc.ReferencedBy))
+	fmt.Fprintf(&body, "%s: %d reference fields checked, %d references to the id found.\n", doc.Target, doc.SitesChecked, len(doc.ReferencedBy))
 	for _, hit := range doc.ReferencedBy {
 		fmt.Fprintf(&body, "%s %s\t%s\t%s\n", hit.Product, hit.Resource, hit.Field, refsRecordText(hit.Record))
 	}
