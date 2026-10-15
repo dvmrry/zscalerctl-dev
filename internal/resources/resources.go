@@ -58,8 +58,11 @@ type FieldSpec struct {
 	Name           string              `json:"name"`
 	JSONName       string              `json:"json_name,omitempty"`
 	Classification FieldClassification `json:"classification"`
-	AllowedModes   []redact.Mode       `json:"allowed_modes,omitempty"`
-	Fields         []FieldSpec         `json:"fields,omitempty"`
+	// AllowedModes lists the modes that render the field. It is always
+	// emitted: a secret field renders in no mode and shows [], so a reader
+	// never mistakes a missing key for "unstated".
+	AllowedModes []redact.Mode `json:"allowed_modes"`
+	Fields       []FieldSpec   `json:"fields,omitempty"`
 	// References names the catalog resources this field's id may belong to
 	// (usually one); see fieldReferences in references.go.
 	References             []ResourceRef `json:"references,omitempty"`
@@ -89,6 +92,15 @@ const (
 
 func standardFreeTextReason(subject string) string {
 	return subject + "; " + standardFreeTextControls
+}
+
+// MarshalJSON writes a nil AllowedModes as [] rather than null.
+func (f FieldSpec) MarshalJSON() ([]byte, error) {
+	type plain FieldSpec
+	if f.AllowedModes == nil {
+		f.AllowedModes = []redact.Mode{}
+	}
+	return json.Marshal(plain(f))
 }
 
 func (f FieldSpec) JSONField() string {

@@ -2724,3 +2724,25 @@ func TestSuppressedFieldErrorDistinguishesSecretFromNeverRendered(t *testing.T) 
 		t.Errorf("never-rendered error = %q, want no secret claim", never.Error())
 	}
 }
+
+// TestFieldSpecJSONAlwaysStatesAllowedModes pins that a secret field shows
+// "allowed_modes": [] rather than omitting the key, so a reader of
+// `schema list` never mistakes "renders in no mode" for "not stated".
+func TestFieldSpecJSONAlwaysStatesAllowedModes(t *testing.T) {
+	t.Parallel()
+
+	secret, err := json.Marshal(resources.FieldSpec{Name: "preSharedKey", Classification: resources.ClassSecret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"name":"preSharedKey","classification":"secret","allowed_modes":[]}`; string(secret) != want {
+		t.Errorf("secret FieldSpec JSON = %s, want %s", secret, want)
+	}
+	shown, err := json.Marshal(resources.FieldSpec{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(shown), `"allowed_modes":["standard"]`) {
+		t.Errorf("FieldSpec JSON = %s, want allowed_modes [standard]", shown)
+	}
+}
