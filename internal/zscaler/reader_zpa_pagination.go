@@ -39,7 +39,7 @@ type zpaPageEnvelope[T any] struct {
 func parseZPATotalPages(raw json.RawMessage) (int, error) {
 	value := strings.TrimSpace(string(raw))
 	if value == "" || value == "null" {
-		return 0, fmt.Errorf("zpa pagination response is missing totalPages")
+		return 0, fmt.Errorf("%w: zpa pagination response is missing totalPages", errPaginationValidation)
 	}
 	if strings.HasPrefix(value, `"`) {
 		var quoted string
@@ -67,7 +67,7 @@ func parseZPATotalPages(raw json.RawMessage) (int, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("zpa pagination response has invalid totalPages")
+	return 0, fmt.Errorf("%w: zpa pagination response has invalid totalPages", errPaginationValidation)
 }
 
 // zpaPaginate follows the page count declared by the first response and fails
@@ -88,7 +88,8 @@ func zpaPaginate[T any](
 	for pageNumber := 1; ; pageNumber++ {
 		if pageNumber > zpaMaxPages {
 			return nil, lastResponse, fmt.Errorf(
-				"zpa pagination exceeded the ceiling of %d pages (%d records)",
+				"%w: zpa pagination exceeded the ceiling of %d pages (%d records)",
+				errPaginationValidation,
 				zpaMaxPages,
 				len(all),
 			)
@@ -104,7 +105,8 @@ func zpaPaginate[T any](
 			expectedPages = page.totalPages
 			if expectedPages > zpaMaxPages {
 				return nil, lastResponse, fmt.Errorf(
-					"zpa pagination declared %d pages, exceeding the ceiling of %d",
+					"%w: zpa pagination declared %d pages, exceeding the ceiling of %d",
+					errPaginationValidation,
 					expectedPages,
 					zpaMaxPages,
 				)
@@ -112,7 +114,8 @@ func zpaPaginate[T any](
 			if expectedPages == 0 {
 				if len(page.records) != 0 {
 					return nil, lastResponse, fmt.Errorf(
-						"zpa pagination declared zero pages but returned %d records",
+						"%w: zpa pagination declared zero pages but returned %d records",
+						errPaginationValidation,
 						len(page.records),
 					)
 				}
@@ -120,7 +123,8 @@ func zpaPaginate[T any](
 			}
 		} else if page.totalPages != expectedPages {
 			return nil, lastResponse, fmt.Errorf(
-				"zpa pagination totalPages changed from %d to %d on page %d",
+				"%w: zpa pagination totalPages changed from %d to %d on page %d",
+				errPaginationValidation,
 				expectedPages,
 				page.totalPages,
 				pageNumber,
@@ -129,7 +133,8 @@ func zpaPaginate[T any](
 
 		if len(page.records) == 0 && expectedPages > 1 {
 			return nil, lastResponse, fmt.Errorf(
-				"zpa pagination returned an empty page %d of %d",
+				"%w: zpa pagination returned an empty page %d of %d",
+				errPaginationValidation,
 				pageNumber,
 				expectedPages,
 			)
@@ -146,7 +151,8 @@ func zpaPaginate[T any](
 		}
 		if _, seen := pageFingerprints[fingerprint]; seen {
 			return nil, lastResponse, fmt.Errorf(
-				"zpa pagination repeated page content at page %d while %d pages were declared",
+				"%w: zpa pagination repeated page content at page %d while %d pages were declared",
+				errPaginationValidation,
 				pageNumber,
 				expectedPages,
 			)

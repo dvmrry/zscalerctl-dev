@@ -44,7 +44,8 @@ func ztwPaginate[T any](
 	for page := 1; ; page++ {
 		if page > ztwMaxPages {
 			return nil, fmt.Errorf(
-				"ztw pagination exceeded the ceiling of %d pages (%d records)",
+				"%w: ztw pagination exceeded the ceiling of %d pages (%d records)",
+				errPaginationValidation,
 				ztwMaxPages,
 				len(all),
 			)

@@ -590,7 +590,7 @@ func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]n
 	// possibly-incomplete list as complete — silent truncation is worse than a
 	// visible error for an audit/diff tool.
 	if len(applications) >= pageCeiling {
-		return nil, fmt.Errorf("zia network-applications returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", pageCeiling)
+		return nil, fmt.Errorf("%w: zia network-applications returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", errPaginationValidation, pageCeiling)
 	}
 	return applications, nil
 }

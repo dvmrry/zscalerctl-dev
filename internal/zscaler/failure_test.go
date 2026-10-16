@@ -44,7 +44,7 @@ func TestNormalizeLiveErrorClassifiesFailures(t *testing.T) {
 		{"429", sdkStatus(http.StatusTooManyRequests), FailureRateLimited, 429, true},
 		{"503", sdkStatus(http.StatusServiceUnavailable), FailureServerError, 503, true},
 		{"409", sdkStatus(http.StatusConflict), FailureClientError, 409, false},
-		{"pagination", fmt.Errorf("%w: repeated page content", errZiaPaginationValidation), FailurePaginationIncomplete, 0, false},
+		{"pagination", fmt.Errorf("%w: repeated page content", errPaginationValidation), FailurePaginationIncomplete, 0, false},
 		{"not subscribed", normalizeZIABrowserIsolationListError(&sdkerrorx.ErrorResponse{
 			Response: &http.Response{StatusCode: http.StatusForbidden, Status: "Forbidden", Request: httptestRequest()},
 			Message:  "Cloud Browser Isolation subscription is required",
@@ -129,5 +129,46 @@ func TestPermanentTransportFailureMatchesRealNetHTTPErrors(t *testing.T) {
 	}
 	if reason, retryable := classifyFailure(err, 0); reason != FailureTransport || retryable {
 		t.Errorf("classifyFailure(proxy 407) = (%q, %v), want (transport, false)", reason, retryable)
+	}
+}
+
+// TestEveryPageWalkerGuardClassifiesAsPaginationIncomplete pins that a list
+// a page walker refuses reports pagination_incomplete for every product, not
+// only ZIA; a plain error there reads as "unknown".
+func TestEveryPageWalkerGuardClassifiesAsPaginationIncomplete(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	_, zccErr := zccPaginate(ctx, func(context.Context, int, int) ([]int, error) {
+		return make([]int, zccPageSize), nil
+	})
+	_, _, zpaErr := zpaPaginate(ctx, func(_ context.Context, pageNumber, _ int) (zpaPage[int], error) {
+		return zpaPage[int]{records: []int{pageNumber}, totalPages: 2 + pageNumber}, nil
+	})
+	_, zidentityErr := readAllZidentityPages(ctx, func(_ context.Context, offset, _ int) (zidentityPage[int], error) {
+		return zidentityPage[int]{records: []int{1}, resultsTotal: 5, pageOffset: offset + 1}, nil
+	})
+	_, zpaMetadataErr := parseZPATotalPages(nil)
+	_, ztwErr := ztwPaginate(ctx, func(context.Context, int) ([]int, error) {
+		return make([]int, ztwPageSize), nil
+	})
+	_, zccTotalErr := zccPaginateWithTotalCount(ctx, func(_ context.Context, page, _ int) ([]int, int, error) {
+		return []int{page}, 10 + page, nil
+	})
+	for name, err := range map[string]error{
+		"ztw ceiling":            ztwErr,
+		"zcc totalCount changed": zccTotalErr,
+		"zcc ceiling":            zccErr,
+		"zpa totalPages changed": zpaErr,
+		"zpa missing totalPages": zpaMetadataErr,
+		"zidentity offset":       zidentityErr,
+	} {
+		if err == nil {
+			t.Errorf("%s: error = nil, want a pagination guard error", name)
+			continue
+		}
+		if reason, retryable := classifyFailure(err, 0); reason != FailurePaginationIncomplete || retryable {
+			t.Errorf("%s: classifyFailure(%v) = %s, %v; want %s, false", name, err, reason, retryable, FailurePaginationIncomplete)
+		}
 	}
 }
