@@ -71,7 +71,7 @@ var globalFlagDefs = []globalFlagDef{
 		name:       "fields",
 		kind:       "string",
 		defaultVal: "",
-		usage:      "comma-separated output fields to keep (narrows the sanitized output)",
+		usage:      "comma-separated output fields to keep; a dotted path such as groups.id keeps only that key of each nested value (narrows the sanitized output)",
 	},
 	{
 		// filter is repeatable: stringArray in pflag, repeatableFlag Var in stdlib.

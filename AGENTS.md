@@ -241,7 +241,10 @@ environment, provider choice, and platform are reviewed and pinned.
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
   `7` drift detected when `diff --fail-on-drift` is used.
 - Narrow resource `list`, `get`, and `show` output with
-  `--fields a,b,c` (can only narrow, never widen). For a JSON resource
+  `--fields a,b,c` (can only narrow, never widen). A dotted path such as
+  `--fields name,groups.id` keeps the nested shape with only that key:
+  `"groups":[{"id":1},{"id":2}]`, one entry per element; a table gets one
+  `groups.id` column. For a JSON resource
   `list`, `--limit N` emits a bounded `records`/`pagination` page and
   requires positive N; `--offset K` is nonnegative and requires `--limit`.
   These flags are list-only, JSON-only output views over a complete collected

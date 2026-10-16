@@ -12,7 +12,7 @@ These flags are accepted by every command:
 | `--color` | `string` | `auto` | color output: auto, always, never |
 | `--config` | `string` | `—` | config file path |
 | `--count-by` | `string` | `—` | count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element |
-| `--fields` | `string` | `—` | comma-separated output fields to keep (narrows the sanitized output) |
+| `--fields` | `string` | `—` | comma-separated output fields to keep; a dotted path such as groups.id keeps only that key of each nested value (narrows the sanitized output) |
 | `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match |
 | `--format` | `string` | `auto` | output format: auto, table, json, ndjson, pretty |
 | `--from-dump` | `string` | `—` | read resource data from a saved sanitized dump directory |
