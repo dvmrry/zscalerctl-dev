@@ -125,9 +125,11 @@ OneAPI credential set without an extra product customer ID.
 run on. Tenants on zscalertwo, zscalerthree, ZPATWO and the other ZIA and ZPA
 product clouds authenticate and read every product through the production
 gateway, so they use `PRODUCTION`. The accepted values (any case) are
-`PRODUCTION` (the default when unset), `BETA`, `GOV` and `GOVUS`; any other
-value is rejected before the client secret is resolved, because the SDK
-would derive the token host from it and no such host exists.
+`PRODUCTION` (the default when unset), `ALPHA`, `BETA`, `GOV` and `GOVUS`.
+Any other value is rejected before the client secret is resolved, because the
+SDK would derive the token host that receives it from the value; for product
+cloud names no such host exists. `auth status` and `doctor` report it as
+`invalid cloud`.
 
 Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported.
 Since SDK v3.8.49 Zidentity is served through the OneAPI gateway under

@@ -390,6 +390,7 @@ func TestOneAPICloud(t *testing.T) {
 		{cloud: "", want: ""},
 		{cloud: "PRODUCTION", want: "PRODUCTION"},
 		{cloud: " production ", want: "PRODUCTION"},
+		{cloud: "alpha", want: "ALPHA"},
 		{cloud: "beta", want: "BETA"},
 		{cloud: "Gov", want: "GOV"},
 		{cloud: "GOVUS", want: "GOVUS"},
@@ -429,7 +430,10 @@ func TestNewSDKConfigurationRoutesToGatewayHosts(t *testing.T) {
 	for cloud, want := range map[string][]string{
 		"":           {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
 		"production": {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
+		"alpha":      {"zscalerctl-vanity.zsloginalpha.net oauth2", "api.alpha.zsapi.net zpa", "api.alpha.zsapi.net ziam"},
 		"beta":       {"zscalerctl-vanity.zsloginbeta.net oauth2", "api.beta.zsapi.net zpa", "api.beta.zsapi.net ziam"},
+		"gov":        {"zscalerctl-vanity.zidentitygov.net oauth2", "api.zscalergov.net zpa", "api.zscalergov.net ziam"},
+		"govus":      {"zscalerctl-vanity.zidentitygov.us oauth2", "api.zscalergov.us zpa", "api.zscalergov.us ziam"},
 	} {
 		cfg := validReaderConfig()
 		cfg.Cloud = cloud

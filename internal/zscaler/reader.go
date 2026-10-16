@@ -1344,15 +1344,17 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
-// oneAPIClouds are the OneAPI clouds with a real gateway. The OneAPI cloud
-// names the API gateway, not the cloud a tenant's products run on: tenants on
-// zscalertwo, zscalerthree, ZPATWO and the other product clouds all use
-// PRODUCTION. For any other value the SDK would derive the OAuth host (which
-// receives the client secret) and the API host from operator text, and
-// neither host exists, so the list is closed like legacy ZIA's.
+// oneAPIClouds are the supported OneAPI clouds, each with a token host and
+// API gateway that exist. The OneAPI cloud names the gateway, not the cloud a
+// tenant's products run on: tenants on zscalertwo, zscalerthree, ZPATWO and
+// the other product clouds all use PRODUCTION. For a product cloud name the
+// SDK would derive the OAuth host (which receives the client secret) and the
+// API host from operator text, and neither exists, so the list is closed like
+// legacy ZIA's.
 var oneAPIClouds = map[string]string{
 	"":           "",
 	"production": "PRODUCTION",
+	"alpha":      "ALPHA",
 	"beta":       "BETA",
 	"gov":        "GOV",
 	"govus":      "GOVUS",
@@ -1362,7 +1364,7 @@ var oneAPIClouds = map[string]string{
 // Callers can use it before resolving secret sources.
 func ValidateOneAPICloud(cloud string) error {
 	if _, ok := oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]; !ok {
-		return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be PRODUCTION, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION", ErrMissingCredentials)
+		return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION", ErrMissingCredentials)
 	}
 	return nil
 }

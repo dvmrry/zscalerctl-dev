@@ -323,6 +323,9 @@ func CredentialStatus(cfg config.Config) string {
 	switch cfg.EffectiveAuthMode() {
 	case config.AuthModeZIALegacy:
 		if cfg.ZIALegacy.Configured() {
+			if zscaler.ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud) != nil {
+				return "invalid cloud"
+			}
 			return "configured"
 		}
 		if cfg.ZIALegacy.AnySet() {
@@ -331,6 +334,9 @@ func CredentialStatus(cfg config.Config) string {
 		return "not configured"
 	default:
 		if cfg.Credentials.Configured(cfg.VanityDomain) {
+			if zscaler.ValidateOneAPICloud(cfg.Cloud) != nil {
+				return "invalid cloud"
+			}
 			return "configured"
 		}
 		if cfg.Credentials.AnySet() || cfg.VanityDomain != "" {
@@ -349,6 +355,12 @@ func LiveAPIStatus(cfg config.Config) string {
 			return "available for ZIA read-only commands; ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
 		}
 		return "available for read-only commands"
+	}
+	if CredentialStatus(cfg) == "invalid cloud" {
+		if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
+			return "unavailable: ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud"
+		}
+		return "unavailable: ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS (tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION)"
 	}
 	if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
 		return "requires ZSCALERCTL_ZIA_USERNAME, ZSCALERCTL_ZIA_PASSWORD, ZSCALERCTL_ZIA_API_KEY, and ZSCALERCTL_ZIA_CLOUD"

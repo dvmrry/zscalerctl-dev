@@ -129,8 +129,8 @@ export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id>   # optional, ZPA micr
 
 `ZSCALERCTL_CLOUD` names the OneAPI gateway, not the cloud your products run
 on: tenants on zscalertwo, zscalerthree, ZPATWO and the other product clouds
-use `PRODUCTION`. The accepted values are `PRODUCTION` (the default), `BETA`,
-`GOV` and `GOVUS`.
+use `PRODUCTION`. The accepted values are `PRODUCTION` (the default),
+`ALPHA`, `BETA`, `GOV` and `GOVUS`.
 
 ZIA legacy credentials are supported for ZIA resources. Legacy, profile, proxy, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Environment variables remain the highest-precedence configuration path; optional owner-only profiles are for local operator convenience. Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
 

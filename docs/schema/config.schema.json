@@ -35,7 +35,7 @@
         },
         "cloud": {
           "type": "string",
-          "description": "OneAPI gateway: `PRODUCTION` (default), `BETA`, `GOV` or `GOVUS`, any case. Tenants on product clouds such as zscalertwo, zscalerthree or ZPATWO use `PRODUCTION`. Overridden by `ZSCALERCTL_CLOUD`."
+          "description": "OneAPI gateway: `PRODUCTION` (default), `ALPHA`, `BETA`, `GOV` or `GOVUS`, any case. Tenants on product clouds such as zscalertwo, zscalerthree or ZPATWO use `PRODUCTION`. Overridden by `ZSCALERCTL_CLOUD`."
         },
         "client_id": {
           "type": "string",

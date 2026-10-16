@@ -169,7 +169,7 @@ wherever the SDK closes the gap.
 | ZPA list pagination (`zpaPaginate`) | ZPA lists | The SDK treats a missing or malformed `totalPages` as zero, re-reads the bound from every page, and has no ceiling. The walker follows the first declared page count and fails closed on contradiction. |
 | `ziaLiteLocation` | `zia locations-lite` | `locationlite.LocationLite` uses plain booleans (omitted keys read as false) and lacks keys the API returns. |
 | `adminAuditLogsStatusResponse` | `zia admin-audit-logs status` | `AuditLogEntryReportTaskInfo` reads a null progress count as 0 and decodes the free-form `errorMessage`, which is never shown. |
-| `oneAPIClouds` | `ZSCALERCTL_CLOUD` | The SDK builds the OAuth host (which receives the client secret) and the API host from any cloud string. Only `PRODUCTION`, `BETA`, `GOV` and `GOVUS` have gateways; product cloud names (zscalertwo, ZPATWO, ...) build hosts that do not exist. The reader accepts only those four. |
+| `oneAPIClouds` | `ZSCALERCTL_CLOUD` | The SDK builds the OAuth host (which receives the client secret) and the API host from any cloud string. Product cloud names (zscalertwo, ZPATWO, ...) build hosts that do not exist. The reader accepts only the supported OneAPI clouds: `PRODUCTION`, `ALPHA`, `BETA`, `GOV` and `GOVUS`. |
 
 `URLClassification` (`zia url-lookup`) is not a departure: the call is
 `urlcategories.GetURLLookup`, copied into an adapter-owned output view.
