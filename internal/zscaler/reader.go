@@ -1140,16 +1140,14 @@ func (s fixedService) service(ctx context.Context, product resources.Product) (*
 // unsupportedOneAPIZidentityCloud keeps the OneAPI Zidentity admin path
 // fail-closed where its gateway is unverified. Since SDK v3.8.49 Zidentity is
 // served by the OneAPI gateway under /ziam/admin/api/v1. No government
-// gateway has been verified to serve that prefix, and for ZPATWO the SDK now
-// targets the ZPA-specific gateway (api.zpatwo.zsapi.net), where Zidentity
-// previously lived on the production identity host. Do not create a client
-// for these product/cloud pairs until the route is established.
+// gateway has been verified to serve that prefix. Do not create a client for
+// these product/cloud pairs until the route is established.
 func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product) error {
 	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI || product != resources.ProductZidentity {
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.Cloud)) {
-	case "gov", "govus", "zpatwo":
+	case "gov", "govus":
 		return fmt.Errorf(
 			"%w: %s is unsupported for OneAPI cloud %q",
 			ErrUnsupportedResource,
@@ -1219,13 +1217,9 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 		Timeout:   timeout,
 		Transport: transport,
 	}
-	authHTTPClient := &http.Client{
-		Timeout:   timeout,
-		Transport: oneAPIIdentityTransport(transport, cfg.VanityDomain, cfg.Cloud),
-	}
 	sdkCfg := &zsdk.Configuration{
 		Logger:        newSDKLogger(cfg.DiagLogger),
-		HTTPClient:    authHTTPClient,
+		HTTPClient:    httpClient,
 		ZIAHTTPClient: httpClient,
 		ZPAHTTPClient: httpClient,
 		ZTWHTTPClient: httpClient,
@@ -1239,7 +1233,7 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.ClientID = cfg.ClientID.Reveal()
 	sdkCfg.Zscaler.Client.ClientSecret = cfg.ClientSecret.Reveal()
 	sdkCfg.Zscaler.Client.VanityDomain = cfg.VanityDomain
-	sdkCfg.Zscaler.Client.Cloud = cfg.Cloud
+	sdkCfg.Zscaler.Client.Cloud = oneAPICloud(cfg.Cloud)
 	sdkCfg.Zscaler.Client.CustomerID = strings.TrimSpace(cfg.ZPACustomerID)
 	sdkCfg.Zscaler.Client.MicrotenantID = strings.TrimSpace(cfg.ZPAMicrotenantID)
 	sdkCfg.Zscaler.Client.RequestTimeout = timeout
@@ -1350,46 +1344,17 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
-type zpaTwoIdentityTransport struct {
-	base             http.RoundTripper
-	invalidOAuthHost string
-	validOAuthHost   string
-}
-
-// oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
-// identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
-// OneAPI token endpoint remains on zslogin.net. (Zidentity admin calls go
-// through the OneAPI gateway since SDK v3.8.49 and need no rewrite.)
-func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
-	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
-		return base
+// oneAPICloud maps a configured cloud onto the OneAPI cloud the SDK builds
+// hosts from. ZPATWO names a ZPA service cloud, not a OneAPI one: the SDK
+// would build api.zpatwo.zsapi.net and zsloginzpatwo.net, neither of which
+// exists, while ZPATWO tenants authenticate and read ZPA and Zidentity through
+// the production OneAPI hosts.
+func oneAPICloud(cloud string) string {
+	cloud = strings.TrimSpace(cloud)
+	if strings.EqualFold(cloud, "ZPATWO") {
+		return "PRODUCTION"
 	}
-	vanityDomain = strings.TrimSpace(vanityDomain)
-	return &zpaTwoIdentityTransport{
-		base:             base,
-		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
-		validOAuthHost:   vanityDomain + ".zslogin.net",
-	}
-}
-
-// RoundTrip rewrites only invalid identity endpoints emitted by the SDK. All
-// product API requests and every other host or path pass through unchanged.
-func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request.URL.Scheme != "https" {
-		return t.base.RoundTrip(request)
-	}
-	validHost := ""
-	switch {
-	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
-		validHost = t.validOAuthHost
-	default:
-		return t.base.RoundTrip(request)
-	}
-	cloned := request.Clone(request.Context())
-	clonedURL := *request.URL
-	cloned.URL = &clonedURL
-	cloned.URL.Host = validHost
-	return t.base.RoundTrip(cloned)
+	return cloud
 }
 
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {

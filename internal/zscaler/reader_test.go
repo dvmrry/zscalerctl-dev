@@ -382,116 +382,40 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
-func TestNewSDKConfigurationZPATWOUsesProductionOAuthHost(t *testing.T) {
-	cfg := validReaderConfig()
-	cfg.Cloud = "ZPATWO"
-	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
-	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
-	}
-	var gotURL string
-	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		gotURL = request.URL.String()
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(`{"access_token":"test-token","expires_in":3600}`)),
-			Request:    request,
-		}, nil
-	})
-
-	if _, err := zsdk.Authenticate(context.Background(), sdkCfg, sdkCfg.Logger); err != nil {
-		t.Fatalf("Authenticate(ZPATWO) error = %v, want nil", err)
-	}
-	if want := "https://zscalerctl-vanity.zslogin.net/oauth2/v1/token"; gotURL != want {
-		t.Errorf("Authenticate(ZPATWO) URL = %q, want %q", gotURL, want)
-	}
-	if got := sdkCfg.Zscaler.Client.Cloud; got != "ZPATWO" {
-		t.Errorf("newSDKConfiguration(ZPATWO).Cloud = %q, want ZPATWO", got)
-	}
-	if _, ok := sdkCfg.ZPAHTTPClient.Transport.(*http.Transport); !ok {
-		t.Errorf("newSDKConfiguration(ZPATWO).ZPAHTTPClient.Transport = %T, want *http.Transport", sdkCfg.ZPAHTTPClient.Transport)
-	}
-}
-
-func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
+func TestOneAPICloud(t *testing.T) {
 	tests := []struct {
-		name    string
-		url     string
-		wantURL string
+		cloud string
+		want  string
 	}{
-		{
-			name:    "sdk token endpoint",
-			url:     "https://acme.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "https://acme.zslogin.net/oauth2/v1/token",
-		},
-		{
-			// Zidentity admin calls use the OneAPI gateway since SDK v3.8.49;
-			// the transport no longer rewrites the vanity admin host.
-			name:    "vanity admin host passes through",
-			url:     "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
-			wantURL: "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
-		},
-		{
-			name:    "non zidentity admin path",
-			url:     "https://acme-admin.zsloginzpatwo.net/other/users",
-			wantURL: "https://acme-admin.zsloginzpatwo.net/other/users",
-		},
-		{
-			name:    "different host",
-			url:     "https://other.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "https://other.zsloginzpatwo.net/oauth2/v1/token",
-		},
-		{
-			name:    "non TLS",
-			url:     "http://acme.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "http://acme.zsloginzpatwo.net/oauth2/v1/token",
-		},
+		{cloud: "ZPATWO", want: "PRODUCTION"},
+		{cloud: " zPaTwO ", want: "PRODUCTION"},
+		{cloud: "PRODUCTION", want: "PRODUCTION"},
+		{cloud: "", want: ""},
+		{cloud: "BETA", want: "BETA"},
+		{cloud: "GOVUS", want: "GOVUS"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var gotURL string
-			base := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				gotURL = request.URL.String()
-				return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: request}, nil
-			})
-			transport := oneAPIIdentityTransport(base, "acme", "ZPATWO")
-			request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, test.url, nil)
-			if err != nil {
-				t.Fatalf("http.NewRequestWithContext(%q) error = %v, want nil", test.url, err)
-			}
-			if _, err := transport.RoundTrip(request); err != nil {
-				t.Fatalf("RoundTrip(%q) error = %v, want nil", test.url, err)
-			}
-			if got := request.URL.String(); got != test.url {
-				t.Errorf("RoundTrip(%q) mutated original request URL to %q", test.url, got)
-			}
-			if gotURL != test.wantURL {
-				t.Errorf("RoundTrip(%q) URL = %q, want %q", test.url, gotURL, test.wantURL)
-			}
-		})
+		if got := oneAPICloud(test.cloud); got != test.want {
+			t.Errorf("oneAPICloud(%q) = %q, want %q", test.cloud, got, test.want)
+		}
 	}
 }
 
-// TestNewSDKConfigurationZPATWOZidentityRoute pins where the SDK sends a
-// Zidentity call on ZPATWO: the token on the production identity host (via
-// the transport rewrite), the admin call on the ZPA-specific gateway. That
-// gateway route is unverified, so the reader refuses Zidentity on ZPATWO
-// (unsupportedOneAPIZidentityCloud); a change here should revisit that.
-func TestNewSDKConfigurationZPATWOZidentityRoute(t *testing.T) {
+// TestNewSDKConfigurationZPATWORoutesToProductionHosts pins every OneAPI
+// request a ZPATWO tenant makes (token, ZPA, Zidentity) to the production
+// hosts. The SDK's own ZPATWO hosts (zsloginzpatwo.net, api.zpatwo.zsapi.net)
+// do not exist.
+func TestNewSDKConfigurationZPATWORoutesToProductionHosts(t *testing.T) {
 	cfg := validReaderConfig()
 	cfg.Cloud = "ZPATWO"
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
-	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
+	if got := sdkCfg.Zscaler.Client.Cloud; got != "PRODUCTION" {
+		t.Fatalf("newSDKConfiguration(ZPATWO).Cloud = %q, want PRODUCTION", got)
 	}
 	var gotURLs []string
-	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		gotURLs = append(gotURLs, request.URL.String())
-		body := `{"id":"user-1"}`
+		body := `{}`
 		if request.URL.Path == "/oauth2/v1/token" {
 			// Keep expiry within the SDK's one-minute renewal window so this
 			// routing test does not start its background renewal goroutine.
@@ -504,21 +428,35 @@ func TestNewSDKConfigurationZPATWOZidentityRoute(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZPAHTTPClient.Transport = transport
 
 	service, err := zsdk.NewOneAPIClient(sdkCfg)
 	if err != nil {
 		t.Fatalf("NewOneAPIClient(ZPATWO) error = %v, want nil", err)
 	}
 	t.Cleanup(service.Client.Close)
+	if _, _, err := zpaapplicationsegment.Get(context.Background(), service, "application-1"); err != nil {
+		t.Fatalf("zpaapplicationsegment.Get(ZPATWO) error = %v, want nil", err)
+	}
 	if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
 		t.Fatalf("zidusers.GetUser(ZPATWO) error = %v, want nil", err)
 	}
-	wantURLs := []string{
-		"https://zscalerctl-vanity.zslogin.net/oauth2/v1/token",
-		"https://api.zpatwo.zsapi.net/ziam/admin/api/v1/users/user-1",
+	var hosts []string
+	for _, raw := range gotURLs {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("url.Parse(%q) error = %v", raw, err)
+		}
+		hosts = append(hosts, u.Host+" "+strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 2)[0])
 	}
-	if !reflect.DeepEqual(gotURLs, wantURLs) {
-		t.Errorf("ZPATWO identity request URLs = %v, want %v", gotURLs, wantURLs)
+	want := []string{
+		"zscalerctl-vanity.zslogin.net oauth2",
+		"api.zsapi.net zpa",
+		"api.zsapi.net ziam",
+	}
+	if !reflect.DeepEqual(hosts, want) {
+		t.Errorf("ZPATWO request hosts = %v (URLs %v), want %v", hosts, gotURLs, want)
 	}
 }
 

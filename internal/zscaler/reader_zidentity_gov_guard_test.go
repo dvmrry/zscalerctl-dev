@@ -53,14 +53,13 @@ func TestUnsupportedOneAPIZidentityCloud(t *testing.T) {
 			product: resources.ProductZidentity,
 		},
 		{
-			name: "ZPATWO",
+			name: "ZPATWO uses the production gateway",
 			cfg: func() ReaderConfig {
 				cfg := validReaderConfig()
 				cfg.Cloud = "ZPATWO"
 				return cfg
 			}(),
 			product: resources.ProductZidentity,
-			wantErr: true,
 		},
 		{
 			name: "government ZIA remains supported",
@@ -114,7 +113,7 @@ func TestUnsupportedOneAPIZidentityCloud(t *testing.T) {
 func TestReaderUnsupportedZidentityCloudsRejectBeforeAuthentication(t *testing.T) {
 	t.Parallel()
 
-	for _, cloud := range []string{"GOVUS", "ZPATWO"} {
+	for _, cloud := range []string{"gov", "GOVUS"} {
 		cloud := cloud
 		t.Run(cloud, func(t *testing.T) {
 			t.Parallel()
@@ -189,7 +188,7 @@ func TestReaderUnsupportedZidentityCloudsRejectBeforeAuthentication(t *testing.T
 func TestFixedServiceUnsupportedZidentityCloudsRejectCrossProductSession(t *testing.T) {
 	t.Parallel()
 
-	for _, cloud := range []string{"gov", "zpatwo"} {
+	for _, cloud := range []string{"gov", "govus"} {
 		cloud := cloud
 		t.Run(cloud, func(t *testing.T) {
 			t.Parallel()
