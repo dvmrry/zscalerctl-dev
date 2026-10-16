@@ -270,6 +270,30 @@ func TestNewReaderFromConfigRejectsLegacyCloudBeforeResolvingSecrets(t *testing.
 	}
 }
 
+func TestNewReaderFromConfigRejectsOneAPICloudBeforeResolvingSecrets(t *testing.T) {
+	t.Parallel()
+
+	providerErr := errors.New("provider must not run")
+	clientSecret := &runtimeRecordingSecretSource{err: providerErr}
+	cfg := config.Config{
+		AuthMode:     config.AuthModeOneAPI,
+		VanityDomain: "example",
+		Cloud:        "zscalertwo",
+		Credentials: config.Credentials{
+			ClientID:     secret.New("client-id"),
+			ClientSecret: clientSecret,
+		},
+	}
+
+	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
+	if !errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(product cloud) error = %v, want ErrMissingCredentials", err)
+	}
+	if errors.Is(err, providerErr) || clientSecret.calls != 0 {
+		t.Errorf("newReaderFromConfig(product cloud) error = %v, client secret calls = %d, want rejection before resolving", err, clientSecret.calls)
+	}
+}
+
 func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T) {
 	t.Parallel()
 

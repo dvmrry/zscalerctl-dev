@@ -121,10 +121,15 @@ for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
 reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
 OneAPI credential set without an extra product customer ID.
 
-`ZPATWO` names a ZPA service cloud, not a OneAPI cloud: a tenant whose ZPA
-portal is on ZPATWO authenticates and reads every product through the
-production OneAPI hosts. `ZSCALERCTL_CLOUD=ZPATWO` (any case) is therefore
-treated as `PRODUCTION`; setting `PRODUCTION` directly is equivalent.
+`ZSCALERCTL_CLOUD` names the OneAPI gateway, not the cloud a tenant's products
+run on. Tenants on zscalertwo, zscalerthree, ZPATWO and the other ZIA and ZPA
+product clouds authenticate and read every product through the production
+gateway, so they use `PRODUCTION`. The accepted values (any case) are
+`PRODUCTION` (the default when unset), `ALPHA`, `BETA`, `GOV` and `GOVUS`.
+Any other value is rejected before the client secret is resolved, because the
+SDK would derive the token host that receives it from the value; for product
+cloud names no such host exists. `auth status` and `doctor` report it as
+`invalid cloud`.
 
 Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported.
 Since SDK v3.8.49 Zidentity is served through the OneAPI gateway under

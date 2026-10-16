@@ -1344,17 +1344,34 @@ func directTransport(proxy ProxyConfig) http.RoundTripper {
 	return transport
 }
 
-// oneAPICloud maps a configured cloud onto the OneAPI cloud the SDK builds
-// hosts from. ZPATWO names a ZPA service cloud, not a OneAPI one: the SDK
-// would build api.zpatwo.zsapi.net and zsloginzpatwo.net, neither of which
-// exists, while ZPATWO tenants authenticate and read ZPA and Zidentity through
-// the production OneAPI hosts.
-func oneAPICloud(cloud string) string {
-	cloud = strings.TrimSpace(cloud)
-	if strings.EqualFold(cloud, "ZPATWO") {
-		return "PRODUCTION"
+// oneAPIClouds are the supported OneAPI clouds, each with a token host and
+// API gateway that exist. The OneAPI cloud names the gateway, not the cloud a
+// tenant's products run on: tenants on zscalertwo, zscalerthree, ZPATWO and
+// the other product clouds all use PRODUCTION. For a product cloud name the
+// SDK would derive the OAuth host (which receives the client secret) and the
+// API host from operator text, and neither exists, so the list is closed like
+// legacy ZIA's.
+var oneAPIClouds = map[string]string{
+	"":           "",
+	"production": "PRODUCTION",
+	"alpha":      "ALPHA",
+	"beta":       "BETA",
+	"gov":        "GOV",
+	"govus":      "GOVUS",
+}
+
+// ValidateOneAPICloud rejects any ZSCALERCTL_CLOUD outside the OneAPI clouds.
+// Callers can use it before resolving secret sources.
+func ValidateOneAPICloud(cloud string) error {
+	if _, ok := oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]; !ok {
+		return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION", ErrMissingCredentials)
 	}
-	return cloud
+	return nil
+}
+
+// oneAPICloud returns the SDK spelling of a validated OneAPI cloud.
+func oneAPICloud(cloud string) string {
+	return oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]
 }
 
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
@@ -1412,10 +1429,7 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if !validDNSLabel(cfg.VanityDomain) {
 			return fmt.Errorf("%w: ZSCALERCTL_VANITY_DOMAIN must be a single DNS label", ErrMissingCredentials)
 		}
-		if cfg.Cloud != "" && !validDNSLabel(cfg.Cloud) {
-			return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be a single DNS label", ErrMissingCredentials)
-		}
-		return nil
+		return ValidateOneAPICloud(cfg.Cloud)
 	default:
 		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
 	}

@@ -387,76 +387,98 @@ func TestOneAPICloud(t *testing.T) {
 		cloud string
 		want  string
 	}{
-		{cloud: "ZPATWO", want: "PRODUCTION"},
-		{cloud: " zPaTwO ", want: "PRODUCTION"},
-		{cloud: "PRODUCTION", want: "PRODUCTION"},
 		{cloud: "", want: ""},
-		{cloud: "BETA", want: "BETA"},
+		{cloud: "PRODUCTION", want: "PRODUCTION"},
+		{cloud: " production ", want: "PRODUCTION"},
+		{cloud: "alpha", want: "ALPHA"},
+		{cloud: "beta", want: "BETA"},
+		{cloud: "Gov", want: "GOV"},
 		{cloud: "GOVUS", want: "GOVUS"},
 	}
 	for _, test := range tests {
+		if err := ValidateOneAPICloud(test.cloud); err != nil {
+			t.Errorf("ValidateOneAPICloud(%q) error = %v, want nil", test.cloud, err)
+		}
 		if got := oneAPICloud(test.cloud); got != test.want {
 			t.Errorf("oneAPICloud(%q) = %q, want %q", test.cloud, got, test.want)
 		}
 	}
 }
 
-// TestNewSDKConfigurationZPATWORoutesToProductionHosts pins every OneAPI
-// request a ZPATWO tenant makes (token, ZPA, Zidentity) to the production
-// hosts. The SDK's own ZPATWO hosts (zsloginzpatwo.net, api.zpatwo.zsapi.net)
-// do not exist.
-func TestNewSDKConfigurationZPATWORoutesToProductionHosts(t *testing.T) {
-	cfg := validReaderConfig()
-	cfg.Cloud = "ZPATWO"
-	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-	if got := sdkCfg.Zscaler.Client.Cloud; got != "PRODUCTION" {
-		t.Fatalf("newSDKConfiguration(ZPATWO).Cloud = %q, want PRODUCTION", got)
-	}
-	var gotURLs []string
-	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		gotURLs = append(gotURLs, request.URL.String())
-		body := `{}`
-		if request.URL.Path == "/oauth2/v1/token" {
-			// Keep expiry within the SDK's one-minute renewal window so this
-			// routing test does not start its background renewal goroutine.
-			body = `{"access_token":"test-token","expires_in":60}`
+// TestNewReaderRejectsProductClouds pins that product cloud names, which
+// operators reasonably try, fail before any request: the SDK would send the
+// client secret to a token host derived from them, and none exists. The
+// error names the fix.
+func TestNewReaderRejectsProductClouds(t *testing.T) {
+	for _, cloud := range []string{"ZPATWO", "zscalertwo", "zscalerthree", "zscaler", "zscloud", "zscalerbeta", "zscalergov", "preview"} {
+		cfg := validReaderConfig()
+		cfg.Cloud = cloud
+		_, err := NewReader(cfg)
+		if !errors.Is(err, ErrMissingCredentials) {
+			t.Errorf("NewReader(Cloud=%q) error = %v, want ErrMissingCredentials", cloud, err)
+			continue
 		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    request,
-		}, nil
-	})
-	sdkCfg.HTTPClient.Transport = transport
-	sdkCfg.ZPAHTTPClient.Transport = transport
+		if !strings.Contains(err.Error(), "use PRODUCTION") {
+			t.Errorf("NewReader(Cloud=%q) error = %q, want it to name PRODUCTION", cloud, err)
+		}
+	}
+}
 
-	service, err := zsdk.NewOneAPIClient(sdkCfg)
-	if err != nil {
-		t.Fatalf("NewOneAPIClient(ZPATWO) error = %v, want nil", err)
-	}
-	t.Cleanup(service.Client.Close)
-	if _, _, err := zpaapplicationsegment.Get(context.Background(), service, "application-1"); err != nil {
-		t.Fatalf("zpaapplicationsegment.Get(ZPATWO) error = %v, want nil", err)
-	}
-	if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
-		t.Fatalf("zidusers.GetUser(ZPATWO) error = %v, want nil", err)
-	}
-	var hosts []string
-	for _, raw := range gotURLs {
-		u, err := url.Parse(raw)
+// TestNewSDKConfigurationRoutesToGatewayHosts pins the hosts the SDK uses for
+// each accepted cloud: the token host, a ZPA call and a Zidentity call.
+func TestNewSDKConfigurationRoutesToGatewayHosts(t *testing.T) {
+	for cloud, want := range map[string][]string{
+		"":           {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
+		"production": {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
+		"alpha":      {"zscalerctl-vanity.zsloginalpha.net oauth2", "api.alpha.zsapi.net zpa", "api.alpha.zsapi.net ziam"},
+		"beta":       {"zscalerctl-vanity.zsloginbeta.net oauth2", "api.beta.zsapi.net zpa", "api.beta.zsapi.net ziam"},
+		"gov":        {"zscalerctl-vanity.zidentitygov.net oauth2", "api.zscalergov.net zpa", "api.zscalergov.net ziam"},
+		"govus":      {"zscalerctl-vanity.zidentitygov.us oauth2", "api.zscalergov.us zpa", "api.zscalergov.us ziam"},
+	} {
+		cfg := validReaderConfig()
+		cfg.Cloud = cloud
+		sdkCfg := newSDKConfiguration(context.Background(), cfg)
+		var gotURLs []string
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			gotURLs = append(gotURLs, request.URL.String())
+			body := `{}`
+			if request.URL.Path == "/oauth2/v1/token" {
+				// Keep expiry within the SDK's one-minute renewal window so this
+				// routing test does not start its background renewal goroutine.
+				body = `{"access_token":"test-token","expires_in":60}`
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    request,
+			}, nil
+		})
+		sdkCfg.HTTPClient.Transport = transport
+		sdkCfg.ZPAHTTPClient.Transport = transport
+
+		service, err := zsdk.NewOneAPIClient(sdkCfg)
 		if err != nil {
-			t.Fatalf("url.Parse(%q) error = %v", raw, err)
+			t.Fatalf("NewOneAPIClient(%q) error = %v, want nil", cloud, err)
 		}
-		hosts = append(hosts, u.Host+" "+strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 2)[0])
-	}
-	want := []string{
-		"zscalerctl-vanity.zslogin.net oauth2",
-		"api.zsapi.net zpa",
-		"api.zsapi.net ziam",
-	}
-	if !reflect.DeepEqual(hosts, want) {
-		t.Errorf("ZPATWO request hosts = %v (URLs %v), want %v", hosts, gotURLs, want)
+		if _, _, err := zpaapplicationsegment.Get(context.Background(), service, "application-1"); err != nil {
+			t.Fatalf("zpaapplicationsegment.Get(%q) error = %v, want nil", cloud, err)
+		}
+		if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
+			t.Fatalf("zidusers.GetUser(%q) error = %v, want nil", cloud, err)
+		}
+		service.Client.Close()
+		var hosts []string
+		for _, raw := range gotURLs {
+			u, err := url.Parse(raw)
+			if err != nil {
+				t.Fatalf("url.Parse(%q) error = %v", raw, err)
+			}
+			hosts = append(hosts, u.Host+" "+strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 2)[0])
+		}
+		if !reflect.DeepEqual(hosts, want) {
+			t.Errorf("cloud %q request hosts = %v (URLs %v), want %v", cloud, hosts, gotURLs, want)
+		}
 	}
 }
 

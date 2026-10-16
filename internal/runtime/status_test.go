@@ -77,6 +77,37 @@ func TestNewAuthStatusComputesLegacyStatus(t *testing.T) {
 	}
 }
 
+// TestNewAuthStatusReportsInvalidCloud pins that auth status does not call
+// credentials with an unsupported cloud usable: every read would be rejected.
+func TestNewAuthStatusReportsInvalidCloud(t *testing.T) {
+	t.Parallel()
+
+	for name, env := range map[string][]string{
+		"ZSCALERCTL_CLOUD": {
+			config.EnvClientID + "=client-id",
+			config.EnvClientSecret + "=client-secret",
+			config.EnvVanityDomain + "=example",
+			config.EnvCloud + "=zscalertwo",
+		},
+		"ZSCALERCTL_ZIA_CLOUD": {
+			config.EnvAuthMode + "=" + string(config.AuthModeZIALegacy),
+			config.EnvZIAUsername + "=admin@example.invalid",
+			config.EnvZIAPassword + "=legacy-password",
+			config.EnvZIAAPIKey + "=legacy-api-key",
+			config.EnvZIACloud + "=example",
+		},
+	} {
+		cfg, err := config.LoadConfig(env, config.LoadOptions{})
+		if err != nil {
+			t.Fatalf("config.LoadConfig(%s) error = %v, want nil", name, err)
+		}
+		status := NewAuthStatus(cfg)
+		if status.Credentials != "invalid cloud" || !strings.HasPrefix(status.LiveAPI, "unavailable: "+name+" ") {
+			t.Errorf("NewAuthStatus(%s) = %#v, want invalid cloud and unavailable live API", name, status)
+		}
+	}
+}
+
 func TestNewConfigStatusReturnsSafeConfig(t *testing.T) {
 	t.Parallel()
 
