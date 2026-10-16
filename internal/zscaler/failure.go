@@ -56,7 +56,7 @@ func classifyFailure(err error, status int) (reason string, retryable bool) {
 	var typeErr *json.UnmarshalTypeError
 	var netErr net.Error
 	switch {
-	case errors.Is(err, errZiaPaginationValidation):
+	case errors.Is(err, errPaginationValidation):
 		// The page walker refused a result it could not prove complete
 		// (repeated pages, duplicate records, changing page width).
 		return FailurePaginationIncomplete, false

@@ -670,8 +670,8 @@ func TestZIAPaginateRejectsRepeatWhenSmallerPageSizeIsHonored(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "honored a smaller page size") {
 		t.Fatalf("ziaPaginate(capping endpoint) error = %v, want the capped-page error", err)
 	}
-	if !errors.Is(err, errZiaPaginationValidation) {
-		t.Errorf("ziaPaginate(capping endpoint) error = %v, want errZiaPaginationValidation", err)
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("ziaPaginate(capping endpoint) error = %v, want errPaginationValidation", err)
 	}
 	if got != nil {
 		t.Errorf("ziaPaginate(capping endpoint) result = %#v, want nil", got)
@@ -693,8 +693,8 @@ func TestZIAPaginateRejectsAdjacentRepeatedPage(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "repeated page") {
 		t.Fatalf("ziaPaginate(adjacent repeated page) error = %v, want repeated-page error", err)
 	}
-	if !errors.Is(err, errZiaPaginationValidation) {
-		t.Errorf("ziaPaginate(adjacent repeated page) error = %v, want errZiaPaginationValidation", err)
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("ziaPaginate(adjacent repeated page) error = %v, want errPaginationValidation", err)
 	}
 	if got != nil {
 		t.Errorf("ziaPaginate(adjacent repeated page) result = %#v, want nil", got)
@@ -1407,7 +1407,7 @@ func TestGetZIASublocationByIDPropagatesPaginationValidationError(t *testing.T) 
 	t.Cleanup(service.Client.Close)
 
 	item, err := getZIASublocationByID(context.Background(), service, 99)
-	if !errors.Is(err, errZiaPaginationValidation) {
+	if !errors.Is(err, errPaginationValidation) {
 		t.Fatalf("getZIASublocationByID(99) error = %v, want pagination validation error", err)
 	}
 	if item != nil {
@@ -1865,8 +1865,8 @@ func TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored(t *testing.T) {
 	if err == nil {
 		t.Fatalf("getZIAURLCategoriesAll() = %d categories, want a repeated-page error", len(categories))
 	}
-	if !errors.Is(err, errZiaPaginationValidation) {
-		t.Errorf("getZIAURLCategoriesAll() error = %v, want errZiaPaginationValidation", err)
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("getZIAURLCategoriesAll() error = %v, want errPaginationValidation", err)
 	}
 	if categories != nil {
 		t.Errorf("getZIAURLCategoriesAll() returned %d categories with the error, want none", len(categories))
@@ -1930,7 +1930,7 @@ func TestZIAPaginateRejectsRepeatWithSameIdentitiesButChangedContent(t *testing.
 				}
 				return nil, nil
 			})
-			if !errors.Is(err, errZiaPaginationValidation) {
+			if !errors.Is(err, errPaginationValidation) {
 				t.Fatalf("ziaPaginate(same ids, changed content) error = %v, want pagination validation error", err)
 			}
 			if got != nil {
@@ -1984,7 +1984,7 @@ func TestZIAPaginateUnpagedEndpointLimits(t *testing.T) {
 	got, err = ziaPaginate(context.Background(), 3, func(_ context.Context, _, _ int) ([]int, error) {
 		return window, nil
 	})
-	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+	if !errors.Is(err, errPaginationValidation) || got != nil {
 		t.Errorf("collection >= page size: ziaPaginate() = %v, %v; want fail closed", got, err)
 	}
 }
@@ -2025,7 +2025,7 @@ func TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder(t *testing.T) {
 		call++
 		return out, nil
 	})
-	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+	if !errors.Is(err, errPaginationValidation) || got != nil {
 		t.Errorf("ziaPaginate(changed port) = %v, %v; want fail closed", got, err)
 	}
 }
@@ -2052,7 +2052,7 @@ func TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages(t *testing.T) {
 		call++
 		return out, nil
 	})
-	if !errors.Is(err, errZiaPaginationValidation) || got != nil {
+	if !errors.Is(err, errPaginationValidation) || got != nil {
 		t.Fatalf("ziaPaginate(large number changed) = %v, %v; want fail closed", got, err)
 	}
 }

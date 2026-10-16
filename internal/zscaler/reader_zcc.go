@@ -49,12 +49,12 @@ func zccPaginateWithSize[T any](
 	fetchPage func(ctx context.Context, page, pageSize int) ([]T, error),
 ) ([]T, error) {
 	if pageSize <= 0 {
-		return nil, fmt.Errorf("zcc pagination page size must be positive")
+		return nil, fmt.Errorf("%w: zcc pagination page size must be positive", errPaginationValidation)
 	}
 	var all []T
 	for page := 1; ; page++ {
 		if page > zccMaxPages {
-			return nil, fmt.Errorf("zcc pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", zccMaxPages, len(all))
+			return nil, fmt.Errorf("%w: zcc pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", errPaginationValidation, zccMaxPages, len(all))
 		}
 		items, err := fetchPage(ctx, page, pageSize)
 		if err != nil {
@@ -83,19 +83,19 @@ func zccPaginateWithTotalCount[T any](
 	)
 	for page := 1; ; page++ {
 		if page > zccMaxPages {
-			return nil, fmt.Errorf("zcc pagination exceeded the ceiling of %d pages (%d records); the declared totalCount was not reached", zccMaxPages, len(all))
+			return nil, fmt.Errorf("%w: zcc pagination exceeded the ceiling of %d pages (%d records); the declared totalCount was not reached", errPaginationValidation, zccMaxPages, len(all))
 		}
 		items, totalCount, err := fetchPage(ctx, page, zccPageSize)
 		if err != nil {
 			return nil, err
 		}
 		if totalCount < 0 {
-			return nil, fmt.Errorf("zcc pagination returned invalid totalCount %d on page %d", totalCount, page)
+			return nil, fmt.Errorf("%w: zcc pagination returned invalid totalCount %d on page %d", errPaginationValidation, totalCount, page)
 		}
 		if expectedTotalCount < 0 {
 			expectedTotalCount = totalCount
 		} else if totalCount != expectedTotalCount {
-			return nil, fmt.Errorf("zcc pagination totalCount changed from %d to %d on page %d", expectedTotalCount, totalCount, page)
+			return nil, fmt.Errorf("%w: zcc pagination totalCount changed from %d to %d on page %d", errPaginationValidation, expectedTotalCount, totalCount, page)
 		}
 
 		fingerprint, err := fingerprintPage(items)
@@ -103,7 +103,7 @@ func zccPaginateWithTotalCount[T any](
 			return nil, fmt.Errorf("failed to fingerprint zcc page %d: %w", page, err)
 		}
 		if _, seen := pageFingerprints[fingerprint]; seen {
-			return nil, fmt.Errorf("zcc pagination received repeated page content on page %d; completeness cannot be guaranteed", page)
+			return nil, fmt.Errorf("%w: zcc pagination received repeated page content on page %d; completeness cannot be guaranteed", errPaginationValidation, page)
 		}
 		pageFingerprints[fingerprint] = struct{}{}
 		for _, item := range items {
@@ -115,20 +115,20 @@ func zccPaginateWithTotalCount[T any](
 				continue
 			}
 			if _, seen := recordIdentities[identity]; seen {
-				return nil, fmt.Errorf("zcc pagination received duplicate record identity on page %d; completeness cannot be guaranteed", page)
+				return nil, fmt.Errorf("%w: zcc pagination received duplicate record identity on page %d; completeness cannot be guaranteed", errPaginationValidation, page)
 			}
 			recordIdentities[identity] = struct{}{}
 		}
 
 		all = append(all, items...)
 		if len(all) > expectedTotalCount {
-			return nil, fmt.Errorf("zcc pagination collected %d records, exceeding totalCount %d on page %d", len(all), expectedTotalCount, page)
+			return nil, fmt.Errorf("%w: zcc pagination collected %d records, exceeding totalCount %d on page %d", errPaginationValidation, len(all), expectedTotalCount, page)
 		}
 		if len(all) == expectedTotalCount {
 			return all, nil
 		}
 		if len(items) == 0 {
-			return nil, fmt.Errorf("zcc pagination ended at %d records, but totalCount declares %d", len(all), expectedTotalCount)
+			return nil, fmt.Errorf("%w: zcc pagination ended at %d records, but totalCount declares %d", errPaginationValidation, len(all), expectedTotalCount)
 		}
 	}
 }

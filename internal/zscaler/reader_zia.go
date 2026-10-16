@@ -109,10 +109,13 @@ import (
 // still admits nearly 20,000 records before requiring a terminal short page.
 const ziaMaxPages = 1000
 
-// errZiaPaginationValidation marks a ziaWalkPages failure that proves the
+// errPaginationValidation marks a ziaWalkPages failure that proves the
 // endpoint violated its pagination contract. Callers that tolerate per-parent
 // read errors must still propagate it.
-var errZiaPaginationValidation = errors.New("zia pagination validation failed")
+// errPaginationValidation marks a list every page walker (ZIA, ZPA, ZCC,
+// ZIdentity) refused because it could not prove the result complete; it
+// classifies as pagination_incomplete.
+var errPaginationValidation = errors.New("pagination validation failed")
 
 // ziaWalkPages walks a ZIA list endpoint while enforcing the
 // ziaMaxPages ceiling the vendored ReadAllPages lacks. Some ZIA endpoints
@@ -143,7 +146,7 @@ func ziaWalkPages[T any](
 	visitPage func([]T) bool,
 ) error {
 	if pageSize <= 0 {
-		return fmt.Errorf("%w: zia pagination page size must be positive: %d", errZiaPaginationValidation, pageSize)
+		return fmt.Errorf("%w: zia pagination page size must be positive: %d", errPaginationValidation, pageSize)
 	}
 
 	var (
@@ -155,7 +158,7 @@ func ziaWalkPages[T any](
 	)
 	for page := 1; ; page++ {
 		if page > ziaMaxPages {
-			return fmt.Errorf("%w: zia pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", errZiaPaginationValidation, ziaMaxPages, recordsSeen)
+			return fmt.Errorf("%w: zia pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", errPaginationValidation, ziaMaxPages, recordsSeen)
 		}
 		items, err := fetchPage(ctx, page, pageSize)
 		if err != nil {
@@ -167,16 +170,16 @@ func ziaWalkPages[T any](
 		if effectivePageSize == 0 {
 			effectivePageSize = len(items)
 		} else if len(items) > effectivePageSize {
-			return fmt.Errorf("%w: zia pagination page width changed from %d to %d on page %d; completeness cannot be guaranteed", errZiaPaginationValidation, effectivePageSize, len(items), page)
+			return fmt.Errorf("%w: zia pagination page width changed from %d to %d on page %d; completeness cannot be guaranteed", errPaginationValidation, effectivePageSize, len(items), page)
 		}
 
 		fingerprint, err := fingerprintPage(items)
 		if err != nil {
-			return fmt.Errorf("%w: failed to fingerprint zia page %d: %v", errZiaPaginationValidation, page, err)
+			return fmt.Errorf("%w: failed to fingerprint zia page %d: %v", errPaginationValidation, page, err)
 		}
 		summary, err := summarizePage(items, fingerprint)
 		if err != nil {
-			return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errZiaPaginationValidation, page, err)
+			return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errPaginationValidation, page, err)
 		}
 		if page == 1 {
 			firstPage = summary
@@ -188,22 +191,22 @@ func ziaWalkPages[T any](
 			if complete {
 				return nil
 			}
-			return fmt.Errorf("%w: zia endpoint ignored the page parameter but honored a smaller page size, so page 1 may be capped; completeness cannot be guaranteed", errZiaPaginationValidation)
+			return fmt.Errorf("%w: zia endpoint ignored the page parameter but honored a smaller page size, so page 1 may be capped; completeness cannot be guaranteed", errPaginationValidation)
 		}
 		if _, seen := pageFingerprints[fingerprint]; seen {
-			return fmt.Errorf("%w: zia pagination received repeated page content at page %d; completeness cannot be guaranteed", errZiaPaginationValidation, page)
+			return fmt.Errorf("%w: zia pagination received repeated page content at page %d; completeness cannot be guaranteed", errPaginationValidation, page)
 		}
 		pageFingerprints[fingerprint] = struct{}{}
 		for _, item := range items {
 			identity, hasIdentity, err := paginationRecordIdentity(item)
 			if err != nil {
-				return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errZiaPaginationValidation, page, err)
+				return fmt.Errorf("%w: failed to inspect zia record identity on page %d: %v", errPaginationValidation, page, err)
 			}
 			if !hasIdentity {
 				continue
 			}
 			if _, seen := recordIdentities[identity]; seen {
-				return fmt.Errorf("%w: zia pagination received duplicate record identity on page %d; completeness cannot be guaranteed", errZiaPaginationValidation, page)
+				return fmt.Errorf("%w: zia pagination received duplicate record identity on page %d; completeness cannot be guaranteed", errPaginationValidation, page)
 			}
 			recordIdentities[identity] = struct{}{}
 		}
@@ -238,11 +241,11 @@ func ziaIgnoresPaging[T any](
 	}
 	fingerprint, err := fingerprintPage(probe)
 	if err != nil {
-		return false, fmt.Errorf("%w: failed to fingerprint zia page-size probe: %v", errZiaPaginationValidation, err)
+		return false, fmt.Errorf("%w: failed to fingerprint zia page-size probe: %v", errPaginationValidation, err)
 	}
 	summary, err := summarizePage(probe, fingerprint)
 	if err != nil {
-		return false, fmt.Errorf("%w: failed to inspect zia page-size probe: %v", errZiaPaginationValidation, err)
+		return false, fmt.Errorf("%w: failed to inspect zia page-size probe: %v", errPaginationValidation, err)
 	}
 	return summary.sameRecords(firstPage), nil
 }
@@ -381,7 +384,7 @@ func getZIASublocationByID(
 					searchErr = ctxErr
 					return true
 				}
-				if errors.Is(err, errZiaPaginationValidation) {
+				if errors.Is(err, errPaginationValidation) {
 					searchErr = err
 					return true
 				}
