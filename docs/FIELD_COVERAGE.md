@@ -50,8 +50,8 @@ is either rendered by classification or permanently excluded on the record.
 ## Repo-Wide Totals
 
 - Resources: 166
-- Total exported SDK fields: 3060
-- Classified: 3012
+- Total exported SDK fields: 3068
+- Classified: 3020
 - Ignored (fail-closed dropped): 48
   - Deliberate (permanently excluded): 48
   - Deferred (awaiting modeling): 0
@@ -67,7 +67,7 @@ Ranked worst coverage first.
 | zidentity | 3 | 74 | 56 | 18 | 0 | 75.7% | 100.0% |
 | zia | 103 | 1715 | 1690 | 25 | 0 | 98.5% | 100.0% |
 | zpa | 28 | 654 | 650 | 4 | 0 | 99.4% | 100.0% |
-| zcc | 11 | 325 | 324 | 1 | 0 | 99.7% | 100.0% |
+| zcc | 11 | 333 | 332 | 1 | 0 | 99.7% | 100.0% |
 | ztw | 21 | 292 | 292 | 0 | 0 | 100.0% | 100.0% |
 
 ## Per-Resource Coverage
@@ -94,7 +94,7 @@ names, buckets, and reasons behind each row.
 | zpa | inspection-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
 | zpa | pra-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
 | zpa | application-segments | 56 | 55 | 1 | 0 | 98.2% | 100.0% |
-| zcc | company-info | 111 | 110 | 1 | 0 | 99.1% | 100.0% |
+| zcc | company-info | 119 | 118 | 1 | 0 | 99.2% | 100.0% |
 | zia | nss-feeds | 126 | 126 | 0 | 0 | 100.0% | 100.0% |
 | zia | org-information | 69 | 69 | 0 | 0 | 100.0% | 100.0% |
 | ztw | locations | 54 | 54 | 0 | 0 | 100.0% | 100.0% |

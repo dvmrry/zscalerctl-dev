@@ -432,7 +432,23 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"telemetryDefault",
 			},
 			ignoredFields: map[string]string{
-				"webAppConfig": "deliberate: about 185 admin-portal feature toggles (which settings the ZCC web app offers), not tenant policy; as a catalog leaf the object never rendered",
+				"webAppConfig": "deliberate: about 185 string flags behind the ZCC admin portal, mostly portal feature toggles plus some client settings (e.g. enableFipsMode); too broad to classify flag by flag, so excluded fail-closed",
+			},
+		},
+		{
+			name:         "zcccompany.DevicePostureFrequency",
+			resource:     resources.ProductZCC,
+			resourceName: resourceZCCCompanyInfo,
+			typ:          reflect.TypeOf(zcccompany.DevicePostureFrequency{}),
+			catalogFields: []string{
+				"postureId",
+				"postureName",
+				"iosValue",
+				"androidValue",
+				"windowsValue",
+				"macValue",
+				"linuxValue",
+				"defaultValue",
 			},
 		},
 	}

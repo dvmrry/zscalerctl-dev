@@ -10,7 +10,7 @@ import (
 )
 
 // wave1IPSSignatureRule builds an SDK rule with a distinctive value in every
-// wave-1 promoted field (category) and in the secret-classified ruleText, plus
+// wave-1 promoted field (category) and in the never-mapped ruleText, plus
 // distinctive values in the already-classified fields used for mode-transition
 // assertions.
 func wave1IPSSignatureRule(ruleTextCanary string) ipssignaturerules.IPSSignatureRules {
@@ -70,7 +70,7 @@ func TestIPSSignatureRuleModeTransitions(t *testing.T) {
 	records := []resources.SourceRecord{ipsSignatureRuleSourceRecord(rule)}
 
 	// (b) Mode transitions exactly per AllowedModes. The wave-1 promotion adds
-	// only category (standard-only) and ruleText (secret), so the share and
+	// only category (standard-only), and ruleText never renders, so the share and
 	// paranoid transitions of the standard+share fields name/promoteTime and
 	// the all-modes fields id/enabled anchor the per-mode contract around the
 	// promoted fields.

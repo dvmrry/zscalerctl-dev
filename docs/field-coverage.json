@@ -2,8 +2,8 @@
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
     "resources": 166,
-    "total_fields": 3060,
-    "classified_fields": 3012,
+    "total_fields": 3068,
+    "classified_fields": 3020,
     "ignored_fields": 48,
     "deliberate_fields": 48,
     "deferred_fields": 0,
@@ -47,8 +47,8 @@
     {
       "product": "zcc",
       "resources": 11,
-      "total_fields": 325,
-      "classified_fields": 324,
+      "total_fields": 333,
+      "classified_fields": 332,
       "ignored_fields": 1,
       "deliberate_fields": 1,
       "deferred_fields": 0,
@@ -769,19 +769,20 @@
       "product": "zcc",
       "resource": "company-info",
       "sdk_types": [
-        "zcccompany.CompanyInfo"
+        "zcccompany.CompanyInfo",
+        "zcccompany.DevicePostureFrequency"
       ],
-      "total_fields": 111,
-      "classified_fields": 110,
+      "total_fields": 119,
+      "classified_fields": 118,
       "ignored_fields": 1,
       "deliberate_fields": 1,
       "deferred_fields": 0,
-      "coverage_percent": 99.1,
+      "coverage_percent": 99.2,
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 99
+          "count": 106
         },
         {
           "class": "sensitive_identifier",
@@ -789,12 +790,12 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 4
         }
       ],
       "ignored_by_reason": [
         {
-          "reason": "deliberate: about 185 admin-portal feature toggles (which settings the ZCC web app offers), not tenant policy; as a catalog leaf the object never rendered",
+          "reason": "deliberate: about 185 string flags behind the ZCC admin portal, mostly portal feature toggles plus some client settings (e.g. enableFipsMode); too broad to classify flag by flag, so excluded fail-closed",
           "bucket": "deliberate",
           "fields": [
             "webAppConfig"
