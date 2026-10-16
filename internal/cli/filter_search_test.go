@@ -405,6 +405,18 @@ func TestFieldsDottedPathNarrowsNestedValues(t *testing.T) {
 	if want := "name\tgroups.id\nalice\t10,12\ncarol\t\n"; table != want {
 		t.Errorf("--fields name,groups.id table = %q, want %q", table, want)
 	}
+
+	// get renders key/value rows, one per path.
+	getReader := fakeResourceReader{get: reader.list[0]}
+	args := []string{"--format", "table", "--color", "never", "--fields", "name,groups.id", "zia", "users", "get", "1"}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: getReader})
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+	}
+	if got := out.String(); !strings.Contains(got, "groups.id") || !strings.Contains(got, "10,12") {
+		t.Errorf("--fields name,groups.id get table = %q, want a groups.id row holding 10,12", got)
+	}
 }
 
 func TestFilterInvalidExpressionIsUsageError(t *testing.T) {

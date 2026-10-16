@@ -105,9 +105,9 @@ itself drops a requested field the active mode suppresses and names it on
 stderr (`zscalerctl: requested ... fields omitted in share mode: ...`); a
 `--filter` on one is a usage error (exit 2). Secrets are never
 recoverable through field selection, `jq`, config, credentials, raw SDK
-responses, or another redaction mode. A nested catalog field does not imply a
-stable top-level `--fields` name; use the field names returned for the target
-resource.
+responses, or another redaction mode. Select a nested field with a dotted
+path through the names returned for the target resource (`--fields
+name,groups.id`); a nested name is not a top-level `--fields` name on its own.
 
 To confirm whether bounded output is available on this exact binary, inspect
 the selected command's inherited global flags:

@@ -444,7 +444,9 @@ func selectProjectedValue(value any, tree selectionTree) any {
 // reaches in a projected record's fields, for column-oriented rendering. A
 // path through objects returns the value at its end; a path that crosses a
 // list returns a list of what it reaches in each element, skipping elements
-// where it reaches nothing. ok is false when the path reaches nothing.
+// that lack the key (a null leaf is reached, and renders as an empty slot).
+// Unlike Select's JSON, which keeps such elements as {}, the result does not
+// keep element positions. ok is false when the path reaches nothing.
 func ProjectedPathValue(fields map[string]any, path string) (any, bool) {
 	if value, ok := fields[path]; ok {
 		return value, true
@@ -727,7 +729,20 @@ func OmittedFields(spec ResourceSpec, mode redact.Mode, requested []string) (omi
 			omitted = append(omitted, omittedPaths(chain[len(chain)-1].Fields, mode, name+".")...)
 		}
 	}
-	return omitted, secret
+	// Overlapping requests (groups and groups.name) reach the same paths.
+	return uniqueInOrder(omitted), uniqueInOrder(secret)
+}
+
+func uniqueInOrder(names []string) []string {
+	seen := make(map[string]bool, len(names))
+	out := names[:0]
+	for _, name := range names {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // fieldChain returns the catalog fields along a top-level name or dotted

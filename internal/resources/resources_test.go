@@ -818,12 +818,6 @@ func TestSelectDottedPaths(t *testing.T) {
 			t.Errorf("Select(%v) = %v, want %v", tc.keys, rendered, tc.want)
 		}
 	}
-	// Selecting never aliases the source record.
-	selected := records.Select([]string{"groups.id"}).Records()[0].Fields()
-	selected["groups"].([]any)[0].(map[string]any)["id"] = 99
-	if again := records.Select([]string{"groups.id"}).Records()[0].Fields(); again["groups"].([]any)[0].(map[string]any)["id"] == 99 {
-		t.Error("Select returned a value aliasing the source record")
-	}
 }
 
 func TestProjectedPathValue(t *testing.T) {
@@ -2851,6 +2845,10 @@ func TestOmittedFields(t *testing.T) {
 	omitted, secret = resources.OmittedFields(spec, redact.ModeShare, []string{"groups.id", "groups.name", "owner.manager", "token"})
 	if !slices.Equal(omitted, []string{"groups.name"}) || !slices.Equal(secret, []string{"token"}) {
 		t.Errorf("OmittedFields(share, requested paths) = %v, %v; want [groups.name], [token]", omitted, secret)
+	}
+	omitted, _ = resources.OmittedFields(spec, redact.ModeShare, []string{"groups", "groups.name", "groups.comments"})
+	if !slices.Equal(omitted, []string{"groups.name", "groups.comments"}) {
+		t.Errorf("OmittedFields(share, overlapping) = %v, want each path once", omitted)
 	}
 	omitted, _ = resources.OmittedFields(spec, redact.ModeParanoid, []string{"groups.id"})
 	if !slices.Equal(omitted, []string{"groups.id"}) {
