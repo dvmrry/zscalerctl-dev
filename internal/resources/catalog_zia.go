@@ -938,11 +938,6 @@ func catalogZIA() ResourceCatalog {
 			Fields: []FieldSpec{
 				operationalField("id", allModes()),
 				tenantConfigField("name", standardShareModes()),
-				// Suricata/Snort signature bodies embed tenant network
-				// indicators (IPs, hostnames, payload regexes), so the rule
-				// text is free text: standard mode only, redactor-scanned.
-				// The reader does not map it yet.
-				freeTextField("ruleText", "ZIA IPS signature rule text"),
 				freeTextField("description", "ZIA IPS signature rule description"),
 				{
 					Name:           "category",

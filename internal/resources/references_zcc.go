@@ -35,8 +35,9 @@ var zccUnmappedReferences = map[string]map[string]string{
 		"ziaPostureConfigId": "no ZIA posture config resource in the catalog",
 	},
 	"zcc/company-info": {
-		"masterCustomerId": "the tenant's own id, not a record id",
-		"orgId":            "the tenant's own id, not a record id",
+		"devicePostureFrequency.postureId": "no ZCC device posture resource in the catalog",
+		"masterCustomerId":                 "the tenant's own id, not a record id",
+		"orgId":                            "the tenant's own id, not a record id",
 	},
 	"zcc/fail-open-policy": {
 		"companyId": "the tenant's own id, not a record id",

@@ -409,7 +409,6 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"enableZpaAuthUserName",
 				"enableGlobalZCCTelemetry",
 				"configureTunnel2fallbackForZia",
-				"webAppConfig",
 				"enableInstallWebView2",
 				"enableCustomProxyPorts",
 				"interceptZIATrafficAllAdapters",
@@ -431,6 +430,9 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"zdxManualRollout",
 				"winZdxLiteEnabled",
 				"telemetryDefault",
+			},
+			ignoredFields: map[string]string{
+				"webAppConfig": "deliberate: about 185 admin-portal feature toggles (which settings the ZCC web app offers), not tenant policy; as a catalog leaf the object never rendered",
 			},
 		},
 	}

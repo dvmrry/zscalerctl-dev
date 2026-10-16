@@ -157,17 +157,15 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"onboardableEntity":                    "an onboarded SaaS tenant; the match to casb-tenants is not verified",
 	},
 	"zia/casb-tenants": {
-		"enterpriseTenantId":        "the SaaS vendor's tenant id, not a catalog record",
-		"tenantId":                  "the record's own id",
-		"zscalerAppTenantId":        "target not documented in the SDK",
-		"zscalerAppTenantId.parent": "parent of a reference, not modeled as its own resource",
+		"enterpriseTenantId": "the SaaS vendor's tenant id, not a catalog record",
+		"tenantId":           "the record's own id",
+		"zscalerAppTenantId": "target not documented in the SDK",
 	},
 	"zia/cloud-app-control": {
-		"browserEunTemplateId":       "no end-user notification template resource in the catalog",
-		"cloudAppRiskProfile.parent": "parent of a reference, not modeled as its own resource",
-		"eunTemplateId":              "no end-user notification template resource in the catalog",
-		"timeWindows":                "time-windows and time-intervals both list rule time ranges; which one the ids belong to is not verified",
-		"validityTimeZoneId":         "a time zone name, not a record id",
+		"browserEunTemplateId": "no end-user notification template resource in the catalog",
+		"eunTemplateId":        "no end-user notification template resource in the catalog",
+		"timeWindows":          "time-windows and time-intervals both list rule time ranges; which one the ids belong to is not verified",
+		"validityTimeZoneId":   "a time zone name, not a record id",
 	},
 	"zia/cloud-app-instances": {
 		"instanceId":                     "the record's own id",
@@ -230,9 +228,6 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"extranetIpPool": "no extranet resource in the catalog",
 		"subLocAccIds":   "cloud account ids for the sublocation scope, not catalog records",
 	},
-	"zia/network-service-groups": {
-		"services.parent": "parent of a reference, not modeled as its own resource",
-	},
 	"zia/nss-feeds": {
 		"buckets":               "no cloud storage bucket resource in the catalog",
 		"buckets.getlId":        "target not documented in the SDK",
@@ -275,9 +270,8 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"customTags":            "no cloud application tag resource in the catalog",
 	},
 	"zia/static-ips": {
-		"city":        "a geographic city id, not a catalog record",
-		"city.parent": "parent of a reference, not modeled as its own resource",
-		"managedBy":   "a predefined SD-WAN partner, not a catalog record",
+		"city":      "a geographic city id, not a catalog record",
+		"managedBy": "a predefined SD-WAN partner, not a catalog record",
 	},
 	"zia/sub-clouds": {
 		"dcs":                   "no data center resource in the catalog",

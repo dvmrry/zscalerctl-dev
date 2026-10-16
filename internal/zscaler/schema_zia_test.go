@@ -2389,7 +2389,6 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 			catalogFields: []string{
 				"id",
 				"name",
-				"ruleText",
 				"description",
 				"category",
 				"enabled",
@@ -2401,6 +2400,9 @@ func reviewedSDKShapesZIA() []sdkShapeReview {
 				"dynamicValidationSucceeded",
 				"disabledFromZSCM",
 				"dynamicValRejectCode",
+			},
+			ignoredFields: map[string]string{
+				"ruleText": "deliberate: the Suricata/Snort signature body embeds tenant network indicators (IPs, hostnames, payload regexes); the reader never maps it",
 			},
 		},
 		{

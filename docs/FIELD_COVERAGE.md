@@ -51,11 +51,11 @@ is either rendered by classification or permanently excluded on the record.
 
 - Resources: 166
 - Total exported SDK fields: 3060
-- Classified: 3014
-- Ignored (fail-closed dropped): 46
-  - Deliberate (permanently excluded): 46
+- Classified: 3012
+- Ignored (fail-closed dropped): 48
+  - Deliberate (permanently excluded): 48
   - Deferred (awaiting modeling): 0
-- Coverage: 98.5%
+- Coverage: 98.4%
 - Decided coverage (classified + deliberate): 100.0%
 
 ## Per-Product Totals
@@ -65,9 +65,9 @@ Ranked worst coverage first.
 | Product | Resources | Total | Classified | Deliberate | Deferred | Coverage | Decided |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | zidentity | 3 | 74 | 56 | 18 | 0 | 75.7% | 100.0% |
-| zia | 103 | 1715 | 1691 | 24 | 0 | 98.6% | 100.0% |
+| zia | 103 | 1715 | 1690 | 25 | 0 | 98.5% | 100.0% |
 | zpa | 28 | 654 | 650 | 4 | 0 | 99.4% | 100.0% |
-| zcc | 11 | 325 | 325 | 0 | 0 | 100.0% | 100.0% |
+| zcc | 11 | 325 | 324 | 1 | 0 | 99.7% | 100.0% |
 | ztw | 21 | 292 | 292 | 0 | 0 | 100.0% | 100.0% |
 
 ## Per-Resource Coverage
@@ -84,6 +84,7 @@ names, buckets, and reasons behind each row.
 | zia | workload-groups | 7 | 6 | 1 | 0 | 85.7% | 100.0% |
 | zia | locations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
 | zia | sublocations | 60 | 54 | 6 | 0 | 90.0% | 100.0% |
+| zia | ips-signature-rules | 14 | 13 | 1 | 0 | 92.9% | 100.0% |
 | zia | ssl-inspection-rules | 34 | 32 | 2 | 0 | 94.1% | 100.0% |
 | zidentity | resource-servers | 18 | 17 | 1 | 0 | 94.4% | 100.0% |
 | zia | firewall-filtering-rules | 44 | 42 | 2 | 0 | 95.5% | 100.0% |
@@ -93,8 +94,8 @@ names, buckets, and reasons behind each row.
 | zpa | inspection-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
 | zpa | pra-app-segments | 52 | 51 | 1 | 0 | 98.1% | 100.0% |
 | zpa | application-segments | 56 | 55 | 1 | 0 | 98.2% | 100.0% |
+| zcc | company-info | 111 | 110 | 1 | 0 | 99.1% | 100.0% |
 | zia | nss-feeds | 126 | 126 | 0 | 0 | 100.0% | 100.0% |
-| zcc | company-info | 111 | 111 | 0 | 0 | 100.0% | 100.0% |
 | zia | org-information | 69 | 69 | 0 | 0 | 100.0% | 100.0% |
 | ztw | locations | 54 | 54 | 0 | 0 | 100.0% | 100.0% |
 | zia | casb-dlp-rules | 53 | 53 | 0 | 0 | 100.0% | 100.0% |
@@ -152,7 +153,6 @@ names, buckets, and reasons behind each row.
 | zcc | web-app-services | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | zia | auth-settings | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | zia | dns-gateways | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
-| zia | ips-signature-rules | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | zpa | microtenants | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | ztw | traffic-log-rules | 14 | 14 | 0 | 0 | 100.0% | 100.0% |
 | zcc | predefined-ip-apps | 13 | 13 | 0 | 0 | 100.0% | 100.0% |

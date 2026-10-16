@@ -3,11 +3,11 @@
   "totals": {
     "resources": 166,
     "total_fields": 3060,
-    "classified_fields": 3014,
-    "ignored_fields": 46,
-    "deliberate_fields": 46,
+    "classified_fields": 3012,
+    "ignored_fields": 48,
+    "deliberate_fields": 48,
     "deferred_fields": 0,
-    "coverage_percent": 98.5,
+    "coverage_percent": 98.4,
     "decided_coverage_percent": 100
   },
   "products": [
@@ -26,11 +26,11 @@
       "product": "zia",
       "resources": 103,
       "total_fields": 1715,
-      "classified_fields": 1691,
-      "ignored_fields": 24,
-      "deliberate_fields": 24,
+      "classified_fields": 1690,
+      "ignored_fields": 25,
+      "deliberate_fields": 25,
       "deferred_fields": 0,
-      "coverage_percent": 98.6,
+      "coverage_percent": 98.5,
       "decided_coverage_percent": 100
     },
     {
@@ -48,11 +48,11 @@
       "product": "zcc",
       "resources": 11,
       "total_fields": 325,
-      "classified_fields": 325,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
+      "classified_fields": 324,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
       "deferred_fields": 0,
-      "coverage_percent": 100,
+      "coverage_percent": 99.7,
       "decided_coverage_percent": 100
     },
     {
@@ -352,6 +352,43 @@
             "excludeFromDynamicGroups",
             "excludeFromManualGroups",
             "matchInChild"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
+      "resource": "ips-signature-rules",
+      "sdk_types": [
+        "ips_signature_rules.IPSSignatureRules"
+      ],
+      "total_fields": 14,
+      "classified_fields": 13,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 92.9,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 10
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 2
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: the Suricata/Snort signature body embeds tenant network indicators (IPs, hostnames, payload regexes); the reader never maps it",
+          "bucket": "deliberate",
+          "fields": [
+            "ruleText"
           ]
         }
       ]
@@ -729,6 +766,43 @@
       ]
     },
     {
+      "product": "zcc",
+      "resource": "company-info",
+      "sdk_types": [
+        "zcccompany.CompanyInfo"
+      ],
+      "total_fields": 111,
+      "classified_fields": 110,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 99.1,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 99
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 8
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 3
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: about 185 admin-portal feature toggles (which settings the ZCC web app offers), not tenant policy; as a catalog leaf the object never rendered",
+          "bucket": "deliberate",
+          "fields": [
+            "webAppConfig"
+          ]
+        }
+      ]
+    },
+    {
       "product": "zia",
       "resource": "nss-feeds",
       "sdk_types": [
@@ -757,35 +831,6 @@
         {
           "class": "tenant_configuration",
           "count": 78
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zcc",
-      "resource": "company-info",
-      "sdk_types": [
-        "zcccompany.CompanyInfo"
-      ],
-      "total_fields": 111,
-      "classified_fields": 111,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 101
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 8
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -2601,35 +2646,6 @@
         {
           "class": "tenant_configuration",
           "count": 5
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "ips-signature-rules",
-      "sdk_types": [
-        "ips_signature_rules.IPSSignatureRules"
-      ],
-      "total_fields": 14,
-      "classified_fields": 14,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 2
-        },
-        {
-          "class": "operational_metadata",
-          "count": 10
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 2
         }
       ],
       "ignored_by_reason": []

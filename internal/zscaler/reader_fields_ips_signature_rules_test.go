@@ -56,9 +56,8 @@ func TestIPSSignatureRuleCategoryProjectsInStandardMode(t *testing.T) {
 		t.Errorf("projected ips-signature-rules category.isNameL10nTag = %v, want true", category["isNameL10nTag"])
 	}
 
-	// (c)+(d) ruleText is catalog-classified as a secret and deliberately
-	// unmapped: the key and the canary value must both be absent even in
-	// standard mode.
+	// (c)+(d) ruleText is deliberately unmapped and absent from the catalog:
+	// the key and the canary value must both be absent even in standard mode.
 	assertFieldsAbsent(t, "ips-signature-rules", got, "ruleText")
 	assertNoCanaries(t, "ips-signature-rules", got, ruleTextCanary)
 }

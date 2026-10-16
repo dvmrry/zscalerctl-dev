@@ -1561,7 +1561,7 @@ func ipsSignatureRuleSourceRecord(rule ipssignaturerules.IPSSignatureRules) reso
 		"dynamicValRejectCode":       rule.DynamicValRejectCode,
 	}
 	// ruleText is deliberately never mapped: the Suricata/Snort signature body
-	// is catalog-classified as a secret and must not reach the source record.
+	// embeds tenant network indicators, so it is not in the catalog either.
 	if rule.Category != nil {
 		fields["category"] = map[string]any{
 			"id":            rule.Category.ID,
