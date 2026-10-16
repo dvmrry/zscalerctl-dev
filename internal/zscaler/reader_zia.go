@@ -109,12 +109,11 @@ import (
 // still admits nearly 20,000 records before requiring a terminal short page.
 const ziaMaxPages = 1000
 
-// errPaginationValidation marks a ziaWalkPages failure that proves the
-// endpoint violated its pagination contract. Callers that tolerate per-parent
-// read errors must still propagate it.
-// errPaginationValidation marks a list every page walker (ZIA, ZPA, ZCC,
-// ZIdentity) refused because it could not prove the result complete; it
-// classifies as pagination_incomplete.
+// errPaginationValidation marks a list a page walker (ZIA, ZPA, ZCC, ZTW,
+// ZIdentity, and the single-page network-applications read) refused because
+// it could not prove the result complete; it classifies as
+// pagination_incomplete. Callers that tolerate per-parent read errors must
+// still propagate it.
 var errPaginationValidation = errors.New("pagination validation failed")
 
 // ziaWalkPages walks a ZIA list endpoint while enforcing the

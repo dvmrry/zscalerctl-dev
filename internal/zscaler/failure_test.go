@@ -149,7 +149,15 @@ func TestEveryPageWalkerGuardClassifiesAsPaginationIncomplete(t *testing.T) {
 		return zidentityPage[int]{records: []int{1}, resultsTotal: 5, pageOffset: offset + 1}, nil
 	})
 	_, zpaMetadataErr := parseZPATotalPages(nil)
+	_, ztwErr := ztwPaginate(ctx, func(context.Context, int) ([]int, error) {
+		return make([]int, ztwPageSize), nil
+	})
+	_, zccTotalErr := zccPaginateWithTotalCount(ctx, func(_ context.Context, page, _ int) ([]int, int, error) {
+		return []int{page}, 10 + page, nil
+	})
 	for name, err := range map[string]error{
+		"ztw ceiling":            ztwErr,
+		"zcc totalCount changed": zccTotalErr,
 		"zcc ceiling":            zccErr,
 		"zpa totalPages changed": zpaErr,
 		"zpa missing totalPages": zpaMetadataErr,

@@ -2634,6 +2634,10 @@ func TestNetworkApplicationsListAvoidsUnboundedSDKPagination(t *testing.T) {
 	if !strings.Contains(source, "len(applications) >= pageCeiling") {
 		t.Fatalf("network-applications list missing overflow guard; want a len>=ceiling check that fails closed")
 	}
+	// The refusal reports pagination_incomplete like every page walker's.
+	if !strings.Contains(source, `"%w: zia network-applications returned the full single-page ceiling`) {
+		t.Fatalf("network-applications overflow guard does not wrap errPaginationValidation")
+	}
 }
 
 func TestReaderListTimeWindowsProjectsSDKShapeThroughAllowList(t *testing.T) {
