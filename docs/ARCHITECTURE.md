@@ -169,7 +169,7 @@ wherever the SDK closes the gap.
 | ZPA list pagination (`zpaPaginate`) | ZPA lists | The SDK treats a missing or malformed `totalPages` as zero, re-reads the bound from every page, and has no ceiling. The walker follows the first declared page count and fails closed on contradiction. |
 | `ziaLiteLocation` | `zia locations-lite` | `locationlite.LocationLite` uses plain booleans (omitted keys read as false) and lacks keys the API returns. |
 | `adminAuditLogsStatusResponse` | `zia admin-audit-logs status` | `AuditLogEntryReportTaskInfo` reads a null progress count as 0 and decodes the free-form `errorMessage`, which is never shown. |
-| `zpaTwoIdentityTransport` | ZPATWO tenants | The SDK emits an invalid identity host for ZPATWO; the transport rewrites only that host. |
+| `oneAPICloud` | ZPATWO tenants | For ZPATWO the SDK builds `zsloginzpatwo.net` and `api.zpatwo.zsapi.net`, neither of which exists. ZPATWO is a ZPA service cloud, not a OneAPI one; its tenants use the production OneAPI hosts, so the reader passes `PRODUCTION`. |
 
 `URLClassification` (`zia url-lookup`) is not a departure: the call is
 `urlcategories.GetURLLookup`, copied into an adapter-owned output view.

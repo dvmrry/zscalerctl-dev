@@ -35,7 +35,7 @@
         },
         "cloud": {
           "type": "string",
-          "description": "Zscaler cloud region, e.g. `PRODUCTION`. Overridden by `ZSCALERCTL_CLOUD`."
+          "description": "OneAPI cloud, e.g. `PRODUCTION`. `ZPATWO` (a ZPA service cloud) is treated as `PRODUCTION`. Overridden by `ZSCALERCTL_CLOUD`."
         },
         "client_id": {
           "type": "string",
