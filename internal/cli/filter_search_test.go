@@ -369,6 +369,44 @@ func TestFilterNestedPathMatchesGroupMembership(t *testing.T) {
 	}
 }
 
+// TestFieldsDottedPathNarrowsNestedValues pins --fields paths end to end: JSON
+// keeps the nested shape with only the selected keys, and the table gets one
+// column per path holding what it reaches.
+func TestFieldsDottedPathNarrowsNestedValues(t *testing.T) {
+	t.Parallel()
+
+	group := func(id int, name string) map[string]any { return map[string]any{"id": id, "name": name} }
+	reader := fakeResourceReader{list: []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "alice", "groups": []any{group(10, "APP_DEV"), group(12, "Ops")}}),
+		resources.NewSourceRecord(map[string]any{"id": 3, "name": "carol"}),
+	}}
+
+	run := func(format string) string {
+		t.Helper()
+		args := []string{"--format", format, "--fields", "name,groups.id", "zia", "users", "list"}
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+		}
+		return out.String()
+	}
+
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(run("json")), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
+	got, _ := json.Marshal(decoded)
+	if want := `[{"groups":[{"id":10},{"id":12}],"name":"alice"},{"name":"carol"}]`; string(got) != want {
+		t.Errorf("--fields name,groups.id json = %s, want %s", got, want)
+	}
+
+	table := run("table")
+	if want := "name\tgroups.id\nalice\t10,12\ncarol\t\n"; table != want {
+		t.Errorf("--fields name,groups.id table = %q, want %q", table, want)
+	}
+}
+
 func TestFilterInvalidExpressionIsUsageError(t *testing.T) {
 	t.Parallel()
 

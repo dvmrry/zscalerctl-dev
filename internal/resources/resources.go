@@ -358,18 +358,135 @@ func (r ProjectedRecord) Value(key string) (any, bool) {
 	return copyAny(value), true
 }
 
-// Select returns a copy of the record narrowed to keys, in the given order,
-// including only keys that are present. It can only narrow the already-projected
-// field set; it never adds or resurrects a dropped or secret field, so it is
-// safe to apply after projection and redaction.
+// Select returns a copy of the record narrowed to keys, including only keys
+// that are present. A key is a top-level field or a dotted path through nested
+// fields ("groups.id"): a path keeps each object along it with only the
+// selected keys, and narrows every element of a list it crosses, so
+// "groups.id" turns groups into [{"id": ...}, ...] with one entry per group.
+// A key that selects a field whole wins over paths beneath it. Select can only
+// narrow the already-projected field set; it never adds or resurrects a
+// dropped or secret field, so it is safe to apply after projection and
+// redaction.
 func (r ProjectedRecord) Select(keys []string) ProjectedRecord {
-	out := make(map[string]any, len(keys))
-	for _, key := range keys {
+	tree := newSelectionTree(keys)
+	out := make(map[string]any, len(tree))
+	for key, sub := range tree {
 		if value, ok := r.fields[key]; ok {
-			out[key] = copyAny(value)
+			out[key] = selectProjectedValue(copyAny(value), sub)
 		}
 	}
 	return ProjectedRecord{fields: out}
+}
+
+// selectionTree maps a field to the selection beneath it; a nil subtree keeps
+// the field whole.
+type selectionTree map[string]selectionTree
+
+func newSelectionTree(keys []string) selectionTree {
+	root := selectionTree{}
+	for _, key := range keys {
+		node := root
+		segments := strings.Split(key, ".")
+		for i, segment := range segments {
+			sub, seen := node[segment]
+			if seen && sub == nil {
+				// An ancestor is already selected whole.
+				break
+			}
+			if i == len(segments)-1 {
+				node[segment] = nil
+				break
+			}
+			if sub == nil {
+				sub = selectionTree{}
+				node[segment] = sub
+			}
+			node = sub
+		}
+	}
+	return root
+}
+
+// selectProjectedValue narrows an owned projected value to tree. Objects keep
+// only the selected keys that are present (an object missing all of them
+// stays as {}, so list elements keep their positions); lists are narrowed
+// element by element; any other value has nothing beneath it to drop.
+func selectProjectedValue(value any, tree selectionTree) any {
+	if tree == nil {
+		return value
+	}
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(tree))
+		for key, sub := range tree {
+			if child, ok := v[key]; ok {
+				out[key] = selectProjectedValue(child, sub)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = selectProjectedValue(item, tree)
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, len(v))
+		for i, item := range v {
+			out[i], _ = selectProjectedValue(item, tree).(map[string]any)
+		}
+		return out
+	}
+	return value
+}
+
+// ProjectedPathValue returns the value a top-level field or dotted path
+// reaches in a projected record's fields, for column-oriented rendering. A
+// path through objects returns the value at its end; a path that crosses a
+// list returns a list of what it reaches in each element, skipping elements
+// where it reaches nothing. ok is false when the path reaches nothing.
+func ProjectedPathValue(fields map[string]any, path string) (any, bool) {
+	if value, ok := fields[path]; ok {
+		return value, true
+	}
+	if !strings.Contains(path, ".") {
+		return nil, false
+	}
+	return projectedPathValue(fields, strings.Split(path, "."))
+}
+
+func projectedPathValue(value any, path []string) (any, bool) {
+	if len(path) == 0 {
+		return value, true
+	}
+	var items []any
+	switch v := value.(type) {
+	case map[string]any:
+		next, ok := v[path[0]]
+		if !ok {
+			return nil, false
+		}
+		return projectedPathValue(next, path[1:])
+	case []any:
+		items = v
+	case []map[string]any:
+		items = make([]any, len(v))
+		for i, item := range v {
+			items[i] = item
+		}
+	default:
+		return nil, false
+	}
+	var out []any
+	for _, item := range items {
+		if reached, ok := projectedPathValue(item, path); ok {
+			out = append(out, reached)
+		}
+	}
+	if out == nil {
+		return nil, false
+	}
+	return out, true
 }
 
 type ProjectedRecords struct {
@@ -426,22 +543,20 @@ type NarrowOptions struct {
 }
 
 // ValidateNarrowOptions validates all catalog names used by --fields and
-// --filter before a caller performs any read. A filter name is a top-level
-// field or a dotted path through nested catalog fields ("groups.name"). This
+// --filter before a caller performs any read. A --fields name is a top-level
+// field or a dotted path through nested catalog fields ("groups.id"); a filter
+// name is the same, but a dotted filter path must end at a leaf
+// ("groups.name"). This
 // check is catalog-only, so it can run before configuration (and therefore the
 // redaction mode) is known; ValidateNarrowOptionsInMode adds the mode check
 // once it is. Empty names are left to the adapter's request-shape validation,
 // which owns parsing and required-value errors.
 func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
-	catalog := make(map[string]struct{}, len(spec.Fields))
-	for _, field := range spec.Fields {
-		catalog[field.JSONField()] = struct{}{}
-	}
 	for _, name := range opts.Fields {
 		if name == "" {
 			continue
 		}
-		if _, ok := catalog[name]; !ok {
+		if _, ok := FieldPathAvailability(spec, name); !ok {
 			return UnknownFieldError{
 				Product:  spec.Product,
 				Resource: spec.Name,
@@ -487,18 +602,9 @@ func (a PathAvailability) RenderedIn(mode redact.Mode) bool {
 // dotted path whose segments are nested catalog fields. ok is false when the
 // name is not in the catalog.
 func FieldPathAvailability(spec ResourceSpec, name string) (PathAvailability, bool) {
-	if field, ok := fieldByJSONName(spec.Fields, name); ok {
-		return availabilityAlong([]FieldSpec{field}), true
-	}
-	var chain []FieldSpec
-	fields := spec.Fields
-	for _, segment := range strings.Split(name, ".") {
-		field, ok := fieldByJSONName(fields, segment)
-		if !ok {
-			return PathAvailability{}, false
-		}
-		chain = append(chain, field)
-		fields = field.Fields
+	chain := fieldChain(spec.Fields, name)
+	if chain == nil {
+		return PathAvailability{}, false
 	}
 	return availabilityAlong(chain), true
 }
@@ -598,26 +704,48 @@ func ValidateNarrowOptionsInMode(spec ResourceSpec, mode redact.Mode, opts Narro
 
 // OmittedFields lists the catalog fields a mode leaves out of output, as
 // top-level names or dotted paths for nested fields under a parent that does
-// render. With requested fields it covers only those; without, every field.
-// Secret fields never render in any mode and the schema says so, so they are
-// listed only when requested, and then separately.
+// render. With requested fields (or dotted paths) it covers only those and
+// what lies beneath them; without, every field. Secret fields never render in
+// any mode and the schema says so, so they are listed only when requested (a
+// path through a secret field counts), and then separately.
 func OmittedFields(spec ResourceSpec, mode redact.Mode, requested []string) (omitted []string, secret []string) {
-	fields := spec.Fields
-	if len(requested) > 0 {
-		fields = nil
-		for _, name := range requested {
-			field, ok := fieldByJSONName(spec.Fields, name)
-			if !ok {
-				continue
-			}
-			if field.Classification == ClassSecret {
-				secret = append(secret, name)
-				continue
-			}
-			fields = append(fields, field)
+	if len(requested) == 0 {
+		return omittedPaths(spec.Fields, mode, ""), nil
+	}
+	for _, name := range requested {
+		chain := fieldChain(spec.Fields, name)
+		if chain == nil {
+			continue
+		}
+		availability := availabilityAlong(chain)
+		switch {
+		case availability.Secret:
+			secret = append(secret, name)
+		case !availability.RenderedIn(mode):
+			omitted = append(omitted, name)
+		default:
+			omitted = append(omitted, omittedPaths(chain[len(chain)-1].Fields, mode, name+".")...)
 		}
 	}
-	return omittedPaths(fields, mode, ""), secret
+	return omitted, secret
+}
+
+// fieldChain returns the catalog fields along a top-level name or dotted
+// path, or nil when the name is not in the catalog.
+func fieldChain(fields []FieldSpec, name string) []FieldSpec {
+	if field, ok := fieldByJSONName(fields, name); ok {
+		return []FieldSpec{field}
+	}
+	var chain []FieldSpec
+	for _, segment := range strings.Split(name, ".") {
+		field, ok := fieldByJSONName(fields, segment)
+		if !ok {
+			return nil
+		}
+		chain = append(chain, field)
+		fields = field.Fields
+	}
+	return chain
 }
 
 func omittedPaths(fields []FieldSpec, mode redact.Mode, prefix string) []string {
@@ -731,9 +859,10 @@ func (rs ProjectedRecords) Records() []ProjectedRecord {
 }
 
 // EffectiveFields returns the renderable field order for a resource, optionally
-// narrowed to requested fields. Unknown fields are rejected. Known fields that
-// are not renderable in the active mode are silently omitted so callers cannot
-// widen projected output through field selection.
+// narrowed to requested fields or dotted paths. Unknown names are rejected.
+// Known names that do not render in the active mode (a path renders only when
+// every field along it does) are silently omitted so callers cannot widen
+// projected output through field selection.
 func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([]string, error) {
 	order := spec.FieldOrder(mode)
 	if len(requested) == 0 {
@@ -749,6 +878,13 @@ func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([
 	out := make([]string, 0, len(requested))
 	for _, name := range requested {
 		if _, ok := renderable[name]; ok {
+			out = append(out, name)
+			continue
+		}
+		if !strings.Contains(name, ".") {
+			continue
+		}
+		if availability, _ := FieldPathAvailability(spec, name); availability.RenderedIn(mode) {
 			out = append(out, name)
 		}
 	}

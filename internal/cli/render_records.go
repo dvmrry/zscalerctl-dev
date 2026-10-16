@@ -117,7 +117,7 @@ func renderRecordsTable(
 			if i > 0 {
 				body.WriteByte('\t')
 			}
-			body.WriteString(style.Value(field, formatTableValue(values[field])))
+			body.WriteString(style.Value(field, formatTableValue(fieldValue(values, field))))
 		}
 		body.WriteByte('\n')
 	}
@@ -135,7 +135,7 @@ func renderRecordKeyValues(
 		rows = append(rows, output.KV{
 			Key:   field,
 			Kind:  field,
-			Value: formatTableValue(values[field]),
+			Value: formatTableValue(fieldValue(values, field)),
 		})
 	}
 	return output.RenderKeyValues(rows, style)
@@ -158,7 +158,7 @@ func renderRecordsPretty(
 		values := record.Fields()
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = formatTableValue(values[field])
+			row[i] = formatTableValue(fieldValue(values, field))
 		}
 		rows = append(rows, row)
 	}
@@ -176,10 +176,17 @@ func renderRecordPretty(
 		rows = append(rows, output.KV{
 			Key:   field,
 			Kind:  field,
-			Value: formatTableValue(values[field]),
+			Value: formatTableValue(fieldValue(values, field)),
 		})
 	}
 	return output.RenderRecordPretty(rows, style)
+}
+
+// fieldValue returns what a --fields name (a top-level field or a dotted path)
+// reaches in a record, or nil when it reaches nothing.
+func fieldValue(values map[string]any, field string) any {
+	value, _ := resources.ProjectedPathValue(values, field)
+	return value
 }
 
 // formatTableValue renders a value for the terminal-oriented table, pretty, and

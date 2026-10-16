@@ -201,7 +201,10 @@ extract `.[0].id` from its complete array. Never use the shorthand
 ## Narrowing, missing fields, and streams
 
 `--fields` can only narrow the sanitized projection and applies to resource
-`list`, `get`, and `show`. `--filter key=value` does exact matching,
+`list`, `get`, and `show`. A `--fields` name may be a dotted path through
+nested fields listed by `schema list`: `--fields name,groups.id` keeps each
+record's `groups` list with only `id` in each element
+(`"groups":[{"id":1},{"id":2}]`), and a table gets a `groups.id` column. `--filter key=value` does exact matching,
 `--filter key~value` does case-insensitive substring matching, a key may
 be a dotted path ending at a nested leaf field listed by `schema list`
 (`groups.name=APP_DEV` matches one group exactly, element by element), repeated filters are ANDed, and

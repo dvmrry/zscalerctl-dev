@@ -749,9 +749,136 @@ func TestNestedFilterPathsValidateAgainstNestedCatalog(t *testing.T) {
 			t.Errorf("ValidateNarrowOptions(%q) error = %T %v, want UnknownFilterError", name, err, err)
 		}
 	}
-	// --fields stays top-level only.
-	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{Fields: []string{"groups.name"}}); !errors.Is(err, resources.ErrUnknownField) {
-		t.Errorf("ValidateNarrowOptions(fields groups.name) error = %v, want ErrUnknownField", err)
+	// --fields takes the same dotted paths, and may also stop at an object.
+	for _, name := range []string{"groups.name", "groups.id", "owner.manager", "owner.manager.name", "owner"} {
+		if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{Fields: []string{name}}); err != nil {
+			t.Errorf("ValidateNarrowOptions(fields %q) error = %v, want nil", name, err)
+		}
+	}
+	for _, name := range []string{"groups.notAField", "name.id", "groups.", ".groups", "groups..name", "tags.name", "owner.manager.name.x"} {
+		if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{Fields: []string{name}}); !errors.Is(err, resources.ErrUnknownField) {
+			t.Errorf("ValidateNarrowOptions(fields %q) error = %v, want ErrUnknownField", name, err)
+		}
+	}
+}
+
+// TestSelectDottedPaths pins --fields paths: a path keeps each object along it
+// with only the selected keys, narrows every list element (keeping elements
+// that lack the key as {} so positions survive), and a whole-field selection
+// wins over paths beneath it in either order.
+func TestSelectDottedPaths(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	records := projectedRecordsFromMaps(t, spec,
+		map[string]any{"id": 1, "name": "alice", "tags": []string{"a"}, "groups": []any{
+			map[string]any{"id": 10, "name": "APP_DEV", "comments": "c"},
+			map[string]any{"name": "no-id"},
+		}, "owner": map[string]any{"manager": map[string]any{"name": "bob"}}},
+		map[string]any{"id": 2, "name": "carol"},
+	)
+	for _, tc := range []struct {
+		keys []string
+		want []string
+	}{
+		{
+			keys: []string{"name", "groups.id", "owner.manager.name"},
+			want: []string{
+				`{"groups":[{"id":10},{}],"name":"alice","owner":{"manager":{"name":"bob"}}}`,
+				`{"name":"carol"}`,
+			},
+		},
+		{
+			keys: []string{"groups.id", "groups.name"},
+			want: []string{`{"groups":[{"id":10,"name":"APP_DEV"},{"name":"no-id"}]}`, `{}`},
+		},
+		{
+			keys: []string{"groups", "groups.id"},
+			want: []string{`{"groups":[{"comments":"c","id":10,"name":"APP_DEV"},{"name":"no-id"}]}`, `{}`},
+		},
+		{
+			keys: []string{"groups.id", "groups"},
+			want: []string{`{"groups":[{"comments":"c","id":10,"name":"APP_DEV"},{"name":"no-id"}]}`, `{}`},
+		},
+		{
+			keys: []string{"owner.manager"},
+			want: []string{`{"owner":{"manager":{"name":"bob"}}}`, `{}`},
+		},
+	} {
+		got := records.Select(tc.keys)
+		var rendered []string
+		for _, record := range got.Records() {
+			data, err := json.Marshal(record)
+			if err != nil {
+				t.Fatalf("Marshal error = %v", err)
+			}
+			rendered = append(rendered, string(data))
+		}
+		if !slices.Equal(rendered, tc.want) {
+			t.Errorf("Select(%v) = %v, want %v", tc.keys, rendered, tc.want)
+		}
+	}
+	// Selecting never aliases the source record.
+	selected := records.Select([]string{"groups.id"}).Records()[0].Fields()
+	selected["groups"].([]any)[0].(map[string]any)["id"] = 99
+	if again := records.Select([]string{"groups.id"}).Records()[0].Fields(); again["groups"].([]any)[0].(map[string]any)["id"] == 99 {
+		t.Error("Select returned a value aliasing the source record")
+	}
+}
+
+func TestProjectedPathValue(t *testing.T) {
+	t.Parallel()
+
+	fields := map[string]any{
+		"name": "alice",
+		"groups": []any{
+			map[string]any{"id": 10},
+			map[string]any{"name": "no-id"},
+			map[string]any{"id": 12},
+		},
+		"owner": map[string]any{"manager": map[string]any{"name": "bob"}},
+		"none":  []any{map[string]any{}},
+	}
+	for _, tc := range []struct {
+		path   string
+		want   any
+		wantOK bool
+	}{
+		{"name", "alice", true},
+		{"groups.id", []any{10, 12}, true},
+		{"owner.manager.name", "bob", true},
+		{"owner.manager", map[string]any{"name": "bob"}, true},
+		{"owner.peer", nil, false},
+		{"missing", nil, false},
+		{"none.id", nil, false},
+		{"name.x", nil, false},
+	} {
+		got, ok := resources.ProjectedPathValue(fields, tc.path)
+		if ok != tc.wantOK || !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("ProjectedPathValue(%q) = %#v, %v; want %#v, %v", tc.path, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}
+
+// TestEffectiveFieldsKeepsOnlyRenderedPaths pins that a dotted --fields path
+// cannot widen output: it is kept only where every field along it renders.
+func TestEffectiveFieldsKeepsOnlyRenderedPaths(t *testing.T) {
+	t.Parallel()
+
+	spec := nestedNarrowingSpec()
+	requested := []string{"name", "groups.id", "groups.name", "owner.manager.name"}
+	for _, tc := range []struct {
+		mode redact.Mode
+		want []string
+	}{
+		{redact.ModeStandard, []string{"name", "groups.id", "groups.name", "owner.manager.name"}},
+		{redact.ModeShare, []string{"name", "groups.id", "owner.manager.name"}},
+		{redact.ModeParanoid, []string{"name", "owner.manager.name"}},
+	} {
+		got, err := resources.EffectiveFields(spec, tc.mode, requested)
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("EffectiveFields(%s) = %v, %v; want %v, nil", tc.mode, got, err, tc.want)
+		}
 	}
 }
 
@@ -2719,6 +2846,15 @@ func TestOmittedFields(t *testing.T) {
 	omitted, _ = resources.OmittedFields(spec, redact.ModeShare, []string{"id", "groups"})
 	if !slices.Equal(omitted, []string{"groups.name", "groups.comments"}) {
 		t.Errorf("OmittedFields(share, requested groups) = %v, want [groups.name groups.comments]", omitted)
+	}
+	// Requested paths are reported as requested, or by what lies beneath them.
+	omitted, secret = resources.OmittedFields(spec, redact.ModeShare, []string{"groups.id", "groups.name", "owner.manager", "token"})
+	if !slices.Equal(omitted, []string{"groups.name"}) || !slices.Equal(secret, []string{"token"}) {
+		t.Errorf("OmittedFields(share, requested paths) = %v, %v; want [groups.name], [token]", omitted, secret)
+	}
+	omitted, _ = resources.OmittedFields(spec, redact.ModeParanoid, []string{"groups.id"})
+	if !slices.Equal(omitted, []string{"groups.id"}) {
+		t.Errorf("OmittedFields(paranoid, groups.id) = %v, want [groups.id] (its parent does not render)", omitted)
 	}
 }
 
