@@ -513,8 +513,12 @@ func (p *jsonDocumentParser) parseObject() bool {
 		}
 		// Match the existing assignment-rule surface: scalar values are replaced,
 		// while structured values continue to be scanned recursively by token.
+		// The literals true, false and null are kept: a credential cannot hide
+		// in them, and a setting named for what it guards
+		// ("allowZdxDisableWithoutPassword": false) must still show its value.
 		structuredValue := p.in[valueStart] == '{' || p.in[valueStart] == '['
-		if !structuredValue {
+		literalValue := p.in[valueStart] == 't' || p.in[valueStart] == 'f' || p.in[valueStart] == 'n'
+		if !structuredValue && !literalValue {
 			classifications, count := classifyJSONKey(key.value)
 			for _, classification := range classifications[:count] {
 				p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
