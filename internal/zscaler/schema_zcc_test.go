@@ -409,7 +409,6 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"enableZpaAuthUserName",
 				"enableGlobalZCCTelemetry",
 				"configureTunnel2fallbackForZia",
-				"webAppConfig",
 				"enableInstallWebView2",
 				"enableCustomProxyPorts",
 				"interceptZIATrafficAllAdapters",
@@ -431,6 +430,25 @@ func reviewedSDKShapesZCC() []sdkShapeReview {
 				"zdxManualRollout",
 				"winZdxLiteEnabled",
 				"telemetryDefault",
+			},
+			ignoredFields: map[string]string{
+				"webAppConfig": "deliberate: about 185 string flags behind the ZCC admin portal, mostly portal feature toggles plus some client settings (e.g. enableFipsMode); too broad to classify flag by flag, so excluded fail-closed",
+			},
+		},
+		{
+			name:         "zcccompany.DevicePostureFrequency",
+			resource:     resources.ProductZCC,
+			resourceName: resourceZCCCompanyInfo,
+			typ:          reflect.TypeOf(zcccompany.DevicePostureFrequency{}),
+			catalogFields: []string{
+				"postureId",
+				"postureName",
+				"iosValue",
+				"androidValue",
+				"windowsValue",
+				"macValue",
+				"linuxValue",
+				"defaultValue",
 			},
 		},
 	}

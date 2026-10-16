@@ -1940,7 +1940,6 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			idNameRefField("parent"),
 		},
 	}
 }

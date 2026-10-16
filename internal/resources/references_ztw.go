@@ -90,7 +90,6 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"srcIpv6Groups":                     "no ZTW IPv6 group resource in the catalog",
 		"users":                             "no ZTW user directory resource in the catalog",
 		"zpaApplicationSegmentGroups":       "no ZPA application segment group resource in the ZTW catalog",
-		"proxyGateway.parent":               "parent of a reference, not modeled as its own resource",
 	},
 	"ztw/location-templates": {
 		"lastModUid":                     "a user id per the SDK; match to ztw/admin-users is not verified",
@@ -108,11 +107,7 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"staticLocationGroups":             "not applicable to Cloud & Branch Connector per the SDK",
 		"virtualZenClusters":               "not applicable to Cloud & Branch Connector per the SDK",
 		"virtualZens":                      "not applicable to Cloud & Branch Connector per the SDK",
-		"publicCloudAccountId.parent":      "parent of a reference, not modeled as its own resource",
 		"vpcInfo.cloudMeta":                "cloud VPC metadata, no catalog resource",
-	},
-	"ztw/network-service-groups": {
-		"services.parent": "parent of a reference, not modeled as its own resource",
 	},
 	"ztw/public-cloud-accounts": {
 		"accountId":  "a cloud provider account or subscription id, not a record id",
@@ -129,13 +124,8 @@ var ztwUnmappedReferences = map[string]map[string]string{
 		"supportedRegions":                "a cloud region id, not a catalog record",
 	},
 	"ztw/traffic-dns-rules": {
-		"zpaIpGroup":        "SDK comment is copied from proxyGateway; target unverified",
-		"locationGroups":    "no ZTW location group resource in the catalog",
-		"dnsGateway.parent": "parent of a reference, not modeled as its own resource",
-		"zpaIpGroup.parent": "parent of a reference, not modeled as its own resource",
-	},
-	"ztw/traffic-log-rules": {
-		"proxyGateway.parent": "parent of a reference, not modeled as its own resource",
+		"zpaIpGroup":     "SDK comment is copied from proxyGateway; target unverified",
+		"locationGroups": "no ZTW location group resource in the catalog",
 	},
 	"ztw/zpa-application-segments": {
 		"zpaId": "the ZPA tenant id per the SDK, not a record id",
