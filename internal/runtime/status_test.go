@@ -83,13 +83,13 @@ func TestNewAuthStatusReportsInvalidCloud(t *testing.T) {
 	t.Parallel()
 
 	for name, env := range map[string][]string{
-		"oneapi product cloud": {
+		"ZSCALERCTL_CLOUD": {
 			config.EnvClientID + "=client-id",
 			config.EnvClientSecret + "=client-secret",
 			config.EnvVanityDomain + "=example",
 			config.EnvCloud + "=zscalertwo",
 		},
-		"legacy unknown cloud": {
+		"ZSCALERCTL_ZIA_CLOUD": {
 			config.EnvAuthMode + "=" + string(config.AuthModeZIALegacy),
 			config.EnvZIAUsername + "=admin@example.invalid",
 			config.EnvZIAPassword + "=legacy-password",
@@ -102,7 +102,7 @@ func TestNewAuthStatusReportsInvalidCloud(t *testing.T) {
 			t.Fatalf("config.LoadConfig(%s) error = %v, want nil", name, err)
 		}
 		status := NewAuthStatus(cfg)
-		if status.Credentials != "invalid cloud" || !strings.HasPrefix(status.LiveAPI, "unavailable: ") {
+		if status.Credentials != "invalid cloud" || !strings.HasPrefix(status.LiveAPI, "unavailable: "+name+" ") {
 			t.Errorf("NewAuthStatus(%s) = %#v, want invalid cloud and unavailable live API", name, status)
 		}
 	}
