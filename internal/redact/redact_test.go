@@ -292,6 +292,47 @@ func TestRedactorJSONClassifiesDecodedSensitiveKeys(t *testing.T) {
 	}
 }
 
+// TestRedactorJSONKeepsLiteralsUnderSecretKeys pins that a secret-named key
+// replaces strings and numbers but keeps true, false and null, which cannot
+// carry a credential.
+func TestRedactorJSONKeepsLiteralsUnderSecretKeys(t *testing.T) {
+	t.Parallel()
+
+	input := `{"allowZdxDisableWithoutPassword":false,"clientSecret":true,"password":null,"refreshKerberosToken":0,"apiToken":"literal-canary"}`
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		got, report := redact.New(mode).ScanString(input)
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(ScanString(%q), %s) error = %v; got %q", input, mode, err, got)
+		}
+		if decoded["allowZdxDisableWithoutPassword"] != false || decoded["clientSecret"] != true ||
+			decoded["password"] != nil {
+			t.Errorf("ScanString(%s) = %q, want true/false/null kept", mode, got)
+		}
+		if decoded["refreshKerberosToken"] != "<REDACTED:SECRET>" || decoded["apiToken"] != "<REDACTED:SECRET>" {
+			t.Errorf("ScanString(%s) = %q, want the number and string replaced", mode, got)
+		}
+		if gotCount := report.Counts["secret_assignment"]; gotCount != 2 {
+			t.Errorf("ScanString(%s) secret_assignment count = %d, want 2", mode, gotCount)
+		}
+	}
+
+	// The output boundary (ScanRenderedString), the other key classifiers,
+	// whitespace before the value, and an NDJSON stream behave the same.
+	for _, tc := range []struct{ input, kept, replaced string }{
+		{`{"provisioningKey":null,"privateKey":false,"password" :  true,"psk":"canary-a"}`, `"password" :  true`, "canary-a"},
+		{"{\"clientSecret\":true}\n{\"clientSecret\":\"canary-b\"}\n", `"clientSecret":true`, "canary-b"},
+	} {
+		got, _ := redact.New(redact.ModeShare).ScanRenderedString(tc.input)
+		if !strings.Contains(got, tc.kept) || strings.Contains(got, tc.replaced) {
+			t.Errorf("ScanRenderedString(%q) = %q, want %q kept and %q replaced", tc.input, got, tc.kept, tc.replaced)
+		}
+		if strings.Contains(tc.input, "provisioningKey") && (!strings.Contains(got, `"provisioningKey":null`) || !strings.Contains(got, `"privateKey":false`)) {
+			t.Errorf("ScanRenderedString(%q) = %q, want provisioning/private key literals kept", tc.input, got)
+		}
+	}
+}
+
 func TestRedactorJSONPreservesSensitiveSuffixAssignmentCoverage(t *testing.T) {
 	t.Parallel()
 
