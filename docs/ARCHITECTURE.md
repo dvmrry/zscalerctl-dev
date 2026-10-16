@@ -155,6 +155,25 @@ closes it after the call. Dump commands create one SDK service per selected
 product that supports sessions and close it when collection finishes, avoiding
 repeated authentication while keeping token lifetime bounded to the command.
 
+### Where The Reader Departs From The SDK
+
+Every endpoint the reader calls is one the SDK itself defines, and responses
+decode into SDK models with three exceptions below. Each departure exists
+because the SDK behavior would return a wrong or silently incomplete answer.
+Audited against SDK v3.8.55; re-check on every SDK bump and switch back
+wherever the SDK closes the gap.
+
+| Departure | Where | SDK behavior it avoids |
+| --- | --- | --- |
+| ZIA list pagination (`ziaWalkPages`) | about 76 list reads | `common.ReadAllPages` stops at the first page shorter than the page size and has no other check. About 25 ZIA list endpoints ignore `page` (observed live); the SDK then repeats full pages without end or truncates silently at a server cap. The walker detects repeats, duplicate ids and width changes, probes a smaller page size, and fails closed. |
+| ZPA list pagination (`zpaPaginate`) | ZPA lists | The SDK treats a missing or malformed `totalPages` as zero, re-reads the bound from every page, and has no ceiling. The walker follows the first declared page count and fails closed on contradiction. |
+| `ziaLiteLocation` | `zia locations-lite` | `locationlite.LocationLite` uses plain booleans (omitted keys read as false) and lacks keys the API returns. |
+| `adminAuditLogsStatusResponse` | `zia admin-audit-logs status` | `AuditLogEntryReportTaskInfo` reads a null progress count as 0 and decodes the free-form `errorMessage`, which is never shown. |
+| `zpaTwoIdentityTransport` | ZPATWO tenants | The SDK emits an invalid identity host for ZPATWO; the transport rewrites only that host. |
+
+`URLClassification` (`zia url-lookup`) is not a departure: the call is
+`urlcategories.GetURLLookup`, copied into an adapter-owned output view.
+
 ## Rate Limits And Pacing
 
 `zscalerctl` keeps its request rate within tenant limits through two explicit,
