@@ -516,6 +516,8 @@ func (p *jsonDocumentParser) parseObject() bool {
 		// The literals true, false and null are kept: a credential cannot hide
 		// in them, and a setting named for what it guards
 		// ("allowZdxDisableWithoutPassword": false) must still show its value.
+		// The plain-text assignment rules stay stricter ("password: false" in
+		// free text is still replaced), since a pasted fragment has no types.
 		structuredValue := p.in[valueStart] == '{' || p.in[valueStart] == '['
 		literalValue := p.in[valueStart] == 't' || p.in[valueStart] == 'f' || p.in[valueStart] == 'n'
 		if !structuredValue && !literalValue {

@@ -316,6 +316,21 @@ func TestRedactorJSONKeepsLiteralsUnderSecretKeys(t *testing.T) {
 			t.Errorf("ScanString(%s) secret_assignment count = %d, want 2", mode, gotCount)
 		}
 	}
+
+	// The output boundary (ScanRenderedString), the other key classifiers,
+	// whitespace before the value, and an NDJSON stream behave the same.
+	for _, tc := range []struct{ input, kept, replaced string }{
+		{`{"provisioningKey":null,"privateKey":false,"password" :  true,"psk":"canary-a"}`, `"password" :  true`, "canary-a"},
+		{"{\"clientSecret\":true}\n{\"clientSecret\":\"canary-b\"}\n", `"clientSecret":true`, "canary-b"},
+	} {
+		got, _ := redact.New(redact.ModeShare).ScanRenderedString(tc.input)
+		if !strings.Contains(got, tc.kept) || strings.Contains(got, tc.replaced) {
+			t.Errorf("ScanRenderedString(%q) = %q, want %q kept and %q replaced", tc.input, got, tc.kept, tc.replaced)
+		}
+		if strings.Contains(tc.input, "provisioningKey") && (!strings.Contains(got, `"provisioningKey":null`) || !strings.Contains(got, `"privateKey":false`)) {
+			t.Errorf("ScanRenderedString(%q) = %q, want provisioning/private key literals kept", tc.input, got)
+		}
+	}
 }
 
 func TestRedactorJSONPreservesSensitiveSuffixAssignmentCoverage(t *testing.T) {
