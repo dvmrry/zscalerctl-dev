@@ -18,8 +18,9 @@ version bump.
 The v3.8.48 to v3.8.55 delta: Zidentity moved from the vanity admin host to the
 OneAPI gateway under `/ziam` (the bearer token now goes to the same gateway as
 every other product; Zidentity on `gov` and `govus` stays rejected before
-authentication because those gateway routes are unverified; `ZPATWO` is mapped
-to the production OneAPI hosts). The SDK
+authentication because those gateway routes are unverified). `ZSCALERCTL_CLOUD`
+is a closed list (`PRODUCTION`, `BETA`, `GOV`, `GOVUS`), so the OAuth host that
+receives the client secret is never derived from free operator text. The SDK
 now masks authorization headers in its own debug logs; the CLI's SDK log
 adapter was already fail-closed (allow-listed messages, text arguments
 replaced) and is unchanged. Retry behavior changed (permanent 5xx verdicts are

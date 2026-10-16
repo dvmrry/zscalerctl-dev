@@ -242,6 +242,9 @@ func readerConfigFromConfig(
 	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
 	switch authMode {
 	case config.AuthModeOneAPI:
+		if err := zscaler.ValidateOneAPICloud(cfg.Cloud); err != nil {
+			return zscaler.ReaderConfig{}, err
+		}
 		var err error
 		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
 		if err != nil {

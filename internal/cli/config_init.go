@@ -17,7 +17,7 @@ profiles:
   prod:
     # Non-secret tenant metadata. Replace the placeholders below.
     vanity_domain: example          # your Zscaler vanity domain
-    cloud: PRODUCTION               # OneAPI cloud, e.g. PRODUCTION
+    cloud: PRODUCTION               # PRODUCTION, BETA, GOV or GOVUS (zscalertwo/ZPATWO tenants: PRODUCTION)
     client_id: REPLACE_WITH_CLIENT_ID
     # zpa_customer_id: REPLACE_WITH_ZPA_CUSTOMER_ID   # only for ZPA resources
     # zpa_microtenant_id: REPLACE_WITH_MICROTENANT_ID

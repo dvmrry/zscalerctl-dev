@@ -53,15 +53,6 @@ func TestUnsupportedOneAPIZidentityCloud(t *testing.T) {
 			product: resources.ProductZidentity,
 		},
 		{
-			name: "ZPATWO uses the production gateway",
-			cfg: func() ReaderConfig {
-				cfg := validReaderConfig()
-				cfg.Cloud = "ZPATWO"
-				return cfg
-			}(),
-			product: resources.ProductZidentity,
-		},
-		{
 			name: "government ZIA remains supported",
 			cfg: func() ReaderConfig {
 				cfg := validReaderConfig()
