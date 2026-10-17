@@ -196,11 +196,20 @@ func fillSample(v reflect.Value, variant, depth int) {
 	}
 }
 
-func buildFieldTypes(t *testing.T) map[string]string {
+// sampledResource is one catalog resource with its handler's sample records
+// projected in standard mode.
+type sampledResource struct {
+	spec    resources.ResourceSpec
+	records []map[string]any
+}
+
+// sampleCatalog runs every catalog resource's record mapper on synthetic
+// samples. It fails when a handler cannot be sampled or yields no record.
+func sampleCatalog(t *testing.T) []sampledResource {
 	t.Helper()
 
 	handlers := newResourceHandlers(sdkClient{})
-	out := map[string]string{}
+	var out []sampledResource
 	for _, spec := range resources.Catalog() {
 		handler, ok := handlers[resourceKey{product: spec.Product, name: spec.Name}]
 		if !ok {
@@ -218,9 +227,24 @@ func buildFieldTypes(t *testing.T) map[string]string {
 		if err != nil {
 			t.Fatalf("project samples for %s/%s: %v", spec.Product, spec.Name, err)
 		}
-		seen := map[string]map[string]bool{}
+		sampled := sampledResource{spec: spec}
 		for _, record := range projected.Records() {
-			observeFieldTypes(seen, "", record.Fields(), spec.Fields)
+			sampled.records = append(sampled.records, record.Fields())
+		}
+		out = append(out, sampled)
+	}
+	return out
+}
+
+func buildFieldTypes(t *testing.T) map[string]string {
+	t.Helper()
+
+	out := map[string]string{}
+	for _, sampled := range sampleCatalog(t) {
+		spec := sampled.spec
+		seen := map[string]map[string]bool{}
+		for _, record := range sampled.records {
+			observeFieldTypes(seen, "", record, spec.Fields)
 		}
 		prefix := resourceReviewKey(spec.Product, spec.Name) + "/"
 		for path, kinds := range seen {
