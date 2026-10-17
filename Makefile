@@ -10,7 +10,7 @@ LIVE_SMOKE_OUT ?=
 LIVE_SMOKE_FLAGS ?= --require-credentials
 LIVE_SMOKE_MANIFEST ?=
 
-.PHONY: fmt-check test race vet vuln vuln-root vuln-tools staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain verify-node-toolchain verify-active-node-toolchain verify-typescript-client vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage live-smoke fuzz-smoke check release-check
+.PHONY: fmt-check test race vet vuln vuln-root vuln-tools staticcheck docs-check docs-cli-check gen-cli-docs semgrep-check secret-scan verify-gitleaks-allowlist verify-go-toolchain verify-node-toolchain verify-active-node-toolchain verify-typescript-client vendor verify-vendor verify-licenses verify-sdk-boundary verify-core-boundaries verify-experiment-boundaries verify-machine-contract verify-ci-no-live-creds verify-actions-pinned verify-surface-changes-manifest verify-adversarial-review verify-pty-escape-clean verify-release-automation verify-release-artifacts verify-catalog-draft verify-resource-scaffold verify-sdk-surface-inventory verify-script-registry verify-agents-skill scaffold-resource sdk-surface-inventory field-coverage field-types live-smoke fuzz-smoke check release-check
 
 fmt-check:
 	@files="$$(git ls-files -co --exclude-standard '*.go' ':!:vendor/**' | xargs gofmt -l)"; \
@@ -169,6 +169,12 @@ sdk-surface-inventory:
 # needed after an SDK bump or a classification change moves the numbers.
 field-coverage:
 	FIELD_COVERAGE_WRITE=1 go test -mod=vendor ./internal/zscaler -run TestFieldCoverageReportIsCurrent
+
+# Regenerate internal/resources/field_types_gen.go (schema list field types)
+# from reviewedSDKShapes(). Plain `go test` asserts it is current, so this is
+# only needed after an SDK bump or a catalog change.
+field-types:
+	FIELD_TYPES_WRITE=1 go test -mod=vendor ./internal/zscaler -run TestFieldTypesAreCurrent
 
 live-smoke:
 	go run ./scripts/live-smoke.go $(LIVE_SMOKE_FLAGS) $(if $(LIVE_SMOKE_BIN),--bin "$(LIVE_SMOKE_BIN)") $(if $(LIVE_SMOKE_RESOURCES),--resources "$(LIVE_SMOKE_RESOURCES)") $(if $(LIVE_SMOKE_MANIFEST),--manifest "$(LIVE_SMOKE_MANIFEST)") $(if $(LIVE_SMOKE_OUT),--out "$(LIVE_SMOKE_OUT)")

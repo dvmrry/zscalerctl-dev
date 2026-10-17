@@ -154,6 +154,14 @@ mode omits are dropped from output and named on stderr
 `--filter` on such a field is a usage error (exit 2) before any read. Secret
 fields never render.
 
+Each `schema list` field, nested ones included, may have a `type`:
+`string`, `integer`, `number`, `boolean`, `object`, or `array<T>` of those,
+the JSON type zscalerctl emits for it (observed by running each reader on
+sample SDK values). It is absent where that is not fixed: secret fields,
+values the reader derives from content, and open SDK shapes. Any typed field
+may also be `null` (an unset value), so guard list iteration (`.x // []`). A
+redacted value renders as a marker string whatever its type.
+
 Then read with separate `list`, `get <id>`, or `show` commands (singletons):
 
 ```sh

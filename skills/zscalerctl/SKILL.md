@@ -89,9 +89,9 @@ fi
 ```
 
 Use `schema list` for the field catalog, and validate the intended redaction
-mode and requested fields before a live read. This targeted query selects
-top-level renderable fields; it rejects a typo or a field that is not rendered
-in the chosen mode:
+mode and requested fields before a live read. This targeted query lists the
+top-level renderable fields and checks each requested name or dotted path; it
+rejects a typo or a field that is not rendered in the chosen mode:
 
 ```sh
 SCHEMA=$(mktemp)
@@ -99,6 +99,11 @@ trap 'rm -f "$SCHEMA" "$MANIFEST"' EXIT
 zscalerctl --format json schema list >"$SCHEMA"
 jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" \
   --arg mode "$MODE" --arg requested "$FIELDS" '
+  def renderable($prefix):
+    .[] | select(.classification != "secret")
+        | select(((.allowed_modes // []) | index($mode)) != null)
+        | ($prefix + (.json_name // .name)) as $path
+        | $path, ((.fields // []) | renderable($path + "."));
   [ .[] | select(.product == $product and .name == $resource) ] as $matches
   | if ($matches | length) != 1
     then error("expected exactly one resource catalog entry")
@@ -107,8 +112,9 @@ jq -e -c --arg product "$PRODUCT" --arg resource "$RESOURCE" \
           | select(.classification != "secret")
           | select(((.allowed_modes // []) | index($mode)) != null)
           | (.json_name // .name) ] as $renderable
+      | [ $spec.fields | renderable("") ] as $paths
       | ($requested | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $wanted
-      | ($wanted - $renderable) as $unavailable
+      | ($wanted - $paths) as $unavailable
       | if ($unavailable | length) > 0
         then error("requested field is unknown or not renderable in this mode")
         else {product: $spec.product, resource: $spec.name,
@@ -126,6 +132,14 @@ The CLI drops a requested field that the active mode suppresses and names it
 on stderr (`zscalerctl: requested ... fields omitted in share mode: ...`); the
 preflight above still lets the caller choose renderable fields up front. Secret fields are never recoverable through `--fields`,
 `jq`, raw SDK values, config, or credentials.
+
+Each `schema list` field, nested ones included, may have a `type`:
+`string`, `integer`, `number`, `boolean`, `object`, or `array<T>` of those,
+the JSON type zscalerctl emits for it (observed by running each reader on
+sample SDK values). It is absent where that is not fixed: secret fields,
+values the reader derives from content, and open SDK shapes. Any typed field
+may also be `null` (an unset value), so guard list iteration (`.x // []`). A
+redacted value renders as a marker string whatever its type.
 
 ## Read a small, explicit result
 
