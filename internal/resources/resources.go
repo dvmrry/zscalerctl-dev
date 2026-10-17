@@ -63,7 +63,12 @@ type FieldSpec struct {
 	// emitted: a secret field renders in no mode and shows [], so a reader
 	// never mistakes a missing key for "unstated".
 	AllowedModes []redact.Mode `json:"allowed_modes"`
-	Fields       []FieldSpec   `json:"fields,omitempty"`
+	// Type is the JSON type zscalerctl emits for the field: string, integer,
+	// number, boolean, object, or array<T> of those. It is observed by
+	// sampling each reader's record mapper (field_types_gen.go) and empty
+	// where no fixed type is emitted.
+	Type   string      `json:"type,omitempty"`
+	Fields []FieldSpec `json:"fields,omitempty"`
 	// References names the catalog resources this field's id may belong to
 	// (usually one); see fieldReferences in references.go.
 	References             []ResourceRef `json:"references,omitempty"`
@@ -2081,6 +2086,7 @@ func Catalog() ResourceCatalog {
 	c = append(c, catalogZCC()...)
 	c = append(c, catalogZidentity()...)
 	applyFieldReferences(c)
+	applyFieldTypes(c)
 	return c
 }
 
