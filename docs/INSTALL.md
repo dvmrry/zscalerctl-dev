@@ -128,8 +128,11 @@ gateway, so they use `PRODUCTION`. The accepted values (any case) are
 `PRODUCTION` (the default when unset), `ALPHA`, `BETA`, `GOV` and `GOVUS`.
 Any other value is rejected before the client secret is resolved, because the
 SDK would derive the token host that receives it from the value; for product
-cloud names no such host exists. `auth status` and `doctor` report it as
-`invalid cloud`.
+cloud names no such host exists. A read fails with kind `invalid_config`
+(exit 2), and `auth status` and `doctor` report `invalid settings` with the
+reason, through the same check the reader runs. An invalid
+`ZSCALERCTL_VANITY_DOMAIN` (it must be a single DNS label) or legacy
+`ZSCALERCTL_ZIA_CLOUD` is reported the same way.
 
 Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported.
 Since SDK v3.8.49 Zidentity is served through the OneAPI gateway under

@@ -317,6 +317,9 @@ func urlLookupBoundaryError(err error) error {
 		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
 		machineErr.Message = "invalid proxy configuration"
 		sentinel = zscaler.ErrInvalidProxyConfig
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message, sentinel = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
 		machineErr.Message, sentinel = sanitizedMissingCredentials(err)

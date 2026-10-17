@@ -216,7 +216,10 @@ an operator-specified argv directly with no shell and can be disabled with
 `ZSCALERCTL_DISALLOW_CMD=true`. Do not invent or edit provider commands while
 driving the CLI — ask the operator. Run
 `zscalerctl doctor`: it reports exactly which variables or profile-backed
-secret refs are set or missing without contacting Zscaler. The canonical env
+secret refs are set or missing without contacting Zscaler. Its `status` is
+`OK` only when live reads can run, otherwise `not ready`; `credentials`
+(`configured`, `partial`, `invalid settings` or `not configured`) and
+`live_api` say why. The canonical env
 set is in the [README](README.md#authentication)
 (`ZSCALERCTL_CLIENT_ID`, `ZSCALERCTL_CLIENT_SECRET` or `..._FILE`,
 `ZSCALERCTL_VANITY_DOMAIN`, `ZSCALERCTL_CLOUD`, plus

@@ -159,6 +159,7 @@ func TestCredentialedReadAdvertisesConfiguredProviderExecution(t *testing.T) {
 profiles:
   default:
     client_id: client-id
+    vanity_domain: example
     client_secret_ref:
       cmd:
         argv: [%q, "-test.run=^TestCLIConfigCmdHelperProcess$", "--", "touch", %q]

@@ -128,6 +128,43 @@ func (e *MissingCredentialsError) Error() string {
 
 func (e *MissingCredentialsError) Unwrap() error { return ErrMissingCredentials }
 
+// ErrInvalidSettings marks a non-secret reader setting that is set but
+// unusable, such as an unsupported cloud. It is configuration, not a missing
+// credential.
+var ErrInvalidSettings = errors.New("invalid zscaler settings")
+
+// InvalidSettingsError says which setting is unusable and why. Its reason is
+// one of the settingsReason constants and never includes the configured
+// value. Another package can only build the zero value, whose message is the
+// sentinel's, so the message is safe to render at any boundary.
+type InvalidSettingsError struct {
+	reason settingsReason
+}
+
+type settingsReason string
+
+const (
+	reasonVanityDomain   settingsReason = "ZSCALERCTL_VANITY_DOMAIN must be a single DNS label"
+	reasonOneAPICloud    settingsReason = "ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION"
+	reasonLegacyZIACloud settingsReason = "ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud"
+	reasonAuthMode       settingsReason = "ZSCALERCTL_AUTH_MODE must be oneapi or zia-legacy"
+)
+
+func (e *InvalidSettingsError) Error() string {
+	if e.reason == "" {
+		return ErrInvalidSettings.Error()
+	}
+	return string(e.reason)
+}
+
+func (e *InvalidSettingsError) Unwrap() error { return ErrInvalidSettings }
+
+// isSetupError reports a failure of the reader's configuration rather than of
+// a live request, so callers pass it through instead of normalizing it.
+func isSetupError(err error) bool {
+	return errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrInvalidSettings)
+}
+
 var (
 	ErrInvalidResourceID  = resources.ErrInvalidResourceID
 	ErrResourceNotFound   = errors.New("zscaler resource not found")
@@ -405,7 +442,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 	}
 	service, cleanup, err := perCallService{cfg: r.cfg}.service(ctx, product)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) {
+		if isSetupError(err) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "authenticate", product, "session", err)
@@ -482,7 +519,7 @@ func listResource(
 	}
 	records, err := handler.List(ctx)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
+		if isSetupError(err) || errors.Is(err, ErrUnsupportedResource) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "list", product, name, err)
@@ -505,7 +542,7 @@ func getResource(
 	if err != nil {
 		if errors.Is(err, ErrInvalidResourceID) ||
 			errors.Is(err, ErrUnsupportedResource) ||
-			errors.Is(err, ErrMissingCredentials) {
+			isSetupError(err) {
 			return resources.SourceRecord{}, err
 		}
 		// A scan-miss not-found (list-backed get) carries the sentinel rather
@@ -534,7 +571,7 @@ func showResource(
 		// Missing credentials are caught upstream at session creation, but keep
 		// the passthrough symmetric with listResource/getResource so a future
 		// per-call surfacing classifies as a credential error, not live access.
-		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
+		if isSetupError(err) || errors.Is(err, ErrUnsupportedResource) {
 			return resources.SourceRecord{}, err
 		}
 		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name, err)
@@ -1290,11 +1327,38 @@ func refuseLegacyZIARedirect(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-// ValidateLegacyZIACloud rejects any cloud that does not map to a reviewed,
-// exact legacy ZIA origin. Callers can use it before resolving secret sources.
-func ValidateLegacyZIACloud(cloud string) error {
-	_, err := legacyZIABaseURL(cloud)
-	return err
+// Settings are the non-secret values a reader needs besides credentials.
+type Settings struct {
+	AuthMode       AuthMode
+	VanityDomain   string
+	Cloud          string
+	ZIALegacyCloud string
+}
+
+// ValidateSettings is the one check of Settings: reader construction, secret
+// resolution and status reporting all use it, so a setting status calls
+// usable is one a read accepts. It runs before any secret is resolved. An
+// unset value is not an error here; it is a missing credential, which the
+// reader reports by name.
+func ValidateSettings(s Settings) error {
+	switch effectiveAuthMode(s.AuthMode) {
+	case AuthModeZIALegacy:
+		if strings.TrimSpace(s.ZIALegacyCloud) == "" {
+			return nil
+		}
+		_, err := legacyZIABaseURL(s.ZIALegacyCloud)
+		return err
+	case AuthModeOneAPI:
+		if s.VanityDomain != "" && !validDNSLabel(s.VanityDomain) {
+			return &InvalidSettingsError{reason: reasonVanityDomain}
+		}
+		if _, ok := oneAPIClouds[strings.ToLower(strings.TrimSpace(s.Cloud))]; !ok {
+			return &InvalidSettingsError{reason: reasonOneAPICloud}
+		}
+		return nil
+	default:
+		return &InvalidSettingsError{reason: reasonAuthMode}
+	}
 }
 
 func legacyZIABaseURL(cloud string) (*url.URL, error) {
@@ -1326,7 +1390,7 @@ func legacyZIABaseURL(cloud string) (*url.URL, error) {
 	case "zspreview":
 		host = "admin.zspreview.net"
 	default:
-		return nil, fmt.Errorf("%w: ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud", ErrMissingCredentials)
+		return nil, &InvalidSettingsError{reason: reasonLegacyZIACloud}
 	}
 	return &url.URL{Scheme: "https", Host: host}, nil
 }
@@ -1360,15 +1424,6 @@ var oneAPIClouds = map[string]string{
 	"govus":      "GOVUS",
 }
 
-// ValidateOneAPICloud rejects any ZSCALERCTL_CLOUD outside the OneAPI clouds.
-// Callers can use it before resolving secret sources.
-func ValidateOneAPICloud(cloud string) error {
-	if _, ok := oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]; !ok {
-		return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION", ErrMissingCredentials)
-	}
-	return nil
-}
-
 // oneAPICloud returns the SDK spelling of a validated OneAPI cloud.
 func oneAPICloud(cloud string) string {
 	return oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]
@@ -1390,6 +1445,10 @@ func validateReaderConfig(cfg ReaderConfig) error {
 	if err := ValidateProxyConfig(cfg.Proxy); err != nil {
 		return err
 	}
+	// A set but unusable setting wins over missing values, as in status.
+	if err := ValidateSettings(cfg.Settings()); err != nil {
+		return err
+	}
 	switch effectiveAuthMode(cfg.AuthMode) {
 	case AuthModeZIALegacy:
 		var missing []string
@@ -1408,10 +1467,6 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
-		if err := ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
-			return err
-		}
-		return nil
 	case AuthModeOneAPI:
 		var missing []string
 		if !cfg.ClientID.IsSet() {
@@ -1426,12 +1481,17 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
-		if !validDNSLabel(cfg.VanityDomain) {
-			return fmt.Errorf("%w: ZSCALERCTL_VANITY_DOMAIN must be a single DNS label", ErrMissingCredentials)
-		}
-		return ValidateOneAPICloud(cfg.Cloud)
-	default:
-		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
+	}
+	return nil
+}
+
+// Settings returns the non-secret settings ValidateSettings checks.
+func (cfg ReaderConfig) Settings() Settings {
+	return Settings{
+		AuthMode:       cfg.AuthMode,
+		VanityDomain:   cfg.VanityDomain,
+		Cloud:          cfg.Cloud,
+		ZIALegacyCloud: cfg.ZIALegacy.Cloud,
 	}
 }
 

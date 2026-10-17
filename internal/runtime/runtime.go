@@ -232,6 +232,20 @@ func applyOptions(cfg *config.Config, opts Options) error {
 	return nil
 }
 
+// readerSettings returns the non-secret settings the reader gets for the
+// effective auth mode, so they can be checked before any secret is resolved.
+func readerSettings(cfg config.Config) zscaler.Settings {
+	settings := zscaler.Settings{AuthMode: zscaler.AuthMode(cfg.EffectiveAuthMode())}
+	switch cfg.EffectiveAuthMode() {
+	case config.AuthModeOneAPI:
+		settings.VanityDomain = cfg.VanityDomain
+		settings.Cloud = cfg.Cloud
+	case config.AuthModeZIALegacy:
+		settings.ZIALegacyCloud = cfg.ZIALegacy.Cloud
+	}
+	return settings
+}
+
 func readerConfigFromConfig(
 	ctx context.Context,
 	cfg config.Config,
@@ -239,21 +253,23 @@ func readerConfigFromConfig(
 ) (zscaler.ReaderConfig, error) {
 	cfg = normalizeConfigSecretSources(cfg)
 	authMode := cfg.EffectiveAuthMode()
+	// Reject an unusable or incomplete configuration before resolving any
+	// secret, so no provider runs for a read certain to fail.
+	if err := zscaler.ValidateSettings(readerSettings(cfg)); err != nil {
+		return zscaler.ReaderConfig{}, err
+	}
+	if missing := cfg.MissingCredentials(); len(missing) > 0 {
+		return zscaler.ReaderConfig{}, &zscaler.MissingCredentialsError{Missing: missing}
+	}
 	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
 	switch authMode {
 	case config.AuthModeOneAPI:
-		if err := zscaler.ValidateOneAPICloud(cfg.Cloud); err != nil {
-			return zscaler.ReaderConfig{}, err
-		}
 		var err error
 		clientSecret, err = cfg.Credentials.ClientSecret.Resolve(ctx)
 		if err != nil {
 			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
 		}
 	case config.AuthModeZIALegacy:
-		if err := zscaler.ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
-			return zscaler.ReaderConfig{}, err
-		}
 		var err error
 		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
 		if err != nil {

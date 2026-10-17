@@ -317,6 +317,31 @@ func (c Config) EffectiveAuthMode() AuthMode {
 	return AuthModeOneAPI
 }
 
+// MissingCredentials names the variables the effective auth mode requires
+// that are unset, judged by presence alone so that no secret is resolved and
+// no provider runs for a configuration certain to fail. It agrees with
+// Configured: empty means configured.
+func (c Config) MissingCredentials() []string {
+	var missing []string
+	add := func(set bool, name string) {
+		if !set {
+			missing = append(missing, name)
+		}
+	}
+	switch c.EffectiveAuthMode() {
+	case AuthModeZIALegacy:
+		add(c.ZIALegacy.Username.IsSet(), EnvZIAUsername)
+		add(c.ZIALegacy.Password.IsConfigured(), EnvZIAPassword)
+		add(c.ZIALegacy.APIKey.IsConfigured(), EnvZIAAPIKey)
+		add(strings.TrimSpace(c.ZIALegacy.Cloud) != "", EnvZIACloud)
+	default:
+		add(c.Credentials.ClientID.IsSet(), EnvClientID)
+		add(c.Credentials.ClientSecret.IsConfigured(), EnvClientSecret)
+		add(strings.TrimSpace(c.VanityDomain) != "", EnvVanityDomain)
+	}
+	return missing
+}
+
 func (c Credentials) Configured(vanityDomain string) bool {
 	return c.ClientID.IsSet() && c.ClientSecret.IsConfigured() && strings.TrimSpace(vanityDomain) != ""
 }

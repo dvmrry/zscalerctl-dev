@@ -285,7 +285,7 @@ func buildExitCodes() []ExitCodeDoc {
 		{Code: 1, Kind: "internal", Retryable: false,
 			Description: "unexpected internal error (bug or panic)"},
 		{Code: 2, Kind: "usage", Retryable: false,
-			Description: "invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"},
+			Description: "invalid command syntax, flag, argument, resource ID, proxy config, config file, or unusable setting such as an unsupported cloud (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"},
 		{Code: 3, Kind: "missing_credentials", Retryable: false,
 			Description: "credentials not configured or incomplete"},
 		{Code: 4, Kind: "not_found", Retryable: false,

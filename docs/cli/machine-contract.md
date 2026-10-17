@@ -89,7 +89,7 @@ stable compatibility surface.
 | Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
 | Partial dump | — | `partial_dump` | `6` | `cli.ErrPartialDump` | For non-JSON formats, `run` returns the code without writing the JSON envelope. |
 | Drift detected | — | `drift_detected` | `7` | `cli.ErrDriftDetected` | Set by `diff --fail-on-drift`. |
-| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. |
+| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig`; `zscaler.ErrInvalidSettings` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. A `zscaler.InvalidSettingsError` (unusable cloud, vanity domain or auth mode) keeps its message: one of a fixed set of reasons that never include the configured value. |
 | Invalid proxy config | `invalid_proxy_config` for typed status/URL setup | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Typed engine boundaries return static wording and preserve only the sentinel. |
 | Internal | `internal` | `internal` | `1` | `machine.ErrorKindInternal`; default branch | Executor wiring errors use machine `internal`; otherwise unmapped command errors fall through to internal. |
 

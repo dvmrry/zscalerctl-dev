@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -147,8 +148,10 @@ func TestReaderConfigFromConfigResolvesOnlyOneAPISecret(t *testing.T) {
 	legacyPassword := &runtimeRecordingSecretSource{err: errors.New("inactive legacy password resolved")}
 	legacyAPIKey := &runtimeRecordingSecretSource{err: errors.New("inactive legacy API key resolved")}
 	cfg := config.Config{
-		AuthMode: config.AuthModeOneAPI,
+		AuthMode:     config.AuthModeOneAPI,
+		VanityDomain: "example",
 		Credentials: config.Credentials{
+			ClientID:     secret.New("client-id"),
 			ClientSecret: clientSecret,
 		},
 		ZIALegacy: config.ZIALegacyCredentials{
@@ -199,6 +202,7 @@ func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
 			MicrotenantID: "inactive-microtenant-id",
 		},
 		ZIALegacy: config.ZIALegacyCredentials{
+			Username: secret.New("admin@example.invalid"),
 			Password: legacyPassword,
 			APIKey:   legacyAPIKey,
 			Cloud:    "zscaler",
@@ -252,8 +256,8 @@ func TestNewReaderFromConfigRejectsLegacyCloudBeforeResolvingSecrets(t *testing.
 	}
 
 	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
-	if !errors.Is(err, zscaler.ErrMissingCredentials) {
-		t.Fatalf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want ErrInvalidSettings", err)
 	}
 	if errors.Is(err, providerErr) {
 		t.Errorf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want cloud rejection before provider error", err)
@@ -286,11 +290,58 @@ func TestNewReaderFromConfigRejectsOneAPICloudBeforeResolvingSecrets(t *testing.
 	}
 
 	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
-	if !errors.Is(err, zscaler.ErrMissingCredentials) {
-		t.Fatalf("newReaderFromConfig(product cloud) error = %v, want ErrMissingCredentials", err)
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(product cloud) error = %v, want ErrInvalidSettings", err)
 	}
 	if errors.Is(err, providerErr) || clientSecret.calls != 0 {
 		t.Errorf("newReaderFromConfig(product cloud) error = %v, client secret calls = %d, want rejection before resolving", err, clientSecret.calls)
+	}
+}
+
+// TestReaderConfigFromConfigResolvesNoSecretWhenValuesAreMissing pins that a
+// configuration certain to fail runs no provider: each missing value is
+// reported by name before any secret is resolved.
+func TestReaderConfigFromConfigResolvesNoSecretWhenValuesAreMissing(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		cfg  func(source *runtimeRecordingSecretSource) config.Config
+		want string
+	}{
+		"legacy cloud": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeZIALegacy, ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("admin@example.invalid"), Password: source, APIKey: source,
+				}}
+			},
+			want: config.EnvZIACloud,
+		},
+		"vanity domain": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeOneAPI, Credentials: config.Credentials{
+					ClientID: secret.New("client-id"), ClientSecret: source,
+				}}
+			},
+			want: config.EnvVanityDomain,
+		},
+		"client id": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeOneAPI, VanityDomain: "example", Credentials: config.Credentials{
+					ClientSecret: source,
+				}}
+			},
+			want: config.EnvClientID,
+		},
+	} {
+		source := &runtimeRecordingSecretSource{value: "secret"}
+		_, err := readerConfigFromConfig(context.Background(), test.cfg(source), Options{})
+		var missing *zscaler.MissingCredentialsError
+		if !errors.As(err, &missing) || !slices.Equal(missing.Missing, []string{test.want}) {
+			t.Errorf("readerConfigFromConfig(%s) error = %v, want only %s missing", name, err, test.want)
+		}
+		if source.calls != 0 {
+			t.Errorf("readerConfigFromConfig(%s) resolved a secret %d times, want 0", name, source.calls)
+		}
 	}
 }
 
@@ -303,7 +354,8 @@ func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T
 		var typedNil *runtimeRecordingSecretSource
 		clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
 		got, err := readerConfigFromConfig(context.Background(), config.Config{
-			Credentials: config.Credentials{ClientSecret: clientSecret},
+			VanityDomain: "example",
+			Credentials:  config.Credentials{ClientID: secret.New("client-id"), ClientSecret: clientSecret},
 			ZIALegacy: config.ZIALegacyCredentials{
 				Password: typedNil,
 				APIKey:   typedNil,
@@ -443,8 +495,10 @@ func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T
 		{
 			name: "oneapi canceled",
 			cfg: config.Config{
-				AuthMode: config.AuthModeOneAPI,
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
 				Credentials: config.Credentials{
+					ClientID:     secret.New("client-id"),
 					ClientSecret: &runtimeRecordingSecretSource{err: context.Canceled},
 				},
 			},
@@ -455,6 +509,7 @@ func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T
 			cfg: config.Config{
 				AuthMode: config.AuthModeZIALegacy,
 				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("admin@example.invalid"),
 					Password: &runtimeRecordingSecretSource{err: context.DeadlineExceeded},
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
 					Cloud:    "zscaler",
@@ -487,8 +542,8 @@ func TestNewReaderFromConfigRejectsInvalidDirectAuthMode(t *testing.T) {
 	_, err := NewReaderFromConfig(context.Background(), config.Config{
 		AuthMode: config.AuthMode("invalid"),
 	}, Options{})
-	if !errors.Is(err, zscaler.ErrMissingCredentials) {
-		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrMissingCredentials", err)
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrInvalidSettings", err)
 	}
 }
 

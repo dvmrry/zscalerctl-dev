@@ -331,6 +331,9 @@ func dumpRuntimeBoundaryError(err error) error {
 		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
 		machineErr.Message = "invalid proxy configuration"
 		sentinel = zscaler.ErrInvalidProxyConfig
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message, sentinel = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
 		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
@@ -394,6 +397,9 @@ func dumpSafeCollectionSentinel(err error, kind string) error {
 		return config.ErrInvalidConfig
 	case errors.Is(err, zscaler.ErrInvalidProxyConfig):
 		return zscaler.ErrInvalidProxyConfig
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		_, safe := sanitizedInvalidSettings(err)
+		return safe
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		_, safe := sanitizedRuntimeMissingCredentials(err)
 		return safe
@@ -482,6 +488,18 @@ func LegacyDumpAdapterError(err error) (error, bool) {
 		message:  outputErr.adapterMessage,
 		sentinel: outputErr.adapterSentinel,
 	}, true
+}
+
+// sanitizedInvalidSettings returns the message and sentinel for a settings
+// error at a machine boundary. zscaler.InvalidSettingsError carries only fixed
+// reason text, so its message passes through; anything else collapses to the
+// bare sentinel.
+func sanitizedInvalidSettings(err error) (string, error) {
+	var settingsErr *zscaler.InvalidSettingsError
+	if errors.As(err, &settingsErr) {
+		return settingsErr.Error(), settingsErr
+	}
+	return zscaler.ErrInvalidSettings.Error(), zscaler.ErrInvalidSettings
 }
 
 func sanitizedRuntimeMissingCredentials(err error) (string, error) {

@@ -55,6 +55,7 @@ func TestExitCodeForError(t *testing.T) {
 		{"machine_unsupported_resource", &machine.MachineError{Kind: machine.ErrorKindUnsupportedResource}, exitNotFound},
 		{"machine_internal", &machine.MachineError{Kind: machine.ErrorKindInternal}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
+		{"invalid_settings", zscaler.ErrInvalidSettings, exitUsageError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
 		{"live_access_failed", zscaler.ErrLiveAccessFailed, exitLiveAccessFailure},
@@ -485,6 +486,32 @@ func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(got.Error.Message, "missing zscaler API credentials") {
 		t.Errorf("run(json missing credentials) message = %q, want missing credentials text", got.Error.Message)
+	}
+}
+
+// TestRunJSONInvalidSettingsEnvelope pins that an unusable setting is a
+// configuration error, not a credential one: kind invalid_config, exit 2, and
+// the reason without a missing-credentials prefix.
+func TestRunJSONInvalidSettingsEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	env := []string{
+		config.EnvClientID + "=synthetic-id",
+		config.EnvClientSecret + "=synthetic-secret",
+		config.EnvVanityDomain + "=example",
+		config.EnvCloud + "=zscalertwo",
+	}
+	code := run(context.Background(), []string{"--format", "json", "zia", "locations", "list"}, &stdout, &stderr, env)
+	if code != exitUsageError {
+		t.Fatalf("run(json invalid cloud) exit code = %d, want %d", code, exitUsageError)
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != "invalid_config" {
+		t.Errorf("run(json invalid cloud) kind = %q, want invalid_config", got.Error.Kind)
+	}
+	if !strings.HasPrefix(got.Error.Message, "ZSCALERCTL_CLOUD must be ") {
+		t.Errorf("run(json invalid cloud) message = %q, want the cloud reason", got.Error.Message)
 	}
 }
 

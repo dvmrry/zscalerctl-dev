@@ -434,6 +434,9 @@ func dumpMachineError(
 	case errors.Is(err, zscaler.ErrInvalidProxyConfig):
 		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
 		machineErr.Message = "invalid proxy configuration"
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message, _ = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
 		message, safe := sanitizedRuntimeMissingCredentials(err)
