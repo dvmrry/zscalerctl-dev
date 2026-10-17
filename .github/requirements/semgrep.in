@@ -1,6 +1,7 @@
 # Input for the hash-pinned semgrep requirements used by CI.
-# Regenerate with:
+# Regenerate with a cutoff at least two weeks before today:
 #   uv pip compile .github/requirements/semgrep.in \
 #     --generate-hashes --universal --python-version 3.12 \
+#     --upgrade --exclude-newer <YYYY-MM-DD>T00:00:00Z \
 #     --output-file .github/requirements/semgrep.txt
-semgrep==1.166.0
+semgrep==1.179.0
