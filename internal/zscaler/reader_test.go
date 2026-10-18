@@ -396,8 +396,8 @@ func TestOneAPICloud(t *testing.T) {
 		{cloud: "GOVUS", want: "GOVUS"},
 	}
 	for _, test := range tests {
-		if err := ValidateOneAPICloud(test.cloud); err != nil {
-			t.Errorf("ValidateOneAPICloud(%q) error = %v, want nil", test.cloud, err)
+		if err := ValidateSettings(Settings{Cloud: test.cloud}); err != nil {
+			t.Errorf("ValidateSettings(cloud %q) error = %v, want nil", test.cloud, err)
 		}
 		if got := oneAPICloud(test.cloud); got != test.want {
 			t.Errorf("oneAPICloud(%q) = %q, want %q", test.cloud, got, test.want)
@@ -414,8 +414,8 @@ func TestNewReaderRejectsProductClouds(t *testing.T) {
 		cfg := validReaderConfig()
 		cfg.Cloud = cloud
 		_, err := NewReader(cfg)
-		if !errors.Is(err, ErrMissingCredentials) {
-			t.Errorf("NewReader(Cloud=%q) error = %v, want ErrMissingCredentials", cloud, err)
+		if !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+			t.Errorf("NewReader(Cloud=%q) error = %v, want ErrInvalidSettings", cloud, err)
 			continue
 		}
 		if !strings.Contains(err.Error(), "use PRODUCTION") {
@@ -499,8 +499,8 @@ func TestNewReaderRejectsInvalidVanityDomain(t *testing.T) {
 		t.Run(vanityDomain, func(t *testing.T) {
 			cfg := validReaderConfig()
 			cfg.VanityDomain = vanityDomain
-			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-				t.Errorf("NewReader(VanityDomain=%q) error = %v, want ErrMissingCredentials", vanityDomain, err)
+			if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(VanityDomain=%q) error = %v, want ErrInvalidSettings", vanityDomain, err)
 			}
 		})
 	}
@@ -523,8 +523,8 @@ func TestNewReaderRejectsInvalidCloud(t *testing.T) {
 		t.Run(cloud, func(t *testing.T) {
 			cfg := validReaderConfig()
 			cfg.Cloud = cloud
-			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-				t.Errorf("NewReader(Cloud=%q) error = %v, want ErrMissingCredentials", cloud, err)
+			if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(Cloud=%q) error = %v, want ErrInvalidSettings", cloud, err)
 			}
 		})
 	}
@@ -782,8 +782,13 @@ func TestLegacyZIABaseURLRejectsUnreviewedClouds(t *testing.T) {
 			if got != nil {
 				t.Errorf("legacyZIABaseURL(%q) URL = %q, want nil", cloud, got)
 			}
-			if !errors.Is(err, ErrMissingCredentials) {
-				t.Fatalf("legacyZIABaseURL(%q) error = %v, want ErrMissingCredentials", cloud, err)
+			// Unset is a missing credential; set but unreviewed is invalid.
+			want, notWant := ErrInvalidSettings, ErrMissingCredentials
+			if cloud == "" {
+				want, notWant = ErrMissingCredentials, ErrInvalidSettings
+			}
+			if !errors.Is(err, want) || errors.Is(err, notWant) {
+				t.Fatalf("legacyZIABaseURL(%q) error = %v, want %v", cloud, err, want)
 			}
 			if cloud != "" && strings.Contains(err.Error(), cloud) {
 				t.Errorf("legacyZIABaseURL(%q) error = %q, want value-free rejection", cloud, err)
@@ -797,8 +802,8 @@ func TestNewReaderRejectsUnreviewedLegacyZIACloud(t *testing.T) {
 
 	cfg := validLegacyReaderConfig()
 	cfg.ZIALegacy.Cloud = "example"
-	if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-		t.Fatalf("NewReader(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("NewReader(unreviewed legacy cloud) error = %v, want ErrInvalidSettings", err)
 	}
 }
 

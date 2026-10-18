@@ -77,33 +77,90 @@ func TestNewAuthStatusComputesLegacyStatus(t *testing.T) {
 	}
 }
 
-// TestNewAuthStatusReportsInvalidCloud pins that auth status does not call
-// credentials with an unsupported cloud usable: every read would be rejected.
-func TestNewAuthStatusReportsInvalidCloud(t *testing.T) {
+// TestStatusReportsInvalidSettings pins that status views reject what the
+// reader rejects, through the same check: a set but unusable setting is
+// "invalid settings", live reads are unavailable with the reader's reason,
+// and doctor is not ready, even while other values are still missing.
+func TestStatusReportsInvalidSettings(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		env    []string
+		reason string
+	}{
+		"product cloud": {
+			env: []string{
+				config.EnvClientID + "=client-id",
+				config.EnvClientSecret + "=client-secret",
+				config.EnvVanityDomain + "=example",
+				config.EnvCloud + "=zscalertwo",
+			},
+			reason: "ZSCALERCTL_CLOUD ",
+		},
+		"vanity domain": {
+			env: []string{
+				config.EnvClientID + "=client-id",
+				config.EnvClientSecret + "=client-secret",
+				config.EnvVanityDomain + "=acme.example",
+			},
+			reason: "ZSCALERCTL_VANITY_DOMAIN ",
+		},
+		"product cloud, secret unset": {
+			env: []string{
+				config.EnvClientID + "=client-id",
+				config.EnvVanityDomain + "=example",
+				config.EnvCloud + "=zscalerthree",
+			},
+			reason: "ZSCALERCTL_CLOUD ",
+		},
+		"legacy cloud": {
+			env: []string{
+				config.EnvAuthMode + "=" + string(config.AuthModeZIALegacy),
+				config.EnvZIAUsername + "=admin@example.invalid",
+				config.EnvZIAPassword + "=legacy-password",
+				config.EnvZIAAPIKey + "=legacy-api-key",
+				config.EnvZIACloud + "=example",
+			},
+			reason: "ZSCALERCTL_ZIA_CLOUD ",
+		},
+	} {
+		cfg, err := config.LoadConfig(test.env, config.LoadOptions{})
+		if err != nil {
+			t.Fatalf("config.LoadConfig(%s) error = %v, want nil", name, err)
+		}
+		auth := NewAuthStatus(cfg)
+		if auth.Credentials != "invalid settings" || !strings.HasPrefix(auth.LiveAPI, "unavailable: "+test.reason) {
+			t.Errorf("NewAuthStatus(%s) = %#v, want invalid settings and unavailable live API", name, auth)
+		}
+		doctor, err := NewDoctorStatus(cfg, StatusOptions{})
+		if err != nil {
+			t.Fatalf("NewDoctorStatus(%s) error = %v, want nil", name, err)
+		}
+		if doctor.Status != "not ready" || doctor.Credentials != auth.Credentials || doctor.LiveAPI != auth.LiveAPI {
+			t.Errorf("NewDoctorStatus(%s) = %#v, want not ready with the auth status fields", name, doctor)
+		}
+	}
+}
+
+// TestDoctorStatusIsNotReadyWithoutCredentials pins that doctor reports OK
+// only when live reads can run.
+func TestDoctorStatusIsNotReadyWithoutCredentials(t *testing.T) {
 	t.Parallel()
 
 	for name, env := range map[string][]string{
-		"ZSCALERCTL_CLOUD": {
-			config.EnvClientID + "=client-id",
-			config.EnvClientSecret + "=client-secret",
-			config.EnvVanityDomain + "=example",
-			config.EnvCloud + "=zscalertwo",
-		},
-		"ZSCALERCTL_ZIA_CLOUD": {
-			config.EnvAuthMode + "=" + string(config.AuthModeZIALegacy),
-			config.EnvZIAUsername + "=admin@example.invalid",
-			config.EnvZIAPassword + "=legacy-password",
-			config.EnvZIAAPIKey + "=legacy-api-key",
-			config.EnvZIACloud + "=example",
-		},
+		"empty":   nil,
+		"partial": {config.EnvClientID + "=client-id"},
 	} {
 		cfg, err := config.LoadConfig(env, config.LoadOptions{})
 		if err != nil {
 			t.Fatalf("config.LoadConfig(%s) error = %v, want nil", name, err)
 		}
-		status := NewAuthStatus(cfg)
-		if status.Credentials != "invalid cloud" || !strings.HasPrefix(status.LiveAPI, "unavailable: "+name+" ") {
-			t.Errorf("NewAuthStatus(%s) = %#v, want invalid cloud and unavailable live API", name, status)
+		doctor, err := NewDoctorStatus(cfg, StatusOptions{})
+		if err != nil {
+			t.Fatalf("NewDoctorStatus(%s) error = %v, want nil", name, err)
+		}
+		if doctor.Status != "not ready" {
+			t.Errorf("NewDoctorStatus(%s).Status = %q, want not ready", name, doctor.Status)
 		}
 	}
 }

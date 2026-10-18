@@ -52,7 +52,7 @@ func readAdminAuditLogsStatus(ctx context.Context, client sdkClient) (AdminAudit
 	call := ziaSDKShow(client, getZIAAdminAuditLogsStatus)
 	response, err := call(ctx)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) {
+		if isSetupError(err) {
 			return AdminAuditLogsStatus{}, err
 		}
 		// A context that ended during the read wins over the HTTP status: the

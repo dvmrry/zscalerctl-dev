@@ -189,6 +189,8 @@ func errorKind(err error) string {
 		return "not_found"
 	case errors.Is(err, zscaler.ErrResourceNotFound):
 		return "not_found"
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		return "invalid_config"
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		return "missing_credentials"
 	case errors.Is(err, zscaler.ErrInvalidResourceID):
@@ -228,6 +230,8 @@ func exitCodeForError(err error) int {
 		return exitNotFound
 	case errors.Is(err, zscaler.ErrResourceNotFound):
 		return exitNotFound
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		return exitUsageError
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		return exitCredentialError
 	case errors.Is(err, zscaler.ErrInvalidResourceID):

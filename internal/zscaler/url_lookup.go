@@ -2,7 +2,6 @@ package zscaler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
@@ -52,7 +51,7 @@ func lookupURLClassifications(
 ) ([]URLClassification, error) {
 	results, err := call(ctx)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) {
+		if isSetupError(err) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "lookup", resources.ProductZIA, urlLookupName, err)

@@ -150,7 +150,7 @@ func NewDoctorStatus(cfg config.Config, opts StatusOptions) (DoctorStatus, error
 	}
 	r := redact.New(cfg.Defaults.Redaction)
 	return DoctorStatus{
-		Status:      sanitizeStatusString(r, "OK"),
+		Status:      sanitizeStatusString(r, doctorStatusValue(cfg)),
 		Mode:        sanitizeStatusString(r, "read-only"),
 		Profile:     sanitizeStatusString(r, cfg.Profile),
 		Config:      sanitizeStatusString(r, ConfigSourceStatus(cfg.Safe())),
@@ -316,56 +316,83 @@ func nilSecretSource(source secretref.SecretSource) bool {
 	}
 }
 
-// CredentialStatus reports whether the active auth mode has enough configured
-// fields for live read-only access.
-func CredentialStatus(cfg config.Config) string {
+// credentialState is how far the effective configuration is from a live read.
+// The doctor status, credential status and live API status all derive from
+// it, so they cannot disagree.
+type credentialState int
+
+const (
+	credentialsNotConfigured credentialState = iota
+	credentialsPartial
+	credentialsInvalid
+	credentialsConfigured
+)
+
+// credentialStateOf classifies cfg with the checks a read runs before it
+// resolves any secret: zscaler.ValidateSettings, then
+// config.MissingCredentials. A set but unusable setting wins over anything
+// missing and is returned so callers can say why.
+func credentialStateOf(cfg config.Config) (credentialState, error) {
 	cfg = normalizeConfigSecretSources(cfg)
-	switch cfg.EffectiveAuthMode() {
-	case config.AuthModeZIALegacy:
-		if cfg.ZIALegacy.Configured() {
-			if zscaler.ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud) != nil {
-				return "invalid cloud"
-			}
-			return "configured"
-		}
-		if cfg.ZIALegacy.AnySet() {
-			return "partial"
-		}
-		return "not configured"
+	if err := zscaler.ValidateSettings(readerSettings(cfg)); err != nil {
+		return credentialsInvalid, err
+	}
+	if len(cfg.MissingCredentials()) == 0 {
+		return credentialsConfigured, nil
+	}
+	anySet := cfg.Credentials.AnySet() || cfg.VanityDomain != ""
+	if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
+		anySet = cfg.ZIALegacy.AnySet()
+	}
+	if anySet {
+		return credentialsPartial, nil
+	}
+	return credentialsNotConfigured, nil
+}
+
+// doctorStatusValue is "OK" when live read-only commands can run and "not
+// ready" otherwise; the credentials and live API fields say why.
+func doctorStatusValue(cfg config.Config) string {
+	if state, _ := credentialStateOf(cfg); state == credentialsConfigured {
+		return "OK"
+	}
+	return "not ready"
+}
+
+// CredentialStatus reports whether the active auth mode has enough usable
+// configured fields for live read-only access.
+func CredentialStatus(cfg config.Config) string {
+	switch state, _ := credentialStateOf(cfg); state {
+	case credentialsConfigured:
+		return "configured"
+	case credentialsInvalid:
+		return "invalid settings"
+	case credentialsPartial:
+		return "partial"
 	default:
-		if cfg.Credentials.Configured(cfg.VanityDomain) {
-			if zscaler.ValidateOneAPICloud(cfg.Cloud) != nil {
-				return "invalid cloud"
-			}
-			return "configured"
-		}
-		if cfg.Credentials.AnySet() || cfg.VanityDomain != "" {
-			return "partial"
-		}
 		return "not configured"
 	}
 }
 
 // LiveAPIStatus reports the live read-only availability implied by the active
-// credential status.
+// credential state.
 func LiveAPIStatus(cfg config.Config) string {
 	cfg = normalizeConfigSecretSources(cfg)
-	if CredentialStatus(cfg) == "configured" {
+	state, err := credentialStateOf(cfg)
+	switch state {
+	case credentialsConfigured:
 		if cfg.EffectiveAuthMode() != config.AuthModeZIALegacy && strings.TrimSpace(cfg.ZPA.CustomerID) == "" {
 			return "available for ZIA read-only commands; ZPA resources require ZSCALERCTL_ZPA_CUSTOMER_ID"
 		}
 		return "available for read-only commands"
+	case credentialsInvalid:
+		return "unavailable: " + err.Error()
 	}
-	if CredentialStatus(cfg) == "invalid cloud" {
-		if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
-			return "unavailable: ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud"
-		}
-		return "unavailable: ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS (tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION)"
-	}
+	requires := "requires " + strings.Join(cfg.MissingCredentials(), ", ")
 	if cfg.EffectiveAuthMode() == config.AuthModeZIALegacy {
-		return "requires ZSCALERCTL_ZIA_USERNAME, ZSCALERCTL_ZIA_PASSWORD, ZSCALERCTL_ZIA_API_KEY, and ZSCALERCTL_ZIA_CLOUD"
+		return requires
 	}
-	return "requires ZSCALERCTL_CLIENT_ID, ZSCALERCTL_CLIENT_SECRET, and ZSCALERCTL_VANITY_DOMAIN; ZPA resources also require ZSCALERCTL_ZPA_CUSTOMER_ID"
+	return requires + "; ZPA resources also require ZSCALERCTL_ZPA_CUSTOMER_ID"
 }
 
 // SetStatus renders the common set/unset status for configuration booleans.

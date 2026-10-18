@@ -197,7 +197,7 @@ func formatTableValue(value any) string {
 
 func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {
 	return []output.KV{
-		{Key: "Status", Value: status.Status, Kind: "ok"},
+		{Key: "Status", Value: status.Status, Kind: doctorStatusKind(status.Status)},
 		{Key: "Mode", Value: status.Mode, Kind: "mode"},
 		{Key: "Profile", Value: status.Profile},
 		{Key: "Config", Value: status.Config},
@@ -209,6 +209,15 @@ func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {
 		{Key: "Credentials", Value: status.Credentials},
 		{Key: "Live API", Value: status.LiveAPI},
 	}
+}
+
+// doctorStatusKind colors the doctor status: green when live reads can run,
+// a warning otherwise.
+func doctorStatusKind(status string) string {
+	if status == "OK" {
+		return "ok"
+	}
+	return "warning"
 }
 
 func authStatusRows(status machineruntime.AuthStatus) []output.KV {

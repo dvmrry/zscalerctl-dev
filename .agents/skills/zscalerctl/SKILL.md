@@ -148,7 +148,8 @@ Inspect `introspect` effects before delegating a command. Resource reads can
 read configuration or execute an operator-configured provider, contact the
 Zscaler API, and write a local file when `--output` is set. Agents use
 `ZSCALERCTL_*` environment variables; `zscalerctl doctor` reports missing
-values without contacting Zscaler.
+or invalid values without contacting Zscaler (`status` is `OK` only when live
+reads can run).
 If credentials are missing, ask the operator to set them; do not invent values,
 search shell configuration, or change provider commands. Prefer stdout;
 use `--output` only when the local file write is intended. Sanitized tenant

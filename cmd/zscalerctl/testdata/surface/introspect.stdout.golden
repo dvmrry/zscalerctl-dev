@@ -17647,7 +17647,7 @@
       "code": 2,
       "kind": "usage",
       "retryable": false,
-      "description": "invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"
+      "description": "invalid command syntax, flag, argument, resource ID, proxy config, config file, or unusable setting such as an unsupported cloud (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"
     },
     {
       "code": 3,
