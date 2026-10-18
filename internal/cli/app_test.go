@@ -2565,6 +2565,24 @@ func TestDumpResourceFilterRejectsUnknownResourceBeforeReader(t *testing.T) {
 	}
 }
 
+// TestDumpResourceFilterNamesCoverageGap pins that dump --resources says why
+// a declared gap cannot be dumped, by surface or alias in any case, and does
+// not echo the alias.
+func TestDumpResourceFilterNamesCoverageGap(t *testing.T) {
+	t.Parallel()
+
+	for _, item := range []string{"zpa/policy-rules", "zpa/Access_Policies", "Access_Policies"} {
+		app := cli.NewWithOptions(io.Discard, io.Discard, nil, cli.Options{Reader: failingResourceReader{}})
+		err := app.Run(context.Background(), []string{"dump", "--products", "zpa", "--resources", item, "--out", filepath.Join(t.TempDir(), "dump")})
+		if !errors.Is(err, cli.ErrUsage) || !strings.Contains(err.Error(), "zscalerctl does not read zpa/policy-rules (") {
+			t.Errorf("App.Run(dump --resources %s) error = %v, want usage naming the gap", item, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "Access_Policies") {
+			t.Errorf("App.Run(dump --resources %s) error echoed the alias: %v", item, err)
+		}
+	}
+}
+
 func TestDumpResourceFilterRejectsResourceOutsideSelectedProductsBeforeReader(t *testing.T) {
 	t.Parallel()
 

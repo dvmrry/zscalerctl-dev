@@ -452,6 +452,9 @@ func matchDumpResources(
 		}
 		key := dumpResourceKey{product: product, name: parts[1]}
 		if !catalogHasDumpResource(catalog, key) {
+			if gap, ok := resources.FindGap(product, parts[1]); ok {
+				return nil, UsageError{Message: resources.UnreadMessage(gap)}
+			}
 			return nil, UsageError{Message: fmt.Sprintf("unsupported dump resource %s", item)}
 		}
 		return []dumpResourceKey{key}, nil
@@ -477,8 +480,26 @@ func matchDumpResources(
 	case knownOutsideSelection:
 		return nil, UsageError{Message: fmt.Sprintf("resource %s is not selected by --products", item)}
 	default:
+		if gap, ok := selectedGap(products, item); ok {
+			return nil, UsageError{Message: resources.UnreadMessage(gap)}
+		}
 		return nil, UsageError{Message: fmt.Sprintf("unsupported dump resource %q", item)}
 	}
+}
+
+// selectedGap returns the declared coverage gap a bare resource name names in
+// the selected products, when exactly one matches.
+func selectedGap(products map[resources.Product]bool, name string) (resources.CoverageGap, bool) {
+	var found []resources.CoverageGap
+	for product, selected := range products {
+		if gap, ok := resources.FindGap(product, name); selected && ok {
+			found = append(found, gap)
+		}
+	}
+	if len(found) != 1 {
+		return resources.CoverageGap{}, false
+	}
+	return found[0], true
 }
 
 func catalogHasDumpResource(catalog resources.ResourceCatalog, key dumpResourceKey) bool {
