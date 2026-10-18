@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -91,6 +92,21 @@ func FindGap(product Product, name string) (CoverageGap, bool) {
 		}
 	}
 	return CoverageGap{}, false
+}
+
+// UnreadMessage says why zscalerctl does not read a declared gap, for any
+// "unknown resource" diagnostic. It is built only from the static gap entry,
+// never from the caller's input, so it is safe on every boundary.
+func UnreadMessage(gap CoverageGap) string {
+	instead := ""
+	if len(gap.Instead) > 0 {
+		names := make([]string, len(gap.Instead))
+		for i, ref := range gap.Instead {
+			names[i] = ref.String()
+		}
+		instead = " Covered instead: " + strings.Join(names, ", ") + "."
+	}
+	return fmt.Sprintf("zscalerctl does not read %s/%s (%s: %s): %s%s Run \"zscalerctl --format json schema gaps %s\" for every surface it does not read", gap.Product, gap.Surface, gap.Status, gap.Reason, gap.Note, instead, gap.Product)
 }
 
 // CoverageGaps returns the declared gaps for product, or for every product

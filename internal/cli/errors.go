@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
@@ -62,15 +61,7 @@ func (e ResourceNotFoundError) Error() string {
 	// so a caller does not keep guessing names or read the absence as "none
 	// configured". Otherwise point at the enumeration paths.
 	if gap, ok := resources.FindGap(e.Product, e.Resource); ok {
-		instead := ""
-		if len(gap.Instead) > 0 {
-			names := make([]string, len(gap.Instead))
-			for i, ref := range gap.Instead {
-				names[i] = ref.String()
-			}
-			instead = " Covered instead: " + strings.Join(names, ", ") + "."
-		}
-		return fmt.Sprintf("zscalerctl does not read %s/%s (%s: %s): %s%s Run \"zscalerctl --format json schema gaps %s\" for every surface it does not read", gap.Product, gap.Surface, gap.Status, gap.Reason, gap.Note, instead, gap.Product)
+		return resources.UnreadMessage(gap)
 	}
 	return fmt.Sprintf("unsupported resource %s/%s; run \"zscalerctl %s --help\" or \"zscalerctl --format json schema list\" to enumerate resources, or \"zscalerctl --format json schema gaps %s\" for surfaces zscalerctl does not read", e.Product, e.Resource, e.Product, e.Product)
 }

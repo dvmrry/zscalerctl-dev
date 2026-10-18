@@ -1077,3 +1077,40 @@ func TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader(t *testing.T)
 		t.Fatalf("Executor.Execute(omitted-field filter) response error = %+v, want a message without the filter value", got.Error)
 	}
 }
+
+// TestExecutorUnknownResourceNamesCoverageGap pins that a machine caller is
+// told why zscalerctl cannot read a declared gap, on the load path and the
+// field preflight path, while an undeclared name is never echoed back.
+func TestExecutorUnknownResourceNamesCoverageGap(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		resource string
+		input    machine.Input
+		want     string
+	}{
+		{name: "load gap", resource: "policy-rules", want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "preflight gap", resource: "policy-rules", input: machine.Input{Fields: []string{"id"}}, want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "load alias", resource: "Access_Policies", want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "load undeclared", resource: "no-such-canary", want: "unknown resource"},
+		{name: "preflight undeclared", resource: "no-such-canary", input: machine.Input{Fields: []string{"id"}}, want: "unknown resource"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := machine.Executor{Browser: &fakeBrowserLoader{err: resources.ErrUnknownResource}}
+			input := tt.input
+			input.Product, input.Resource = "zpa", tt.resource
+			_, err := executor.Execute(context.Background(), machine.Request{
+				RequestID:  "req-gap",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &input,
+			})
+			machineErr := assertMachineError(t, err, machine.ErrorKindUnknownResource, machine.OperationList, "zpa", tt.resource)
+			if !strings.HasPrefix(machineErr.Message, tt.want) {
+				t.Errorf("Executor.Execute(%s) message = %q, want prefix %q", tt.name, machineErr.Message, tt.want)
+			}
+			if strings.Contains(machineErr.Message, "canary") || strings.Contains(machineErr.Message, "Access_Policies") {
+				t.Errorf("Executor.Execute(%s) message echoed the requested name: %q", tt.name, machineErr.Message)
+			}
+		})
+	}
+}

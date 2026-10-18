@@ -29,7 +29,11 @@ func (a *App) newSchemaDescribeCmd(opts globalOptions) *cobra.Command {
 			}
 			spec, ok := a.resourceCatalog().FindSpec(resources.Product(args[0]), args[1])
 			if !ok {
-				// Arbitrary command inputs are not reflected into diagnostics.
+				// Arbitrary command inputs are not reflected into diagnostics;
+				// a declared gap's message is static catalog text.
+				if gap, ok := resources.FindGap(resources.Product(args[0]), args[1]); ok {
+					return fmt.Errorf("%w: %s", ErrNotFound, resources.UnreadMessage(gap))
+				}
 				return fmt.Errorf("%w: resource is not in the catalog; use schema list", ErrNotFound)
 			}
 			doc, err := resources.DescribeSemantics(spec, opts.redaction)

@@ -409,7 +409,7 @@ func (e Executor) validateRequestNarrowing(req Request, product, resource string
 	if !ok {
 		return &MachineError{
 			Kind:      ErrorKindUnknownResource,
-			Message:   "unknown resource",
+			Message:   unknownResourceMessage(product, resource),
 			Operation: req.Operation,
 			Product:   product,
 			Resource:  resource,
@@ -530,7 +530,7 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 	case errors.Is(err, resources.ErrUnknownResource):
 		return MachineError{
 			Kind:      ErrorKindUnknownResource,
-			Message:   "unknown resource",
+			Message:   unknownResourceMessage(product, resource),
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
@@ -594,4 +594,14 @@ func sanitizedMachineMessage(message string) string {
 func sanitizeMachineError(machineErr MachineError) MachineError {
 	machineErr.Message = sanitizedMachineMessage(machineErr.Message)
 	return machineErr
+}
+
+// unknownResourceMessage names a declared coverage gap, so a caller can tell
+// "zscalerctl cannot read this" from a mistyped name. It never echoes the
+// requested name.
+func unknownResourceMessage(product, resource string) string {
+	if gap, ok := resources.FindGap(resources.Product(product), resource); ok {
+		return resources.UnreadMessage(gap)
+	}
+	return "unknown resource"
 }
