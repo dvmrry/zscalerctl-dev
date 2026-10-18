@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/format"
 	"math"
 	"os"
 	"path/filepath"
@@ -358,5 +359,9 @@ func renderFieldTypes(types map[string]string) []byte {
 		fmt.Fprintf(&b, "\t%q: %q,\n", path, types[path])
 	}
 	b.WriteString("}\n")
-	return b.Bytes()
+	formatted, err := format.Source(b.Bytes())
+	if err != nil {
+		panic(fmt.Sprintf("format generated field types: %v", err))
+	}
+	return formatted
 }
