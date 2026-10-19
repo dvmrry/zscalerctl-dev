@@ -80,6 +80,18 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		`{"key":"` + `A7b9C2d4E6f8G1h3J5k7","value":"x"}`,
 		strings.ReplaceAll(`{"k^u0065y":"Projects/2024/Q3-planning"}`, "^", "\x5c"),
 		`tag key: Projects/2024/Q3-planning`,
+		// Keys the structured scanner redacts by JSON context alone; the
+		// fast path must still let them through to the full scan.
+		`{"pwd":"A7b9C2d4E6f8G1h3"}`,
+		`{"passwd":"hunter2-canary"}`,
+		`{"bearer":"A7b9C2d4E6f8G1h3J5k7"}`,
+		`{"Password":"Hunter2Canary"}`,
+		`{"note":"rotate the pre-shared key"}`,
+		`{"description":"Kennwort: geheim123"}`,
+		// A marker makes the full scan re-encode the string, so the fast path
+		// must not skip it.
+		"{\"a\":\"<REDACTED:EMAIL>\u2028\"}",
+		"{\"a\":\"<REDACTED:IP>\xff\"}",
 	} {
 		f.Add(seed)
 	}
