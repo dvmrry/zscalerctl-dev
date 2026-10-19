@@ -86,9 +86,9 @@ func (r Redactor) structuredScanMayMatch(in string) bool {
 	if strings.Contains(in, `\`) {
 		return true
 	}
-	// Pasted-credential rules include non-ASCII labels that the ASCII-folding
-	// rule prefilters cannot express.
-	if pasteCredentialMayMatch(in) {
+	// A JSON string holding a redaction marker is re-encoded by the full scan
+	// (escaping U+2028/U+2029, replacing invalid UTF-8), so it must not skip.
+	if strings.Contains(in, "<REDACTED:") {
 		return true
 	}
 	view := prefilterText{text: in}
@@ -1342,6 +1342,9 @@ const (
 	prefilterContainsFold
 	prefilterContainsAnyFold
 	prefilterAll
+	// prefilterPasteCredential gates the pasted-credential scanner, whose
+	// non-ASCII labels the ASCII-folding kinds cannot express.
+	prefilterPasteCredential
 )
 
 func (p rulePrefilter) match(text *prefilterText) bool {
@@ -1354,6 +1357,8 @@ func (p rulePrefilter) match(text *prefilterText) bool {
 		return text.containsFold(p.needle)
 	case prefilterContainsAnyFold:
 		return text.containsAnyFold(p.needles)
+	case prefilterPasteCredential:
+		return pasteCredentialMayMatch(text.text)
 	case prefilterAll:
 		for _, child := range p.children {
 			if !child.match(text) {
@@ -1374,6 +1379,10 @@ type prefilterText struct {
 	asciiValid bool
 	lower      string
 	lowerValid bool
+	// anyFold memoizes containsAnyFold per needle list: the assignment rules
+	// share one list across several rules. A view is rebuilt whenever the
+	// text changes, which clears it.
+	anyFold map[*string]bool
 }
 
 func (p *prefilterText) isASCII() bool {
@@ -1403,6 +1412,22 @@ func (p *prefilterText) containsFold(needle string) bool {
 }
 
 func (p *prefilterText) containsAnyFold(needles []string) bool {
+	if len(needles) == 0 {
+		return false
+	}
+	key := &needles[0]
+	if found, ok := p.anyFold[key]; ok {
+		return found
+	}
+	found := p.scanAnyFold(needles)
+	if p.anyFold == nil {
+		p.anyFold = make(map[*string]bool, 4)
+	}
+	p.anyFold[key] = found
+	return found
+}
+
+func (p *prefilterText) scanAnyFold(needles []string) bool {
 	if !p.isASCII() {
 		for _, needle := range needles {
 			if containsFoldUnicode(p.text, needle) {
@@ -1663,12 +1688,11 @@ func buildBaseRules() []rule {
 	})
 	// Paste formats the label rules above cannot bound: punctuation passwords,
 	// CLI and PowerShell arguments, table and next-line values, encoded query
-	// signatures and Basic credentials. It runs last so it only adds redactions,
-	// and gates itself with pasteCredentialMayMatch, whose non-ASCII labels a
-	// rulePrefilter cannot express.
+	// signatures and Basic credentials. It runs last so it only adds redactions.
 	rules = append(rules, rule{
-		name:   "paste_credential",
-		custom: scanPasteCredentials,
+		name:      "paste_credential",
+		custom:    scanPasteCredentials,
+		prefilter: rulePrefilter{kind: prefilterPasteCredential},
 	})
 	return rules
 }
