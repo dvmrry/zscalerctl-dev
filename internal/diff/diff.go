@@ -773,11 +773,6 @@ func loadDumpWithBudgetOptions(
 	return loaded, nil
 }
 
-func readResource(ctx context.Context, root *os.Root, mr dump.ManifestResource, spec resources.ResourceSpec) ([]map[string]any, error) {
-	records, _, err := readResourceWithLimit(ctx, root, mr, spec, maxResourceBytes, ErrInvalidDump, false)
-	return records, err
-}
-
 func readResourceWithLimit(
 	ctx context.Context,
 	root *os.Root,

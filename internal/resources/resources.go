@@ -1888,10 +1888,9 @@ func freeTextField(name string, subject string) FieldSpec {
 }
 
 // Secret fields: credential material only, each with its reason.
-func credentialField(name string) FieldSpec  { return secretWithReason(name, SecretCredential) }
-func tokenField(name string) FieldSpec       { return secretWithReason(name, SecretToken) }
-func keyMaterialField(name string) FieldSpec { return secretWithReason(name, SecretKeyMaterial) }
-func opaqueBlobField(name string) FieldSpec  { return secretWithReason(name, SecretOpaqueBlob) }
+func credentialField(name string) FieldSpec { return secretWithReason(name, SecretCredential) }
+func tokenField(name string) FieldSpec      { return secretWithReason(name, SecretToken) }
+func opaqueBlobField(name string) FieldSpec { return secretWithReason(name, SecretOpaqueBlob) }
 func unstructuredField(name string) FieldSpec {
 	return secretWithReason(name, SecretUnstructured)
 }

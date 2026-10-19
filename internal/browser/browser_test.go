@@ -578,3 +578,39 @@ func assertHasRedactedField(t *testing.T, record browser.Record, key, forbidden 
 	}
 	t.Fatalf("Service.Load fields missing redacted field %q; got %#v", key, record.Fields)
 }
+
+// Each load names what it could not do: an explicit list or show on a resource
+// without it names the operation; the auto load on a resource with neither
+// names only the resource. None reaches the reader.
+func TestProjectedLoadsNameUnsupportedOperation(t *testing.T) {
+	reader := &fakeReader{}
+	service := browser.Service{
+		Catalog: resources.ResourceCatalog{
+			testSpec(resources.ProductZIA, "advanced-settings", resources.ShowOperation()),
+			testSpec(resources.ProductZIA, "locations", resources.ListOperations()),
+			testSpec(resources.ProductZIA, "lookup-only", []resources.Operation{{Name: "get", Capability: resources.CapabilityRead}}),
+		},
+		Reader: reader,
+		Mode:   redact.ModeStandard,
+	}
+	for _, test := range []struct {
+		name string
+		load func() error
+		want string
+	}{
+		{"list on show-only", func() error {
+			_, err := service.ListProjected(context.Background(), "zia", "advanced-settings")
+			return err
+		}, "zia/advanced-settings list"},
+		{"show on list-only", func() error { _, err := service.ShowProjected(context.Background(), "zia", "locations"); return err }, "zia/locations show"},
+		{"auto on neither", func() error { _, err := service.LoadProjected(context.Background(), "zia", "lookup-only"); return err }, "zia/lookup-only"},
+	} {
+		err := test.load()
+		if !errors.Is(err, browser.ErrUnsupportedLoad) || !strings.HasSuffix(err.Error(), ": "+test.want) {
+			t.Errorf("%s: error = %v, want ErrUnsupportedLoad ending %q", test.name, err, test.want)
+		}
+	}
+	if len(reader.calls) != 0 {
+		t.Errorf("reader calls = %#v, want none", reader.calls)
+	}
+}
