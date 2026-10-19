@@ -654,10 +654,6 @@ func uniqueFields(
 	return fields
 }
 
-func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
-	return writeJSONFileContext(context.Background(), path, mode, value)
-}
-
 func writeJSONFileContext(ctx context.Context, path string, mode redact.Mode, value safeJSON) error {
 	ctx = contextOrBackground(ctx)
 	if err := checkContext(ctx); err != nil {
@@ -721,10 +717,6 @@ func rejectExistingContext(ctx context.Context, path string) error {
 		return fmt.Errorf("inspect dump path: %w", err)
 	}
 	return nil
-}
-
-func writeFileExclusive(path string, body []byte) error {
-	return writeFileExclusiveContext(context.Background(), path, body)
 }
 
 func writeFileExclusiveContext(ctx context.Context, path string, body []byte) error {
@@ -798,10 +790,6 @@ func writeFileExclusiveContext(ctx context.Context, path string, body []byte) er
 	}
 	cleanup = false
 	return nil
-}
-
-func ensureDir(dir string) error {
-	return ensureDirContext(context.Background(), dir)
 }
 
 func ensureDirContext(ctx context.Context, dir string) error {

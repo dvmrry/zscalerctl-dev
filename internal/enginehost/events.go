@@ -1,7 +1,6 @@
 package enginehost
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -197,8 +196,4 @@ func (b *eventBridge) Completion() machine.Event {
 		return machine.Event{}
 	}
 	return b.completed
-}
-
-func isSessionClosingError(err error) bool {
-	return errors.Is(err, errSessionClosing)
 }
