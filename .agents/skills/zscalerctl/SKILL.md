@@ -27,8 +27,8 @@ references render there as ids only (`[{"id": ...}]`), so rule scope is
 visible; names, emails and other identifying values need `--redaction
 standard`, and a usage error names the mode when you ask for an omitted field. `--count-by` takes several comma-separated paths at once, so
 "members per group, and how many have no department" is one call. Exit codes:
-0 success, 1 internal or canceled, 2 usage, 3 missing or invalid credentials,
-4 not found or unsupported (a resource zscalerctl does not read names its
+0 success, 1 internal or canceled, 2 usage or unusable setting, 3 missing
+credentials (credentials the API rejects are 5), 4 not found or unsupported (a resource zscalerctl does not read names its
 gap), 5 live API failure (with `reason`), 6 partial dump, 7 drift.
 
 ## Version and capability preflight
@@ -277,8 +277,9 @@ only the error envelope. Pass `--profile` explicitly when more than one
 tenant is configured.
 
 Failures use a JSON envelope on stderr and stable process exits: 0 success, 1
-internal/canceled, 2 usage, 3 missing or invalid credentials, 4 not found or
-unsupported, 5 live API failure, 6 partial dump, and 7 drift detected from
+internal/canceled, 2 usage or unusable setting (`invalid_config`), 3 missing
+credentials (unset, incomplete, or a secret that could not be resolved), 4 not
+found or unsupported, 5 live API failure, 6 partial dump, and 7 drift detected from
 `diff --fail-on-drift`. A live read failure (exit `5`: `live_access_failed` or `deadline_exceeded`)
 also carries `reason`, `status` (the HTTP status, when there was a response),
 and `retryable: true` when a retry could succeed. `forbidden`, `unauthorized`

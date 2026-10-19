@@ -146,8 +146,8 @@ Exit codes are stable for scripting:
 | --- | --- |
 | `0` | Success |
 | `1` | Internal, canceled, or unclassified failure |
-| `2` | Usage or argument error |
-| `3` | Missing or invalid credentials |
+| `2` | Usage or argument error, or an unusable setting |
+| `3` | Missing credentials: unset, incomplete, or a secret that could not be resolved (credentials the API rejects are `5`) |
 | `4` | Product/resource not found or unsupported |
 | `5` | Live Zscaler API access failure, including machine request deadline exceeded |
 | `6` | Partial dump written (inspect `manifest.json` and `errors.ndjson`) |

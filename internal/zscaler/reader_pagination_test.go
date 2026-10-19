@@ -1519,7 +1519,7 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	}
 }
 
-func newZIAURLFilteringRuleTestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
+func newZIATestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
 	t.Helper()
 	cfg := newSDKConfiguration(context.Background(), validReaderConfig())
 	cfg.HTTPClient.Transport = transport
@@ -1555,7 +1555,7 @@ func TestGetZIAURLFilteringRulePreservesDirectDetail(t *testing.T) {
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1596,7 +1596,7 @@ func TestGetZIAURLFilteringRuleDoesNotEnrichIsolateWithoutProfileID(t *testing.T
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1664,7 +1664,7 @@ func TestGetZIAURLFilteringRuleEnrichesIsolateWithBoundedList(t *testing.T) {
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1764,7 +1764,7 @@ func TestGetZIAURLFilteringRuleFailsWhenIsolateEnrichmentIsIncomplete(t *testing
 				}, nil
 			})
 
-			service := newZIAURLFilteringRuleTestService(t, transport)
+			service := newZIATestService(t, transport)
 
 			rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 			if err == nil {
@@ -1802,7 +1802,7 @@ func TestGetZIAURLFilteringRulePreservesCanceledContextDuringEnrichment(t *testi
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err == nil {

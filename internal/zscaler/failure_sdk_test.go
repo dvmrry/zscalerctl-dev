@@ -2,12 +2,15 @@ package zscaler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 )
 
@@ -58,5 +61,29 @@ func TestSessionRetriesExhaustedMatchesTheRealSDKError(t *testing.T) {
 	}
 	if apiCalls < 2 {
 		t.Errorf("API calls = %d, want the SDK to have retried after a token refresh", apiCalls)
+	}
+}
+
+// sdkStatusCode prefers the HTTP response status and falls back to the status
+// in the parsed body only when the response has none in range.
+func TestSDKStatusCodeFallsBackToParsedStatus(t *testing.T) {
+	t.Parallel()
+	response := func(status int) *http.Response { return &http.Response{StatusCode: status} }
+	parsed := func(status int) *sdkerrorx.ParsedAPIError { return &sdkerrorx.ParsedAPIError{Status: status} }
+	for _, test := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"response wins", &sdkerrorx.ErrorResponse{Response: response(403), Parsed: parsed(500)}, 403},
+		{"parsed without response", &sdkerrorx.ErrorResponse{Parsed: parsed(429)}, 429},
+		{"parsed when response status is out of range", &sdkerrorx.ErrorResponse{Response: response(0), Parsed: parsed(404)}, 404},
+		{"wrapped", fmt.Errorf("list: %w", &sdkerrorx.ErrorResponse{Response: response(401)}), 401},
+		{"neither in range", &sdkerrorx.ErrorResponse{Response: response(999), Parsed: parsed(42)}, 0},
+		{"not an sdk error", errors.New("boom"), 0},
+	} {
+		if got := sdkStatusCode(test.err); got != test.want {
+			t.Errorf("%s: sdkStatusCode() = %d, want %d", test.name, got, test.want)
+		}
 	}
 }

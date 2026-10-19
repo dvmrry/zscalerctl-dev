@@ -285,12 +285,19 @@ Fields:
 | `aupEnabled`, `aupBlockInternetUntilAccepted`, `aupForceSslInspection`, `cautionEnabled`, `digestAuthEnabled`, `kerberosAuth`, `surrogateIP`, `surrogateIPEnforcedForKnownBrowsers`, `xffForwardEnabled`, `ofwEnabled`, `ipsControl`, `iotDiscoveryEnabled`, `zappSslScanEnabled` | Tenant configuration | `standard`, `share` | Location settings, classified as on `zia locations`. |
 
 `GET /locations/lite` is a short view, not a superset of `zia locations`: on a
-test tenant it returned 3 records, one of them a regular location. The fields
-are the keys a live read returned; keys the SDK model lists but no live read
-returned (`ipv6Enabled`, `other6SubLocation`, `subLocScope*`, `subLocAccIds`)
-are not read. Rule
-`locations` references list it as a target beside `zia locations` and
-`zia sublocations`, so `refs` resolves predefined location ids.
+test tenant it returned 3 records, one of them a regular location. Read without
+filters, as zscalerctl reads it, the API leaves out sublocations and every
+parent location that has sublocations unless `includeSubLocations` or
+`includeParentLocations` is set (per the SDK docs; zscalerctl sends neither), so
+a location missing here may still be configured; read `zia locations` and `zia
+sublocations` for those. The fields are the keys a live read returned; keys the
+SDK model lists but no live read returned (`ipv6Enabled`, `other6SubLocation`,
+`subLocScope*`, `subLocAccIds`) are not read. Rule `locations` references list
+it as a target beside `zia locations` and `zia sublocations`, so `refs` resolves
+predefined location ids. Because a missing id could be in any target, a `refs`
+run that cannot read `locations-lite` (no role access, or a `--from-dump` saved
+before the resource existed) reports every rule `locations` field as
+`target_not_checked`; dump again to restore those checks.
 
 ## ZIA Sublocations
 

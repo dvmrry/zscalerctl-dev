@@ -98,9 +98,9 @@ Product-track status:
 | Product | Resources | Status | Next action |
 | --- | --- | --- | --- |
 | ZIA | Current queued legacy-ZIA resources, singleton settings, focused ordinary-recheck batch, identity/device recheck for `zia/departments`, `zia/users`, and `zia/devices`, the focused DLP/capture sensitive batch, plus the list-only/static batch | Prior surfaces cataloged after focused runtime validation and review; the list-only/static batch remains runtime-gated until its focused smoke pass. | Continue only through the remaining shape-decision tracks below. |
-| ZPA | 28 read-only config/reference resources across connectors, connector groups, app/server/service-edge references, app segments, browser/PRA/inspection app segments, portals, client/platform/version metadata, and microtenants. | Closed for the current validated OneAPI config catalog after focused runtime validation and trimming or deferring unavailable endpoints. | Keep ZPA closed unless scopes/features change, a future SDK exposes new read-only config surfaces, or one of the non-coverage buckets below gets an explicit design. |
+| ZPA | Read-only config/reference resources across connectors, connector groups, app/server/service-edge references, app segments, browser/PRA/inspection app segments, portals, client/platform/version metadata, and microtenants. | Closed for the current validated OneAPI config catalog after focused runtime validation and trimming or deferring unavailable endpoints. | Keep ZPA closed unless scopes/features change, a future SDK exposes new read-only config surfaces, or one of the non-coverage buckets below gets an explicit design. |
 | ZTW | Initial reference batch, admin-governance resources, the pinned-SDK close-out configuration/policy batch, and `ztw/activation-status` | Cataloged after focused runtime validation and review. | Keep ZTW closed unless a future SDK bump exposes new read-only config packages. |
-| ZCC | 11 read-only config/reference resources: fail-open policy, forwarding profiles, trusted networks, web app services, application profiles, custom/predefined/process-based IP apps, devices, admin roles, and company info. | Cataloged after focused runtime validation over the OneAPI v1 ZCC routes; the earlier "404 wall" was a stale v2-path probe. Five surfaces trimmed and deferred (see the ZCC non-coverage record and the backlog). | Keep ZCC to the validated v1 read surface; retry the deferred entries only on shape/entitlement/`userType` changes. |
+| ZCC | Read-only config/reference resources: fail-open policy, forwarding profiles, trusted networks, web app services, application profiles, custom/predefined/process-based IP apps, devices, admin roles, and company info. | Cataloged after focused runtime validation over the OneAPI v1 ZCC routes; the earlier "404 wall" was a stale v2-path probe. Five surfaces trimmed and deferred (see the ZCC non-coverage record and the backlog). | Keep ZCC to the validated v1 read surface; retry the deferred entries only on shape/entitlement/`userType` changes. |
 | Zidentity | `groups`, `users`, `resource-servers` | Cataloged after focused runtime validation and review. | Keep membership expansion as a separate child-query design. |
 
 Do not merge product stacks on green CI alone. Promote only runtime-validated
@@ -149,8 +149,8 @@ catalog:
 
 ## ZIA Non-Coverage Record
 
-The ZIA catalog covers 102 runtime-validated, read-only configuration and
-reference resources. As with ZPA, this does not claim that every pinned SDK
+The ZIA catalog covers runtime-validated, read-only configuration and
+reference resources (`zscalerctl schema list` is the current list). As with ZPA, this does not claim that every pinned SDK
 package belongs in `dump`. Several ZIA SDK packages back resources that are
 already cataloged (for example `secure_browsing` backs `browser-control-settings`
 and `supported-browser-versions`; `user_authentication_settings` backs
@@ -167,7 +167,7 @@ catalog:
 | Submission or execution-adjacent | `sandbox/sandbox_submission`, and the activate action behind `activation` (only `activation-status` is read) | File-submission and activation actions mutate or execute. The read-only dumper reads status but does not invoke them. |
 | Credential, certificate, or material | `trafficforwarding/vpncredentials`, plus the key-material, CSR, attestation, and download operations on `intermediatecacertificates` (its ordinary metadata is cataloged as `intermediate-ca-certificates`) | Secret, credential, and certificate material need a separate material-handling policy before any read path is considered. |
 | Identity or SCIM administration | `scim_api` | A SCIM provisioning/identity-admin boundary, not ZIA configuration inventory. If enabled later it needs privacy/admin classification and a focused command shape. |
-| Lookup, diagnostic, or alternate-view helpers | `apptotal`, `trafficforwarding/region`, `trafficforwarding/greinternalipranges`, `trafficforwarding/gretunnelinfo`, `trafficforwarding/virtualipaddress`, `location/locationlite` | Lookup, diagnostic, or lite/overlapping views with nonstandard command shapes. Do not force into config-dump semantics; `locationlite` overlaps `locations`/`sublocations`. |
+| Lookup, diagnostic, or alternate-view helpers | `apptotal`, `trafficforwarding/region`, `trafficforwarding/greinternalipranges`, `trafficforwarding/gretunnelinfo`, `trafficforwarding/virtualipaddress` | Lookup, diagnostic, or overlapping views with nonstandard command shapes. Do not force into config-dump semantics. (`location/locationlite` is cataloged as the list-only `locations-lite`.) |
 | Feature or entitlement holds | `traffic_capture`, `trafficforwarding/extranet` | Generated and reviewed, then deferred after 403 under both OneAPI and legacy ZIA auth. Keep them in the deferred table below and retry only when entitlement or scope changes. |
 
 ## Zidentity Non-Coverage Record
@@ -191,11 +191,11 @@ catalog:
 
 ## ZTW Non-Coverage Record
 
-The ZTW catalog covers 20 runtime-validated, read-only configuration and
-reference resources (admin management, DNS/forwarding gateways, EC groups,
-locations and location templates, forwarding/traffic policy rules, IP and
-network policy resources, partner-integration cloud accounts and info, and
-workload groups). The ZTW SDK surface is nearly fully cataloged; the remaining
+The ZTW catalog covers runtime-validated, read-only configuration and
+reference resources (activation status, admin management, DNS/forwarding
+gateways, EC groups, locations and location templates, forwarding/traffic
+policy rules, IP and network policy resources, partner-integration cloud
+accounts and info, and workload groups). The ZTW SDK surface is nearly fully cataloged; the remaining
 packages are intentionally not covered:
 
 | Bucket | SDK packages or resources | Why not covered |
@@ -210,7 +210,7 @@ wired and runtime-validated as `ztw/activation-status`.
 
 ## ZCC Non-Coverage Record
 
-The ZCC catalog covers 11 runtime-validated, read-only resources over the
+The ZCC catalog covers runtime-validated, read-only resources over the
 OneAPI v1 ZCC routes (`/zcc/papi/public/v1/...`). ZCC rides the shared OneAPI
 service, so no separate ZCC auth is needed; the earlier "404 wall" was a stale
 probe against the v2 paths. Device and admin inventory is cataloged with PII
@@ -286,12 +286,11 @@ resource handler.
 
 ## Remaining SDK Package Review
 
-The current enabled catalog contains 102 ZIA resources, 28 ZPA resources, 21
-ZTW resources, 11 ZCC resources, and 3 Zidentity resources. The rows below are
+`zscalerctl schema list` is the current enabled catalog. The rows below are
 package-level scouting notes, not a promise that every surface should become a
 resource.
 
-The pinned Go SDK (`github.com/zscaler/zscaler-sdk-go/v3` v3.8.38) remains the
+The Go SDK pinned in `go.mod` (`github.com/zscaler/zscaler-sdk-go/v3`) remains the
 implementation authority. The Python SDK is useful only as scout evidence for
 resource names, endpoint intent, and default query semantics; do not use it to
 override the pinned Go SDK shape.
@@ -311,7 +310,6 @@ Remaining work is grouped by the decision that blocks catalog work:
 
 | Track | Surfaces | Decision before catalog work |
 | --- | --- | --- |
-| List-only or name-get candidates | `location/locationlite` | Add explicit list-only/dump-only or name-get semantics before queueing. `locationlite` should wait for a concrete performance or pagination reason because it overlaps `locations` and `sublocations`. |
 | SaaS/CASB follow-ups | CASB tenant tag policy and SaaS scan info | The core SaaS/CASB config surfaces are staged as list-only resources. Tenant tag policy needs a tenant-ID child-query design, and scan info is telemetry rather than config. |
 | Deferred live/auth failures | See [Deferred Resource SDK Recheck](DEFERRED_RESOURCE_RECHECK.md). | Retry only as focused endpoint/auth probes that record exact status code, auth mode, product cloud, endpoint path, SDK version, and source commit. |
 | Cataloged policy/status metadata | `ips_control_policies/ips_policies`, `activation`, `user_authentication_settings`, `intermediatecacertificates` | Policy/status metadata is cataloged with conservative field projection. Intermediate CA key material and download-style operations remain excluded. |

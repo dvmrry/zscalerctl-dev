@@ -274,8 +274,8 @@ scraping `message` prose:
 | --- | --- |
 | `0` | success |
 | `1` | internal or canceled |
-| `2` | usage error |
-| `3` | missing or invalid credentials |
+| `2` | usage error or unusable setting (`invalid_config`) |
+| `3` | missing credentials (credentials the API rejects are `5`) |
 | `4` | not found or unsupported |
 | `5` | live API failure |
 | `6` | partial dump |

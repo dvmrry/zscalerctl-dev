@@ -84,7 +84,7 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 3. Keep Zidentity to top-level read-only inventory unless a child-query command
    shape is designed. Resource servers, groups, and users are cataloged; group
    membership remains a separate follow-up.
-4. ZCC is cataloged: 11 read-only resources over the OneAPI v1 ZCC routes. The
+4. ZCC is cataloged: read-only resources over the OneAPI v1 ZCC routes. The
    earlier v2-path probe 404s were a wrong-path artifact, not a wall. Keep ZCC
    to the validated v1 read surface and the deferred backlog.
 5. Do not implement ZDX before `v1.0.0` unless Zscaler exposes deterministic
@@ -96,7 +96,7 @@ safe when zscalerctl wires only read functions, but it requires explicit review.
 
 ## ZCC
 
-ZCC is cataloged with 11 read-only resources over the OneAPI **v1** ZCC routes
+ZCC is cataloged with read-only resources over the OneAPI **v1** ZCC routes
 (`/zcc/papi/public/v1/...`), reached through the shared OneAPI service. The
 initial deferral came from a v2-path probe (`trusted_network_v2`,
 `notification_template`, `zia_posture`) that returned 404; the reachable surface
