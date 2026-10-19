@@ -732,7 +732,7 @@ func newSingletonHandler[T any](
 	return singletonHandler[T]{
 		resourceName: resourceName,
 		show:         show,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
@@ -870,26 +870,42 @@ func ziaSDKListGetByIntID[T any](
 	list func(context.Context, *zsdk.Service) ([]T, error),
 	idOf func(T) int,
 ) func(context.Context, string) (*T, error) {
+	return scanGetByIntID(ziaSDKList(client, list), idOf)
+}
+
+// scanGetByIntID and scanGetByStringID answer a get by reading the complete
+// list and matching the ID. Use them for any get the API cannot answer
+// directly (and in place of an SDK Get that scans and returns a plain "not
+// found" error): the list call succeeded, so a miss has no HTTP 404 to
+// classify downstream and must carry the not-found sentinel itself, or it
+// surfaces as a live-access failure (exit 5 instead of 4).
+func scanGetByIntID[T any](list func(context.Context) ([]T, error), idOf func(T) int) func(context.Context, string) (*T, error) {
 	return intIDGetter(func(ctx context.Context, id int) (*T, error) {
-		service, cleanup, err := client.service(ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer cleanup()
-		items, err := list(ctx, service)
-		if err != nil {
-			return nil, err
-		}
-		for i := range items {
-			if idOf(items[i]) == id {
-				return &items[i], nil
-			}
-		}
-		// The list call succeeded, so there is no HTTP 404 to classify
-		// downstream: a scan miss must carry the not-found sentinel itself or
-		// it surfaces as a live-access failure (exit 5 instead of 4).
-		return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
+		return scanGet(ctx, list, func(item T) bool { return idOf(item) == id })
 	})
+}
+
+func scanGetByStringID[T any](list func(context.Context) ([]T, error), idOf func(T) string) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("%w: empty", ErrInvalidResourceID)
+		}
+		return scanGet(ctx, list, func(item T) bool { return idOf(item) == id })
+	}
+}
+
+func scanGet[T any](ctx context.Context, list func(context.Context) ([]T, error), match func(T) bool) (*T, error) {
+	items, err := list(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if match(items[i]) {
+			return &items[i], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
 }
 
 func sdkProductList[T any](

@@ -366,7 +366,7 @@ func getZIASublocationByID(
 	id int,
 ) (*locationmanagement.Locations, error) {
 	var found *locationmanagement.Locations
-	var searchErr error
+	var searchErr, skipped error
 	const pageSize = 1000
 	err := ziaWalkPages(ctx, pageSize, func(ctx context.Context, page, size int) ([]locationmanagement.Locations, error) {
 		var parents []locationmanagement.Locations
@@ -387,6 +387,11 @@ func getZIASublocationByID(
 					searchErr = err
 					return true
 				}
+				// Keep one skip to report on a miss; a parent that 404s (deleted
+				// mid-scan) must not hide a later one that may hold the ID.
+				if skipped == nil || sdkStatusCode(skipped) == http.StatusNotFound {
+					skipped = err
+				}
 				continue
 			}
 			if sublocation != nil {
@@ -405,24 +410,14 @@ func getZIASublocationByID(
 	if found != nil {
 		return found, nil
 	}
-	return nil, fmt.Errorf("sublocation not found: %d", id)
-}
-
-func getZIADeviceByID(
-	ctx context.Context,
-	service *zsdk.Service,
-	id int,
-) (*devicegroups.Devices, error) {
-	devices, err := getZIAAllPages[devicegroups.Devices](ctx, service, "/zia/api/v1/deviceGroups/devices")
-	if err != nil {
-		return nil, err
+	// A miss is not-found only when every parent was read; a parent skipped
+	// above may hold the ID, so its error is the answer (exit 5, not 4). A
+	// complete scan has no HTTP 404 to classify downstream, so it carries the
+	// not-found sentinel itself.
+	if skipped != nil {
+		return nil, skipped
 	}
-	for index := range devices {
-		if devices[index].ID == id {
-			return &devices[index], nil
-		}
-	}
-	return nil, fmt.Errorf("no device found with ID: %d", id)
+	return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
 }
 
 func getZIABrowserIsolationAllPages(
@@ -982,9 +977,13 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]devicegroups.Devices, error) {
 				return getZIAAllPages[devicegroups.Devices](ctx, service, "/zia/api/v1/deviceGroups/devices")
 			}),
-			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*devicegroups.Devices, error) {
-				return getZIADeviceByID(ctx, service, id)
-			}),
+			ziaSDKListGetByIntID(
+				client,
+				func(ctx context.Context, service *zsdk.Service) ([]devicegroups.Devices, error) {
+					return getZIAAllPages[devicegroups.Devices](ctx, service, "/zia/api/v1/deviceGroups/devices")
+				},
+				func(device devicegroups.Devices) int { return device.ID },
+			),
 			deviceSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceWorkloadGroups}: newListGetHandler(
@@ -1128,9 +1127,13 @@ func addZIAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			ziaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofilelite.DLPIDMProfileLite, error) {
 				return getZIAAllPages[dlpidmprofilelite.DLPIDMProfileLite](ctx, service, "/zia/api/v1/idmprofile/lite")
 			}),
-			ziaSDKGet(client, func(ctx context.Context, service *zsdk.Service, id int) (*dlpidmprofilelite.DLPIDMProfileLite, error) {
-				return dlpidmprofilelite.GetDLPProfileLiteID(ctx, service, id, false)
-			}),
+			ziaSDKListGetByIntID(
+				client,
+				func(ctx context.Context, service *zsdk.Service) ([]dlpidmprofilelite.DLPIDMProfileLite, error) {
+					return getZIAAllPages[dlpidmprofilelite.DLPIDMProfileLite](ctx, service, "/zia/api/v1/idmprofile/lite")
+				},
+				func(profile dlpidmprofilelite.DLPIDMProfileLite) int { return profile.ProfileID },
+			),
 			dlpIDMProfileLiteSourceRecord,
 		),
 		{product: resources.ProductZIA, name: resourceDLPIDMProfiles}: newListGetHandler(

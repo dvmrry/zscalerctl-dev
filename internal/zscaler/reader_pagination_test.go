@@ -2056,3 +2056,79 @@ func TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages(t *testing.T) {
 		t.Fatalf("ziaPaginate(large number changed) = %v, %v; want fail closed", got, err)
 	}
 }
+
+// A get that scans a complete list and misses has no HTTP 404 to classify, so
+// it must carry ErrResourceNotFound itself (exit 4), not read as a live-access
+// failure (exit 5). A scan that skipped an unreadable parent is not complete,
+// so its miss is that parent's error, never not-found.
+func TestScanGetsReportMissesAsNotFound(t *testing.T) {
+	t.Parallel()
+	newService := func(t *testing.T, secondParentForbidden bool) *zsdk.Service {
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			status, body := http.StatusOK, `[]`
+			firstPage := request.URL.Query().Get("page") == "1" || request.URL.Query().Get("page") == ""
+			switch path := request.URL.Path; {
+			case path == "/oauth2/v1/token":
+				body = `{"access_token":"test-token","expires_in":60}`
+			case path == "/zia/api/v1/locations":
+				if firstPage {
+					body = `[{"id":1,"name":"parent"},{"id":2,"name":"second"}]`
+				}
+			case path == "/zia/api/v1/locations/2/sublocations" && secondParentForbidden:
+				status, body = http.StatusForbidden, `{"message":"forbidden"}`
+			case path == "/zia/api/v1/locations/1/sublocations", path == "/zia/api/v1/locations/2/sublocations",
+				path == "/zia/api/v1/deviceGroups/devices":
+				if firstPage {
+					body = `[{"id":5,"name":"other"}]`
+				}
+			case path == "/zia/api/v1/idmprofile/lite":
+				if firstPage {
+					body = `[{"profileId":5,"templateName":"other"}]`
+				}
+			case strings.HasSuffix(path, "/zpaprofiles"):
+				body = `[{"id":"5","name":"other"}]`
+			default:
+				status, body = http.StatusNotFound, `{}`
+			}
+			return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+		})
+		cfg := newSDKConfiguration(context.Background(), validReaderConfig())
+		for _, client := range []*http.Client{cfg.HTTPClient, cfg.ZIAHTTPClient, cfg.ZPAHTTPClient} {
+			client.Transport = transport
+		}
+		service, err := zsdk.NewOneAPIClient(cfg)
+		if err != nil {
+			t.Fatalf("NewOneAPIClient() error = %v", err)
+		}
+		t.Cleanup(service.Client.Close)
+		return service
+	}
+	handlers := func(service *zsdk.Service) map[resourceKey]resourceHandler {
+		m := make(map[resourceKey]resourceHandler)
+		client := sdkClient{services: fixedService{cfg: validReaderConfig(), sdkService: service}}
+		addZIAHandlers(m, client)
+		addZPAHandlers(m, client)
+		return m
+	}
+
+	complete := handlers(newService(t, false))
+	for _, key := range []resourceKey{
+		{product: resources.ProductZIA, name: resourceSublocations},
+		{product: resources.ProductZIA, name: resourceDevices},
+		{product: resources.ProductZIA, name: resourceDLPIDMLite},
+		{product: resources.ProductZPA, name: resourceZPACBIZPAProfs},
+	} {
+		if _, err := complete[key].Get(context.Background(), "99"); !errors.Is(err, ErrResourceNotFound) {
+			t.Errorf("%s/%s Get(missing) error = %v, want ErrResourceNotFound", key.product, key.name, err)
+		}
+		if _, err := complete[key].Get(context.Background(), "5"); err != nil {
+			t.Errorf("%s/%s Get(present) error = %v, want the record", key.product, key.name, err)
+		}
+	}
+
+	partial := handlers(newService(t, true))
+	_, err := partial[resourceKey{product: resources.ProductZIA, name: resourceSublocations}].Get(context.Background(), "99")
+	if err == nil || errors.Is(err, ErrResourceNotFound) {
+		t.Errorf("sublocations Get(missing, a parent forbidden) error = %v, want the parent's error, not ErrResourceNotFound", err)
+	}
+}

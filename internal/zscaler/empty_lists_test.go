@@ -1,6 +1,7 @@
 package zscaler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -143,5 +144,60 @@ func TestZIAUsersRenderConfirmedEmptyGroups(t *testing.T) {
 	}
 	if got, want := lists(ziausers.Users{ID: 1}), `{}`; got != want {
 		t.Errorf("not-sent user lists = %s, want %s", got, want)
+	}
+}
+
+// Every handler constructor applies preserveEmptyLists, so a list the API sent
+// as [] is confirmed empty whether the resource is a list, a get or a
+// singleton show.
+func TestHandlersPreserveEmptyLists(t *testing.T) {
+	t.Parallel()
+
+	sent := emptyListProbe{ID: 1, Hosts: []string{}}
+	mapper := func(p emptyListProbe) resources.SourceRecord {
+		fields := map[string]any{"id": p.ID}
+		if len(p.Hosts) > 0 { // the hand-mapper guard that discards []
+			fields["hosts"] = p.Hosts
+		}
+		return resources.NewSourceRecord(fields)
+	}
+	list := func(context.Context) ([]emptyListProbe, error) { return []emptyListProbe{sent}, nil }
+	get := func(context.Context, string) (*emptyListProbe, error) { return &sent, nil }
+	show := func(context.Context) (*emptyListProbe, error) { return &sent, nil }
+
+	records := map[string]func() (resources.SourceRecord, error){
+		"list-get list": func() (resources.SourceRecord, error) {
+			got, err := newListGetHandler("probe", list, get, mapper).List(context.Background())
+			if err != nil || len(got) != 1 {
+				return resources.SourceRecord{}, err
+			}
+			return got[0], nil
+		},
+		"list-get get": func() (resources.SourceRecord, error) {
+			return newListGetHandler("probe", list, get, mapper).Get(context.Background(), "1")
+		},
+		"list-only list": func() (resources.SourceRecord, error) {
+			got, err := newListOnlyHandler("probe", list, mapper).List(context.Background())
+			if err != nil || len(got) != 1 {
+				return resources.SourceRecord{}, err
+			}
+			return got[0], nil
+		},
+		"singleton show": func() (resources.SourceRecord, error) {
+			return newSingletonHandler("probe", show, mapper).Show(context.Background())
+		},
+	}
+	for name, read := range records {
+		record, err := read()
+		if err != nil {
+			t.Fatalf("%s: error = %v, want nil", name, err)
+		}
+		if !record.Has("hosts") {
+			t.Errorf("%s: hosts sent as [] is absent, want a confirmed-empty list", name)
+		}
+	}
+	notSent := newSingletonHandler("probe", func(context.Context) (*emptyListProbe, error) { return &emptyListProbe{ID: 1}, nil }, mapper)
+	if record, err := notSent.Show(context.Background()); err != nil || record.Has("hosts") {
+		t.Errorf("singleton show of unsent hosts: present = %v, err = %v; want absent", record.Has("hosts"), err)
 	}
 }

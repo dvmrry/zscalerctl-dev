@@ -310,9 +310,13 @@ func addZPAHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 			zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
 				return zpacbizpaprofile.GetAll(ctx, service)
 			}),
-			zpaSDKStringGet(client, func(ctx context.Context, service *zsdk.Service, id string) (*zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
-				return zpacbizpaprofile.Get(ctx, service, id)
-			}),
+			// The SDK's Get scans GetAll and reports a miss as a plain error.
+			scanGetByStringID(
+				zpaSDKList(client, func(ctx context.Context, service *zsdk.Service) ([]zpacbizpaprofile.ZPAProfiles, *http.Response, error) {
+					return zpacbizpaprofile.GetAll(ctx, service)
+				}),
+				func(profile zpacbizpaprofile.ZPAProfiles) string { return profile.ID },
+			),
 			jsonSourceRecord[zpacbizpaprofile.ZPAProfiles],
 		),
 		{product: resources.ProductZPA, name: resourceZPAC2CIPRanges}: newListGetHandler(
