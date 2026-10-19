@@ -14,6 +14,11 @@ import (
 // carry it. Tests keep the published schemas and the wire's copy equal to
 // FailureReasons.
 const (
+	// FailureReasonCredentialsRejected is a sign-in the API refused (HTTP
+	// 400, 401 or 403 from the token or session endpoint): the configured
+	// credentials or account need fixing, unlike unauthorized or forbidden on
+	// a read, which concern the role.
+	FailureReasonCredentialsRejected  = "credentials_rejected"
 	FailureReasonUnauthorized         = "unauthorized"
 	FailureReasonForbidden            = "forbidden"
 	FailureReasonNotFound             = "not_found"
@@ -31,7 +36,7 @@ const (
 // FailureReasons returns the whole vocabulary.
 func FailureReasons() []string {
 	return []string{
-		FailureReasonUnauthorized, FailureReasonForbidden, FailureReasonNotFound, FailureReasonRateLimited,
+		FailureReasonCredentialsRejected, FailureReasonUnauthorized, FailureReasonForbidden, FailureReasonNotFound, FailureReasonRateLimited,
 		FailureReasonServerError, FailureReasonClientError, FailureReasonTransport, FailureReasonTimeout,
 		FailureReasonPaginationIncomplete, FailureReasonDecodeFailed, FailureReasonNotSubscribed, FailureReasonUnknown,
 	}

@@ -34,7 +34,7 @@ func adminAuditLogsStatusIntPointer(value int) *int {
 	return &value
 }
 
-func newLegacyAdminAuditLogsTestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
+func newLegacyZIATestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
 	t.Helper()
 	legacyConfig, err := newLegacyZIAConfiguration(context.Background(), validLegacyReaderConfig())
 	if err != nil {
@@ -225,7 +225,7 @@ func TestAdminAuditLogsStatusRejectsEmptyLegacyResponse(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
-	service := newLegacyAdminAuditLogsTestService(t, transport)
+	service := newLegacyZIATestService(t, transport)
 	_, err := readAdminAuditLogsStatus(context.Background(), sdkClient{
 		services: adminAuditLogsTestServiceProvider{svc: service},
 	})

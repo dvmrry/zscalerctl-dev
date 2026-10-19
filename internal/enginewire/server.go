@@ -646,7 +646,7 @@ type NonCredentialFailure struct {
 // accepts. It mirrors machine.FailureReasons (this package imports no other
 // zscalerctl package); a test keeps the two and the published schema equal.
 var FailureReasons = []string{
-	"unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error",
+	"credentials_rejected", "unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error",
 	"transport", "timeout", "pagination_incomplete", "decode_failed", "not_subscribed", "unknown",
 }
 

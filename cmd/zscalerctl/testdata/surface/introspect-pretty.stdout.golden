@@ -657,8 +657,8 @@ Exit codes (8):
   0  ok                         success
   1  internal                   unexpected internal error (bug or panic)
   2  usage                      invalid command syntax, flag, argument, resource ID, proxy config, config file, or unusable setting such as an unsupported cloud (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)
-  3  missing_credentials        credentials not configured or incomplete
+  3  missing_credentials        credentials not configured, incomplete, or a secret that could not be resolved; credentials the API rejects exit 5 with reason credentials_rejected
   4  not_found                  resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)
-  5  live_access_failed         Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable [retryable]
+  5  live_access_failed         Zscaler API call or sign-in failed (credentials_rejected, missing access, network, quota, or deadline; JSON error kind may be live_access_failed or deadline_exceeded); the error's reason names the cause and its retryable says whether a retry can succeed
   6  partial_dump               dump completed but some resources failed; see errors.ndjson in the output directory
   7  drift_detected             drift check found differences between two snapshots

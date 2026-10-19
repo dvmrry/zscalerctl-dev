@@ -246,7 +246,8 @@ environment, provider choice, and platform are reviewed and pinned.
   `{"error": {"kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "reason": "forbidden", "status": 403, ...}}`;
   `retryable: true` (rate_limited, server_error, transport, timeout) means a
   retry can succeed, while forbidden, unauthorized and not_subscribed mean the
-  API role or licence does not allow the resource.
+  API role or licence does not allow the resource. credentials_rejected means
+  the sign-in itself was refused: fix the configured credentials or account.
 - Exit codes are a stable contract: `0` ok, `1` internal, `2` usage or an
   unusable setting (`invalid_config`), `3` credentials missing (unset,
   incomplete, or a secret that could not be resolved; credentials the API
