@@ -1278,8 +1278,8 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMin = time.Second
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMax = 3 * time.Second
 	// OneAPI-only: the OAuth session can become invalid mid-run, so bound the
-	// re-auth retries. The legacy ZIA client's RateLimit struct has no such field
-	// (different auth/session model), which is why the legacy path omits it.
+	// re-auth retries. The legacy path sets no RateLimit fields at all; see
+	// newLegacyZIAConfiguration.
 	sdkCfg.Zscaler.Client.RateLimit.MaxSessionNotValidRetries = 1
 	// SDK response caching remains disabled for every read path. NoCache is
 	// retained in ReaderConfig so future cache support has to make a deliberate
@@ -1314,9 +1314,10 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 	ziaCfg.ZIA.Client.ZIAApiKey = cfg.ZIALegacy.APIKey.Reveal()
 	ziaCfg.ZIA.Client.ZIACloud = strings.ToLower(strings.TrimSpace(cfg.ZIALegacy.Cloud))
 	ziaCfg.ZIA.Client.RequestTimeout = timeout
-	ziaCfg.ZIA.Client.RateLimit.MaxRetries = 2
-	ziaCfg.ZIA.Client.RateLimit.RetryWaitMin = time.Second
-	ziaCfg.ZIA.Client.RateLimit.RetryWaitMax = 3 * time.Second
+	// No RateLimit retry settings: the SDK reads them only to build its own
+	// retrying HTTP client, which this explicit HTTPClient replaces. Legacy
+	// requests get the SDK's fixed loop: up to 5 attempts, retrying only a 401
+	// (after refreshing the session once); a 429 or 5xx is not retried.
 	ziaCfg.ZIA.Client.Cache.Enabled = false
 	return ziaCfg, nil
 }

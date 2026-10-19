@@ -689,6 +689,18 @@ func TestNewLegacyZIAConfigurationDoesNotUseSDKDiscoveryOrProxy(t *testing.T) {
 	}
 }
 
+// TestOneAPIConfigurationBoundsRetries pins the OneAPI retry budget: at most
+// two attempts per request, backoff capped at 3s (a 429's longer Retry-After
+// still wins), and one re-authentication of an invalid session. Zero would mean no bound at all: the SDK's loop retries
+// forever when MaxRetries is 0, and its default of 4 is set only by
+// zsdk.NewConfiguration, which the reader bypasses.
+func TestOneAPIConfigurationBoundsRetries(t *testing.T) {
+	limit := newSDKConfiguration(context.Background(), validReaderConfig()).Zscaler.Client.RateLimit
+	if limit.MaxRetries != 2 || limit.RetryWaitMin != time.Second || limit.RetryWaitMax != 3*time.Second || limit.MaxSessionNotValidRetries != 1 {
+		t.Errorf("newSDKConfiguration() RateLimit = %+v, want MaxRetries 2, waits 1s-3s, MaxSessionNotValidRetries 1", limit)
+	}
+}
+
 func TestNewLegacyZIAConfigurationRefusesCredentialBearingRedirects(t *testing.T) {
 	t.Parallel()
 

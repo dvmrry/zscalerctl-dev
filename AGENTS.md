@@ -247,8 +247,10 @@ environment, provider choice, and platform are reviewed and pinned.
   `retryable: true` (rate_limited, server_error, transport, timeout) means a
   retry can succeed, while forbidden, unauthorized and not_subscribed mean the
   API role or licence does not allow the resource.
-- Exit codes are a stable contract: `0` ok, `1` internal, `2` usage,
-  `3` credentials missing/invalid, `4` not found/unsupported (including a
+- Exit codes are a stable contract: `0` ok, `1` internal, `2` usage or an
+  unusable setting (`invalid_config`), `3` credentials missing (unset,
+  incomplete, or a secret that could not be resolved; credentials the API
+  rejects are `5`), `4` not found/unsupported (including a
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
   `7` drift detected when `diff --fail-on-drift` is used.
 - Narrow resource `list`, `get`, and `show` output with

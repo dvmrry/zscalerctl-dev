@@ -90,7 +90,7 @@ func TestReadAdminAuditLogsStatusUsesOneGET(t *testing.T) {
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 	status, err := readAdminAuditLogsStatus(context.Background(), sdkClient{
 		services: adminAuditLogsTestServiceProvider{svc: service},
 	})
@@ -149,7 +149,7 @@ func TestAdminAuditLogsStatusPreservesProgressFieldPresence(t *testing.T) {
 					Request:    request,
 				}, nil
 			})
-			service := newZIAURLFilteringRuleTestService(t, transport)
+			service := newZIATestService(t, transport)
 			status, err := readAdminAuditLogsStatus(context.Background(), sdkClient{
 				services: adminAuditLogsTestServiceProvider{svc: service},
 			})
@@ -192,7 +192,7 @@ func TestAdminAuditLogsStatusRejectsMissingWireStatus(t *testing.T) {
 					Request:    request,
 				}, nil
 			})
-			service := newZIAURLFilteringRuleTestService(t, transport)
+			service := newZIATestService(t, transport)
 			_, err := readAdminAuditLogsStatus(context.Background(), sdkClient{
 				services: adminAuditLogsTestServiceProvider{svc: service},
 			})
@@ -264,7 +264,7 @@ func TestAdminAuditLogsStatusErrorsAreValueFree(t *testing.T) {
 					Request:    request,
 				}, nil
 			})
-			service := newZIAURLFilteringRuleTestService(t, transport)
+			service := newZIATestService(t, transport)
 			_, err := readAdminAuditLogsStatus(context.Background(), sdkClient{
 				services: adminAuditLogsTestServiceProvider{svc: service},
 			})
@@ -319,7 +319,7 @@ func TestAdminAuditLogsStatusCancellationDuringNotFoundBody(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 	_, err := readAdminAuditLogsStatus(ctx, sdkClient{
 		services: adminAuditLogsTestServiceProvider{svc: service},
 	})
