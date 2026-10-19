@@ -159,7 +159,7 @@ Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`; mac
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
-A live read failure also says why: `reason` (`forbidden`, `unauthorized`, `not_subscribed`, `rate_limited`, `server_error`, `transport`, `timeout`, `pagination_incomplete`, `decode_failed`, `not_found`, `client_error`, `unknown`), the HTTP `status` when there was a response, and `retryable: true` when a retry could succeed. Dump `errors.ndjson` records carry the same fields.
+A live read failure also says why: `reason` (`credentials_rejected`, `forbidden`, `unauthorized`, `not_subscribed`, `rate_limited`, `server_error`, `transport`, `timeout`, `pagination_incomplete`, `decode_failed`, `not_found`, `client_error`, `unknown`), the HTTP `status` when there was a response, and `retryable: true` when a retry could succeed. Dump `errors.ndjson` records carry the same fields.
 
 ```json
 { "error": { "kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "operation": "list", "product": "zia", "resource": "dlp-dictionaries", "reason": "forbidden", "status": 403 } }

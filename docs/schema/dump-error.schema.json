@@ -36,6 +36,7 @@
     "reason": {
       "type": "string",
       "enum": [
+        "credentials_rejected",
         "unauthorized",
         "forbidden",
         "not_found",
@@ -49,7 +50,7 @@
         "not_subscribed",
         "unknown"
       ],
-      "description": "Why a live read failed, from a closed value-free vocabulary: unauthorized (401), forbidden (403: the API role or licence does not allow it), not_found (404 on a list/show endpoint), rate_limited (429), server_error (5xx), client_error (other 4xx), transport (network failure), timeout (the request hit --timeout), pagination_incomplete (the CLI refused a list it could not prove complete), decode_failed (the response did not match the expected shape), not_subscribed (the feature is not licensed), unknown. Present only for live read failures."
+      "description": "Why a live read failed, from a closed value-free vocabulary: credentials_rejected (sign-in refused with 400, 401 or 403), unauthorized (401), forbidden (403: the API role or licence does not allow it), not_found (404 on a list/show endpoint), rate_limited (429), server_error (5xx), client_error (other 4xx), transport (network failure), timeout (the request hit --timeout), pagination_incomplete (the CLI refused a list it could not prove complete), decode_failed (the response did not match the expected shape), not_subscribed (the feature is not licensed), unknown. Present only for live read failures."
     },
     "status": {
       "type": "integer",

@@ -17653,7 +17653,7 @@
       "code": 3,
       "kind": "missing_credentials",
       "retryable": false,
-      "description": "credentials not configured or incomplete"
+      "description": "credentials not configured, incomplete, or a secret that could not be resolved; credentials the API rejects exit 5 with reason credentials_rejected"
     },
     {
       "code": 4,
@@ -17664,8 +17664,8 @@
     {
       "code": 5,
       "kind": "live_access_failed",
-      "retryable": true,
-      "description": "Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable"
+      "retryable": false,
+      "description": "Zscaler API call or sign-in failed (credentials_rejected, missing access, network, quota, or deadline; JSON error kind may be live_access_failed or deadline_exceeded); the error's reason names the cause and its retryable says whether a retry can succeed"
     },
     {
       "code": 6,

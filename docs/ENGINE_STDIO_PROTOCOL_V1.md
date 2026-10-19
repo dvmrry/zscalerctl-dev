@@ -134,7 +134,7 @@ explicitly converted engine manifest. The following is a structurally complete
 minimal frame; a build advertises every capability it actually provides.
 
 ```json
-{"type":"ready","protocol":"zscalerctl.engine.stdio","version":"1","schema":{"id":"urn:zscalerctl:engine-stdio:protocol:1","sha256":"9040b0862c2b77c3cf2ecd440417363649f0ee8448835c3c9e80030734849c46"},"server":{"name":"zscalerctl-engine","version":"dev"},"limits":{"client_frame_bytes":1048576,"server_frame_bytes":1048576,"json_depth":64,"aggregate_item_bytes":67108864,"fragment_chunk_bytes":524288,"url_count":1024,"read_field_count":1024,"read_filter_count":1024,"product_selector_count":16,"resource_selector_count":4096,"path_bytes":32768,"control_string_bytes":8192},"engine":{"version":"engine.v1","tenant_read_only":true,"capabilities":[{"name":"engine.manifest","operations":["manifest"],"input":"none","result":"engine_manifest","tenant_read_only":true,"effects":[]}]}}
+{"type":"ready","protocol":"zscalerctl.engine.stdio","version":"1","schema":{"id":"urn:zscalerctl:engine-stdio:protocol:1","sha256":"30d4aa99e021116a34f07b797a85ce936e3bb7f17009ac59ffcb422f2d2ae601"},"server":{"name":"zscalerctl-engine","version":"dev"},"limits":{"client_frame_bytes":1048576,"server_frame_bytes":1048576,"json_depth":64,"aggregate_item_bytes":67108864,"fragment_chunk_bytes":524288,"url_count":1024,"read_field_count":1024,"read_filter_count":1024,"product_selector_count":16,"resource_selector_count":4096,"path_bytes":32768,"control_string_bytes":8192},"engine":{"version":"engine.v1","tenant_read_only":true,"capabilities":[{"name":"engine.manifest","operations":["manifest"],"input":"none","result":"engine_manifest","tenant_read_only":true,"effects":[]}]}}
 ```
 
 No request is accepted before `ready`. Unknown bootstrap fields, duplicate
@@ -482,7 +482,7 @@ selector, or provider detail. They are a closed kind plus an optional allow-
 listed missing-credential variable list. The client owns presentation text.
 
 A `live_access_failed` error may also say why, in value-free terms: `reason`
-from a closed vocabulary (`unauthorized`, `forbidden`, `not_found`,
+from a closed vocabulary (`credentials_rejected`, `unauthorized`, `forbidden`, `not_found`,
 `rate_limited`, `server_error`, `client_error`, `transport`, `timeout`,
 `pagination_incomplete`, `decode_failed`, `not_subscribed`, `unknown`), the HTTP
 `status` when there was a response, and `retryable: true` when a retry could

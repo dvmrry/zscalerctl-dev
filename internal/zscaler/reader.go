@@ -1106,7 +1106,7 @@ func (s perCallService) service(ctx context.Context, product resources.Product) 
 	// Do not replace this with zsdk.NewConfiguration. That SDK constructor
 	// reads ZSCALER_* environment variables and ~/.zscaler/zscaler.yaml before
 	// setters run. This adapter must only use explicit ZSCALERCTL_* config.
-	service, err := zsdk.NewOneAPIClient(cfg)
+	service, err := newOneAPIService(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1197,6 +1197,7 @@ func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product
 }
 
 func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {
+	withSignInTransport(cfg.HTTPClient)
 	neutralizeForeignSDKEnv()
 	restore := suppressSDKLogEnv()
 	defer restore()
@@ -4763,7 +4764,9 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	// condition (exit 4) rather than a generic live-access failure (exit 5). Scope
 	// this to get; a list/show/authenticate 404 is an endpoint/access problem, not
 	// a missing record.
-	if operation == "get" && statusCode == http.StatusNotFound {
+	// Sign-in happens inside whichever read first needs the client, and a
+	// sign-in 404 is a wrong host, not a missing ID.
+	if operation == "get" && statusCode == http.StatusNotFound && !errors.As(err, new(*signInError)) {
 		return resourceNotFoundError{product: product, resource: resource}
 	}
 	reason, retryable := classifyFailure(err, statusCode)
@@ -4848,16 +4851,20 @@ func (e resourceNotFoundError) ErrorContext() ErrorContext {
 	return ErrorContext{Product: string(e.product), Resource: e.resource, Operation: "get"}
 }
 
-// sdkStatusCode returns the HTTP status of a failed SDK call, or 0 when there
-// is none. A status outside 100..599 (a body-parsed value can be anything) is
-// treated as no status, so the reason, the error envelope, errors.ndjson and
+// sdkStatusCode returns the HTTP status of a failed SDK call or sign-in, or 0
+// when there is none. A status outside 100..599 (a body-parsed value can be
+// anything) is treated as no status, so the reason, the error envelope, errors.ndjson and
 // the stdio wire all agree with the published 100..599 range.
 func sdkStatusCode(err error) int {
+	valid := func(status int) bool { return status >= 100 && status <= 599 }
+	var signIn *signInError
+	if errors.As(err, &signIn) && valid(signIn.status) {
+		return signIn.status
+	}
 	var sdkErr *sdkerrorx.ErrorResponse
 	if !errors.As(err, &sdkErr) || sdkErr == nil {
 		return 0
 	}
-	valid := func(status int) bool { return status >= 100 && status <= 599 }
 	if sdkErr.Response != nil && valid(sdkErr.Response.StatusCode) {
 		return sdkErr.Response.StatusCode
 	}

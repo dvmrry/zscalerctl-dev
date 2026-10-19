@@ -107,7 +107,7 @@ const REDACTIONS = new Set(["standard", "share", "paranoid"]);
 const ITEM_KINDS = new Set(["catalog_resource", "url_classification", "projected_record", "diff_resource", "diff_added", "diff_removed", "diff_field_change"]);
 const CAPABILITIES = new Set(["engine.manifest", "catalog.schema", "status.inspect", "zia.url_lookup", "resources.read", "dump.write", "diff.compare"]);
 const OPERATIONS = new Set(["manifest", "list", "get", "show", "doctor", "auth_status", "config_status", "lookup", "dump", "diff"]);
-const FAILURE_REASONS = new Set(["unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error", "transport", "timeout", "pagination_incomplete", "decode_failed", "not_subscribed", "unknown"]);
+const FAILURE_REASONS = new Set(["credentials_rejected", "unauthorized", "forbidden", "not_found", "rate_limited", "server_error", "client_error", "transport", "timeout", "pagination_incomplete", "decode_failed", "not_subscribed", "unknown"]);
 const FAILURE_KINDS = new Set(["usage", "unsupported_capability", "unsupported_operation", "unknown_resource", "not_found", "invalid_resource_id", "live_access_failed", "deadline_exceeded", "invalid_config", "invalid_proxy_config", "unsupported_resource", "response_too_large", "internal"]);
 const MISSING_CREDENTIAL_NAMES = new Set(["ZSCALERCTL_CLIENT_ID", "ZSCALERCTL_CLIENT_SECRET", "ZSCALERCTL_VANITY_DOMAIN", "ZSCALERCTL_ZPA_CUSTOMER_ID", "ZSCALERCTL_ZIA_USERNAME", "ZSCALERCTL_ZIA_PASSWORD", "ZSCALERCTL_ZIA_API_KEY", "ZSCALERCTL_ZIA_CLOUD"]);
 

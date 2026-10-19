@@ -14,6 +14,7 @@ import (
 
 // The reader classifies into machine's failure-reason vocabulary.
 const (
+	FailureCredentialsRejected  = machine.FailureReasonCredentialsRejected
 	FailureUnauthorized         = machine.FailureReasonUnauthorized
 	FailureForbidden            = machine.FailureReasonForbidden
 	FailureNotFound             = machine.FailureReasonNotFound
@@ -36,6 +37,12 @@ var errNotSubscribed = errors.New("NOT_SUBSCRIBED")
 // failure happened before or outside an HTTP response) to a failure reason
 // and whether a retry could plausibly succeed.
 func classifyFailure(err error, status int) (reason string, retryable bool) {
+	if errors.As(err, new(*signInError)) {
+		switch status {
+		case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
+			return FailureCredentialsRejected, false
+		}
+	}
 	switch {
 	case status == http.StatusUnauthorized:
 		return FailureUnauthorized, false

@@ -1462,6 +1462,7 @@
       "type": "string",
       "description": "Why a live read failed, from a closed value-free vocabulary. Omitted when unknown.",
       "enum": [
+        "credentials_rejected",
         "unauthorized",
         "forbidden",
         "not_found",

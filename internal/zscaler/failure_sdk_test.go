@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 )
@@ -43,9 +42,11 @@ func TestSessionRetriesExhaustedMatchesTheRealSDKError(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
-	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	// Built as the reader builds it, with the sign-in transport installed, so
+	// the session-invalid refresh runs through it.
+	service, err := newOneAPIService(sdkCfg)
 	if err != nil {
-		t.Fatalf("NewOneAPIClient() error = %v", err)
+		t.Fatalf("newOneAPIService() error = %v", err)
 	}
 	t.Cleanup(service.Client.Close)
 

@@ -4,7 +4,7 @@ export const V1_VERSION = "1" as const;
 export const BOOTSTRAP_SCHEMA_ID = "urn:zscalerctl:engine-stdio:bootstrap:1" as const;
 export const BOOTSTRAP_SCHEMA_SHA256 = "e559b5568159568978b8b6fdaef9a75cd4022d2cefd1895338e890b7633720cf" as const;
 export const V1_SCHEMA_ID = "urn:zscalerctl:engine-stdio:protocol:1" as const;
-export const V1_SCHEMA_SHA256 = "9040b0862c2b77c3cf2ecd440417363649f0ee8448835c3c9e80030734849c46" as const;
+export const V1_SCHEMA_SHA256 = "30d4aa99e021116a34f07b797a85ce936e3bb7f17009ac59ffcb422f2d2ae601" as const;
 
 export const BOOTSTRAP_FRAME_BYTES = 64 * 1024;
 export const BOOTSTRAP_JSON_DEPTH = 8;

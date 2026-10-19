@@ -285,7 +285,10 @@ A live read failure (exit `5`: `live_access_failed` or `deadline_exceeded`)
 also carries `reason`, `status` (the HTTP status, when there was a response),
 and `retryable: true` when a retry could succeed. `forbidden`, `unauthorized`
 and `not_subscribed` mean the API role or licence does not allow the resource:
-do not retry, report it. `rate_limited`, `server_error`, `transport` and
+do not retry, report it. `credentials_rejected` means the sign-in itself was
+refused (the client ID and secret, or legacy ZIA username, password and API
+key, are wrong, or the account or its API access is disabled): fix the
+configuration, do not retry. `rate_limited`, `server_error`, `transport` and
 `timeout` are retryable: back off, and raise `--timeout` for `timeout`.
 `pagination_incomplete` means the CLI refused a list it could not prove
 complete; `decode_failed` means the response did not match the expected shape.

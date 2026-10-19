@@ -261,7 +261,7 @@
         },
         "retryable": {
           "type": "boolean",
-          "description": "Whether a retry is reasonable for this exit code (true only for transient failures like live_access_failed)."
+          "description": "True only when a retry can succeed for every error with this exit code. A live failure (exit 5) is false here; its own retryable field decides per error."
         },
         "description": {
           "type": "string",
