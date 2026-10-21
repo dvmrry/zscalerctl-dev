@@ -11,10 +11,18 @@ import (
 	"time"
 )
 
+// helperTimeout bounds a helper subprocess that is expected to finish. These
+// run in milliseconds here even with every core oversubscribed, but an
+// external full parallel run once hit the old 5 s limit on bigout, and
+// runKeyringCmd then reports a timeout as a locked keychain. The limit is
+// wide so only a real hang fails; TestRunKeyringCmdTimeoutKillsProcess sets
+// its own short timeout on purpose.
+const helperTimeout = 30 * time.Second
+
 func TestRunKeyringCmdScrubsZscalerctlEnv(t *testing.T) {
 	t.Setenv("GO_KEYRING_HELPER", "1")
 	t.Setenv("ZSCALERCTL_CLIENT_SECRET", "leak-me")
-	out, _, code, err := runKeyringCmd(context.Background(), 5*time.Second, helperCmd("printenv"))
+	out, _, code, err := runKeyringCmd(context.Background(), helperTimeout, helperCmd("printenv"))
 	if err != nil || code != 0 {
 		t.Fatalf("runKeyringCmd(printenv) code=%d err=%v, want 0 nil", code, err)
 	}
@@ -28,7 +36,7 @@ func TestRunKeyringCmdScrubsZscalerctlEnv(t *testing.T) {
 
 func TestRunKeyringCmdNonZeroExit(t *testing.T) {
 	t.Setenv("GO_KEYRING_HELPER", "1")
-	_, _, code, err := runKeyringCmd(context.Background(), 5*time.Second, helperCmd("exit", "7"))
+	_, _, code, err := runKeyringCmd(context.Background(), helperTimeout, helperCmd("exit", "7"))
 	if err != nil || code != 7 {
 		t.Fatalf("runKeyringCmd(exit 7) code=%d err=%v, want 7 nil", code, err)
 	}
@@ -39,7 +47,7 @@ func TestRunKeyringCmdErrorsNeverCarryStderr(t *testing.T) {
 	// A non-zero exit with a secret on stderr is reported via exitCode with a NIL
 	// error; runKeyringCmd hands the raw stderr back to the caller (which must keep
 	// it out of its own errors), so no runKeyringCmd error can carry the secret.
-	_, stderr, code, err := runKeyringCmd(context.Background(), 5*time.Second, helperCmd("stderr", "TOKEN"))
+	_, stderr, code, err := runKeyringCmd(context.Background(), helperTimeout, helperCmd("stderr", "TOKEN"))
 	if err != nil || code != 1 {
 		t.Fatalf("runKeyringCmd(stderr) code=%d err=%v, want 1 nil", code, err)
 	}
@@ -70,7 +78,7 @@ func TestRunKeyringCmdTimeoutKillsProcess(t *testing.T) {
 
 func TestRunKeyringCmdStdoutOverflow(t *testing.T) {
 	t.Setenv("GO_KEYRING_HELPER", "1")
-	_, _, _, err := runKeyringCmd(context.Background(), 5*time.Second, helperCmd("bigout"))
+	_, _, _, err := runKeyringCmd(context.Background(), helperTimeout, helperCmd("bigout"))
 	if err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("runKeyringCmd(bigout) error = %v, want too large", err)
 	}
@@ -78,7 +86,7 @@ func TestRunKeyringCmdStdoutOverflow(t *testing.T) {
 
 func TestRunKeyringCmdStderrOverflowDoesNotFailSuccessfulLookup(t *testing.T) {
 	t.Setenv("GO_KEYRING_HELPER", "1")
-	out, stderr, code, err := runKeyringCmd(context.Background(), 5*time.Second, helperCmd("bigstderr-ok"))
+	out, stderr, code, err := runKeyringCmd(context.Background(), helperTimeout, helperCmd("bigstderr-ok"))
 	if err != nil || code != 0 || out != "ok" {
 		t.Fatalf("runKeyringCmd(bigstderr-ok) out=%q code=%d err=%v, want ok 0 nil", out, code, err)
 	}
