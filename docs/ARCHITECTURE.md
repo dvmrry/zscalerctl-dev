@@ -273,6 +273,16 @@ values use typed markers such as `<REDACTED:SECRET>` and
 `<REDACTED:PROVISIONING_KEY>` so the operator can tell that data was
 intentionally obscured. This scanner is a backstop for self-describing secret
 shapes; it must not be treated as a substitute for field allow-list projection.
+In JSON it also replaces the value of a key ending in a secret word
+(`password`, `token`, `session`, `clientSecret`, ...): a string, or an object or
+array whole; a number too, except under the two reviewed ZCC settings whose
+names end in a secret word (`refreshKerberosToken`,
+`zpaAuthExpOnWinLogonSession`); `true`, `false` and `null` never. A test keeps every
+field the catalog renders clear of this rule in JSON output. The plain-text
+assignment rules (`password: false`, `token=1`) stay stricter, since a pasted
+fragment has no types; table and pretty output are scanned as text, so a
+nested value such as `policyExtension.zpaAuthExpOnWinLogonSession` still shows
+as redacted there.
 Rendered string values receive one extra backstop: a conservative high-entropy
 token scan for bare unlabeled secret material. Canonical UUIDs are preserved
 everywhere. In `standard` mode, structured rendered strings also preserve compact
