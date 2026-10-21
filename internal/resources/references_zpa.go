@@ -1,7 +1,7 @@
 package resources
 
 // ZPA reference targets; see fieldReferences in references.go.
-var zpaFieldReferences = map[string]map[string][]ResourceRef{
+var zpaFieldReferences = map[string]map[string]referenceTargets{
 	"zpa/app-connector-groups": {
 		"connectors":                           zpaRef("app-connectors"),
 		"microtenantId":                        zpaRef("microtenants"),

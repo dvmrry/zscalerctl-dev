@@ -408,8 +408,13 @@ holds the id. `refs check` lists each referenced id that is not in its target
 lists as read; that is all it claims, not that the object is missing from the
 tenant. Both list under `not_checked` every field the redaction mode omits,
 every resource that could not be read (with the failure reason), and every
-field whose target could not be read. They report what references what, never
-what a reference does.
+field whose target could not be read. `refs check` also lists there, as
+`audit_field`, each reference field that records which account created or
+last changed a record (such as `lastModifiedBy` or `lastModUser`; `schema references`
+lists them as references to `admin-users`), because their ids can name
+accounts outside `admin-users`; `refs to` still matches them. Both report what
+references what, never what a reference does. Add `--log-level info` to see
+each resource as it is read.
 
 Some Zscaler surfaces are not read at all: ZPA policy rule sets, entitlement-
 gated modules, credential material, reports. Before concluding a tenant has

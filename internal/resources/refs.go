@@ -30,6 +30,11 @@ const (
 	// RefSkipTargetNotChecked means a reference field's ids were not compared
 	// because one of its targets could not be checked (listed separately).
 	RefSkipTargetNotChecked RefSkipReason = "target_not_checked"
+	// RefSkipAuditField means refs check does not compare an audit field
+	// (auditRefTargets): an id there outside the target list is normal. On a
+	// test tenant most URL filtering rules were last modified by one id
+	// outside admin-users, which buried the real miss.
+	RefSkipAuditField RefSkipReason = "audit_field"
 )
 
 // ErrResourceNotReadable means refs check was asked about a resource with no
@@ -157,6 +162,10 @@ func CheckRefs(c ResourceCatalog, source ResourceSpec, mode redact.Mode, read Re
 		match, modes := referenceMatch(path, chain)
 		if match == "" || !slices.Contains(modes, mode) {
 			doc.NotChecked = append(doc.NotChecked, RefSkip{Product: source.Product, Resource: source.Name, Field: path, Reason: RefSkipNotRendered})
+			return
+		}
+		if isAuditReference(source, path) {
+			doc.NotChecked = append(doc.NotChecked, RefSkip{Product: source.Product, Resource: source.Name, Field: path, Reason: RefSkipAuditField})
 			return
 		}
 		known := map[string]bool{}

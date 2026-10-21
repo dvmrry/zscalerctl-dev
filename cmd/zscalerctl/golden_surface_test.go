@@ -72,7 +72,10 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/zscalerctl")
+	// -buildvcs=false: the version goldens expect an unstamped binary. Go
+	// stamps a build from a main checkout (not from a linked worktree), so
+	// without it the version cases fail in a plain clone.
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, "./cmd/zscalerctl")
 	cmd.Dir = filepath.Join("..", "..")
 	out, buildErr := cmd.CombinedOutput()
 	if buildErr != nil {

@@ -106,7 +106,7 @@ func TestCrossProductReferencesArePinned(t *testing.T) {
 		"zia/ssl-inspection-rules":     {"zpaAppSegments.externalId": zpaRef("application-segments")},
 	} {
 		for path, targets := range want {
-			if got := fieldReferences[key][path]; !reflect.DeepEqual(got, targets) {
+			if got := fieldReferences[key][path]; got == nil || !reflect.DeepEqual(got.targets(), targets) {
 				t.Errorf("%s.%s targets %v, want %v", key, path, got, targets)
 			}
 		}
@@ -123,7 +123,7 @@ func TestCatalogFieldsCarryReferences(t *testing.T) {
 	// A rule's locations may name a location, a sublocation or a predefined
 	// location only locations-lite returns.
 	locations := fieldAtPath(spec.Fields, "locations")
-	if locations == nil || !reflect.DeepEqual(locations.References, ziaRef("locations", "sublocations", "locations-lite")) {
+	if locations == nil || !reflect.DeepEqual(locations.References, []ResourceRef(ziaRef("locations", "sublocations", "locations-lite"))) {
 		t.Fatalf("url-filtering-rules.locations References = %+v, want zia/locations, zia/sublocations and zia/locations-lite", locations)
 	}
 	if timeWindows := fieldAtPath(spec.Fields, "timeWindows"); timeWindows == nil || timeWindows.References != nil {

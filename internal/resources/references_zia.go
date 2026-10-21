@@ -2,7 +2,7 @@ package resources
 
 // ZIA reference targets for resources other than rules and policies (those
 // are in references_zia_rules.go); see fieldReferences in references.go.
-var ziaFieldReferences = map[string]map[string][]ResourceRef{
+var ziaFieldReferences = map[string]map[string]referenceTargets{
 	"zia/admin-users": {
 		"role": ziaRef("admin-roles"),
 	},
@@ -12,7 +12,7 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"smartIsolationUsers":   ziaRef("users"),
 	},
 	"zia/c2c-incident-receivers": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/cloud-app-control": {
 		"cbiProfile":          ziaRef("browser-isolation-profiles"),
@@ -29,11 +29,11 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"users":               ziaRef("users"),
 	},
 	"zia/cloud-app-instances": {
-		"instanceIdentifiers.modifiedBy": ziaRef("admin-users"),
-		"modifiedBy":                     ziaRef("admin-users"),
+		"instanceIdentifiers.modifiedBy": ziaAuditRef("admin-users"),
+		"modifiedBy":                     ziaAuditRef("admin-users"),
 	},
 	"zia/dedicated-ip-gateways": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/devices": {
 		"ownerUserId": ziaRef("users"),
@@ -44,26 +44,26 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"idmProfileMatchAccuracyDetails.adpIdmProfile": ziaRef("dlp-idm-profiles"),
 	},
 	"zia/dlp-edm-schemas": {
-		"createdBy":  ziaRef("admin-users"),
-		"modifiedBy": ziaRef("admin-users"),
+		"createdBy":  ziaAuditRef("admin-users"),
+		"modifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/dlp-edm-schemas-lite": {
 		"schema": ziaRef("dlp-edm-schemas"),
 	},
 	"zia/dlp-idm-profile-lite": {
-		"modifiedBy": ziaRef("admin-users"),
+		"modifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/dlp-idm-profiles": {
-		"modifiedBy": ziaRef("admin-users"),
+		"modifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/dns-gateways": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/gre-tunnels": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/location-groups": {
-		"lastModUser": ziaRef("admin-users"),
+		"lastModUser": ziaAuditRef("admin-users"),
 		"locations":   ziaRef("locations", "sublocations", "locations-lite"),
 	},
 	"zia/locations": {
@@ -86,28 +86,28 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"users":           ziaRef("users"),
 	},
 	"zia/pac-files": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/proxies": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/proxy-gateways": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 		"primaryProxy":   ziaRef("proxies"),
 		"secondaryProxy": ziaRef("proxies"),
 	},
 	"zia/risk-profiles": {
-		"modifiedBy": ziaRef("admin-users"),
+		"modifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/rule-labels": {
-		"createdBy":      ziaRef("admin-users"),
-		"lastModifiedBy": ziaRef("admin-users"),
+		"createdBy":      ziaAuditRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/static-ips": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/sub-clouds": {
-		"exclusions.lastModifiedUser": ziaRef("admin-users"),
+		"exclusions.lastModifiedUser": ziaAuditRef("admin-users"),
 	},
 	"zia/locations-lite": {
 		"parentId": ziaRef("locations"),
@@ -120,7 +120,7 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"virtualZens":           ziaRef("vzen-nodes"),
 	},
 	"zia/tenancy-restriction-profiles": {
-		"lastModifiedUserId": ziaRef("admin-users"),
+		"lastModifiedUserId": ziaAuditRef("admin-users"),
 	},
 	"zia/users": {
 		"department": ziaRef("departments"),
@@ -130,10 +130,10 @@ var ziaFieldReferences = map[string]map[string][]ResourceRef{
 		"virtualZenNodes": ziaRef("vzen-nodes"),
 	},
 	"zia/workload-groups": {
-		"lastModifiedBy": ziaRef("admin-users"),
+		"lastModifiedBy": ziaAuditRef("admin-users"),
 	},
 	"zia/zpa-gateways": {
-		"lastModifiedBy":            ziaRef("admin-users"),
+		"lastModifiedBy":            ziaAuditRef("admin-users"),
 		"zpaServerGroup.externalId": zpaRef("server-groups"),
 		"zpaAppSegments.externalId": zpaRef("application-segments"),
 	},

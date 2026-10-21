@@ -7,8 +7,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/rule_labels"
 
@@ -61,7 +64,7 @@ func TestSignInFailuresClassifyByOutcome(t *testing.T) {
 			if !errors.As(err, &signIn) {
 				t.Fatalf("error = %v, want a signInError", err)
 			}
-			for _, leak := range []string{"zscalerctl-client-id", "zscalerctl-zia-admin", "sign-in-body-canary"} {
+			for _, leak := range []string{"zscalerctl-client-id", "zscalerctl-zia-admin", "sign-in-body-canary", "zscalerctl-vanity"} {
 				if strings.Contains(err.Error(), leak) {
 					t.Errorf("error %q echoes %q", err, leak)
 				}
@@ -102,6 +105,53 @@ func TestSignInFailuresClassifyByOutcome(t *testing.T) {
 			}
 			check(t, err)
 		})
+	}
+}
+
+// A OneAPI sign-in that outlives Client.Timeout is a timeout. The sign-in
+// transport wrapper makes net/http cancel through Request.Cancel, so a real
+// http.Transport reports a plain "request canceled", which on its own
+// classifies as unknown. net/http also sets the deadline on the request
+// context, and the transport races the two; the inner round trip drops the
+// context's cancellation so only Request.Cancel can end it, which pins the
+// plain-cancel outcome deterministically.
+func TestOneAPISignInTimeoutClassifiesAsTimeout(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(func() { close(release); server.Close() })
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := &http.Transport{}
+	t.Cleanup(base.CloseIdleConnections)
+	cfg := newSDKConfiguration(context.Background(), validReaderConfig())
+	cfg.HTTPClient.Timeout = 100 * time.Millisecond
+	cfg.HTTPClient.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		request.URL.Scheme, request.URL.Host = target.Scheme, target.Host
+		return base.RoundTrip(request.WithContext(context.WithoutCancel(request.Context())))
+	})
+	service, err := newOneAPIService(cfg)
+	if err == nil {
+		service.Client.Close()
+		t.Fatal("newOneAPIService() error = nil, want a sign-in timeout")
+	}
+	if !errors.As(err, new(*signInError)) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want a signInError that is context.DeadlineExceeded", err)
+	}
+	// What the operator sees: a deadline_exceeded error with reason timeout.
+	live := normalizeLiveError(context.Background(), "list", "zia", "rule-labels", err)
+	if !errors.Is(live, context.DeadlineExceeded) {
+		t.Errorf("normalizeLiveError() = %v, want a deadline error", live)
+	}
+	if got := machine.FailureDetailOf(live); got.Reason != FailureTimeout || !got.Retryable {
+		t.Errorf("machine.FailureDetailOf() = %+v, want reason timeout, retryable", got)
 	}
 }
 

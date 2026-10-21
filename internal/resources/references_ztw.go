@@ -1,7 +1,7 @@
 package resources
 
 // ZTW reference targets; see fieldReferences in references.go.
-var ztwFieldReferences = map[string]map[string][]ResourceRef{
+var ztwFieldReferences = map[string]map[string]referenceTargets{
 	"ztw/account-groups": {
 		"cloudConnectorGroups": ztwRef("ec-groups"),
 	},
@@ -12,12 +12,12 @@ var ztwFieldReferences = map[string]map[string][]ResourceRef{
 		"location": ztwRef("locations"),
 	},
 	"ztw/forwarding-gateways": {
-		"lastModifiedBy": ztwRef("admin-users"),
+		"lastModifiedBy": ztwAuditRef("admin-users"),
 	},
 	"ztw/forwarding-rules": {
 		"destIpGroups":           ztwRef("ip-destination-groups"),
 		"ecGroups":               ztwRef("ec-groups"),
-		"lastModifiedBy":         ztwRef("admin-users"),
+		"lastModifiedBy":         ztwAuditRef("admin-users"),
 		"locations":              ztwRef("locations"),
 		"nwServiceGroups":        ztwRef("network-service-groups"),
 		"nwServices":             ztwRef("network-services"),
@@ -39,18 +39,18 @@ var ztwFieldReferences = map[string]map[string][]ResourceRef{
 		"destIpGroups":   ztwRef("ip-destination-groups"),
 		"dnsGateway":     ztwRef("dns-gateways"),
 		"ecGroups":       ztwRef("ec-groups"),
-		"lastModifiedBy": ztwRef("admin-users"),
+		"lastModifiedBy": ztwAuditRef("admin-users"),
 		"locations":      ztwRef("locations"),
 		"srcIpGroups":    ztwRef("ip-source-groups"),
 	},
 	"ztw/traffic-log-rules": {
 		"ecGroups":       ztwRef("ec-groups"),
-		"lastModifiedBy": ztwRef("admin-users"),
+		"lastModifiedBy": ztwAuditRef("admin-users"),
 		"locations":      ztwRef("locations"),
 		"proxyGateway":   ztwRef("forwarding-gateways"),
 	},
 	"ztw/workload-groups": {
-		"lastModifiedBy": ztwRef("admin-users"),
+		"lastModifiedBy": ztwAuditRef("admin-users"),
 	},
 }
 

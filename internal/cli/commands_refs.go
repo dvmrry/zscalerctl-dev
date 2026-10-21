@@ -125,6 +125,9 @@ func (a *App) runRefs(
 		if !spec.SupportsReadOperation(op) {
 			op = "show"
 		}
+		// Progress for --log-level info: a refs run can read dozens of
+		// resources over several minutes.
+		a.diagLogger().Info("refs reading resource", "product", spec.Product, "resource", spec.Name)
 		return a.executeMachineRead(ctx, spec, op, "", rt, readOpts)
 	}
 	message := "reading references"

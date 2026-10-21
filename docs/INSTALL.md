@@ -397,6 +397,11 @@ export ZSCALERCTL_PROXY_URL=http://proxy.example.invalid:8080
 
 `ZSCALERCTL_PROXY_URL` and `ZSCALERCTL_PROXY_FROM_ENV` are mutually exclusive.
 Status commands report only whether a proxy is configured, never the proxy URL.
+When `HTTPS_PROXY` is set but neither setting is, `doctor` reports the proxy as
+`direct (HTTPS_PROXY is set but not used; ...)`: on a network that reaches the
+API only through the proxy, a dropped connect waits out `--timeout` (30
+seconds by default; possibly more than once, as the SDK retries) and fails as
+`timeout`; a refused one fails at once as a network error.
 
 ## Shell Completions
 
