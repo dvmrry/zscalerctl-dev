@@ -637,9 +637,10 @@ func TestResourceTableAndPrettyRenderersEscapeTerminalFormatRunes(t *testing.T) 
 	}})
 	style := output.NewStyle(false, false)
 	style.Width = 120
+	scan := output.NewRenderer(redact.New(redact.ModeStandard)).ScanRecord
 	for name, rendered := range map[string]string{
-		"table":  renderRecordsTable([]string{"name"}, records, style).String(),
-		"pretty": renderRecordsPretty([]string{"name"}, records, style).String(),
+		"table":  renderRecordsTable([]string{"name"}, records, scan, style).String(),
+		"pretty": renderRecordsPretty([]string{"name"}, records, scan, style).String(),
 	} {
 		rendered := rendered
 		t.Run(name, func(t *testing.T) {

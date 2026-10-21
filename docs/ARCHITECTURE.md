@@ -278,11 +278,9 @@ In JSON it also replaces the value of a key ending in a secret word
 array whole; a number too, except under the two reviewed ZCC settings whose
 names end in a secret word (`refreshKerberosToken`,
 `zpaAuthExpOnWinLogonSession`); `true`, `false` and `null` never. A test keeps every
-field the catalog renders clear of this rule in JSON output. The plain-text
-assignment rules (`password: false`, `token=1`) stay stricter, since a pasted
-fragment has no types; table and pretty output are scanned as text, so a
-nested value such as `policyExtension.zpaAuthExpOnWinLogonSession` still shows
-as redacted there.
+field the catalog renders clear of this rule. The plain-text assignment rules
+(`password: false`, `token=1`) stay stricter, since a pasted fragment has no
+types.
 Rendered string values receive one extra backstop: a conservative high-entropy
 token scan for bare unlabeled secret material. Canonical UUIDs are preserved
 everywhere. In `standard` mode, structured rendered strings also preserve compact
@@ -447,8 +445,21 @@ explicit `table`, `json`, or `pretty`.
 
 The `pretty` renderer is a presentation overlay only: it consumes the same
 already-projected, already-redacted records as every other format and adds no
-new data path. Its output still passes through the final redaction byte-scan
-before stdout, and it is byte-clean (no ANSI escapes) whenever color is off.
+new data path. Record output in `table` and `pretty` (list, get, show) gets
+the final scan per record instead of over the rendered text
+(`Renderer.WriteScannedText`): each record, as `json` output emits it, is
+scanned as one JSON document, so rules that read sibling context (a
+`{"key": "password", "value": ...}` pair) apply as they do in JSON, and the
+cells are rendered from the scanned record; the rest is catalog field names
+and layout. Scanning the layout as prose read a nested `map[key:value]` cell
+as a pasted assignment, so text and JSON disagreed; a test now requires all
+four record renderers to redact what JSON redacts, for every catalog field
+and for sibling-context cases. Numbers in these cells render as JSON writes
+them (`1000000`, not `1e+06`).
+Other text output (counts, diff, refs, status, help, errors) still passes the
+final byte-scan before stdout. Notices built only from catalog names (the
+omitted-field notice) are written unscanned; other notices are scanned. The
+`pretty` renderer is byte-clean (no ANSI escapes) whenever color is off.
 Lip Gloss, Fang, or any future human-CLI presentation dependency may improve
 this overlay only if JSON, NDJSON, machine error envelopes, completion,
 introspection, parsing, and resource routing remain unchanged.
