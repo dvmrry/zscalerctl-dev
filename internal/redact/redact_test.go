@@ -292,28 +292,69 @@ func TestRedactorJSONClassifiesDecodedSensitiveKeys(t *testing.T) {
 	}
 }
 
-// TestRedactorJSONKeepsLiteralsUnderSecretKeys pins that a secret-named key
-// replaces strings and numbers but keeps true, false and null, which cannot
-// carry a credential.
-func TestRedactorJSONKeepsLiteralsUnderSecretKeys(t *testing.T) {
+// TestRedactorJSONReplacesSecretKeyValuesByType pins how a key ending in a
+// secret word treats each JSON value type: strings, objects and arrays are
+// replaced; numbers too, except under the reviewed setting keys
+// (numericSettingKeys); true, false and null never.
+func TestRedactorJSONReplacesSecretKeyValuesByType(t *testing.T) {
 	t.Parallel()
 
-	input := `{"allowZdxDisableWithoutPassword":false,"clientSecret":true,"password":null,"refreshKerberosToken":0,"apiToken":"literal-canary"}`
-	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
-		got, report := redact.New(mode).ScanString(input)
-		var decoded map[string]any
-		if err := json.Unmarshal([]byte(got), &decoded); err != nil {
-			t.Fatalf("json.Unmarshal(ScanString(%q), %s) error = %v; got %q", input, mode, err, got)
-		}
-		if decoded["allowZdxDisableWithoutPassword"] != false || decoded["clientSecret"] != true ||
-			decoded["password"] != nil {
-			t.Errorf("ScanString(%s) = %q, want true/false/null kept", mode, got)
-		}
-		if decoded["refreshKerberosToken"] != "<REDACTED:SECRET>" || decoded["apiToken"] != "<REDACTED:SECRET>" {
-			t.Errorf("ScanString(%s) = %q, want the number and string replaced", mode, got)
-		}
-		if gotCount := report.Counts["secret_assignment"]; gotCount != 2 {
-			t.Errorf("ScanString(%s) secret_assignment count = %d, want 2", mode, gotCount)
+	for _, tc := range []struct {
+		member   string
+		replaced bool
+	}{
+		{`"allowZdxDisableWithoutPassword":false`, false},
+		{`"clientSecret":true`, false},
+		{`"password":null`, false},
+		{`"refreshKerberosToken":0`, false},
+		{`"zpaAuthExpOnWinLogonSession":480`, false},
+		{`"id":5`, false},
+		{`"apiToken":"literal-canary"`, true},
+		{`"otp":424242`, true},
+		{`"Password":-7.5e3`, true},
+		{`"session_id":4242424242`, true},
+		{`"vpnPassword":13572468`, true},
+		{`"userSessionId":4242424242`, true},
+		{`"authJwt":4242`, true},
+		{`"apiKey":12345678`, true},
+		{`"awsSecretKey":123456`, true},
+		{`"ikePreSharedKey":123456`, true},
+		{`"x-api-key":123456`, true},
+		{`"Proxy-Authorization":123456`, true},
+		{`"X-Auth-Token":1`, true},
+		{`"_access_token":1`, true},
+		{`"otpToken":482913`, true},
+		{`"userSession":1`, true},
+		{`"RefreshKerberosToken":1`, true},
+		{`"password":{"value":"object-canary"}`, true},
+		{`"password":["array-canary"]`, true},
+		{`"clientSecret":{"v":{"w":"deep-canary"}}`, true},
+		{`"uninstall_password":[]`, true},
+		{`"privateKey":{}`, true},
+		{`"tlsPrivateKey":123456`, true},
+		{`"zpaProvisioningKey":123456`, true},
+		{`"deviceCertBlob":12345`, true},
+	} {
+		input := `{"name":"Rule",` + tc.member + `}`
+		for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+			got, _ := redact.New(mode).ScanString(input)
+			if !json.Valid([]byte(got)) {
+				t.Fatalf("ScanString(%q, %s) = invalid JSON %q", input, mode, got)
+			}
+			key := tc.member[:strings.Index(tc.member, ":")]
+			want := input
+			if tc.replaced {
+				want = `{"name":"Rule",` + key + `:"<REDACTED:SECRET>"}`
+				switch {
+				case strings.Contains(key, "rivateKey") || strings.Contains(key, "CertBlob"):
+					want = `{"name":"Rule",` + key + `:"<REDACTED:PRIVATE_KEY>"}`
+				case strings.Contains(key, "ProvisioningKey"):
+					want = `{"name":"Rule",` + key + `:"<REDACTED:PROVISIONING_KEY>"}`
+				}
+			}
+			if got != want {
+				t.Errorf("ScanString(%q, %s) = %q, want %q", input, mode, got, want)
+			}
 		}
 	}
 

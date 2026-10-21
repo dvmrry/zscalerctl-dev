@@ -92,6 +92,12 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		// must not skip it.
 		"{\"a\":\"<REDACTED:EMAIL>\u2028\"}",
 		"{\"a\":\"<REDACTED:IP>\xff\"}",
+		// A string that is itself a JSON document is scanned as one, with the
+		// value-type rule for secret keys.
+		`{"a":"{\"userPassword\":5}"}`,
+		`{"a":"{\"refreshKerberosToken\":5}"}`,
+		`{"a":"{\"password\":{\"v\":\"x\"}}"}`,
+		`{"a":"{\"refreshKerberosToken\":true}"}`,
 	} {
 		f.Add(seed)
 	}
@@ -156,7 +162,15 @@ func FuzzJSONSensitiveKeyClassificationMatchesLegacyAssignments(f *testing.F) {
 }
 
 func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
-	scanString := func(value string) (string, Report) {
+	var scanString jsonStringScanner
+	scanString = func(value string) (string, Report) {
+		// As scanJSONString: a string that is itself a JSON document is
+		// scanned as one.
+		if nestedJSONDocumentCandidate(value) {
+			if out, report, ok := scanStructuredDocuments(value, scanString, true); ok {
+				return out, report
+			}
+		}
 		out, report := scanRulesWithoutPrefilters(value, Report{}, baseRules)
 		if mode == ModeShare || mode == ModeParanoid {
 			out, report = scanRulesWithoutPrefilters(out, report, shareRules)

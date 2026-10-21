@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -339,7 +341,8 @@ type jsonDocumentParser struct {
 	sensitiveValues []jsonSensitiveValue
 }
 
-// scanJSONDocument rewrites decoded string tokens and sensitive scalar values
+// scanJSONDocument rewrites decoded string tokens and the values of sensitive
+// keys (secretKeyValueReplaced)
 // while retaining the original document's whitespace, key order, and container
 // structure. The caller has already established that in is valid JSON; parser
 // or rewrite invariant failures return a valid, fail-closed marker document.
@@ -511,16 +514,13 @@ func (p *jsonDocumentParser) parseObject() bool {
 		if p.in[valueStart] == '"' {
 			p.strings[len(p.strings)-1].memberKey = key.value
 		}
-		// Match the existing assignment-rule surface: scalar values are replaced,
-		// while structured values continue to be scanned recursively by token.
-		// The literals true, false and null are kept: a credential cannot hide
-		// in them, and a setting named for what it guards
-		// ("allowZdxDisableWithoutPassword": false) must still show its value.
-		// The plain-text assignment rules stay stricter ("password: false" in
-		// free text is still replaced), since a pasted fragment has no types.
+		// A key ending in a secret word replaces its value by type
+		// (secretKeyValueReplaced). The plain-text assignment rules stay
+		// stricter ("password: false" in free text is still replaced), since a
+		// pasted fragment has no types.
 		structuredValue := p.in[valueStart] == '{' || p.in[valueStart] == '['
 		literalValue := p.in[valueStart] == 't' || p.in[valueStart] == 'f' || p.in[valueStart] == 'n'
-		if !structuredValue && !literalValue {
+		if secretKeyValueReplaced(key.value, p.in[valueStart]) {
 			classifications, count := classifyJSONKey(key.value)
 			for _, classification := range classifications[:count] {
 				p.sensitiveValues = append(p.sensitiveValues, jsonSensitiveValue{
@@ -531,6 +531,8 @@ func (p *jsonDocumentParser) parseObject() bool {
 					priority: classification.priority,
 				})
 			}
+		}
+		if !structuredValue && !literalValue {
 			if p.in[valueStart] == '"' {
 				object.note(key.value, p.strings[len(p.strings)-1])
 			}
@@ -1479,6 +1481,25 @@ var baseRules = buildBaseRules()
 var jsonProvisioningAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + provisioningAssignmentKeys + `)$`)
 var jsonPrivateKeyAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + privateKeyAssignmentKeys + `)$`)
 var jsonSecretAssignmentKeyRE = regexp.MustCompile(`(?i)(?:` + secretAssignmentKeys + `)$`)
+
+// numericSettingKeys are reviewed catalog settings whose names end in a
+// secret word but whose numbers are settings, not credentials: ZCC's
+// refreshKerberosToken (a toggle) and zpaAuthExpOnWinLogonSession. Only
+// these exact keys keep a number under the key rule; a pattern exemption
+// (any compound ending in token or key) kept real credential numbers such
+// as tlsPrivateKey or X-Auth-Token. TestFinalScanKeepsCatalogAllowedValues
+// fails for a rendered field that needs listing here, and
+// TestNumericSettingKeysAreCatalogFields for an entry that is not one.
+var numericSettingKeys = map[string]bool{
+	"refreshKerberosToken":        true,
+	"zpaAuthExpOnWinLogonSession": true,
+}
+
+// NumericSettingKeys returns numericSettingKeys, sorted, for the catalog test.
+func NumericSettingKeys() []string {
+	return slices.Sorted(maps.Keys(numericSettingKeys))
+}
+
 var genericCredentialJSONKeyRE = regexp.MustCompile(`(?i)^(?:key|pwd|passwd|bearer)$`)
 
 var highEntropyFreeTextTokenRE = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}\b`)
@@ -1577,6 +1598,34 @@ func digestShaped(value string) bool {
 		return len(value) == len(body) || len(value)%4 == 0
 	}
 	return false
+}
+
+// secretKeyValueReplaced reports whether a JSON value that starts with first
+// is replaced because its key ends in a secret word (classifyJSONKey):
+//
+//   - a string: always;
+//   - an object or array: always, whole. A credential nests as easily as it
+//     sits in a string ({"password": {"value": ...}}), and the scan of its
+//     strings alone would miss it;
+//   - a number: always, except under a reviewed setting key
+//     (numericSettingKeys: refreshKerberosToken, zpaAuthExpOnWinLogonSession);
+//   - true, false or null: never. A credential cannot hide in them, and a
+//     setting named for what it guards (allowZdxDisableWithoutPassword) must
+//     show its value.
+//
+// TestFinalScanKeepsCatalogAllowedValues (internal/resources) pins that no
+// field the catalog renders is replaced by this rule.
+func secretKeyValueReplaced(key string, first byte) bool {
+	if _, count := classifyJSONKey(key); count == 0 {
+		return false
+	}
+	switch {
+	case first == 't' || first == 'f' || first == 'n':
+		return false
+	case first == '-' || first >= '0' && first <= '9':
+		return !numericSettingKeys[key]
+	}
+	return true
 }
 
 func classifyJSONKey(key string) ([3]jsonSensitiveClassification, int) {
