@@ -437,13 +437,16 @@ func CacheStatus(noCache bool) string {
 }
 
 // ProxyStatus reports the active proxy configuration source without exposing
-// proxy values.
+// proxy values. A direct connection names an HTTPS_PROXY it ignores: where
+// only the proxy reaches the API, every read would otherwise just time out.
 func ProxyStatus(proxy config.Proxy) string {
 	switch {
 	case proxy.FromEnvironment:
 		return "environment"
 	case strings.TrimSpace(proxy.URL) != "":
 		return "explicit"
+	case proxy.EnvironmentProxySet:
+		return "direct (HTTPS_PROXY is set but not used; set " + config.EnvProxyFromEnv + "=true to use it)"
 	default:
 		return "direct"
 	}

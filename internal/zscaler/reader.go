@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1420,9 +1421,15 @@ func effectiveContext(ctx context.Context) context.Context {
 	return ctx
 }
 
+// directTransport is net/http's default transport with the configured proxy
+// and no connect or TLS handshake limit of its own: the defaults (30 s dial,
+// 10 s handshake) would cut off a slow connect whatever --timeout says. The
+// client's Timeout (--timeout) bounds both with the rest of the request.
 func directTransport(proxy ProxyConfig) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = proxyFunc(proxy)
+	transport.DialContext = (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = 0
 	return transport
 }
 

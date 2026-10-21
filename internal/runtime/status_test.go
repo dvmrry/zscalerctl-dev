@@ -192,6 +192,43 @@ func TestNewConfigStatusReturnsSafeConfig(t *testing.T) {
 	}
 }
 
+// An HTTPS_PROXY that zscalerctl ignores is named in the status, never its
+// value: where only the proxy reaches the API, every read would just time out.
+func TestNewDoctorStatusNamesIgnoredEnvironmentProxy(t *testing.T) {
+	t.Parallel()
+
+	const proxyURL = "http://proxy-canary.example.invalid:8080"
+	for _, test := range []struct {
+		name    string
+		environ []string
+		want    string
+	}{
+		{"none", nil, "direct"},
+		{"ignored", []string{"HTTPS_PROXY=" + proxyURL}, "direct (HTTPS_PROXY is set but not used; set ZSCALERCTL_PROXY_FROM_ENV=true to use it)"},
+		{"ignored lowercase", []string{"https_proxy=" + proxyURL}, "direct (HTTPS_PROXY is set but not used; set ZSCALERCTL_PROXY_FROM_ENV=true to use it)"},
+		{"used", []string{"HTTPS_PROXY=" + proxyURL, config.EnvProxyFromEnv + "=true"}, "environment"},
+		{"http only", []string{"HTTP_PROXY=" + proxyURL}, "direct"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := config.LoadConfig(test.environ, config.LoadOptions{})
+			if err != nil {
+				t.Fatalf("config.LoadConfig() error = %v", err)
+			}
+			status, err := NewDoctorStatus(cfg, StatusOptions{})
+			if err != nil {
+				t.Fatalf("NewDoctorStatus() error = %v", err)
+			}
+			if status.Proxy != test.want {
+				t.Errorf("Proxy = %q, want %q", status.Proxy, test.want)
+			}
+			if strings.Contains(status.Proxy, "proxy-canary") {
+				t.Errorf("Proxy %q echoes the proxy URL", status.Proxy)
+			}
+		})
+	}
+}
+
 func TestNewDoctorStatusRejectsConflictingProxyConfig(t *testing.T) {
 	t.Parallel()
 

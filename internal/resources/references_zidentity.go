@@ -1,7 +1,7 @@
 package resources
 
 // ZIdentity reference targets; see fieldReferences in references.go.
-var zidentityFieldReferences = map[string]map[string][]ResourceRef{
+var zidentityFieldReferences = map[string]map[string]referenceTargets{
 	"zidentity/users": {
 		"groups": zidentityRef("groups"),
 	},

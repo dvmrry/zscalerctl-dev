@@ -99,6 +99,23 @@ func TestRefsCheckTextNamesIDsNotFoundInRead(t *testing.T) {
 	}
 }
 
+// A refs run reads many resources over minutes; --log-level info names each
+// one as it is read.
+func TestRefsLogsPerResourceProgressAtInfo(t *testing.T) {
+	t.Parallel()
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: refsFixtureReader()})
+	if err := app.Run(context.Background(), []string{"--log-level", "info", "--format", "json", "--redaction", "share", "refs", "check", "zia", "url-filtering-rules"}); err != nil {
+		t.Fatalf("refs check error = %v", err)
+	}
+	for _, line := range strings.Split(errOut.String(), "\n") {
+		if strings.Contains(line, "refs reading resource") && strings.Contains(line, "resource=groups") {
+			return
+		}
+	}
+	t.Errorf("refs info logs = %q, want a refs reading resource line for groups", errOut.String())
+}
+
 func TestRefsCheckFromDump(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "dump")

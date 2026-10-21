@@ -54,13 +54,50 @@ func mergeReferenceTables[V any](tables ...map[string]map[string]V) map[string]m
 	return merged
 }
 
+// referenceTargets is one reference table entry: the resources a field's ids
+// may belong to, and whether the field is an audit field.
+type referenceTargets interface {
+	targets() []ResourceRef
+	audit() bool
+}
+
+// refTargets are the targets of a configuration reference.
+type refTargets []ResourceRef
+
+// auditRefTargets are the targets of an audit field: one that records which
+// account created or last changed the record (lastModifiedBy, lastModUser,
+// ...). Nothing in the configuration depends on it, and its ids can name an
+// account the target list does not hold (an API client or a removed admin),
+// so refs check does not report its misses; refs to still matches it.
+type auditRefTargets []ResourceRef
+
+func (r refTargets) targets() []ResourceRef      { return r }
+func (refTargets) audit() bool                   { return false }
+func (r auditRefTargets) targets() []ResourceRef { return r }
+func (auditRefTargets) audit() bool              { return true }
+
 // ziaRef and its siblings build a field's targets: one resource, or several
-// when the field's ids may belong to any of them.
-func ziaRef(resources ...string) []ResourceRef       { return productRefs(ProductZIA, resources) }
-func zpaRef(resources ...string) []ResourceRef       { return productRefs(ProductZPA, resources) }
-func ztwRef(resources ...string) []ResourceRef       { return productRefs(ProductZTW, resources) }
-func zccRef(resources ...string) []ResourceRef       { return productRefs(ProductZCC, resources) }
-func zidentityRef(resources ...string) []ResourceRef { return productRefs(ProductZidentity, resources) }
+// when the field's ids may belong to any of them. ziaAuditRef and
+// ztwAuditRef build an audit field's.
+func ziaRef(resources ...string) refTargets       { return productRefs(ProductZIA, resources) }
+func zpaRef(resources ...string) refTargets       { return productRefs(ProductZPA, resources) }
+func ztwRef(resources ...string) refTargets       { return productRefs(ProductZTW, resources) }
+func zccRef(resources ...string) refTargets       { return productRefs(ProductZCC, resources) }
+func zidentityRef(resources ...string) refTargets { return productRefs(ProductZidentity, resources) }
+
+func ziaAuditRef(resources ...string) auditRefTargets {
+	return auditRefTargets(productRefs(ProductZIA, resources))
+}
+
+func ztwAuditRef(resources ...string) auditRefTargets {
+	return auditRefTargets(productRefs(ProductZTW, resources))
+}
+
+// isAuditReference reports whether path on spec is declared an audit field.
+func isAuditReference(spec ResourceSpec, path string) bool {
+	entry, ok := fieldReferences[specKey(spec)][path]
+	return ok && entry.audit()
+}
 
 func productRefs(product Product, resources []string) []ResourceRef {
 	refs := make([]ResourceRef, len(resources))
@@ -76,9 +113,9 @@ func productRefs(product Product, resources []string) []ResourceRef {
 func applyFieldReferences(c ResourceCatalog) {
 	for i := range c {
 		refs := fieldReferences[specKey(c[i])]
-		for path, targets := range refs {
+		for path, entry := range refs {
 			if field := fieldAtPath(c[i].Fields, path); field != nil {
-				field.References = slices.Clone(targets)
+				field.References = slices.Clone(entry.targets())
 			}
 		}
 	}
@@ -104,6 +141,10 @@ func fieldAtPath(fields []FieldSpec, path string) *FieldSpec {
 // path exists, every target is a catalog resource, and no
 // field is both mapped and unmapped.
 func FieldReferenceErrors(c ResourceCatalog) []string {
+	return referenceTableErrors(c, fieldReferences, unmappedReferences)
+}
+
+func referenceTableErrors(c ResourceCatalog, fieldReferences map[string]map[string]referenceTargets, unmappedReferences map[string]map[string]string) []string {
 	var errs []string
 	for key, refs := range fieldReferences {
 		spec, ok := findSpecKey(c, key)
@@ -111,7 +152,11 @@ func FieldReferenceErrors(c ResourceCatalog) []string {
 			errs = append(errs, fmt.Sprintf("fieldReferences: %s is not a catalog resource", key))
 			continue
 		}
-		for path, targets := range refs {
+		for path, entry := range refs {
+			targets := entry.targets()
+			if entry.audit() && !slices.ContainsFunc(targets, func(ref ResourceRef) bool { return ref.Resource == "admin-users" }) {
+				errs = append(errs, fmt.Sprintf("fieldReferences: audit field %s.%s does not target an admin-users resource", key, path))
+			}
 			if fieldAtPath(spec.Fields, path) == nil {
 				errs = append(errs, fmt.Sprintf("fieldReferences: %s has no field %q", key, path))
 			}

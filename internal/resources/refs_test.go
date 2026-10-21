@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/redact"
@@ -146,6 +147,118 @@ func TestCheckRefsListsIDsNotFoundInTheTargetRead(t *testing.T) {
 		if miss.Field == "departments" {
 			t.Errorf("reported a departments miss although departments was not read: %+v", miss)
 		}
+	}
+}
+
+// An audit field names whoever last changed the record, often an account
+// outside admin-users, so refs check lists it as not checked rather than as
+// a miss on nearly every record. refs to still finds the records.
+func TestCheckRefsSkipsAuditFields(t *testing.T) {
+	t.Parallel()
+	reader := &fakeRefsReader{
+		t:    t,
+		mode: redact.ModeShare,
+		fixtures: map[string][]map[string]any{
+			"zia/url-filtering-rules": {
+				{"id": 1, "name": "Rule one", "lastModifiedBy": map[string]any{"id": 72000000000000001}},
+			},
+		},
+	}
+	spec, _ := FindSpec(ProductZIA, "url-filtering-rules")
+	doc, err := CheckRefs(Catalog(), spec, redact.ModeShare, reader.read, failureKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, miss := range doc.NotFoundInRead {
+		if miss.Field == "lastModifiedBy" {
+			t.Errorf("reported an audit field miss: %+v", miss)
+		}
+	}
+	if !slices.ContainsFunc(doc.NotChecked, func(s RefSkip) bool {
+		return s.Resource == "url-filtering-rules" && s.Field == "lastModifiedBy" && s.Reason == RefSkipAuditField
+	}) {
+		t.Errorf("not_checked = %+v, want lastModifiedBy audit_field", doc.NotChecked)
+	}
+	if slices.Contains(reader.reads, "zia/admin-users") {
+		t.Errorf("read admin-users although its only url-filtering-rules reference is an audit field")
+	}
+
+	to := FindRefsTo(Catalog(), ResourceRef{Product: ProductZIA, Resource: "admin-users"}, "72000000000000001", redact.ModeShare, reader.read, failureKind)
+	if !slices.ContainsFunc(to.ReferencedBy, func(hit RefHit) bool {
+		return hit.Resource == "url-filtering-rules" && hit.Field == "lastModifiedBy"
+	}) {
+		t.Errorf("refs to admin-users = %+v, want the url-filtering-rules lastModifiedBy hit", to.ReferencedBy)
+	}
+}
+
+// Audit is declared per reference site, not inferred from a field name: the
+// declared sites include names such as lastModUser and lastModifiedUserId,
+// and nested paths. Each one is skipped by refs check.
+func TestCheckRefsSkipsEveryDeclaredAuditSite(t *testing.T) {
+	t.Parallel()
+	for _, site := range []struct{ resource, path string }{
+		{"location-groups", "lastModUser"},
+		{"tenancy-restriction-profiles", "lastModifiedUserId"},
+		{"cloud-app-instances", "instanceIdentifiers.modifiedBy"},
+	} {
+		spec, ok := FindSpec(ProductZIA, site.resource)
+		if !ok || !isAuditReference(spec, site.path) {
+			t.Errorf("zia/%s %s is not declared an audit field", site.resource, site.path)
+			continue
+		}
+		reader := &fakeRefsReader{t: t, mode: redact.ModeStandard}
+		doc, err := CheckRefs(Catalog(), spec, redact.ModeStandard, reader.read, failureKind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(doc.NotChecked, func(s RefSkip) bool { return s.Field == site.path && s.Reason == RefSkipAuditField }) {
+			t.Errorf("refs check zia/%s not_checked = %+v, want %s audit_field", site.resource, doc.NotChecked, site.path)
+		}
+	}
+}
+
+// Every reference to an admin-users resource records who changed a record
+// today. A new one must be declared with ziaAuditRef/ztwAuditRef; one that is
+// configuration needs this test changed on purpose.
+func TestAdminUserReferencesAreDeclaredAudit(t *testing.T) {
+	t.Parallel()
+	for key, refs := range fieldReferences {
+		for path, entry := range refs {
+			for _, ref := range entry.targets() {
+				if ref.Resource == "admin-users" && !entry.audit() {
+					t.Errorf("%s.%s targets %s but is not declared an audit field", key, path, ref)
+				}
+			}
+		}
+	}
+	if errs := FieldReferenceErrors(Catalog()); len(errs) > 0 {
+		t.Errorf("FieldReferenceErrors() = %v", errs)
+	}
+	// The converse: an audit site must target an admin-users resource.
+	bad := map[string]map[string]referenceTargets{"zia/url-filtering-rules": {"lastModifiedBy": ziaAuditRef("users")}}
+	errs := referenceTableErrors(Catalog(), bad, nil)
+	if !slices.ContainsFunc(errs, func(e string) bool { return strings.Contains(e, "does not target an admin-users resource") }) {
+		t.Errorf("referenceTableErrors(audit site targeting users) = %v, want the admin-users error", errs)
+	}
+}
+
+// A mode that omits an audit field reports it as not rendered, as for any
+// other omitted field, not as audit_field.
+func TestCheckRefsReportsOmittedAuditFieldsAsNotRendered(t *testing.T) {
+	t.Parallel()
+	spec, _ := FindSpec(ProductZIA, "tenancy-restriction-profiles")
+	reader := &fakeRefsReader{t: t, mode: redact.ModeShare}
+	doc, err := CheckRefs(Catalog(), spec, redact.ModeShare, reader.read, failureKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skip := range doc.NotChecked {
+		if skip.Field == "lastModifiedUserId" && skip.Reason != RefSkipNotRendered {
+			t.Errorf("share-mode lastModifiedUserId skip = %+v, want not_rendered_in_mode", skip)
+		}
+	}
+	if !slices.ContainsFunc(doc.NotChecked, func(s RefSkip) bool { return s.Field == "lastModifiedUserId" }) {
+		t.Errorf("not_checked = %+v, want lastModifiedUserId", doc.NotChecked)
 	}
 }
 

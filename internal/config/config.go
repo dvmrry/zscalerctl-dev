@@ -107,6 +107,10 @@ type ZIALegacyCredentials struct {
 type Proxy struct {
 	URL             string
 	FromEnvironment bool
+	// EnvironmentProxySet records that HTTPS_PROXY (or https_proxy) is set.
+	// zscalerctl uses it only with ZSCALERCTL_PROXY_FROM_ENV, so status can
+	// say when it is ignored; the value is never kept.
+	EnvironmentProxySet bool
 }
 
 type Defaults struct {
@@ -251,8 +255,9 @@ func LoadEnv(environ []string) (Config, error) {
 			Cloud:        strings.TrimSpace(env[EnvZIACloud]),
 		},
 		Proxy: Proxy{
-			URL:             strings.TrimSpace(env[EnvProxyURL]),
-			FromEnvironment: proxyFromEnv,
+			URL:                 strings.TrimSpace(env[EnvProxyURL]),
+			FromEnvironment:     proxyFromEnv,
+			EnvironmentProxySet: strings.TrimSpace(env["HTTPS_PROXY"]) != "" || strings.TrimSpace(env["https_proxy"]) != "",
 		},
 		Defaults: Defaults{
 			Redaction: mode,

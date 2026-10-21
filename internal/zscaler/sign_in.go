@@ -1,11 +1,13 @@
 package zscaler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
 )
@@ -20,8 +22,9 @@ var signInPaths = []string{"/oauth2/v1/token", "/api/v1/authenticatedSession"}
 // (a transport cause). Both SDK clients report a
 // failed sign-in as text, dropping the status and the error chain, so
 // classifyFailure would see neither and say unknown. signInTransport raises
-// this typed error instead. Its text leaves out the SDK's, which echoes the
-// client ID and the response body.
+// this typed error instead. Its text is static: the SDK's echoes the client ID
+// and the response body, and a transport cause can name the host; the cause
+// stays reachable through Unwrap for classification.
 type signInError struct {
 	status int   // sign-in HTTP status; 0 when there was no response
 	cause  error // transport error when there was no response
@@ -29,7 +32,7 @@ type signInError struct {
 
 func (e *signInError) Error() string {
 	if e.cause != nil {
-		return "sign-in failed: " + e.cause.Error()
+		return "sign-in failed (no response)"
 	}
 	return fmt.Sprintf("sign-in failed (HTTP %d)", e.status)
 }
@@ -65,7 +68,7 @@ func (t *signInTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	var failure *signInError
 	switch {
 	case err != nil:
-		failure = &signInError{cause: err}
+		failure = &signInError{cause: signInTimeout(request, err)}
 	case response.StatusCode < 200 || response.StatusCode > 299:
 		// Any non-2xx, so the client never follows a redirect from the
 		// sign-in endpoint and re-sends the credentials to another host.
@@ -80,6 +83,21 @@ func (t *signInTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	t.last = failure
 	t.mu.Unlock()
 	return nil, failure
+}
+
+// signInTimeout marks a sign-in that failed at or after its deadline as a
+// timeout. Any wrapper around the transport makes net/http enforce
+// Client.Timeout by closing Request.Cancel, which the transport reports as a
+// plain "request canceled" that classifies as unknown. net/http still sets
+// the same deadline on the request's context, so a failure past it is the
+// timeout. A different failure that lands within microseconds of the
+// deadline is labelled a timeout too; checking ctx.Err() instead would miss
+// timeouts that the cancel path reports first.
+func signInTimeout(request *http.Request, err error) error {
+	if deadline, ok := request.Context().Deadline(); ok && !time.Now().Before(deadline) && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+	}
+	return err
 }
 
 func (t *signInTransport) lastFailure() *signInError {
