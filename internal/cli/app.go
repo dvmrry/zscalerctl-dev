@@ -39,6 +39,12 @@ type App struct {
 	// chosen profile). Run writes them to redacted stderr only when it
 	// succeeds, so a failure's stderr stays one error envelope.
 	notices bytes.Buffer
+	// catalogNotices collects notices built only from catalog names, modes
+	// and fixed text (noteOmittedFields). They are written after notices,
+	// on the same terms, but not scanned: the prose scan read long field
+	// names with digits (dnsResolutionOnTransparentProxyIPv6Apps) as tokens
+	// and replaced the very names the notice exists to give.
+	catalogNotices bytes.Buffer
 
 	machineRuntimeFactory machineRuntimeFactory
 }
@@ -192,6 +198,7 @@ func (a *App) Run(ctx context.Context, args []string) (err error) {
 	// including --output publication: a failing run's stderr is the single
 	// error envelope the caller writes after Run returns.
 	a.notices.Reset()
+	a.catalogNotices.Reset()
 	defer func() {
 		if err == nil {
 			a.writeNotices()
@@ -235,13 +242,14 @@ func (a *App) Run(ctx context.Context, args []string) (err error) {
 
 // writeNotices writes collected notices to stderr through the redactor.
 func (a *App) writeNotices() {
-	if a.notices.Len() == 0 {
-		return
+	if a.notices.Len() > 0 {
+		w := redact.NewWriter(a.err, redact.ModeStandard)
+		_, _ = w.Write(a.notices.Bytes())
+		_ = w.Close()
+		a.notices.Reset()
 	}
-	w := redact.NewWriter(a.err, redact.ModeStandard)
-	_, _ = w.Write(a.notices.Bytes())
-	_ = w.Close()
-	a.notices.Reset()
+	_, _ = a.err.Write(a.catalogNotices.Bytes())
+	a.catalogNotices.Reset()
 }
 
 func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) error {

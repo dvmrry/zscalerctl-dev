@@ -90,3 +90,21 @@ func TestOmittedFieldNoticeIsNotWrittenOnFailure(t *testing.T) {
 		t.Errorf("App.Run(%v) stderr = %q, want empty (the caller writes the error envelope)", args, errOut.String())
 	}
 }
+
+// The notice gives catalog names verbatim: a long field name with a digit
+// (zia advanced-settings dnsResolutionOnTransparentProxyIPv6Apps, omitted in
+// share mode) read as a token to the prose scan, which replaced it.
+func TestOmittedFieldNoticeKeepsLongCatalogNames(t *testing.T) {
+	t.Parallel()
+	const field = "dnsResolutionOnTransparentProxyIPv6Apps"
+	reader := fakeResourceReader{show: resources.NewSourceRecord(map[string]any{field: []any{"Example"}})}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+	args := []string{"--format", "json", "--redaction", "share", "--fields", field, "zia", "advanced-settings", "show"}
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v", args, err)
+	}
+	if !strings.Contains(errOut.String(), "fields omitted in share mode: "+field) || strings.Contains(errOut.String(), "<REDACTED") {
+		t.Errorf("stderr = %q, want the notice to name %s", errOut.String(), field)
+	}
+}

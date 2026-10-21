@@ -15,7 +15,8 @@ import (
 // fields; without, every non-secret field the mode suppresses. In the shipped
 // catalog standard mode omits only secrets (pinned by a resources test), so it
 // stays quiet. Names come from the catalog (requested names were validated
-// against it), never from tenant data.
+// against it), never from tenant data, so the notice goes to catalogNotices,
+// which is not scanned.
 func (a *App) noteOmittedFields(spec resources.ResourceSpec, mode redact.Mode, requested []string, fromDump bool) {
 	omitted, secret := resources.OmittedFields(spec, mode, requested)
 	mode = redact.EffectiveMode(mode)
@@ -28,10 +29,10 @@ func (a *App) noteOmittedFields(spec resources.ResourceSpec, mode redact.Mode, r
 		if hint := renderHint(spec, omitted, fromDump); hint != "" {
 			line += "; " + hint
 		}
-		fmt.Fprintln(&a.notices, line)
+		fmt.Fprintln(&a.catalogNotices, line)
 	}
 	if len(secret) > 0 {
-		fmt.Fprintf(&a.notices, "zscalerctl: requested %s/%s fields are secret and never render: %s\n",
+		fmt.Fprintf(&a.catalogNotices, "zscalerctl: requested %s/%s fields are secret and never render: %s\n",
 			spec.Product, spec.Name, strings.Join(secret, ", "))
 	}
 }
