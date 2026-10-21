@@ -401,7 +401,8 @@ When `HTTPS_PROXY` is set but neither setting is, `doctor` reports the proxy as
 `direct (HTTPS_PROXY is set but not used; ...)`: on a network that reaches the
 API only through the proxy, a dropped connect waits out `--timeout` (30
 seconds by default; possibly more than once, as the SDK retries) and fails as
-`timeout`; a refused one fails at once as a network error.
+`timeout`; a refused one fails at once as a network error. Such a timeout or
+network error then ends with the same `HTTPS_PROXY is set but not used` hint.
 
 ## Shell Completions
 

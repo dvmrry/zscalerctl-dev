@@ -446,7 +446,7 @@ func ProxyStatus(proxy config.Proxy) string {
 	case strings.TrimSpace(proxy.URL) != "":
 		return "explicit"
 	case proxy.EnvironmentProxySet:
-		return "direct (HTTPS_PROXY is set but not used; set " + config.EnvProxyFromEnv + "=true to use it)"
+		return "direct (" + config.IgnoredProxyHint + ")"
 	default:
 		return "direct"
 	}

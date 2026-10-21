@@ -257,7 +257,7 @@ func LoadEnv(environ []string) (Config, error) {
 		Proxy: Proxy{
 			URL:                 strings.TrimSpace(env[EnvProxyURL]),
 			FromEnvironment:     proxyFromEnv,
-			EnvironmentProxySet: strings.TrimSpace(env["HTTPS_PROXY"]) != "" || strings.TrimSpace(env["https_proxy"]) != "",
+			EnvironmentProxySet: environmentProxySet(env),
 		},
 		Defaults: Defaults{
 			Redaction: mode,
@@ -372,6 +372,25 @@ func parseAuthMode(value string) (AuthMode, error) {
 	default:
 		return "", fmt.Errorf("%w: parse %s: unsupported auth mode; supported: oneapi, zia-legacy", ErrInvalidConfig, EnvAuthMode)
 	}
+}
+
+// environmentProxySet reports whether HTTPS_PROXY (or https_proxy) is set.
+// Every API call is HTTPS, so HTTP_PROXY does not matter.
+func environmentProxySet(env map[string]string) bool {
+	return strings.TrimSpace(env["HTTPS_PROXY"]) != "" || strings.TrimSpace(env["https_proxy"]) != ""
+}
+
+// IgnoredProxyHint says that HTTPS_PROXY is set but not used, without its
+// value: doctor and a live read that cannot connect both show it.
+const IgnoredProxyHint = "HTTPS_PROXY is set but not used; set " + EnvProxyFromEnv + "=true to use it"
+
+// EnvironmentProxyIgnored reports whether environ sets HTTPS_PROXY while
+// zscalerctl connects directly: neither ZSCALERCTL_PROXY_URL nor a true
+// ZSCALERCTL_PROXY_FROM_ENV is set. It reads only those variables.
+func EnvironmentProxyIgnored(environ []string) bool {
+	env := parseEnv(environ)
+	fromEnv, err := parseBoolEnv(env[EnvProxyFromEnv])
+	return environmentProxySet(env) && err == nil && !fromEnv && strings.TrimSpace(env[EnvProxyURL]) == ""
 }
 
 func parseEnv(environ []string) map[string]string {
