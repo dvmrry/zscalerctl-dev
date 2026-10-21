@@ -208,6 +208,20 @@ func collapseIntrospectFieldArrays(s string) string {
 	return reIntrospectFieldArrays.ReplaceAllString(s, `"$1": ["<omitted>"]`)
 }
 
+// goldenCaseTimeout bounds one golden case. Cases take under 1.5 s here even
+// with every core oversubscribed threefold; an external run once hit the old
+// 15 s limit on introspect under parallel load, so the limit leaves room for
+// a slower host and a timeout reports how long the case ran.
+const goldenCaseTimeout = 60 * time.Second
+
+// truncate keeps at most n bytes of s for a failure message.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // runCase executes one golden case against the pre-built binary or, for
 // fixture-backed resource read cases, against this test binary's helper process.
 // It returns scrubbed stdout, scrubbed stderr, and the actual exit code.
@@ -217,8 +231,9 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 		return runFixtureCase(t, homeDir, args, extraEnv, fixture)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), goldenCaseTimeout)
 	defer cancel()
+	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, goldenBinary, args...)
 	cmd.Env = hermeticEnv(homeDir, extraEnv)
@@ -230,10 +245,12 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 	runErr := cmd.Run()
 	code = 0
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
+		// A context kill also returns an *exec.ExitError (signal: killed), so
+		// check the deadline first or a timeout reads as exit code -1.
+		if ctx.Err() != nil {
+			t.Fatalf("case timed out after %s (limit %s): args=%v\nstderr so far:\n%s", time.Since(start).Round(time.Millisecond), goldenCaseTimeout, args, truncate(errBuf.String(), 2000))
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
 			code = exitErr.ExitCode()
-		} else if ctx.Err() != nil {
-			t.Fatalf("case timed out after 15s: args=%v", args)
 		} else {
 			t.Fatalf("exec error (not exit): %v", runErr)
 		}
@@ -246,8 +263,9 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 
 func runFixtureCase(t *testing.T, homeDir string, args []string, extraEnv []string, fixture string) (stdout, stderr string, code int) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), goldenCaseTimeout)
 	defer cancel()
+	start := time.Now()
 
 	helperArgs := append([]string{"-test.run=^TestGoldenSurfaceFixtureHelper$", "--"}, args...)
 	cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...)
@@ -260,10 +278,12 @@ func runFixtureCase(t *testing.T, homeDir string, args []string, extraEnv []stri
 	runErr := cmd.Run()
 	code = 0
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
+		// A context kill also returns an *exec.ExitError (signal: killed), so
+		// check the deadline first or a timeout reads as exit code -1.
+		if ctx.Err() != nil {
+			t.Fatalf("fixture case timed out after %s (limit %s): args=%v\nstderr so far:\n%s", time.Since(start).Round(time.Millisecond), goldenCaseTimeout, args, truncate(errBuf.String(), 2000))
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
 			code = exitErr.ExitCode()
-		} else if ctx.Err() != nil {
-			t.Fatalf("fixture case timed out after 15s: args=%v", args)
 		} else {
 			t.Fatalf("fixture exec error (not exit): %v", runErr)
 		}
