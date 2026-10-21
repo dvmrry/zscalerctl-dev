@@ -195,7 +195,9 @@ func (a *App) Run(ctx context.Context, args []string) (err error) {
 	defer func() {
 		if err == nil {
 			a.writeNotices()
+			return
 		}
+		err = withProxyHint(err, a.env)
 	}()
 	// __complete / __completeNoDesc: Cobra's shell-completion protocol. These tokens
 	// must bypass parseGlobal entirely so that global flags appearing AFTER
