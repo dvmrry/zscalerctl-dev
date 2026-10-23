@@ -36,12 +36,6 @@ type StatusInspector struct {
 	config    machine.ConfigStatus
 }
 
-// NewStatusInspector loads effective config without resolving provider-backed
-// secret references or constructing an SDK reader.
-func NewStatusInspector(ctx context.Context, opts Options) (*StatusInspector, error) {
-	return newStatusInspector(ctx, opts, machine.OperationConfigStatus)
-}
-
 func newStatusInspector(
 	ctx context.Context,
 	opts Options,

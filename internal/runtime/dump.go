@@ -439,7 +439,7 @@ func dumpMachineError(
 		machineErr.Message, _ = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		message, safe := sanitizedRuntimeMissingCredentials(err)
+		message, safe := sanitizedMissingCredentials(err)
 		machineErr.Message = message
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(safe, &missingErr) {
