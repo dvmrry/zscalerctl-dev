@@ -99,7 +99,7 @@ var zpaFieldReferences = map[string]map[string]referenceTargets{
 }
 
 var zpaUnmappedReferences = map[string]map[string]string{
-	"zpa/app-connector-groups": {
+	"zpa/app-connector-groups": { // #nosec G101 -- API field names and reasons; gosec flags the whole block
 		"enrollmentCertId":                          "no certificate resource in the catalog",
 		"npAssistantGroup":                          "the group's own network-presence settings, not a pointer",
 		"npAssistantGroup.lanSubnets":               "the group's own LAN subnet entries, not a pointer",
@@ -171,7 +171,7 @@ var zpaUnmappedReferences = map[string]map[string]string{
 		"machines.issuedCertId":   "no certificate resource in the catalog",
 		"machines.machineTokenId": "no machine provisioning token resource in the catalog",
 	},
-	"zpa/microtenants": {
+	"zpa/microtenants": { // #nosec G101 -- API field names and reasons; gosec flags the whole block
 		"roles":           "no ZPA admin role resource in the catalog",
 		"user":            "the microtenant's admin user; no ZPA admin user resource in the catalog",
 		"user.customerId": "a customer id, not a record id",

@@ -14,7 +14,7 @@ var zccUnmappedReferences = map[string]map[string]string{
 	"zcc/admin-roles": {
 		"companyId": "the tenant's own id, not a record id",
 	},
-	"zcc/application-profiles": {
+	"zcc/application-profiles": { // #nosec G101 -- API field names and reasons; gosec flags the whole block
 		"appServiceIds":             "predefined-ip-apps and web-app-services both list app services; which one the ids belong to is not verified",
 		"bypassAppIds":              "predefined-ip-apps and web-app-services both list app services; which one the ids belong to is not verified",
 		"bypassCustomAppIds":        "custom-ip-apps and process-based-apps both list custom apps; which one the ids belong to is not verified",

@@ -1819,7 +1819,7 @@ func jsonValuesEqual(left, right any) bool {
 
 func sortedKeys(a, b map[string]map[string]any) []string {
 	seen := map[string]bool{}
-	keys := make([]string, 0, len(a)+len(b))
+	keys := make([]string, 0, len(a))
 	for key := range a {
 		seen[key] = true
 		keys = append(keys, key)
@@ -1835,7 +1835,7 @@ func sortedKeys(a, b map[string]map[string]any) []string {
 
 func sortedHashKeys(a, b map[string][]map[string]any) []string {
 	seen := map[string]bool{}
-	keys := make([]string, 0, len(a)+len(b))
+	keys := make([]string, 0, len(a))
 	for key := range a {
 		seen[key] = true
 		keys = append(keys, key)

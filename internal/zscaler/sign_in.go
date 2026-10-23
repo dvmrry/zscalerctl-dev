@@ -73,7 +73,7 @@ func (t *signInTransport) RoundTrip(request *http.Request) (*http.Response, erro
 		// Any non-2xx, so the client never follows a redirect from the
 		// sign-in endpoint and re-sends the credentials to another host.
 		if response.Body != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 		failure = &signInError{status: response.StatusCode}
 	default:
