@@ -121,12 +121,11 @@ func renderRecordsTable(
 	}
 	body.WriteByte('\n')
 	for _, record := range records.Records() {
-		values := scan(record.Fields())
-		for i, field := range fields {
+		for i, cell := range scannedCells(fields, record, scan) {
 			if i > 0 {
 				body.WriteByte('\t')
 			}
-			body.WriteString(style.Value(field, formatTableValue(fieldValue(values, field))))
+			body.WriteString(style.Value(fields[i], cell))
 		}
 		body.WriteByte('\n')
 	}
@@ -139,16 +138,7 @@ func renderRecordKeyValues(
 	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
-	values := scan(record.Fields())
-	rows := make([]output.KV, 0, len(fields))
-	for _, field := range fields {
-		rows = append(rows, output.KV{
-			Key:   field,
-			Kind:  field,
-			Value: formatTableValue(fieldValue(values, field)),
-		})
-	}
-	return output.RenderKeyValues(rows, style)
+	return output.RenderKeyValues(scannedKeyValues(fields, record, scan), style)
 }
 
 func renderKeyValuesForFormat(rows []output.KV, format output.Format, style output.Style) output.SafeText {
@@ -166,12 +156,7 @@ func renderRecordsPretty(
 ) output.SafeText {
 	rows := make([][]string, 0, records.Len())
 	for _, record := range records.Records() {
-		values := scan(record.Fields())
-		row := make([]string, len(fields))
-		for i, field := range fields {
-			row[i] = formatTableValue(fieldValue(values, field))
-		}
-		rows = append(rows, row)
+		rows = append(rows, scannedCells(fields, record, scan))
 	}
 	return output.RenderRecordsPretty(fields, rows, style)
 }
@@ -182,16 +167,35 @@ func renderRecordPretty(
 	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
+	return output.RenderRecordPretty(scannedKeyValues(fields, record, scan), style)
+}
+
+// scannedCells renders one cell per field from the scanned record.
+func scannedCells(
+	fields []string,
+	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
+) []string {
 	values := scan(record.Fields())
-	rows := make([]output.KV, 0, len(fields))
-	for _, field := range fields {
-		rows = append(rows, output.KV{
-			Key:   field,
-			Kind:  field,
-			Value: formatTableValue(fieldValue(values, field)),
-		})
+	cells := make([]string, len(fields))
+	for i, field := range fields {
+		cells[i] = formatTableValue(fieldValue(values, field))
 	}
-	return output.RenderRecordPretty(rows, style)
+	return cells
+}
+
+// scannedKeyValues renders one row per field from the scanned record.
+func scannedKeyValues(
+	fields []string,
+	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
+) []output.KV {
+	cells := scannedCells(fields, record, scan)
+	rows := make([]output.KV, len(fields))
+	for i, field := range fields {
+		rows[i] = output.KV{Key: field, Kind: field, Value: cells[i]}
+	}
+	return rows
 }
 
 // The record renderers write through Renderer.WriteScannedText: they render

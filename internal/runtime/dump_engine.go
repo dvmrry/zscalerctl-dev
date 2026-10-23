@@ -21,11 +21,6 @@ type preparedDumpRequest struct {
 	force           bool
 }
 
-type dumpSelectionKey struct {
-	product  resources.Product
-	resource string
-}
-
 // Dump validates a complete artifact request before loading config, then
 // collects and writes the dump while delivering one synchronous event stream.
 // A completed event means every artifact file has been finalized.
@@ -167,96 +162,20 @@ func prepareDumpRequest(
 	if strings.TrimSpace(req.OutputDir) == "" {
 		return prepared, dumpUsageError("dump output directory is required", "output_dir")
 	}
-	if err := resources.AssertReadOnly(catalog...); err != nil {
-		return prepared, dumpCatalogError(resources.ErrMutatingOperation)
+	selectors := make([]resourceSelector, len(req.Resources))
+	for i, selector := range req.Resources {
+		selectors[i] = resourceSelector(selector)
 	}
-
-	knownProducts := make(map[resources.Product]bool)
-	dumpSpecs := make(map[dumpSelectionKey]resources.ResourceSpec)
-	seenCatalog := make(map[dumpSelectionKey]bool)
-	for _, spec := range catalog {
-		if err := ctx.Err(); err != nil {
-			return prepared, dumpRuntimeBoundaryError(err)
-		}
-		if err := spec.Validate(); err != nil {
-			return prepared, dumpCatalogError(resources.ErrInvalidResourceSpec)
-		}
-		key := dumpSelectionKey{product: spec.Product, resource: spec.Name}
-		if seenCatalog[key] {
-			return prepared, dumpCatalogError(nil)
-		}
-		seenCatalog[key] = true
-		knownProducts[spec.Product] = true
-		if spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show") {
-			dumpSpecs[key] = copyResourceSpec(spec)
-		}
+	selection, err := selectReadSpecs(ctx, catalog, req.Products, selectors, selectionErrors{
+		boundary: dumpRuntimeBoundaryError,
+		catalog:  dumpCatalogError,
+		invalid:  dumpUsageError("dump selection is invalid"),
+		empty:    dumpUsageError("dump selection is empty"),
+	})
+	if err != nil {
+		return prepared, err
 	}
-
-	selectedProducts := make(map[resources.Product]bool)
-	if len(req.Products) == 0 {
-		for product := range knownProducts {
-			selectedProducts[product] = true
-		}
-	} else {
-		for _, rawProduct := range req.Products {
-			if err := ctx.Err(); err != nil {
-				return prepared, dumpRuntimeBoundaryError(err)
-			}
-			if rawProduct == "" || strings.TrimSpace(rawProduct) != rawProduct {
-				return prepared, dumpUsageError("dump selection is invalid")
-			}
-			product := resources.Product(rawProduct)
-			if !knownProducts[product] || selectedProducts[product] {
-				return prepared, dumpUsageError("dump selection is invalid")
-			}
-			selectedProducts[product] = true
-		}
-	}
-
-	selectedResources := make(map[dumpSelectionKey]bool)
-	if len(req.Resources) > 0 {
-		for _, selector := range req.Resources {
-			if err := ctx.Err(); err != nil {
-				return prepared, dumpRuntimeBoundaryError(err)
-			}
-			if selector.Product == "" || selector.Resource == "" ||
-				strings.TrimSpace(selector.Product) != selector.Product ||
-				strings.TrimSpace(selector.Resource) != selector.Resource {
-				return prepared, dumpUsageError("dump selection is invalid")
-			}
-			key := dumpSelectionKey{
-				product:  resources.Product(selector.Product),
-				resource: selector.Resource,
-			}
-			if !selectedProducts[key.product] || selectedResources[key] {
-				return prepared, dumpUsageError("dump selection is invalid")
-			}
-			if _, ok := dumpSpecs[key]; !ok {
-				return prepared, dumpUsageError("dump selection is invalid")
-			}
-			selectedResources[key] = true
-		}
-	}
-
-	for _, spec := range catalog {
-		if err := ctx.Err(); err != nil {
-			return prepared, dumpRuntimeBoundaryError(err)
-		}
-		key := dumpSelectionKey{product: spec.Product, resource: spec.Name}
-		if !selectedProducts[spec.Product] {
-			continue
-		}
-		if _, ok := dumpSpecs[key]; !ok {
-			continue
-		}
-		if len(selectedResources) > 0 && !selectedResources[key] {
-			continue
-		}
-		prepared.specs = append(prepared.specs, copyResourceSpec(spec))
-	}
-	if len(prepared.specs) == 0 {
-		return prepared, dumpUsageError("dump selection is empty")
-	}
+	prepared.specs = selection.specs
 	if err := ctx.Err(); err != nil {
 		return prepared, dumpRuntimeBoundaryError(err)
 	}
@@ -336,7 +255,7 @@ func dumpRuntimeBoundaryError(err error) error {
 		machineErr.Message, sentinel = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
+		machineErr.Message, sentinel = sanitizedMissingCredentials(err)
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(sentinel, &missingErr) {
 			machineErr.Missing = append([]string(nil), missingErr.Missing...)
@@ -401,7 +320,7 @@ func dumpSafeCollectionSentinel(err error, kind string) error {
 		_, safe := sanitizedInvalidSettings(err)
 		return safe
 	case errors.Is(err, zscaler.ErrMissingCredentials):
-		_, safe := sanitizedRuntimeMissingCredentials(err)
+		_, safe := sanitizedMissingCredentials(err)
 		return safe
 	case errors.Is(err, zscaler.ErrUnsupportedResource):
 		return zscaler.ErrUnsupportedResource
@@ -502,7 +421,7 @@ func sanitizedInvalidSettings(err error) (string, error) {
 	return zscaler.ErrInvalidSettings.Error(), zscaler.ErrInvalidSettings
 }
 
-func sanitizedRuntimeMissingCredentials(err error) (string, error) {
+func sanitizedMissingCredentials(err error) (string, error) {
 	var missingErr *zscaler.MissingCredentialsError
 	if !errors.As(err, &missingErr) {
 		return zscaler.ErrMissingCredentials.Error(), zscaler.ErrMissingCredentials
@@ -510,7 +429,7 @@ func sanitizedRuntimeMissingCredentials(err error) (string, error) {
 	missing := make([]string, 0, len(missingErr.Missing))
 	seen := map[string]bool{}
 	for _, name := range missingErr.Missing {
-		if !isKnownRuntimeCredentialName(name) || seen[name] {
+		if !isKnownCredentialName(name) || seen[name] {
 			continue
 		}
 		seen[name] = true
@@ -523,9 +442,25 @@ func sanitizedRuntimeMissingCredentials(err error) (string, error) {
 	return safeErr.Error(), safeErr
 }
 
-func isKnownRuntimeCredentialName(name string) bool {
-	if isKnownCredentialName(name) {
+// isKnownCredentialName reports whether name is a credential setting a
+// missing-credentials message may name; anything else is dropped from it.
+func isKnownCredentialName(name string) bool {
+	switch name {
+	case config.EnvClientID,
+		config.EnvClientSecret,
+		config.EnvClientSecretFile,
+		config.EnvVanityDomain,
+		config.EnvCloud,
+		config.EnvZIAUsername,
+		config.EnvZIAPassword,
+		config.EnvZIAPasswordFile,
+		config.EnvZIAAPIKey,
+		config.EnvZIAAPIKeyFile,
+		config.EnvZIACloud,
+		config.EnvZPACustomerID,
+		config.EnvZPAMicrotenantID:
 		return true
+	default:
+		return false
 	}
-	return name == config.EnvZPACustomerID || name == config.EnvZPAMicrotenantID
 }

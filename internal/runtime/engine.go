@@ -215,7 +215,7 @@ func resourceReadRuntimeBoundaryError(err error, req machine.ResourceReadRequest
 		machineErr.Message, sentinel = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
+		machineErr.Message, sentinel = sanitizedMissingCredentials(err)
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(sentinel, &missingErr) {
 			machineErr.Missing = append([]string(nil), missingErr.Missing...)

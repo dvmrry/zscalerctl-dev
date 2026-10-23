@@ -112,107 +112,28 @@ func prepareDiffRequest(
 	if strings.TrimSpace(req.OldDir) == "" || strings.TrimSpace(req.NewDir) == "" {
 		return prepared, diffUsageError("two dump directories are required")
 	}
-	if err := resources.AssertReadOnly(catalog...); err != nil {
-		return prepared, diffCatalogError(resources.ErrMutatingOperation)
+	selectors := make([]resourceSelector, len(req.Resources))
+	for i, selector := range req.Resources {
+		selectors[i] = resourceSelector(selector)
 	}
-
-	knownProducts := make(map[resources.Product]bool)
-	diffSpecs := make(map[diff.ResourceKey]resources.ResourceSpec)
-	seenCatalog := make(map[diff.ResourceKey]bool)
-	for _, spec := range catalog {
-		if err := ctx.Err(); err != nil {
-			return prepared, diffBoundaryError(err)
-		}
-		if err := spec.Validate(); err != nil {
-			return prepared, diffCatalogError(resources.ErrInvalidResourceSpec)
-		}
-		key := diff.ResourceKey{Product: spec.Product, Name: spec.Name}
-		if seenCatalog[key] {
-			return prepared, diffCatalogError(nil)
-		}
-		seenCatalog[key] = true
-		knownProducts[spec.Product] = true
-		if spec.SupportsReadOperation("list") || spec.SupportsReadOperation("show") {
-			diffSpecs[key] = copyResourceSpec(spec)
-		}
+	selection, err := selectReadSpecs(ctx, catalog, req.Products, selectors, selectionErrors{
+		boundary: diffBoundaryError,
+		catalog:  diffCatalogError,
+		invalid:  diffUsageError("diff selection is invalid"),
+		empty:    diffUsageError("diff selection is empty"),
+	})
+	if err != nil {
+		return prepared, err
 	}
-
-	selectedProducts := make(map[resources.Product]bool)
-	if len(req.Products) == 0 {
-		for product := range knownProducts {
-			selectedProducts[product] = true
-		}
-	} else {
-		for _, rawProduct := range req.Products {
-			if err := ctx.Err(); err != nil {
-				return prepared, diffBoundaryError(err)
-			}
-			if rawProduct == "" || strings.TrimSpace(rawProduct) != rawProduct {
-				return prepared, diffUsageError("diff selection is invalid")
-			}
-			product := resources.Product(rawProduct)
-			if !knownProducts[product] || selectedProducts[product] {
-				return prepared, diffUsageError("diff selection is invalid")
-			}
-			selectedProducts[product] = true
-		}
-	}
-
-	selectedResources := make(map[diff.ResourceKey]bool)
-	for _, selector := range req.Resources {
-		if err := ctx.Err(); err != nil {
-			return prepared, diffBoundaryError(err)
-		}
-		if selector.Product == "" || selector.Resource == "" ||
-			strings.TrimSpace(selector.Product) != selector.Product ||
-			strings.TrimSpace(selector.Resource) != selector.Resource {
-			return prepared, diffUsageError("diff selection is invalid")
-		}
-		key := diff.ResourceKey{
-			Product: resources.Product(selector.Product),
-			Name:    selector.Resource,
-		}
-		if !selectedProducts[key.Product] || selectedResources[key] {
-			return prepared, diffUsageError("diff selection is invalid")
-		}
-		if _, ok := diffSpecs[key]; !ok {
-			return prepared, diffUsageError("diff selection is invalid")
-		}
-		selectedResources[key] = true
-	}
-
-	for key, spec := range diffSpecs {
-		if err := ctx.Err(); err != nil {
-			return prepared, diffBoundaryError(err)
-		}
-		if !selectedProducts[key.Product] {
-			continue
-		}
-		if len(selectedResources) > 0 && !selectedResources[key] {
-			continue
-		}
-		prepared.specs = append(prepared.specs, copyResourceSpec(spec))
-	}
+	prepared.specs = selection.specs
 	sort.Slice(prepared.specs, func(i, j int) bool {
 		if prepared.specs[i].Product != prepared.specs[j].Product {
 			return prepared.specs[i].Product < prepared.specs[j].Product
 		}
 		return prepared.specs[i].Name < prepared.specs[j].Name
 	})
-	if len(prepared.specs) == 0 {
-		return prepared, diffUsageError("diff selection is empty")
-	}
-
-	prepared.products = make(map[resources.Product]bool, len(selectedProducts))
-	for product := range selectedProducts {
-		prepared.products[product] = true
-	}
-	if len(selectedResources) > 0 {
-		prepared.resources = make(map[diff.ResourceKey]bool, len(selectedResources))
-		for key := range selectedResources {
-			prepared.resources[key] = true
-		}
-	}
+	prepared.products = selection.products
+	prepared.resources = selection.resources
 	prepared.specs = copyResourceSpecs(prepared.specs)
 	if err := ctx.Err(); err != nil {
 		return prepared, diffBoundaryError(err)

@@ -356,46 +356,6 @@ func setURLLookupErrorContext(machineErr *machine.MachineError) {
 	machineErr.Resource = urlLookupCommandName
 }
 
-func sanitizedMissingCredentials(err error) (string, error) {
-	var missingErr *zscaler.MissingCredentialsError
-	if !errors.As(err, &missingErr) {
-		return zscaler.ErrMissingCredentials.Error(), zscaler.ErrMissingCredentials
-	}
-	missing := make([]string, 0, len(missingErr.Missing))
-	seen := map[string]bool{}
-	for _, name := range missingErr.Missing {
-		if !isKnownCredentialName(name) || seen[name] {
-			continue
-		}
-		seen[name] = true
-		missing = append(missing, name)
-	}
-	if len(missing) == 0 {
-		return zscaler.ErrMissingCredentials.Error(), zscaler.ErrMissingCredentials
-	}
-	safeErr := &zscaler.MissingCredentialsError{Missing: missing}
-	return safeErr.Error(), safeErr
-}
-
-func isKnownCredentialName(name string) bool {
-	switch name {
-	case config.EnvClientID,
-		config.EnvClientSecret,
-		config.EnvClientSecretFile,
-		config.EnvVanityDomain,
-		config.EnvCloud,
-		config.EnvZIAUsername,
-		config.EnvZIAPassword,
-		config.EnvZIAPasswordFile,
-		config.EnvZIAAPIKey,
-		config.EnvZIAAPIKeyFile,
-		config.EnvZIACloud:
-		return true
-	default:
-		return false
-	}
-}
-
 func unsupportedURLLookupError() error {
 	return fmt.Errorf("%w: %s/%s", zscaler.ErrUnsupportedResource, resources.ProductZIA, urlLookupCommandName)
 }
