@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -54,6 +55,7 @@ func TestExitCodeForError(t *testing.T) {
 		{"machine_unsupported_resource", &machine.MachineError{Kind: machine.ErrorKindUnsupportedResource}, exitNotFound},
 		{"machine_internal", &machine.MachineError{Kind: machine.ErrorKindInternal}, exitInternalError},
 		{"missing_credentials", zscaler.ErrMissingCredentials, exitCredentialError},
+		{"invalid_settings", zscaler.ErrInvalidSettings, exitUsageError},
 		{"invalid_resource_id", zscaler.ErrInvalidResourceID, exitUsageError},
 		{"unsupported_resource", zscaler.ErrUnsupportedResource, exitNotFound},
 		{"live_access_failed", zscaler.ErrLiveAccessFailed, exitLiveAccessFailure},
@@ -66,6 +68,18 @@ func TestExitCodeForError(t *testing.T) {
 		if got := exitCodeForError(tc.err); got != tc.want {
 			t.Errorf("exitCodeForError(%s) = %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestErrorKindAndExitCodePrioritizeCancellationOverMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, context.Canceled)
+	if got := errorKind(err); got != machine.ErrorKindCanceled {
+		t.Errorf("errorKind(canceled missing-credentials error) = %q, want %q", got, machine.ErrorKindCanceled)
+	}
+	if got := exitCodeForError(err); got != exitInternalError {
+		t.Errorf("exitCodeForError(canceled missing-credentials error) = %d, want %d", got, exitInternalError)
 	}
 }
 
@@ -188,6 +202,44 @@ func TestMachineLiveAccessFailedErrorMapsExitAndStderrEnvelope(t *testing.T) {
 	}
 	if env.Error.Kind != machine.ErrorKindLiveAccessFailed {
 		t.Errorf("stderr error.kind = %q, want %q", env.Error.Kind, machine.ErrorKindLiveAccessFailed)
+	}
+}
+
+// TestErrorEnvelopeCarriesFailureDetail pins error envelope v2: a live read
+// failure says why (reason, HTTP status, retry hint), and an error without a
+// detail keeps the v1 shape because the new fields are omitted.
+func TestErrorEnvelopeCarriesFailureDetail(t *testing.T) {
+	t.Parallel()
+
+	err := &machine.MachineError{
+		Kind:      machine.ErrorKindLiveAccessFailed,
+		Message:   "resource read failed: rate_limited (HTTP 429)",
+		Operation: machine.OperationList,
+		Product:   "zia",
+		Resource:  "url-categories",
+		Detail:    machine.FailureDetail{Reason: "rate_limited", Status: 429, Retryable: true},
+	}
+	var stderr bytes.Buffer
+	writeError(&stderr, output.FormatJSON, err)
+	var raw map[string]map[string]any
+	if e := json.Unmarshal(stderr.Bytes(), &raw); e != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stderr.String(), e)
+	}
+	body := raw["error"]
+	if body["reason"] != "rate_limited" || body["status"] != float64(429) || body["retryable"] != true {
+		t.Errorf("envelope = %v, want reason rate_limited, status 429, retryable true", body)
+	}
+
+	stderr.Reset()
+	writeError(&stderr, output.FormatJSON, cli.UsageError{Message: "bad flag"})
+	raw = nil
+	if e := json.Unmarshal(stderr.Bytes(), &raw); e != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stderr.String(), e)
+	}
+	for _, key := range []string{"reason", "status", "retryable"} {
+		if _, ok := raw["error"][key]; ok {
+			t.Errorf("usage envelope has %q, want it omitted", key)
+		}
 	}
 }
 
@@ -437,6 +489,32 @@ func TestRunJSONCredentialErrorEnvelope(t *testing.T) {
 	}
 }
 
+// TestRunJSONInvalidSettingsEnvelope pins that an unusable setting is a
+// configuration error, not a credential one: kind invalid_config, exit 2, and
+// the reason without a missing-credentials prefix.
+func TestRunJSONInvalidSettingsEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	env := []string{
+		config.EnvClientID + "=synthetic-id",
+		config.EnvClientSecret + "=synthetic-secret",
+		config.EnvVanityDomain + "=example",
+		config.EnvCloud + "=zscalertwo",
+	}
+	code := run(context.Background(), []string{"--format", "json", "zia", "locations", "list"}, &stdout, &stderr, env)
+	if code != exitUsageError {
+		t.Fatalf("run(json invalid cloud) exit code = %d, want %d", code, exitUsageError)
+	}
+	got := decodeErrorEnvelope(t, stderr.Bytes())
+	if got.Error.Kind != "invalid_config" {
+		t.Errorf("run(json invalid cloud) kind = %q, want invalid_config", got.Error.Kind)
+	}
+	if !strings.HasPrefix(got.Error.Message, "ZSCALERCTL_CLOUD must be ") {
+		t.Errorf("run(json invalid cloud) message = %q, want the cloud reason", got.Error.Message)
+	}
+}
+
 func TestRunURLLookupCredentialErrorPreservesEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -518,6 +596,66 @@ profiles:
 	got := decodeErrorEnvelope(t, stderr.Bytes())
 	if got.Error.Kind != "missing_credentials" {
 		t.Fatalf("run(live failing cmd) error kind = %q, want missing_credentials", got.Error.Kind)
+	}
+}
+
+func TestRunJSONCmdProviderCancellationIsCancellation(t *testing.T) {
+	readyPath := filepath.Join(t.TempDir(), "provider-ready")
+	configPath := writeMainConfig(t, fmt.Sprintf(`
+profiles:
+  default:
+    auth_mode: oneapi
+    vanity_domain: example
+    client_id: client-id
+    client_secret_ref:
+      cmd:
+        argv: [%q, "-test.run=^TestRunConfigCmdHelperProcess$", "--", "block", %q]
+`, os.Args[0], readyPath))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	result := make(chan int, 1)
+	go func() {
+		result <- run(ctx, []string{
+			"--config", configPath,
+			"--format", "json",
+			"zia", "locations", "list",
+		}, &stdout, &stderr, []string{"XDG_CONFIG_HOME=" + t.TempDir()})
+	}()
+
+	// Starting the helper re-executes the test binary, which can take several
+	// seconds when the whole suite runs in parallel; this only waits for
+	// readiness and does not measure the code under test.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("os.Stat(provider ready marker) error = %v", err)
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("cmd provider did not start before deadline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case code := <-result:
+		if code != exitInternalError {
+			t.Fatalf("run(canceled cmd provider) exit code = %d, want %d; stderr = %q", code, exitInternalError, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("run(canceled cmd provider) stdout = %q, want empty", stdout.String())
+		}
+		got := decodeErrorEnvelope(t, stderr.Bytes())
+		if got.Error.Kind != machine.ErrorKindCanceled {
+			t.Fatalf("run(canceled cmd provider) error kind = %q, want %q", got.Error.Kind, machine.ErrorKindCanceled)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run(canceled cmd provider) did not return after cancellation")
 	}
 }
 
@@ -931,6 +1069,27 @@ func TestErrorFormatFollowsDataPathForAuto(t *testing.T) {
 	}
 }
 
+func TestRunAppNullSinkFailureUsesRequestedFormat(t *testing.T) {
+	previousOpenNullSink := openNullSink
+	openNullSink = func() (*os.File, error) {
+		return nil, errors.New("injected null sink failure")
+	}
+	defer func() { openNullSink = previousOpenNullSink }()
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"--format", "json", "version"}, &stdout, &stderr, nil)
+	if code != exitInternalError {
+		t.Fatalf("run(--format json) with null-sink failure = %d, want %d", code, exitInternalError)
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("json.Unmarshal(null-sink error %q) = %v, want JSON error envelope", stderr.String(), err)
+	}
+	if envelope.Error.Kind != "internal" {
+		t.Fatalf("null-sink error kind = %q, want internal", envelope.Error.Kind)
+	}
+}
+
 // stubContextError implements zscaler.ErrorContexter and unwraps to a sentinel,
 // exercising errorDetails' envelope enrichment without the unexported zscaler
 // error types.
@@ -973,12 +1132,21 @@ func TestRunConfigCmdHelperProcess(t *testing.T) {
 		return
 	}
 	args := os.Args[index+1:]
-	if len(args) < 2 || args[0] != "touch" {
+	switch {
+	case len(args) == 2 && args[0] == "touch":
+		if err := os.WriteFile(args[1], []byte("ran"), 0o600); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	case len(args) == 2 && args[0] == "block":
+		if err := os.WriteFile(args[1], []byte("ready"), 0o600); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		time.Sleep(time.Hour)
+		os.Exit(0)
+	default:
 		os.Exit(2)
 	}
-	if err := os.WriteFile(args[1], []byte("ran"), 0o600); err != nil {
-		fmt.Fprint(os.Stderr, err)
-		os.Exit(1)
-	}
-	os.Exit(0)
 }

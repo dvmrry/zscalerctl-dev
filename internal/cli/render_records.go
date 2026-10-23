@@ -40,16 +40,20 @@ func (a *App) writeProjectedRecord(
 		return a.renderer(cfg, opts).WriteJSON(a.out, record)
 	case output.FormatNDJSON:
 		return a.renderer(cfg, opts).WriteNDJSON(a.out, []output.SafeJSON{record})
-	case output.FormatTable:
-		if operation == "show" {
-			return a.renderer(cfg, opts).WriteText(a.out, renderRecordKeyValues(fields, record, a.style(opts)))
-		}
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
-	case output.FormatPretty:
-		if operation == "show" {
-			return a.renderer(cfg, opts).WriteText(a.out, renderRecordPretty(fields, record, a.style(opts)))
-		}
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsPretty(fields, resources.NewProjectedRecords([]resources.ProjectedRecord{record}), a.style(opts)))
+	case output.FormatTable, output.FormatPretty:
+		records := resources.NewProjectedRecords([]resources.ProjectedRecord{record})
+		return a.renderer(cfg, opts).WriteScannedText(a.out, func(scan func(map[string]any) map[string]any) output.SafeText {
+			switch {
+			case opts.format == output.FormatTable && operation == "show":
+				return renderRecordKeyValues(fields, record, scan, a.style(opts))
+			case opts.format == output.FormatTable:
+				return renderRecordsTable(fields, records, scan, a.style(opts))
+			case operation == "show":
+				return renderRecordPretty(fields, record, scan, a.style(opts))
+			default:
+				return renderRecordsPretty(fields, records, scan, a.style(opts))
+			}
+		})
 	default:
 		return fmt.Errorf("unhandled output format %q for resource %s", opts.format, operation)
 	}
@@ -74,9 +78,13 @@ func (a *App) writeProjectedRecords(
 	case output.FormatNDJSON:
 		return a.renderer(cfg, opts).WriteNDJSON(a.out, safeJSONRecords(records))
 	case output.FormatTable:
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsTable(fields, records, a.style(opts)))
+		return a.renderer(cfg, opts).WriteScannedText(a.out, func(scan func(map[string]any) map[string]any) output.SafeText {
+			return renderRecordsTable(fields, records, scan, a.style(opts))
+		})
 	case output.FormatPretty:
-		return a.renderer(cfg, opts).WriteText(a.out, renderRecordsPretty(fields, records, a.style(opts)))
+		return a.renderer(cfg, opts).WriteScannedText(a.out, func(scan func(map[string]any) map[string]any) output.SafeText {
+			return renderRecordsPretty(fields, records, scan, a.style(opts))
+		})
 	default:
 		return fmt.Errorf("unhandled output format %q for resource list", opts.format)
 	}
@@ -101,6 +109,7 @@ func (a *App) renderer(cfg config.Config, _ globalOptions) output.Renderer {
 func renderRecordsTable(
 	fields []string,
 	records resources.ProjectedRecords,
+	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
 	var body strings.Builder
@@ -112,12 +121,11 @@ func renderRecordsTable(
 	}
 	body.WriteByte('\n')
 	for _, record := range records.Records() {
-		values := record.Fields()
-		for i, field := range fields {
+		for i, cell := range scannedCells(fields, record, scan) {
 			if i > 0 {
 				body.WriteByte('\t')
 			}
-			body.WriteString(style.Value(field, formatTableValue(values[field])))
+			body.WriteString(style.Value(fields[i], cell))
 		}
 		body.WriteByte('\n')
 	}
@@ -127,18 +135,10 @@ func renderRecordsTable(
 func renderRecordKeyValues(
 	fields []string,
 	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
-	values := record.Fields()
-	rows := make([]output.KV, 0, len(fields))
-	for _, field := range fields {
-		rows = append(rows, output.KV{
-			Key:   field,
-			Kind:  field,
-			Value: formatTableValue(values[field]),
-		})
-	}
-	return output.RenderKeyValues(rows, style)
+	return output.RenderKeyValues(scannedKeyValues(fields, record, scan), style)
 }
 
 func renderKeyValuesForFormat(rows []output.KV, format output.Format, style output.Style) output.SafeText {
@@ -151,16 +151,12 @@ func renderKeyValuesForFormat(rows []output.KV, format output.Format, style outp
 func renderRecordsPretty(
 	fields []string,
 	records resources.ProjectedRecords,
+	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
 	rows := make([][]string, 0, records.Len())
 	for _, record := range records.Records() {
-		values := record.Fields()
-		row := make([]string, len(fields))
-		for i, field := range fields {
-			row[i] = formatTableValue(values[field])
-		}
-		rows = append(rows, row)
+		rows = append(rows, scannedCells(fields, record, scan))
 	}
 	return output.RenderRecordsPretty(fields, rows, style)
 }
@@ -168,18 +164,50 @@ func renderRecordsPretty(
 func renderRecordPretty(
 	fields []string,
 	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
 	style output.Style,
 ) output.SafeText {
-	values := record.Fields()
-	rows := make([]output.KV, 0, len(fields))
-	for _, field := range fields {
-		rows = append(rows, output.KV{
-			Key:   field,
-			Kind:  field,
-			Value: formatTableValue(values[field]),
-		})
+	return output.RenderRecordPretty(scannedKeyValues(fields, record, scan), style)
+}
+
+// scannedCells renders one cell per field from the scanned record.
+func scannedCells(
+	fields []string,
+	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
+) []string {
+	values := scan(record.Fields())
+	cells := make([]string, len(fields))
+	for i, field := range fields {
+		cells[i] = formatTableValue(fieldValue(values, field))
 	}
-	return output.RenderRecordPretty(rows, style)
+	return cells
+}
+
+// scannedKeyValues renders one row per field from the scanned record.
+func scannedKeyValues(
+	fields []string,
+	record resources.ProjectedRecord,
+	scan func(map[string]any) map[string]any,
+) []output.KV {
+	cells := scannedCells(fields, record, scan)
+	rows := make([]output.KV, len(fields))
+	for i, field := range fields {
+		rows[i] = output.KV{Key: field, Kind: field, Value: cells[i]}
+	}
+	return rows
+}
+
+// The record renderers write through Renderer.WriteScannedText: they render
+// every value from scan(record.Fields()), the record JSON output emits,
+// scanned as JSON output scans it; the rest is field names (catalog paths,
+// --fields validated against the catalog) and layout.
+
+// fieldValue returns what a --fields name (a top-level field or a dotted path)
+// reaches in a record, or nil when it reaches nothing.
+func fieldValue(values map[string]any, field string) any {
+	value, _ := resources.ProjectedPathValue(values, field)
+	return value
 }
 
 // formatTableValue renders a value for the terminal-oriented table, pretty, and
@@ -190,7 +218,7 @@ func formatTableValue(value any) string {
 
 func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {
 	return []output.KV{
-		{Key: "Status", Value: status.Status, Kind: "ok"},
+		{Key: "Status", Value: status.Status, Kind: doctorStatusKind(status.Status)},
 		{Key: "Mode", Value: status.Mode, Kind: "mode"},
 		{Key: "Profile", Value: status.Profile},
 		{Key: "Config", Value: status.Config},
@@ -202,6 +230,15 @@ func doctorStatusRows(status machineruntime.DoctorStatus) []output.KV {
 		{Key: "Credentials", Value: status.Credentials},
 		{Key: "Live API", Value: status.LiveAPI},
 	}
+}
+
+// doctorStatusKind colors the doctor status: green when live reads can run,
+// a warning otherwise.
+func doctorStatusKind(status string) string {
+	if status == "OK" {
+		return "ok"
+	}
+	return "warning"
 }
 
 func authStatusRows(status machineruntime.AuthStatus) []output.KV {

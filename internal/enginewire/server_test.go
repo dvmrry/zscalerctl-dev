@@ -193,3 +193,34 @@ func TestServerDynamicNumbersRetainExactLexemes(t *testing.T) {
 		}
 	}
 }
+
+// TestFailureDetailValidation pins where the optional live-failure detail is
+// allowed: only on live_access_failed and on list/show dump failures, with a
+// reason from FailureReasons, and status/retryable only alongside a reason.
+func TestFailureDetailValidation(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		failure interface{ Validate() error }
+		valid   bool
+	}{
+		{"live with detail", NonCredentialFailure{Kind: FailureLiveAccess, Reason: "rate_limited", Status: 429, Retryable: true}, true},
+		{"live without detail", NonCredentialFailure{Kind: FailureLiveAccess}, true},
+		{"reason on usage", NonCredentialFailure{Kind: FailureUsage, Reason: "forbidden"}, false},
+		{"unknown reason", NonCredentialFailure{Kind: FailureLiveAccess, Reason: "made_up"}, false},
+		{"status without reason", NonCredentialFailure{Kind: FailureLiveAccess, Status: 403}, false},
+		{"retryable without reason", NonCredentialFailure{Kind: FailureLiveAccess, Retryable: true}, false},
+		{"status out of range", NonCredentialFailure{Kind: FailureLiveAccess, Reason: "forbidden", Status: 42}, false},
+		{"dump list with detail", DumpFailure{Product: "zia", Resource: "locations", Phase: "list", Kind: "list_failed", Reason: "forbidden", Status: 403}, true},
+		{"dump projection with detail", DumpFailure{Product: "zia", Resource: "locations", Phase: "project", Kind: "projection_failed", Reason: "forbidden"}, false},
+	} {
+		err := tc.failure.Validate()
+		if tc.valid && err != nil {
+			t.Errorf("%s: Validate() = %v, want nil", tc.name, err)
+		}
+		if !tc.valid && !errors.Is(err, ErrInvalidFrame) {
+			t.Errorf("%s: Validate() = %v, want ErrInvalidFrame", tc.name, err)
+		}
+	}
+}

@@ -148,9 +148,46 @@ The default output rule is fail closed:
   backstop; name deny-lists, ambiguous-name holdouts, and fail-closed unknown
   names are the controls there. The scan is a backstop, not proof that every
   unlabeled secret is detectable.
-- The high-entropy backstop intentionally only scans token candidates at least
-  32 characters long. A shorter, unlabeled, non-self-describing secret can
-  survive if it lands in an emitted field; fail-closed field naming,
+- The general high-entropy backstop scans token candidates at least 32
+  characters long. Those tokens keep `main`'s entropy decision except
+  recognized public identifiers in `standard` mode (cloud resource IDs, ULIDs,
+  digests, revisions and ObjectIds named by their context, and
+  `Name=<identifier>` tokens such as `PartitionKey=<uuid>`). Word-built names
+  of 32 or more characters are redacted in free text as on `main`: they cannot
+  be told apart from word-built passwords. Two narrower rules address pasted PoC keys below that
+  floor: credential-shaped values after generic labels (`key`, `token`,
+  `secret`, `password`, `passwd`, `pwd`, `bearer`) in every rendered string,
+  and 24-31 character letter-and-digit tokens that do not read as words in
+  free-text fields. Structured display names (`name`, `configuredName`,
+  `displayName`) in `standard` mode use the same final scanner as `main`:
+  labeled credentials, known token prefixes, provisioning keys and other
+  self-describing secrets are redacted, but unlabeled keys pasted into a name
+  are not detected, by design, so long generated operational names stay
+  readable. These are heuristics. `TestRandomKeyCatchRates` in
+  `internal/redact` measures them on random keys with a fixed seed and pins
+  floors: labeled values redact at about 90-100%, and unlabeled 24-31
+  character letter-and-digit keys in free text at about 87-99%, with
+  hyphenated base64url in free text near 45%. Values are treated as words, not keys, when their letters parse as
+  CamelCase or acronym words, or, if single-case, contain at least 30% vowels.
+  A last `paste_credential` rule only adds redactions for common paste
+  formats: punctuation-bearing passwords after password labels (bounded by
+  quotes or delimiters), CLI and PowerShell password arguments, JSON
+  credential keys and name/value pairs, Markdown table cells, arrows,
+  full-width colons and next-line values after a label line, percent-encoded
+  `sig=`/`key=`/`credential=` query values, Basic auth, and common localized
+  labels. Label rules skip text that names metadata rather than a credential:
+  database and tag keys (`partition key`, `PartitionKey=`, `Tag key:`), key
+  fingerprints, digests, revisions and identifiers, `pwd` followed by a path,
+  cloud resource IDs, ULIDs, and vendor-prefixed documentation names. On a
+  held-out set of 300 realistic pastes and 599 tenant strings, never used for
+  tuning, this reduces surviving credentials from 318 to 21 scanner findings
+  versus `main`, and changed tenant strings from 72 to 65, with no new
+  regressions. The encoded corpora under `internal/redact/testdata/corpus`
+  pin these results.
+  Keys split across lines,
+  unlabeled keys under 24 characters in free text, unlabeled keys of any
+  length in `standard` display names, and hex keys in `standard` structured
+  fields can survive; fail-closed field naming,
   ambiguous-name holdouts, and live-smoke inspection remain the controls for
   that residual.
 - Context-sensitive generic field names, such as `value`, `data`, `content`,

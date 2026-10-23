@@ -35,7 +35,7 @@ github.com/clipperhouse/uax29/v2/graphemes
 # github.com/fatih/color v1.18.0
 ## explicit; go 1.17
 github.com/fatih/color
-# github.com/go-jose/go-jose/v4 v4.1.4
+# github.com/go-jose/go-jose/v4 v4.1.5
 ## explicit; go 1.24.0
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher
@@ -114,8 +114,8 @@ github.com/spf13/pflag
 # github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 ## explicit; go 1.19
 github.com/xo/terminfo
-# github.com/zscaler/zscaler-sdk-go/v3 v3.8.48
-## explicit; go 1.25.8
+# github.com/zscaler/zscaler-sdk-go/v3 v3.8.55
+## explicit; go 1.26.0
 github.com/zscaler/zscaler-sdk-go/v3/cache
 github.com/zscaler/zscaler-sdk-go/v3/logger
 github.com/zscaler/zscaler-sdk-go/v3/ratelimiter
@@ -225,10 +225,10 @@ github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/usermanagement/users
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers
-github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/groups
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers
+github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller
 github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup

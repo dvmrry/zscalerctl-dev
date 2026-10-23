@@ -30,10 +30,13 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  config show")
 	fmt.Fprintln(w, "  config init [--force]")
 	fmt.Fprintln(w, "  zia url-lookup <url> [url...]")
+	fmt.Fprintln(w, "  zia admin-audit-logs status")
 	fmt.Fprintln(w, "  schema list")
 	fmt.Fprintln(w, "  introspect")
 	fmt.Fprintln(w, "  machine manifest")
 	fmt.Fprintln(w, "  dump --out <dir> [--products names] [--resources names] [--continue-on-error] [--force]")
+	fmt.Fprintln(w, "  refs to <product> <resource> <id>")
+	fmt.Fprintln(w, "  refs check <product> <resource>")
 	fmt.Fprintln(w, "  diff <old-dump-dir> <new-dump-dir> [--products names] [--resources names] [--ignore-operational] [--detail] [--allow-partial] [--fail-on-drift]")
 	fmt.Fprintf(w, "  completion %s\n", completionShellNames())
 	fmt.Fprintln(w, "  version")
@@ -55,8 +58,9 @@ func (a *App) writeUsage(w io.Writer, catalog resources.ResourceCatalog) {
 	fmt.Fprintln(w, "  --no-cache")
 	fmt.Fprintln(w, "  --log-level off|error|warn|info|debug")
 	fmt.Fprintln(w, "  --fields <a,b,c>")
-	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; repeatable, all must match)")
+	fmt.Fprintln(w, "  --filter <key=value|key~value>   (list only; key may be a nested path; repeatable, all must match)")
 	fmt.Fprintln(w, "  --search <term>                  (list only; case-insensitive, any field)")
+	fmt.Fprintln(w, "  --count-by <a,b,c>               (list only; counts instead of records; lists count per element)")
 }
 
 func dumpUsage(catalog resources.ResourceCatalog) string {
@@ -138,7 +142,7 @@ func productCommandUsage(product resources.Product, width int, catalog resources
 		columnize(names, width),
 	)
 	if product == resources.ProductZIA {
-		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]"
+		msg += "\n\ndiagnostics:\n  zscalerctl zia url-lookup <url> [url...]\n  zscalerctl zia admin-audit-logs status"
 	}
 	return msg
 }

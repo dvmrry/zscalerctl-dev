@@ -60,7 +60,11 @@ type MachineError struct {
 	Operation Operation `json:"operation,omitempty"`
 	Product   string    `json:"product,omitempty"`
 	Resource  string    `json:"resource,omitempty"`
-	cause     error
+	// Detail says why a live read failed. It is not part of this type's JSON
+	// (the machine protocol is unchanged); the CLI error envelope and dump
+	// error records copy it into their own versioned fields.
+	Detail FailureDetail `json:"-"`
+	cause  error
 }
 
 // Error returns a stable human fallback for callers that handle MachineError as

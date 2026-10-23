@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -86,7 +87,7 @@ func TestEffectiveFieldsNarrowsValidatesAndCannotWiden(t *testing.T) {
 		Fields: []resources.FieldSpec{
 			{Name: "id", Classification: resources.ClassOperational, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
 			{Name: "name", Classification: resources.ClassTenantConfig, AllowedModes: []redact.Mode{redact.ModeStandard, redact.ModeShare}},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 
@@ -217,6 +218,65 @@ func TestRunProductReadOperationsRouteThroughMachineExecutor(t *testing.T) {
 				t.Fatalf("%s output = %#v, want typed machine result record", tt.name, decoded)
 			}
 		})
+	}
+}
+
+// TestLiveReadNoticeIsWrittenOnlyWhenTheCommandSucceeds pins the stderr
+// contract for the implicit-profile notice: a successful read prints it once,
+// and a failed read leaves stderr to the error envelope alone.
+func TestLiveReadNoticeIsWrittenOnlyWhenTheCommandSucceeds(t *testing.T) {
+	const notice = "zscalerctl: using profile \"prod\" (default_profile; 2 profiles configured); pass --profile to choose\n"
+	for _, tc := range []struct {
+		name   string
+		fail   bool
+		output bool
+		want   string
+	}{
+		{name: "success", want: notice},
+		{name: "failure", fail: true},
+		// The read succeeds but publishing --output fails afterwards.
+		{name: "output failure", fail: true, output: true},
+	} {
+		var out, errOut bytes.Buffer
+		app := NewWithOptions(&out, &errOut, nil, Options{
+			Reader:  &machineRouteReader{},
+			Catalog: machineRouteCatalog(),
+		})
+		app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+			// What the runtime writes to Options.Notices for an implicit profile.
+			app.notices.WriteString(notice)
+			if tc.fail && !tc.output {
+				return nil, errors.New("live access failed")
+			}
+			return &recordingMachineRuntime{records: []map[string]any{{"name": "HQ"}}, redaction: redact.ModeStandard}, nil
+		}
+		args := []string{"--format", "json", "zia", "locations", "list"}
+		if tc.output {
+			args = append([]string{"--output", filepath.Join(t.TempDir(), "missing", "out.json")}, args...)
+		}
+		err := app.Run(context.Background(), args)
+		if (err != nil) != tc.fail {
+			t.Fatalf("%s: App.Run(%v) error = %v, want failure %v", tc.name, args, err, tc.fail)
+		}
+		if got := errOut.String(); got != tc.want {
+			t.Errorf("%s: stderr = %q, want %q", tc.name, got, tc.want)
+		}
+		if strings.Contains(out.String(), "using profile") {
+			t.Errorf("%s: stdout = %q, want no notice", tc.name, out.String())
+		}
+
+		// A second command on the same App starts with no pending notices.
+		args = []string{"--format", "json", "zia", "locations", "list"}
+		errOut.Reset()
+		app.machineRuntimeFactory = func(context.Context, config.Config, globalOptions) (machineRuntime, error) {
+			return &recordingMachineRuntime{records: []map[string]any{{"name": "HQ"}}, redaction: redact.ModeStandard}, nil
+		}
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("%s: second App.Run(%v) error = %v, want nil", tc.name, args, err)
+		}
+		if got := errOut.String(); got != "" {
+			t.Errorf("%s: second run stderr = %q, want empty", tc.name, got)
+		}
 	}
 }
 
@@ -577,9 +637,10 @@ func TestResourceTableAndPrettyRenderersEscapeTerminalFormatRunes(t *testing.T) 
 	}})
 	style := output.NewStyle(false, false)
 	style.Width = 120
+	scan := output.NewRenderer(redact.New(redact.ModeStandard)).ScanRecord
 	for name, rendered := range map[string]string{
-		"table":  renderRecordsTable([]string{"name"}, records, style).String(),
-		"pretty": renderRecordsPretty([]string{"name"}, records, style).String(),
+		"table":  renderRecordsTable([]string{"name"}, records, scan, style).String(),
+		"pretty": renderRecordsPretty([]string{"name"}, records, scan, style).String(),
 	} {
 		rendered := rendered
 		t.Run(name, func(t *testing.T) {

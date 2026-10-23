@@ -469,6 +469,115 @@ func TestExecutorAppliesFieldsFiltersAndSearchAfterProjection(t *testing.T) {
 	}
 }
 
+func TestExecutorFiltersNestedPathsElementByElement(t *testing.T) {
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "users",
+		Operations: resources.ListOperations(),
+		Fields: []resources.FieldSpec{
+			{Name: "name", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			{Name: "groups", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}, Fields: []resources.FieldSpec{
+				{Name: "name", Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}},
+			}},
+		},
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"name": "alice", "groups": []any{map[string]any{"name": "APP_DEV"}}}),
+		resources.NewSourceRecord(map[string]any{"name": "bob", "groups": []any{map[string]any{"name": "APP_INFOSEC_DEV"}}}),
+	})
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify() error = %v, want nil", err)
+	}
+	loader := &fakeBrowserLoader{records: projected}
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeStandard,
+	}
+	request := func(field string) machine.Request {
+		return machine.Request{
+			RequestID:  "req-nested",
+			Capability: machine.CapabilityResourcesRead,
+			Operation:  machine.OperationList,
+			Input: &machine.Input{
+				Product:  "zia",
+				Resource: "users",
+				Fields:   []string{"name"},
+				Filters:  []machine.Filter{{Field: field, Operator: "exact", Value: "APP_DEV"}},
+			},
+		}
+	}
+
+	got, err := executor.Execute(context.Background(), request("groups.name"))
+	if err != nil {
+		t.Fatalf("Executor.Execute(groups.name filter) error = %v, want nil", err)
+	}
+	if want := []map[string]any{{"name": "alice"}}; !reflect.DeepEqual(got.Records, want) {
+		t.Fatalf("Executor.Execute(groups.name filter).Records = %#v, want %#v", got.Records, want)
+	}
+	loader.calls = nil
+	got, err = executor.Execute(context.Background(), request("groups.notAField"))
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(groups.notAField filter) loader calls = %#v, want none", loader.calls)
+	}
+	if err == nil {
+		t.Fatal("Executor.Execute(groups.notAField filter) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "users")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+}
+
+func TestExecutorSelectsNestedFieldPaths(t *testing.T) {
+	field := func(name string, nested ...resources.FieldSpec) resources.FieldSpec {
+		return resources.FieldSpec{Name: name, Classification: resources.ClassPublicProjectData, AllowedModes: []redact.Mode{redact.ModeStandard}, Fields: nested}
+	}
+	spec := resources.ResourceSpec{
+		Product:    resources.ProductZIA,
+		Name:       "users",
+		Operations: resources.ListOperations(),
+		Fields:     []resources.FieldSpec{field("name"), field("groups", field("id"), field("name"))},
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, redact.ModeStandard, []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"name": "alice", "groups": []any{map[string]any{"id": 7, "name": "APP_DEV"}}}),
+	})
+	if err != nil {
+		t.Fatalf("ProjectRecordsAndVerify() error = %v, want nil", err)
+	}
+	loader := &fakeBrowserLoader{records: projected}
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeStandard,
+	}
+	request := func(fields ...string) machine.Request {
+		return machine.Request{
+			RequestID:  "req-nested-fields",
+			Capability: machine.CapabilityResourcesRead,
+			Operation:  machine.OperationList,
+			Input:      &machine.Input{Product: "zia", Resource: "users", Fields: fields},
+		}
+	}
+
+	got, err := executor.Execute(context.Background(), request("name", "groups.name"))
+	if err != nil {
+		t.Fatalf("Executor.Execute(groups.name fields) error = %v, want nil", err)
+	}
+	want := []map[string]any{{"name": "alice", "groups": []any{map[string]any{"name": "APP_DEV"}}}}
+	if !reflect.DeepEqual(got.Records, want) {
+		t.Fatalf("Executor.Execute(groups.name fields).Records = %#v, want %#v", got.Records, want)
+	}
+	loader.calls = nil
+	got, err = executor.Execute(context.Background(), request("groups.notAField"))
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(groups.notAField fields) loader calls = %#v, want none", loader.calls)
+	}
+	if err == nil {
+		t.Fatal("Executor.Execute(groups.notAField fields) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "users")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+}
+
 func TestExecutorRejectsUnsupportedInputSemanticsBeforeLoader(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -970,5 +1079,89 @@ func assertResponseError(t *testing.T, got machine.Response, wantKind string) {
 	}
 	if got.Error.Kind != wantKind {
 		t.Fatalf("Executor.Execute response error kind = %q, want %q", got.Error.Kind, wantKind)
+	}
+}
+
+// TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader keeps the
+// machine contract in step with the CLI: a filter on a field the executor's
+// redaction mode never renders is a usage error before any load, not an empty
+// success.
+func TestExecutorFilterOnFieldTheModeOmitsIsUsageErrorBeforeLoader(t *testing.T) {
+	loader := &fakeBrowserLoader{
+		records: projectedRecordsFromFields(t, map[string]any{"id": "123"}),
+	}
+	spec := testExecutorSpec(resources.ProductZIA, "locations", resources.ReadOperations(), "id")
+	spec.Fields = append(spec.Fields, resources.FieldSpec{
+		Name:           "hostname",
+		Classification: resources.ClassSensitiveIdentifier,
+		AllowedModes:   []redact.Mode{redact.ModeStandard},
+	})
+	executor := machine.Executor{
+		Browser:   loader,
+		Catalog:   resources.ResourceCatalog{spec},
+		Redaction: redact.ModeShare,
+	}
+	req := machine.Request{
+		RequestID:  "req-omitted-filter",
+		Capability: machine.CapabilityResourcesRead,
+		Operation:  machine.OperationList,
+		Input: &machine.Input{
+			Product:  "zia",
+			Resource: "locations",
+			Filters:  []machine.Filter{{Field: "hostname", Operator: "=", Value: "host-canary-01"}},
+		},
+	}
+
+	got, err := executor.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("Executor.Execute(omitted-field filter) error = nil, want usage MachineError")
+	}
+	assertMachineError(t, err, machine.ErrorKindUsage, machine.OperationList, "zia", "locations")
+	assertResponseError(t, got, machine.ErrorKindUsage)
+	if len(loader.calls) != 0 {
+		t.Fatalf("Executor.Execute(omitted-field filter) loader calls = %#v, want none", loader.calls)
+	}
+	if strings.Contains(err.Error(), "host-canary-01") {
+		t.Fatalf("Executor.Execute(omitted-field filter) error = %q echoes the filter value", err.Error())
+	}
+	if got.Error == nil || strings.Contains(got.Error.Message, "host-canary-01") {
+		t.Fatalf("Executor.Execute(omitted-field filter) response error = %+v, want a message without the filter value", got.Error)
+	}
+}
+
+// TestExecutorUnknownResourceNamesCoverageGap pins that a machine caller is
+// told why zscalerctl cannot read a declared gap, on the load path and the
+// field preflight path, while an undeclared name is never echoed back.
+func TestExecutorUnknownResourceNamesCoverageGap(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		resource string
+		input    machine.Input
+		want     string
+	}{
+		{name: "load gap", resource: "policy-rules", want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "preflight gap", resource: "policy-rules", input: machine.Input{Fields: []string{"id"}}, want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "load alias", resource: "Access_Policies", want: "zscalerctl does not read zpa/policy-rules ("},
+		{name: "load undeclared", resource: "no-such-canary", want: "unknown resource"},
+		{name: "preflight undeclared", resource: "no-such-canary", input: machine.Input{Fields: []string{"id"}}, want: "unknown resource"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := machine.Executor{Browser: &fakeBrowserLoader{err: resources.ErrUnknownResource}}
+			input := tt.input
+			input.Product, input.Resource = "zpa", tt.resource
+			_, err := executor.Execute(context.Background(), machine.Request{
+				RequestID:  "req-gap",
+				Capability: machine.CapabilityResourcesRead,
+				Operation:  machine.OperationList,
+				Input:      &input,
+			})
+			machineErr := assertMachineError(t, err, machine.ErrorKindUnknownResource, machine.OperationList, "zpa", tt.resource)
+			if !strings.HasPrefix(machineErr.Message, tt.want) {
+				t.Errorf("Executor.Execute(%s) message = %q, want prefix %q", tt.name, machineErr.Message, tt.want)
+			}
+			if strings.Contains(machineErr.Message, "canary") || strings.Contains(machineErr.Message, "Access_Policies") {
+				t.Errorf("Executor.Execute(%s) message echoed the requested name: %q", tt.name, machineErr.Message)
+			}
+		})
 	}
 }

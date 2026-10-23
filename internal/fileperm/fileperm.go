@@ -11,10 +11,6 @@ func Validate(path string) error {
 	return validate(path)
 }
 
-func ValidateOpenFile(file *os.File) error {
-	return validateOpenFile(file)
-}
-
 func OpenOwnerOnly(path string) (*os.File, error) {
 	return openOwnerOnly(path)
 }
@@ -26,4 +22,10 @@ func OpenOwnerOnly(path string) (*os.File, error) {
 // passes the same validator OpenOwnerOnly enforces.
 func WriteOwnerOnly(path string, data []byte) error {
 	return writeOwnerOnly(path, data)
+}
+
+// WriteOwnerOnlyRoot creates name beneath root with owner-only permissions. It
+// fails if the entry already exists.
+func WriteOwnerOnlyRoot(root *os.Root, name string, data []byte) error {
+	return writeOwnerOnlyRoot(root, name, data)
 }

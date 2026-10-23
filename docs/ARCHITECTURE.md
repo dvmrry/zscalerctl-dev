@@ -133,8 +133,9 @@ The adapter is responsible for:
   files.
 - Explicit HTTP client and request timeouts.
 - Direct outbound HTTP by default. The adapter disables ambient
-  `HTTP_PROXY`/`HTTPS_PROXY` discovery; proxy support must be added as an
-  explicit `zscalerctl` setting if it becomes necessary.
+  `HTTP_PROXY`/`HTTPS_PROXY` discovery; a proxy is used only when the
+  operator opts in with `ZSCALERCTL_PROXY_FROM_ENV=true` or sets
+  `ZSCALERCTL_PROXY_URL` (see [INSTALL.md](INSTALL.md)).
 - Finite retry behavior, including rate-limit handling (see Rate Limits And
   Pacing below).
 - Context cancellation.
@@ -154,6 +155,25 @@ The live reader creates an SDK service per single-resource CLI operation and
 closes it after the call. Dump commands create one SDK service per selected
 product that supports sessions and close it when collection finishes, avoiding
 repeated authentication while keeping token lifetime bounded to the command.
+
+### Where The Reader Departs From The SDK
+
+Every endpoint the reader calls is one the SDK itself defines, and responses
+decode into SDK models with three exceptions below. Each departure exists
+because the SDK behavior would return a wrong or silently incomplete answer.
+Audited against SDK v3.8.55; re-check on every SDK bump and switch back
+wherever the SDK closes the gap.
+
+| Departure | Where | SDK behavior it avoids |
+| --- | --- | --- |
+| ZIA list pagination (`ziaWalkPages`) | about 76 list reads | `common.ReadAllPages` stops at the first page shorter than the page size and has no other check. About 25 ZIA list endpoints ignore `page` (observed live); the SDK then repeats full pages without end or truncates silently at a server cap. The walker detects repeats, duplicate ids and width changes, probes a smaller page size, and fails closed. |
+| ZPA list pagination (`zpaPaginate`) | ZPA lists | The SDK treats a missing or malformed `totalPages` as zero, re-reads the bound from every page, and has no ceiling. The walker follows the first declared page count and fails closed on contradiction. |
+| `ziaLiteLocation` | `zia locations-lite` | `locationlite.LocationLite` uses plain booleans (omitted keys read as false) and lacks keys the API returns. |
+| `adminAuditLogsStatusResponse` | `zia admin-audit-logs status` | `AuditLogEntryReportTaskInfo` reads a null progress count as 0 and decodes the free-form `errorMessage`, which is never shown. |
+| `oneAPIClouds` | `ZSCALERCTL_CLOUD` | The SDK builds the OAuth host (which receives the client secret) and the API host from any cloud string. Product cloud names (zscalertwo, ZPATWO, ...) build hosts that do not exist. The reader accepts only the supported OneAPI clouds: `PRODUCTION`, `ALPHA`, `BETA`, `GOV` and `GOVUS`. |
+
+`URLClassification` (`zia url-lookup`) is not a departure: the call is
+`urlcategories.GetURLLookup`, copied into an adapter-owned output view.
 
 ## Rate Limits And Pacing
 
@@ -254,14 +274,61 @@ values use typed markers such as `<REDACTED:SECRET>` and
 `<REDACTED:PROVISIONING_KEY>` so the operator can tell that data was
 intentionally obscured. This scanner is a backstop for self-describing secret
 shapes; it must not be treated as a substitute for field allow-list projection.
+In JSON it also replaces the value of a key ending in a secret word
+(`password`, `token`, `session`, `clientSecret`, ...): a string, or an object or
+array whole; a number too, except under the two reviewed ZCC settings whose
+names end in a secret word (`refreshKerberosToken`,
+`zpaAuthExpOnWinLogonSession`); `true`, `false` and `null` never. A test keeps every
+field the catalog renders clear of this rule. The plain-text assignment rules
+(`password: false`, `token=1`) stay stricter, since a pasted fragment has no
+types.
 Rendered string values receive one extra backstop: a conservative high-entropy
 token scan for bare unlabeled secret material. Canonical UUIDs are preserved
 everywhere. In `standard` mode, structured rendered strings also preserve compact
 UUIDs and 40/64 character hex fingerprints; `share` and `paranoid` redact those
 fingerprint-shaped values. Free-text prose preserves git commit SHAs only when
-nearby words identify them as git revisions. The scan does not guarantee
-detection of every short unlabeled secret below the 32-character entropy floor,
-or of every hex-shaped secret in a rendering `standard` field.
+nearby words identify them as git revisions.
+
+Pasted PoC keys are the main free-text risk, so narrower rules sit beside that
+scan. Well-known vendor token formats (GitHub, GitLab, Slack, Stripe, Google
+API keys, SendGrid, AWS access key IDs, npm, Shopify, Twilio API key SIDs) are
+redacted by prefix at any length above the format's minimum. A value after a
+generic credential label (`key`, `token`, `secret`, `credential`, `password`,
+`passwd`, `pwd`, `bearer`, `sig`, including CamelCase suffixes such as
+`AccountKey=`; followed by `:`, `=` or whitespace, or by natural phrasing of up
+to six words before a `:`, `=`, `is` or `was` cue, as in "key for the vendor
+portal is ...",
+including Unicode spaces, with the value optionally wrapped in ASCII or
+typographic quotes, brackets or guillemets, and decoded JSON keys named exactly `key`, `pwd`,
+`passwd` or `bearer`) is redacted when it is credential-shaped: a canonical
+UUID, 32+ hex characters, a 12+ character letter-and-digit segment that is not
+a word joined to a number (after `password`, `passwd` or `pwd`, any 8+
+character letter-and-digit segment, since weak passwords look like words and
+numbers), or separator-split material that does not read as words. Labels are
+found first and each value ends at the next label with a value, so nested
+labels (`key: Bearer <key>`, `key: key=<uuid>`) are each examined; a value cut
+short by a label-like fragment inside it is also judged as one unbroken run.
+The scan stays linear. A quoted value with JSON escapes is judged on its
+decoded content, including labels the decoding reveals, as are escaped quoted
+literals (up to four levels deep) in rendered strings.
+"Reads as words" means the letters parse as CamelCase or acronym words or,
+when single-case, contain at least 30% vowels. Free-text fields also redact unseparated 24-31 character
+letter-and-digit tokens that do not read as words and have high entropy. In
+`standard` mode, structured display names (`name`, `configuredName`,
+`displayName`) use the same final scanner as `main`: labeled credentials,
+known token prefixes, provisioning keys and other self-describing secrets are
+redacted, but there is no high-entropy or unlabeled-key check, so long
+operational names survive and an unlabeled key pasted into a name is not
+detected, by design. Conversely, an identifier after a credential label that mixes several single
+letters and numbers (beyond one model letter such as the `K` in
+`CiscoNexus9K01`) can read as key material and be redacted. A letters-only
+value after a label counts as a key when it is 16+ characters, mixes upper
+and lower case, does not read as words and has high entropy; Base64 values
+(standard or URL-safe, padding ignored) are judged whole the same way, and
+Markdown emphasis around a label (`**key**:`) is accepted. Single-case
+letters-only values and unlabeled letters-only tokens are not judged. The scan does not guarantee detection of every short unlabeled secret, an
+unlabeled key in a `standard` display name, a token split across lines, a single-case key that reads like concatenated words, or a
+hex-shaped secret in a rendering `standard` field.
 
 ## Secret-Safe Types
 
@@ -379,8 +446,21 @@ explicit `table`, `json`, or `pretty`.
 
 The `pretty` renderer is a presentation overlay only: it consumes the same
 already-projected, already-redacted records as every other format and adds no
-new data path. Its output still passes through the final redaction byte-scan
-before stdout, and it is byte-clean (no ANSI escapes) whenever color is off.
+new data path. Record output in `table` and `pretty` (list, get, show) gets
+the final scan per record instead of over the rendered text
+(`Renderer.WriteScannedText`): each record, as `json` output emits it, is
+scanned as one JSON document, so rules that read sibling context (a
+`{"key": "password", "value": ...}` pair) apply as they do in JSON, and the
+cells are rendered from the scanned record; the rest is catalog field names
+and layout. Scanning the layout as prose read a nested `map[key:value]` cell
+as a pasted assignment, so text and JSON disagreed; a test now requires all
+four record renderers to redact what JSON redacts, for every catalog field
+and for sibling-context cases. Numbers in these cells render as JSON writes
+them (`1000000`, not `1e+06`).
+Other text output (counts, diff, refs, status, help, errors) still passes the
+final byte-scan before stdout. Notices built only from catalog names (the
+omitted-field notice) are written unscanned; other notices are scanned. The
+`pretty` renderer is byte-clean (no ANSI escapes) whenever color is off.
 Lip Gloss, Fang, or any future human-CLI presentation dependency may improve
 this overlay only if JSON, NDJSON, machine error envelopes, completion,
 introspection, parsing, and resource routing remain unchanged.
@@ -511,9 +591,14 @@ immutable projected collection. It implements the browser loader and direct
 projected-get interfaces consumed by `internal/machine.Executor`, allowing
 repeated reads without a live reader. The CLI selects this path before config
 loading when `--from-dump` is supplied. Its serialized resource admission budget
-is 256 MiB; it is not an RSS bound. Existing diff input limits remain unchanged.
+is 256 MiB; ordinary diff applies the same serialized-byte budget across the
+selected resource files in both input dumps. Neither limit is an RSS bound.
 Safe collection provenance includes validated schema, mode, status and counts;
 free-form manifest strings and source paths are not returned as trusted metadata.
+Admission reprojects every stored record and rejects the artifact if any value
+changes. A dump written before a scanner change that now redacts a stored value
+therefore fails `--from-dump` and `diff` admission instead of serving that
+value; collect a new dump.
 
 `internal/resources.DescribeSemantics` adds a separate candidate metadata
 contract for three reviewed resources. It describes existing renderable fields

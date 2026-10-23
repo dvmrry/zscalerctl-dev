@@ -21,8 +21,10 @@ before stdout or dump files. Rendered string values usually receive a
 conservative high-entropy token scan for bare unlabeled secret material.
 Structured display-name fields such as `name`, `configuredName`, and
 `displayName` skip only the high-entropy heuristic in `standard` mode so long
-cloud-style identifiers remain readable during local operation. `share` and
-`paranoid` redact high-entropy display-name values. Self-describing secrets such
+cloud-style identifiers remain readable during local operation; an unlabeled
+key pasted into such a name is not detected, by design. `share` and
+`paranoid` redact high-entropy display-name values. Values after generic credential labels such as `key:`, `token`, or
+`Bearer` redact in every field and mode when they are credential-shaped. Self-describing secrets such
 as `psk=...`, credential URLs, JWTs, and private keys still redact in display
 names in every mode. Canonical UUIDs and contextual git commit SHAs are
 preserved. In `standard` mode, structured rendered strings also preserve
@@ -263,6 +265,40 @@ and `secondaryDestVip` objects. The reader maps those objects into source
 records, but the catalog does not allow them to render, so projection drops
 them.
 
+## ZIA Locations Lite
+
+Commands:
+
+```sh
+zscalerctl zia locations-lite list
+```
+
+Fields:
+
+| Field | Classification | Modes | Notes |
+| --- | --- | --- | --- |
+| `id` | Operational metadata | `standard`, `share`, `paranoid` | Location identifier; predefined locations such as Road Warrior (`-3`) appear here and not in `zia locations`. |
+| `name` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
+| `parentId` | Operational metadata | `standard`, `share` | Parent location identifier. |
+| `ecLocation`, `otherSubLocation` | Operational metadata | `standard`, `share` | Location kind flags. |
+| `tz` | Tenant configuration | `standard`, `share` | Time zone. |
+| `aupEnabled`, `aupBlockInternetUntilAccepted`, `aupForceSslInspection`, `cautionEnabled`, `digestAuthEnabled`, `kerberosAuth`, `surrogateIP`, `surrogateIPEnforcedForKnownBrowsers`, `xffForwardEnabled`, `ofwEnabled`, `ipsControl`, `iotDiscoveryEnabled`, `zappSslScanEnabled` | Tenant configuration | `standard`, `share` | Location settings, classified as on `zia locations`. |
+
+`GET /locations/lite` is a short view, not a superset of `zia locations`: on a
+test tenant it returned 3 records, one of them a regular location. Read without
+filters, as zscalerctl reads it, the API leaves out sublocations and every
+parent location that has sublocations unless `includeSubLocations` or
+`includeParentLocations` is set (per the SDK docs; zscalerctl sends neither), so
+a location missing here may still be configured; read `zia locations` and `zia
+sublocations` for those. The fields are the keys a live read returned; keys the
+SDK model lists but no live read returned (`ipv6Enabled`, `other6SubLocation`,
+`subLocScope*`, `subLocAccIds`) are not read. Rule `locations` references list
+it as a target beside `zia locations` and `zia sublocations`, so `refs` resolves
+predefined location ids. Because a missing id could be in any target, a `refs`
+run that cannot read `locations-lite` (no role access, or a `--from-dump` saved
+before the resource existed) reports every rule `locations` field as
+`target_not_checked`; dump again to restore those checks.
+
 ## ZIA Sublocations
 
 Commands:
@@ -330,9 +366,14 @@ zscalerctl zia url-categories list
 zscalerctl zia url-categories get <id>
 ```
 
-The list includes ordinary `URL_CATEGORY` records and `TLD_CATEGORY` records.
-List responses request the API's count-only payload; use `get <id>` when the
-category's members are needed. TLD members use the existing `urls` field.
+The list walks the API's pages with a bounded paginator and includes ordinary
+`URL_CATEGORY` records and `TLD_CATEGORY` records. The paginator accounts for
+the service clamping a requested page size to 20 instead of treating the first
+short response as complete, and for tenants whose service ignores pagination
+and returns every category on each request (when that is fewer than the
+requested page size). List responses request the API's count-only
+payload; use `get <id>` when the category's members are needed. TLD members use
+the existing `urls` field.
 
 Fields:
 
@@ -457,10 +498,10 @@ Fields:
 | `description` | Free text | `standard` | High-risk admin-controlled text; scanned before output, including bare high-entropy tokens. |
 | `enabled`, `deleted`, `dynamicValidationSubmitted`, `dynamicValidationRejected`, `dynamicValidationSucceeded`, `disabledFromZSCM`, `dynamicValRejectCode` | Operational metadata | `standard`, `share`, `paranoid` | Rule state and dynamic-validation status flags. |
 | `promoteTime`, `ruleTextModTime` | Operational metadata | `standard`, `share` | Non-principal rule timestamps. |
+| `category` | Tenant configuration | `standard` | Threat category reference: `id` and `isNameL10nTag` in every mode the parent renders, `name` in `standard`. |
 
-The SDK also returns the signature rule text and category reference. The reader
-keeps the detection text and category out of rendered output until they are
-separately modeled.
+The SDK also returns the signature rule text. It embeds tenant network
+indicators, so the reader never maps it and it is not in the catalog.
 
 ## ZIA IPs Policies
 
@@ -2081,6 +2122,14 @@ Bounded ZIA, ZTW, and ZCC list readers have corresponding automated and
 live-count checks in
 [SDK Pagination Validation](SDK_PAGINATION_VALIDATION.md).
 
+Paginated readers fail closed when pages repeat or a record identifier appears
+twice. The one exception is an endpoint that ignores pagination: when page 2
+repeats a short page 1 record for record and a smaller page size still
+returns every record, page 1 is accepted as the list (see
+[SDK List Completeness Audit](SDK_LIST_COMPLETENESS_AUDIT.md)). A tenant change during a long list walk can shift records across page
+boundaries and trigger that check; the command then exits with an error and
+returns no partial list. Retrying the command is the remedy.
+
 ## ZPA Version Profiles
 
 Commands:
@@ -3222,10 +3271,14 @@ Fields:
 
 | Field | Classification | Modes | Notes |
 | --- | --- | --- | --- |
-| `activationCopy`, `mdmStatus`, `sendEmail`, `proxyEnabled`, `zpnEnabled`, `upmEnabled`, `zadEnabled`, `enableDeceptionForAll`, `dlpEnabled`, `tunnelProtocolType`, `secureAgentBasic`, `secureAgentAdvanced`, `supportEnabled`, `fetchLogsForAdminsEnabled`, `enableRectifyUtils`, `supportTicketEnabled`, `disableLoggingControls`, `defaultAuthType`, `version`, `policyActivationRequired`, `enableAutofillUsername`, `autoFillUsingLoginHint`, `dcServiceReadOnly`, `enableTunnelZappTrafficToggle`, `machineIdpAuth`, `linuxVisibility`, `usePollsetForSocketReactor`, `enableDtlsForZpa`, `useV8JsEngine`, `disableParallelIpv4AndIPv6`, `send64BitBuild`, `useAddIfscopeRoute`, `useClearArpCache`, `useDnsPriorityOrdering`, `enableBrowserAuth`, `enablePublicAPI`, `disableReasonVisibility`, `followRoutingTable`, `useDefaultAdapterForDNS`, `enableMinimumDeviceCleanupAsOne`, `dnsPriorityOrderingForTrustedDnsCriteria`, `machineTunnelPosture`, `zpaPartnerLogin`, `proxyPort`, `dnsCacheTtlWindows`, `dnsCacheTtlMac`, `dnsCacheTtlAndroid`, `dnsCacheTtlIos`, `dnsCacheTtlLinux`, `zpaClientCertExpInDays`, `enableFlowLogger`, `flowLoggingBufferLimit`, `flowLoggingTimeInterval`, `postureBasedService`, `enablePostureBasedProfile`, `disasterRecovery`, `enableReactUI`, `launchReactUIbyDefault`, `dlpNotification`, `vpnGatewayCharLimit`, `deviceGroupsCount`, `vpnBypassRefreshInterval`, `destIncludeExcludeCharLimit`, `ipV6SupportForTunnel2`, `destIncludeExcludeCharLimitForIpv6`, `enableSetProxyOnVPNAdapters`, `disableDNSRouteExclusion`, `showVPNTunNotification`, `addAppBypassToVPNGateway`, `enableZscalerFirewall`, `persistentZscalerFirewall`, `clearMupCache`, `executeGpoUpdate`, `enablePortBasedZPAFilter`, `enableAntiTampering`, `zpaReauthEnabled`, `zpaAutoReauthTimeout`, `enableZpaAuthUserName`, `enableGlobalZCCTelemetry`, `configureTunnel2fallbackForZia`, `webAppConfig`, `enableInstallWebView2`, `enableCustomProxyPorts`, `interceptZIATrafficAllAdapters`, `enableOneIdAdmin`, `enableOneIdUser`, `restrictAdminAccess`, `enableZiaUserDepartmentSync`, `enableUDPTransportSelection`, `computeDeviceGroupsForZIA`, `computeDeviceGroupsForZPA`, `computeDeviceGroupsForZDX`, `computeDeviceGroupsForZAD`, `useTunnel2SmeForTunnel1`, `maCloudName`, `ziaCloudName`, `zt2HealthProbeInterval`, `devicePostureFrequency`, `zdxManualRollout`, `winZdxLiteEnabled`, `telemetryDefault` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `activationCopy`, `mdmStatus`, `sendEmail`, `proxyEnabled`, `zpnEnabled`, `upmEnabled`, `zadEnabled`, `enableDeceptionForAll`, `dlpEnabled`, `tunnelProtocolType`, `secureAgentBasic`, `secureAgentAdvanced`, `supportEnabled`, `fetchLogsForAdminsEnabled`, `enableRectifyUtils`, `supportTicketEnabled`, `disableLoggingControls`, `defaultAuthType`, `version`, `policyActivationRequired`, `enableAutofillUsername`, `autoFillUsingLoginHint`, `dcServiceReadOnly`, `enableTunnelZappTrafficToggle`, `machineIdpAuth`, `linuxVisibility`, `usePollsetForSocketReactor`, `enableDtlsForZpa`, `useV8JsEngine`, `disableParallelIpv4AndIPv6`, `send64BitBuild`, `useAddIfscopeRoute`, `useClearArpCache`, `useDnsPriorityOrdering`, `enableBrowserAuth`, `enablePublicAPI`, `disableReasonVisibility`, `followRoutingTable`, `useDefaultAdapterForDNS`, `enableMinimumDeviceCleanupAsOne`, `dnsPriorityOrderingForTrustedDnsCriteria`, `machineTunnelPosture`, `zpaPartnerLogin`, `proxyPort`, `dnsCacheTtlWindows`, `dnsCacheTtlMac`, `dnsCacheTtlAndroid`, `dnsCacheTtlIos`, `dnsCacheTtlLinux`, `zpaClientCertExpInDays`, `enableFlowLogger`, `flowLoggingBufferLimit`, `flowLoggingTimeInterval`, `postureBasedService`, `enablePostureBasedProfile`, `disasterRecovery`, `enableReactUI`, `launchReactUIbyDefault`, `dlpNotification`, `vpnGatewayCharLimit`, `deviceGroupsCount`, `vpnBypassRefreshInterval`, `destIncludeExcludeCharLimit`, `ipV6SupportForTunnel2`, `destIncludeExcludeCharLimitForIpv6`, `enableSetProxyOnVPNAdapters`, `disableDNSRouteExclusion`, `showVPNTunNotification`, `addAppBypassToVPNGateway`, `enableZscalerFirewall`, `persistentZscalerFirewall`, `clearMupCache`, `executeGpoUpdate`, `enablePortBasedZPAFilter`, `enableAntiTampering`, `zpaReauthEnabled`, `zpaAutoReauthTimeout`, `enableZpaAuthUserName`, `enableGlobalZCCTelemetry`, `configureTunnel2fallbackForZia`, `enableInstallWebView2`, `enableCustomProxyPorts`, `interceptZIATrafficAllAdapters`, `enableOneIdAdmin`, `enableOneIdUser`, `restrictAdminAccess`, `enableZiaUserDepartmentSync`, `enableUDPTransportSelection`, `computeDeviceGroupsForZIA`, `computeDeviceGroupsForZPA`, `computeDeviceGroupsForZDX`, `computeDeviceGroupsForZAD`, `useTunnel2SmeForTunnel1`, `maCloudName`, `ziaCloudName`, `zt2HealthProbeInterval`, `zdxManualRollout`, `winZdxLiteEnabled`, `telemetryDefault` | Operational metadata | `standard`, `share`, `paranoid` | State, settings, and metadata. |
+| `devicePostureFrequency` | Tenant configuration | `standard`, `share`, `paranoid` | Per-posture check frequency: `postureId` and the per-OS values (`iosValue`, `androidValue`, `windowsValue`, `macValue`, `linuxValue`, `defaultValue`) in every mode; `postureName` in `standard` and `share`. |
 | `name`, `businessName` | Tenant configuration | `standard`, `share` | Scanned for pasted secret-shaped values. |
 | `businessContactNumber`, `activationRecipient`, `supportAdminEmail`, `registryPathForPac`, `ziaGlobalDbUrlForDR`, `swaggerLink` | Sensitive identifier | `standard` | Surfaced in standard mode; withheld from share/paranoid so shared output cannot leak private hostnames, users, emails, or addresses. |
 | `orgId`, `masterCustomerId` | Secret | never | Dropped from rendered output (secret, credential/blob, admin identity, or tenant-identifying). |
+
+The SDK also returns `webAppConfig`, about 185 admin-portal feature toggles.
+It is not tenant policy and is not in the catalog.
 
 ## ZIDENTITY Groups
 

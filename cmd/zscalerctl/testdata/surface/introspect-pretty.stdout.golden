@@ -1,14 +1,15 @@
 zscalerctl CLI surface map
   version:   <VERSION>
-  introspect-version: 2
+  introspect-version: 3
   read-only: true
-  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json
+  schema:    https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v3.schema.json
 
-Global flags (16):
+Global flags (17):
   --color (string, default "auto")  color output: auto, always, never
   --config (string)  config file path
-  --fields (string)  comma-separated output fields to keep (narrows the sanitized output)
-  --filter (stringArray)  narrow list results: key=value (exact) or key~value (substring); repeatable, all must match
+  --count-by (string)  count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element
+  --fields (string)  comma-separated output fields to keep; a dotted path such as groups.id keeps only that key of each nested value (narrows the sanitized output)
+  --filter (stringArray)  narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match
   --format (string, default "auto")  output format: auto, table, json, ndjson, pretty
   --from-dump (string)  read resource data from a saved sanitized dump directory
   --limit (int, default "0")  bound a list result to a JSON page of this many records
@@ -25,7 +26,7 @@ Global flags (16):
 Effect conditions: unqualified = always; --flag = flag-conditioned;
   configuration-dependent = effective config/provider/platform may enable it.
 
-Commands (293):
+Commands (301):
   auth                                      inspect authentication configuration
       effects: local_filesystem_write (when --output is set)
   auth status                               show authentication status for the active profile
@@ -76,12 +77,22 @@ Commands (293):
       effects: local_filesystem_write (when --output is set)
   machine manifest                          print the machine capability manifest
       effects: local_filesystem_write (when --output is set)
+  refs                                      find the records that reference an object, or referenced ids not found in what was read
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  refs check                                list reference ids on <product> <resource> records that are not in the target lists as read
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  refs to                                   list the records whose reference fields hold <id> of <product> <resource>
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   schema                                    inspect the resource catalog schema
       effects: local_filesystem_write (when --output is set)
   schema describe                           describe reviewed field semantics for one resource (config-free pilot)
       effects: local_filesystem_write (when --output is set)
+  schema gaps                               list the Zscaler surfaces zscalerctl does not read, and why (config-free)
+      effects: local_filesystem_write (when --output is set)
   schema list                               list all catalog resources and their supported operations
       effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set)
+  schema references                         list the fields that point at a resource, with the --filter path for its id (config-free)
+      effects: local_filesystem_write (when --output is set)
   version                                   print version, commit, build date, and runtime info
       effects: local_filesystem_write (when --output is set)
   zcc fail-open-policy list                 list zcc fail-open-policy
@@ -354,6 +365,8 @@ Commands (293):
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia zpa-gateways get                      get zia zpa-gateways
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  zia locations-lite list                   list zia locations-lite
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia browser-isolation-profiles list       list zia browser-isolation-profiles
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia dlp-edm-schemas-lite list             list zia dlp-edm-schemas-lite
@@ -436,6 +449,10 @@ Commands (293):
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-deny-list show                    show zia url-deny-list
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
+  zia admin-audit-logs                      inspect administrator audit-log report status
+      effects: local_filesystem_write (when --output is set)
+  zia admin-audit-logs status               show current administrator audit-log report status
+      effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zia url-lookup                            look up URL categories for one or more URLs
       effects: local_filesystem_read (configuration-dependent), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
   zidentity groups list                     list zidentity groups
@@ -629,8 +646,8 @@ Commands (293):
   ztw traffic-log-rules get                 get ztw traffic-log-rules
       effects: local_filesystem_read (configuration-dependent), local_filesystem_read (when --from-dump is set), local_filesystem_write (when --output is set), network_access, process_execution (configuration-dependent)
 
-Catalog: 5 products, 165 resources
-  zia: 102 resource(s)
+Catalog: 5 products, 166 resources
+  zia: 103 resource(s)
   zpa: 28 resource(s)
   ztw: 21 resource(s)
   zcc: 11 resource(s)
@@ -639,9 +656,9 @@ Catalog: 5 products, 165 resources
 Exit codes (8):
   0  ok                         success
   1  internal                   unexpected internal error (bug or panic)
-  2  usage                      invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)
-  3  missing_credentials        credentials not configured or incomplete
+  2  usage                      invalid command syntax, flag, argument, resource ID, proxy config, config file, or unusable setting such as an unsupported cloud (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)
+  3  missing_credentials        credentials not configured, incomplete, or a secret that could not be resolved; credentials the API rejects exit 5 with reason credentials_rejected
   4  not_found                  resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)
-  5  live_access_failed         Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable [retryable]
+  5  live_access_failed         Zscaler API call or sign-in failed (credentials_rejected, missing access, network, quota, or deadline; JSON error kind may be live_access_failed or deadline_exceeded); the error's reason names the cause and its retryable says whether a retry can succeed
   6  partial_dump               dump completed but some resources failed; see errors.ndjson in the output directory
   7  drift_detected             drift check found differences between two snapshots

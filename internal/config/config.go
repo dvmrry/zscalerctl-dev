@@ -49,17 +49,39 @@ const (
 var ErrInvalidConfig = errors.New("invalid configuration")
 
 type Config struct {
-	Source       string
-	ConfigFile   string
-	Profile      string
-	AuthMode     AuthMode
-	VanityDomain string
-	Cloud        string
-	Credentials  Credentials
-	ZPA          ZPAConfig
-	ZIALegacy    ZIALegacyCredentials
-	Proxy        Proxy
-	Defaults     Defaults
+	Source     string
+	ConfigFile string
+	Profile    string
+	// ProfileSource and ProfileCount are set when a config file was loaded:
+	// how Profile was chosen and how many profiles the file defines.
+	ProfileSource ProfileSource
+	ProfileCount  int
+	AuthMode      AuthMode
+	VanityDomain  string
+	Cloud         string
+	Credentials   Credentials
+	ZPA           ZPAConfig
+	ZIALegacy     ZIALegacyCredentials
+	Proxy         Proxy
+	Defaults      Defaults
+}
+
+// ProfileSource says how the active config-file profile was chosen.
+type ProfileSource string
+
+const (
+	ProfileFromFlag           ProfileSource = "flag"
+	ProfileFromEnv            ProfileSource = "env"
+	ProfileFromDefaultProfile ProfileSource = "default_profile"
+	ProfileFromBuiltinDefault ProfileSource = "builtin_default"
+)
+
+// ImplicitProfileAmongMany reports whether the profile came from the config
+// file's default rather than --profile or ZSCALERCTL_PROFILE while the file
+// defines more than one profile, so the tenant may not be the one intended.
+func (c Config) ImplicitProfileAmongMany() bool {
+	implicit := c.ProfileSource == ProfileFromDefaultProfile || c.ProfileSource == ProfileFromBuiltinDefault
+	return implicit && c.ProfileCount > 1
 }
 
 type Credentials struct {
@@ -85,6 +107,10 @@ type ZIALegacyCredentials struct {
 type Proxy struct {
 	URL             string
 	FromEnvironment bool
+	// EnvironmentProxySet records that HTTPS_PROXY (or https_proxy) is set.
+	// zscalerctl uses it only with ZSCALERCTL_PROXY_FROM_ENV, so status can
+	// say when it is ignored; the value is never kept.
+	EnvironmentProxySet bool
 }
 
 type Defaults struct {
@@ -229,8 +255,9 @@ func LoadEnv(environ []string) (Config, error) {
 			Cloud:        strings.TrimSpace(env[EnvZIACloud]),
 		},
 		Proxy: Proxy{
-			URL:             strings.TrimSpace(env[EnvProxyURL]),
-			FromEnvironment: proxyFromEnv,
+			URL:                 strings.TrimSpace(env[EnvProxyURL]),
+			FromEnvironment:     proxyFromEnv,
+			EnvironmentProxySet: environmentProxySet(env),
 		},
 		Defaults: Defaults{
 			Redaction: mode,
@@ -295,6 +322,31 @@ func (c Config) EffectiveAuthMode() AuthMode {
 	return AuthModeOneAPI
 }
 
+// MissingCredentials names the variables the effective auth mode requires
+// that are unset, judged by presence alone so that no secret is resolved and
+// no provider runs for a configuration certain to fail. It agrees with
+// Configured: empty means configured.
+func (c Config) MissingCredentials() []string {
+	var missing []string
+	add := func(set bool, name string) {
+		if !set {
+			missing = append(missing, name)
+		}
+	}
+	switch c.EffectiveAuthMode() {
+	case AuthModeZIALegacy:
+		add(c.ZIALegacy.Username.IsSet(), EnvZIAUsername)
+		add(c.ZIALegacy.Password.IsConfigured(), EnvZIAPassword)
+		add(c.ZIALegacy.APIKey.IsConfigured(), EnvZIAAPIKey)
+		add(strings.TrimSpace(c.ZIALegacy.Cloud) != "", EnvZIACloud)
+	default:
+		add(c.Credentials.ClientID.IsSet(), EnvClientID)
+		add(c.Credentials.ClientSecret.IsConfigured(), EnvClientSecret)
+		add(strings.TrimSpace(c.VanityDomain) != "", EnvVanityDomain)
+	}
+	return missing
+}
+
 func (c Credentials) Configured(vanityDomain string) bool {
 	return c.ClientID.IsSet() && c.ClientSecret.IsConfigured() && strings.TrimSpace(vanityDomain) != ""
 }
@@ -320,6 +372,25 @@ func parseAuthMode(value string) (AuthMode, error) {
 	default:
 		return "", fmt.Errorf("%w: parse %s: unsupported auth mode; supported: oneapi, zia-legacy", ErrInvalidConfig, EnvAuthMode)
 	}
+}
+
+// environmentProxySet reports whether HTTPS_PROXY (or https_proxy) is set.
+// Every API call is HTTPS, so HTTP_PROXY does not matter.
+func environmentProxySet(env map[string]string) bool {
+	return strings.TrimSpace(env["HTTPS_PROXY"]) != "" || strings.TrimSpace(env["https_proxy"]) != ""
+}
+
+// IgnoredProxyHint says that HTTPS_PROXY is set but not used, without its
+// value: doctor and a live read that cannot connect both show it.
+const IgnoredProxyHint = "HTTPS_PROXY is set but not used; set " + EnvProxyFromEnv + "=true to use it"
+
+// EnvironmentProxyIgnored reports whether environ sets HTTPS_PROXY while
+// zscalerctl connects directly: neither ZSCALERCTL_PROXY_URL nor a true
+// ZSCALERCTL_PROXY_FROM_ENV is set. It reads only those variables.
+func EnvironmentProxyIgnored(environ []string) bool {
+	env := parseEnv(environ)
+	fromEnv, err := parseBoolEnv(env[EnvProxyFromEnv])
+	return environmentProxySet(env) && err == nil && !fromEnv && strings.TrimSpace(env[EnvProxyURL]) == ""
 }
 
 func parseEnv(environ []string) map[string]string {

@@ -1,11 +1,12 @@
 package zscaler
 
 // Wave-1 field-promotion tests for zia/location-groups. The fixture carries a
-// distinctive value in every promoted field plus canaries in the excluded
-// fields (lastModUser, extensions maps). The tests project the source record
-// through the catalog and assert that promoted fields render under the right
-// keys in standard mode, that mode allowances are honored exactly in share and
-// paranoid, and that no excluded-field canary survives in any mode.
+// distinctive value in every promoted field plus canaries in the secret
+// extensions maps and the lastModUser admin name. The tests project the source
+// record through the catalog and assert that promoted fields render under the
+// right keys in standard mode, that mode allowances are honored exactly in
+// share and paranoid, that no extensions canary survives in any mode, and that
+// the admin name (standard-only) never survives outside standard mode.
 //
 // The reader source mappers strip extensions before projection, so the
 // fixture's extensions canaries never reach the catalog. The direct-source
@@ -92,6 +93,17 @@ func assertNoLocationGroupCanaries(t *testing.T, got map[string]any) {
 	)
 }
 
+// assertNoLocationGroupExtensionCanaries is assertNoLocationGroupCanaries for
+// standard mode, where the lastModUser admin name legitimately renders.
+func assertNoLocationGroupExtensionCanaries(t *testing.T, got map[string]any) {
+	t.Helper()
+
+	assertNoCanaries(t, "location-groups", got,
+		wave1LocationGroupManagedByExtCanary,
+		wave1LocationGroupMemberExtCanary,
+	)
+}
+
 func TestLocationGroupSourceRecordProjectsPromotedFieldsStandard(t *testing.T) {
 	t.Parallel()
 
@@ -169,8 +181,11 @@ func TestLocationGroupSourceRecordProjectsPromotedFieldsStandard(t *testing.T) {
 	}
 	assertFieldsAbsent(t, "location-groups locations", member, "extensions")
 
-	assertFieldsAbsent(t, "location-groups", got, "lastModUser")
-	assertNoLocationGroupCanaries(t, got)
+	lastModUser := assertAuditRefID(t, "location-groups", got, "lastModUser", 9301)
+	if lastModUser["name"] != wave1LocationGroupAdminCanary {
+		t.Errorf("projected lastModUser = %v, want name %q", lastModUser, wave1LocationGroupAdminCanary)
+	}
+	assertNoLocationGroupExtensionCanaries(t, got)
 }
 
 // TestLocationGroupProjectionDropsExtensionsThroughCatalog feeds extensions
@@ -274,9 +289,13 @@ func TestLocationGroupProjectionHonorsShareModeAllowances(t *testing.T) {
 		t.Errorf("share-mode criteria city matchType = %v, want CONTAINS", cityMatch["matchType"])
 	}
 
-	// managedBy and locations allow [standard] only: dropped in share.
-	assertFieldsAbsent(t, "location-groups criteria (share)", criteria, "managedBy")
-	assertFieldsAbsent(t, "location-groups (share)", got, "locations", "lastModUser")
+	// managedBy and locations name their references in standard only: share
+	// keeps the reference ids without names. The lastModUser admin reference
+	// keeps only its id.
+	assertRefListIDsOnly(t, "location-groups criteria (share)", criteria, "managedBy", 7601)
+	assertRefListIDsOnly(t, "location-groups (share)", got, "locations", 8101)
+	assertNoCanaries(t, "location-groups (share)", got, "wave1-sdwan-partner", "wave1-member-location")
+	assertAuditRefIDOnly(t, "location-groups (share)", got, "lastModUser", 9301)
 	assertNoLocationGroupCanaries(t, got)
 }
 
@@ -286,12 +305,13 @@ func TestLocationGroupProjectionHonorsParanoidModeAllowances(t *testing.T) {
 	group := wave1LocationGroupFixture()
 	got := projectOneRecordInMode(t, resources.ProductZIA, resourceLocationGroups, redact.ModeParanoid, []resources.SourceRecord{locationGroupSourceRecord(group)})
 
-	// Neither promoted field allows paranoid: both drop entirely.
+	// Neither promoted field allows paranoid: both drop entirely. The
+	// lastModUser admin reference keeps only its id.
 	assertFieldsAbsent(t, "location-groups (paranoid)", got,
 		"dynamicLocationGroupCriteria",
 		"locations",
-		"lastModUser",
 	)
+	assertAuditRefIDOnly(t, "location-groups (paranoid)", got, "lastModUser", 9301)
 
 	// Sanity: paranoid still renders the structurally safe operational fields.
 	if got["id"] != 4501 {
@@ -303,10 +323,10 @@ func TestLocationGroupProjectionHonorsParanoidModeAllowances(t *testing.T) {
 	assertNoLocationGroupCanaries(t, got)
 }
 
-// TestLocationGroupLastModUserSecretPin pins lastModUser as secretField: the
-// admin identity must drop in every mode (see assertWave4SecretPin in
-// reader_fields_admin_identity_test.go).
-func TestLocationGroupLastModUserSecretPin(t *testing.T) {
+// TestLocationGroupLastModUserAuditRefPin pins lastModUser as an admin audit
+// reference: the id renders in every mode, the admin name only in standard
+// (see assertAuditRefPin in reader_fields_admin_identity_test.go).
+func TestLocationGroupLastModUserAuditRefPin(t *testing.T) {
 	t.Parallel()
 
 	const canary = "wave4-locgroup-lastmoduser-canary"
@@ -321,6 +341,6 @@ func TestLocationGroupLastModUserSecretPin(t *testing.T) {
 	}
 	records := []resources.SourceRecord{locationGroupSourceRecord(group)}
 
-	assertWave4SecretPin(t, resourceLocationGroups, records,
-		[]string{"lastModUser"}, "id", canary)
+	assertAuditRefPin(t, resourceLocationGroups, records,
+		[]auditRef{{field: "lastModUser", id: 9101}}, "id", canary)
 }

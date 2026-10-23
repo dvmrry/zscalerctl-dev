@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
+	"github.com/dvmrry/zscalerctl/internal/machine"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
@@ -20,8 +21,8 @@ func TestIntrospectTree(t *testing.T) {
 	doc := cli.IntrospectTree(a)
 
 	// Contract version
-	if doc.IntrospectVersion != "2" {
-		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "2")
+	if doc.IntrospectVersion != "3" {
+		t.Errorf("IntrospectVersion = %q, want %q", doc.IntrospectVersion, "3")
 	}
 
 	// CLI-wide read-only guarantee
@@ -36,8 +37,7 @@ func TestIntrospectTree(t *testing.T) {
 
 	// The CLI-wide read_only guarantee is tenant-scoped. Per-command effects
 	// describe local writes/deletes and network access, including side effects
-	// that occur only when a flag is set. Mutating remains a conservative summary
-	// for older consumers: any possible local or tenant mutation makes it true.
+	// that occur only when a flag is set.
 	findByPath := func(path string) *cli.CommandDoc {
 		for i := range doc.Commands {
 			if doc.Commands[i].Path == path {
@@ -116,6 +116,15 @@ func TestIntrospectTree(t *testing.T) {
 				{Kind: "process_execution", When: "configuration_dependent"},
 			},
 		},
+		{
+			path: "zia admin-audit-logs status",
+			want: []cli.EffectDoc{
+				{Kind: "local_filesystem_read", When: "configuration_dependent"},
+				{Kind: "local_filesystem_write", When: "flag_set", Flag: "output"},
+				{Kind: "network_access", When: "always"},
+				{Kind: "process_execution", When: "configuration_dependent"},
+			},
+		},
 	}
 	for _, tc := range effectCases {
 		got := findByPath(tc.path)
@@ -126,8 +135,24 @@ func TestIntrospectTree(t *testing.T) {
 		if !slices.Equal(got.Effects, tc.want) {
 			t.Errorf("command %q effects = %#v, want %#v", tc.path, got.Effects, tc.want)
 		}
-		if !got.Mutating {
-			t.Errorf("command %q mutating = false, want true for possible local filesystem effects", tc.path)
+	}
+
+	if statusCommand := findByPath("zia admin-audit-logs status"); statusCommand == nil {
+		t.Error("command zia admin-audit-logs status not found")
+	} else if !slices.Equal(statusCommand.OutputFields, []string{"status", "progress_items_complete", "completion_time", "error_code"}) {
+		t.Errorf("zia admin-audit-logs status output fields = %v, want the safe status fields", statusCommand.OutputFields)
+	}
+	for _, resource := range doc.Catalog.Resources {
+		if resource.Product == "zia" && resource.Name == "admin-audit-logs" {
+			t.Error("admin-audit-logs status must remain outside the resource catalog")
+		}
+	}
+	for _, capability := range machine.ManifestFromCatalog(resources.Catalog()).Capabilities {
+		if capability.Name == machine.CapabilityResourcesRead &&
+			capability.Input != nil &&
+			capability.Input.Product == "zia" &&
+			capability.Input.Resource == "admin-audit-logs" {
+			t.Error("admin-audit-logs status must remain outside resources.read")
 		}
 	}
 
@@ -229,7 +254,6 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 		}
 
 		seen := make(map[cli.EffectDoc]bool, len(command.Effects))
-		mutating := false
 		hasNetworkAccess := false
 		hasConfiguredLocalRead := false
 		hasConfiguredProcessExecution := false
@@ -261,18 +285,14 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 
 			switch effect.Kind {
 			case "tenant_mutation":
-				mutating = true
 				if doc.ReadOnly {
 					t.Errorf("command %q has tenant_mutation effect while document read_only = true", command.Path)
 				}
-			case "local_filesystem_write", "local_filesystem_delete":
-				mutating = true
 			case "network_access":
 				hasNetworkAccess = true
 			case "local_filesystem_read":
 				hasConfiguredLocalRead = hasConfiguredLocalRead || effect.When == "configuration_dependent"
 			case "process_execution":
-				mutating = true
 				hasConfiguredProcessExecution = effect.When == "configuration_dependent"
 			}
 		}
@@ -296,9 +316,6 @@ func TestIntrospectEffectsAreValid(t *testing.T) {
 			}
 		}) {
 			t.Errorf("command %q effects = %#v, want stable sorted order", command.Path, command.Effects)
-		}
-		if command.Mutating != mutating {
-			t.Errorf("command %q mutating = %t, want derived value %t from effects %#v", command.Path, command.Mutating, mutating, command.Effects)
 		}
 		if len(command.OutputFields) > 0 && !hasNetworkAccess {
 			t.Errorf("command %q exposes live output fields without a network_access effect", command.Path)
@@ -343,8 +360,8 @@ func TestIntrospectCatalogEffectsAreComplete(t *testing.T) {
 			checked++
 		}
 	}
-	if checked != 271 {
-		t.Errorf("checked catalog operations = %d, want 271", checked)
+	if checked != 272 {
+		t.Errorf("checked catalog operations = %d, want 272", checked)
 	}
 }
 
@@ -369,15 +386,15 @@ func TestIntrospectEffectCounts(t *testing.T) {
 
 	wantKinds := map[string]int{
 		"local_filesystem_delete": 2,
-		"local_filesystem_read":   550,
-		"local_filesystem_write":  294,
-		"network_access":          273,
-		"process_execution":       274,
+		"local_filesystem_read":   556,
+		"local_filesystem_write":  302,
+		"network_access":          278,
+		"process_execution":       279,
 	}
 	wantWhen := map[string]int{
-		"always":                  276,
-		"configuration_dependent": 551,
-		"flag_set":                566,
+		"always":                  281,
+		"configuration_dependent": 561,
+		"flag_set":                575,
 	}
 	if !maps.Equal(byKind, wantKinds) {
 		t.Errorf("effect kind counts = %v, want %v", byKind, wantKinds)
@@ -385,8 +402,8 @@ func TestIntrospectEffectCounts(t *testing.T) {
 	if !maps.Equal(byWhen, wantWhen) {
 		t.Errorf("effect condition counts = %v, want %v", byWhen, wantWhen)
 	}
-	if commandsWithRead != 278 {
-		t.Errorf("commands with local reads = %d, want 278", commandsWithRead)
+	if commandsWithRead != 283 {
+		t.Errorf("commands with local reads = %d, want 283", commandsWithRead)
 	}
 }
 
@@ -489,7 +506,7 @@ func TestIntrospectTableFormat(t *testing.T) {
 				}
 			}
 			for _, effectLandmark := range []string{
-				"introspect-version: 2",
+				"introspect-version: 3",
 				"Effect conditions:",
 				"local_filesystem_read",
 				"local_filesystem_write (when --output is set)",

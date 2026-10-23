@@ -11,9 +11,10 @@ import (
 
 // The pretty renderer is a presentation overlay over data that has already been
 // allow-list projected and redacted upstream. It introduces no new data path:
-// it only styles strings the caller has already produced, and the result is
-// still passed through Renderer.WriteText (the final redaction byte-scan) before
-// it reaches stdout. When color is disabled the output is byte-clean (no ANSI
+// it only styles strings the caller has already produced. Record text reaches
+// stdout through Renderer.WriteScannedText (its values come from records given
+// JSON output's final scan); other text through Renderer.WriteText (the final
+// redaction byte-scan). When color is disabled the output is byte-clean (no ANSI
 // escapes), so it stays safe to capture or diff.
 
 // ColorProfile pins the color profile from the resolved Style instead of

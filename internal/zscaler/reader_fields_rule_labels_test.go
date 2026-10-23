@@ -1,9 +1,9 @@
 package zscaler
 
 // Field-coverage tests for zia/rule-labels: createdBy and lastModifiedBy are
-// admin-identity references pinned as secretField, so the mapper emits them
-// into the source record and projection must drop them in ALL modes (see
-// assertWave4SecretPin in reader_fields_admin_identity_test.go).
+// admin audit references, so the mapper emits them into the source record and
+// projection renders their ids in every mode and the admin names in standard
+// mode only (see assertAuditRefPin in reader_fields_admin_identity_test.go).
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
-func TestRuleLabelAdminIdentitySecretPins(t *testing.T) {
+func TestRuleLabelAdminIdentityAuditRefPins(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -36,7 +36,7 @@ func TestRuleLabelAdminIdentitySecretPins(t *testing.T) {
 	}
 	records := []resources.SourceRecord{ruleLabelSourceRecord(label)}
 
-	assertWave4SecretPin(t, resourceRuleLabels, records,
-		[]string{"createdBy", "lastModifiedBy"}, "id",
+	assertAuditRefPin(t, resourceRuleLabels, records,
+		[]auditRef{{field: "createdBy", id: 9102}, {field: "lastModifiedBy", id: 9103}}, "id",
 		createdByCanary, lastModifiedByCanary)
 }

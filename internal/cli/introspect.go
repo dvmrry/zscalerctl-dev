@@ -32,7 +32,7 @@ import (
 // schemaURL is the immutable version-specific JSON Schema URL for the current
 // IntrospectDoc contract. The released v1 URL remains at
 // docs/schema/introspect.schema.json; future versions must publish a new path.
-const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v2.schema.json"
+const schemaURL = "https://raw.githubusercontent.com/dvmrry/zscalerctl/main/docs/schema/introspect-v3.schema.json"
 
 const (
 	effectsAnnotation                   = "introspect/effects"
@@ -58,8 +58,7 @@ const (
 //
 // ReadOnly is tenant-scoped: `read_only: true` means the CLI never mutates the
 // Zscaler tenant. Individual commands may still have local or network effects;
-// Effects is authoritative and Mutating is a conservative compatibility
-// summary.
+// Effects says exactly what each command can do.
 type IntrospectDoc struct {
 	Schema            string        `json:"$schema"`
 	IntrospectVersion string        `json:"introspect_version"`
@@ -82,16 +81,12 @@ func (IntrospectDoc) OutputSafe() {}
 
 // CommandDoc describes a single CLI command for agent consumption.
 type CommandDoc struct {
-	Path       string   `json:"path"`
-	Short      string   `json:"short"`
-	Long       string   `json:"long,omitempty"`
-	Aliases    []string `json:"aliases"`
-	Hidden     bool     `json:"hidden"`
-	Deprecated string   `json:"deprecated,omitempty"`
-	// Mutating is derived from Effects and remains for older consumers. It is
-	// true for possible local/tenant mutation or configured process execution,
-	// including conditional effects.
-	Mutating       bool        `json:"mutating"`
+	Path           string      `json:"path"`
+	Short          string      `json:"short"`
+	Long           string      `json:"long,omitempty"`
+	Aliases        []string    `json:"aliases"`
+	Hidden         bool        `json:"hidden"`
+	Deprecated     string      `json:"deprecated,omitempty"`
 	Effects        []EffectDoc `json:"effects"`
 	Args           ArgsDoc     `json:"args"`
 	Flags          []FlagDoc   `json:"flags"`
@@ -150,8 +145,10 @@ type ResourceDoc struct {
 // SOURCE OF TRUTH: the exit-code constants and exitCodeForError in
 // cmd/zscalerctl/main.go. Keep this table in sync with that file.
 type ExitCodeDoc struct {
-	Code        int    `json:"code"`
-	Kind        string `json:"kind"`
+	Code int    `json:"code"`
+	Kind string `json:"kind"`
+	// Retryable is true only when a retry can succeed for every error with
+	// this code; a live failure's own retryable field decides per error.
 	Retryable   bool   `json:"retryable"`
 	Description string `json:"description"`
 }
@@ -186,7 +183,7 @@ func IntrospectTree(a *App) IntrospectDoc {
 	catalog := a.resourceCatalog()
 	doc := IntrospectDoc{
 		Schema:            schemaURL,
-		IntrospectVersion: "2",
+		IntrospectVersion: "3",
 		CLIVersion:        "",
 		// Tenant-scoped guarantee: the CLI never mutates the Zscaler tenant.
 		// Per-command effects describe local writes and read-only network access.
@@ -290,13 +287,13 @@ func buildExitCodes() []ExitCodeDoc {
 		{Code: 1, Kind: "internal", Retryable: false,
 			Description: "unexpected internal error (bug or panic)"},
 		{Code: 2, Kind: "usage", Retryable: false,
-			Description: "invalid command syntax, flag, argument, resource ID, proxy config, or config file (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"},
+			Description: "invalid command syntax, flag, argument, resource ID, proxy config, config file, or unusable setting such as an unsupported cloud (JSON error kind may be usage, invalid_resource_id, invalid_proxy_config, or invalid_config)"},
 		{Code: 3, Kind: "missing_credentials", Retryable: false,
-			Description: "credentials not configured or incomplete"},
+			Description: "credentials not configured, incomplete, or a secret that could not be resolved; credentials the API rejects exit 5 with reason credentials_rejected"},
 		{Code: 4, Kind: "not_found", Retryable: false,
 			Description: "resource, operation, or ID not found (JSON error kind may be not_found or unsupported_resource)"},
-		{Code: 5, Kind: "live_access_failed", Retryable: true,
-			Description: "Zscaler API call failed (network, auth token, or quota); transient — retry is reasonable"},
+		{Code: 5, Kind: "live_access_failed", Retryable: false,
+			Description: "Zscaler API call or sign-in failed (credentials_rejected, missing access, network, quota, or deadline; JSON error kind may be live_access_failed or deadline_exceeded); the error's reason names the cause and its retryable says whether a retry can succeed"},
 		{Code: 6, Kind: "partial_dump", Retryable: false,
 			Description: "dump completed but some resources failed; see errors.ndjson in the output directory"},
 		{Code: 7, Kind: "drift_detected", Retryable: false,
@@ -334,7 +331,6 @@ func buildSingleCommandDoc(cmd *cobra.Command, path string) CommandDoc {
 		Aliases:        cmd.Aliases,
 		Hidden:         cmd.Hidden,
 		Deprecated:     cmd.Deprecated,
-		Mutating:       effectsMutate(effects),
 		Effects:        effects,
 		Args:           buildArgsDoc(cmd),
 		Flags:          buildLocalFlagDocs(cmd),
@@ -385,7 +381,6 @@ func buildProductResourceDocs(productCmd *cobra.Command, productPath string) []C
 				Aliases:        []string{},
 				Hidden:         false,
 				Deprecated:     "",
-				Mutating:       effectsMutate(effects),
 				Effects:        effects,
 				Args:           argsPolicy,
 				Flags:          []FlagDoc{},
@@ -588,16 +583,6 @@ func normalizeEffects(effects []EffectDoc) []EffectDoc {
 		return out[i].Flag < out[j].Flag
 	})
 	return out
-}
-
-func effectsMutate(effects []EffectDoc) bool {
-	for _, effect := range effects {
-		switch effect.Kind {
-		case effectKindTenantMutation, effectKindLocalFilesystemWrite, effectKindLocalFilesystemDelete, effectKindProcessExecution:
-			return true
-		}
-	}
-	return false
 }
 
 // buildArgsDoc derives an ArgsDoc from the command's ValidArgs, the

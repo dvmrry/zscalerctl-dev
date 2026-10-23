@@ -11,8 +11,9 @@ These flags are accepted by every command:
 | --- | --- | --- | --- |
 | `--color` | `string` | `auto` | color output: auto, always, never |
 | `--config` | `string` | `—` | config file path |
-| `--fields` | `string` | `—` | comma-separated output fields to keep (narrows the sanitized output) |
-| `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); repeatable, all must match |
+| `--count-by` | `string` | `—` | count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element |
+| `--fields` | `string` | `—` | comma-separated output fields to keep; a dotted path such as groups.id keeps only that key of each nested value (narrows the sanitized output) |
+| `--filter` | `stringArray` | `—` | narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match |
 | `--format` | `string` | `auto` | output format: auto, table, json, ndjson, pretty |
 | `--from-dump` | `string` | `—` | read resource data from a saved sanitized dump directory |
 | `--limit` | `int` | `0` | bound a list result to a JSON page of this many records |
@@ -295,6 +296,30 @@ Print the catalog-derived machine capability manifest as JSON.
 
 This command is config-free and never contacts Zscaler.
 
+### refs
+
+find the records that reference an object, or referenced ids not found in what was read
+
+```
+zscalerctl refs
+```
+
+#### refs check
+
+list reference ids on <product> <resource> records that are not in the target lists as read
+
+```
+zscalerctl refs check <product> <resource>
+```
+
+#### refs to
+
+list the records whose reference fields hold <id> of <product> <resource>
+
+```
+zscalerctl refs to <product> <resource> <id>
+```
+
 ### schema
 
 inspect the resource catalog schema
@@ -311,12 +336,28 @@ describe reviewed field semantics for one resource (config-free pilot)
 zscalerctl schema describe <product> <resource>
 ```
 
+#### schema gaps
+
+list the Zscaler surfaces zscalerctl does not read, and why (config-free)
+
+```
+zscalerctl schema gaps [product]
+```
+
 #### schema list
 
 list all catalog resources and their supported operations
 
 ```
 zscalerctl schema list
+```
+
+#### schema references
+
+list the fields that point at a resource, with the --filter path for its id (config-free)
+
+```
+zscalerctl schema references <product> <resource>
 ```
 
 ### version
@@ -341,6 +382,22 @@ read zia resources
 
 ```
 zscalerctl zia
+```
+
+#### zia admin-audit-logs
+
+inspect administrator audit-log report status
+
+```
+zscalerctl zia admin-audit-logs
+```
+
+##### zia admin-audit-logs status
+
+show current administrator audit-log report status
+
+```
+zscalerctl zia admin-audit-logs status
 ```
 
 #### zia url-lookup

@@ -137,7 +137,7 @@ fi
 
 if [ "$command" = "introspect" ]; then
   jq -cn '{
-    introspect_version:2,
+    introspect_version:3,
     read_only:true,
     commands:[{
       path:"zia locations list",

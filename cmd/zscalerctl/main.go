@@ -19,6 +19,10 @@ import (
 
 var processOutputMu sync.Mutex
 
+var openNullSink = func() (*os.File, error) {
+	return os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+}
+
 const (
 	exitSuccess           = 0
 	exitInternalError     = 1
@@ -45,7 +49,7 @@ func runApp(ctx context.Context, app *cli.App, args []string, stdout, stderr io.
 
 	restoreProcessOutput, err := muteProcessOutput()
 	if err != nil {
-		writeError(stderr, output.FormatTable, fmt.Errorf("internal error: %w", err))
+		writeError(stderr, errorFormat(args, stdout), fmt.Errorf("internal error: %w", err))
 		return exitInternalError
 	}
 	defer restoreProcessOutput()
@@ -81,6 +85,10 @@ type errorBody struct {
 	Operation string   `json:"operation,omitempty"`
 	Product   string   `json:"product,omitempty"`
 	Resource  string   `json:"resource,omitempty"`
+	// Reason, Status and Retryable say why a live read failed (error v2).
+	Reason    string `json:"reason,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
 }
 
 // errorFormat decides how a command-boundary error is rendered, keeping it
@@ -131,12 +139,16 @@ func errorDetails(err error) errorBody {
 		body.Product = string(notFound.Product)
 		body.Resource = notFound.Resource
 	}
+	detail := machine.FailureDetailOf(err)
 	var machineErr *machine.MachineError
 	if errors.As(err, &machineErr) {
 		body.Operation = string(machineErr.Operation)
 		body.Product = machineErr.Product
 		body.Resource = machineErr.Resource
 	}
+	body.Reason = detail.Reason
+	body.Status = detail.Status
+	body.Retryable = detail.Retryable
 	var mce *zscaler.MissingCredentialsError
 	if errors.As(err, &mce) {
 		body.Missing = mce.Missing
@@ -163,6 +175,10 @@ func errorKind(err error) string {
 		return machineErr.Kind
 	}
 	switch {
+	case errors.Is(err, context.Canceled):
+		return machine.ErrorKindCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return machine.ErrorKindDeadlineExceeded
 	case errors.Is(err, cli.ErrUsage):
 		return "usage"
 	case errors.Is(err, cli.ErrPartialDump):
@@ -173,6 +189,8 @@ func errorKind(err error) string {
 		return "not_found"
 	case errors.Is(err, zscaler.ErrResourceNotFound):
 		return "not_found"
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		return "invalid_config"
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		return "missing_credentials"
 	case errors.Is(err, zscaler.ErrInvalidResourceID):
@@ -198,6 +216,10 @@ func exitCodeForError(err error) int {
 		}
 	}
 	switch {
+	case errors.Is(err, context.Canceled):
+		return exitInternalError
+	case errors.Is(err, context.DeadlineExceeded):
+		return exitLiveAccessFailure
 	case errors.Is(err, cli.ErrUsage):
 		return exitUsageError
 	case errors.Is(err, cli.ErrPartialDump):
@@ -208,6 +230,8 @@ func exitCodeForError(err error) int {
 		return exitNotFound
 	case errors.Is(err, zscaler.ErrResourceNotFound):
 		return exitNotFound
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		return exitUsageError
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		return exitCredentialError
 	case errors.Is(err, zscaler.ErrInvalidResourceID):
@@ -227,7 +251,7 @@ func exitCodeForError(err error) int {
 
 func muteProcessOutput() (func(), error) {
 	previousLogWriter := log.Writer()
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	devNull, err := openNullSink()
 	if err != nil {
 		return nil, fmt.Errorf("open null output sink: %w", err)
 	}

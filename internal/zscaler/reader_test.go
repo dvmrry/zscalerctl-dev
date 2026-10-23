@@ -81,10 +81,10 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
-	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
-	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/groups"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 	zpaappconnectorcontroller "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorcontroller"
 	zpaappconnectorgroup "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/appconnectorgroup"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
@@ -382,136 +382,103 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
-func TestNewSDKConfigurationZPATWOUsesProductionOAuthHost(t *testing.T) {
-	cfg := validReaderConfig()
-	cfg.Cloud = "ZPATWO"
-	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
-	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
-	}
-	var gotURL string
-	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		gotURL = request.URL.String()
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(`{"access_token":"test-token","expires_in":3600}`)),
-			Request:    request,
-		}, nil
-	})
-
-	if _, err := zsdk.Authenticate(context.Background(), sdkCfg, sdkCfg.Logger); err != nil {
-		t.Fatalf("Authenticate(ZPATWO) error = %v, want nil", err)
-	}
-	if want := "https://zscalerctl-vanity.zslogin.net/oauth2/v1/token"; gotURL != want {
-		t.Errorf("Authenticate(ZPATWO) URL = %q, want %q", gotURL, want)
-	}
-	if got := sdkCfg.Zscaler.Client.Cloud; got != "ZPATWO" {
-		t.Errorf("newSDKConfiguration(ZPATWO).Cloud = %q, want ZPATWO", got)
-	}
-	if _, ok := sdkCfg.ZPAHTTPClient.Transport.(*http.Transport); !ok {
-		t.Errorf("newSDKConfiguration(ZPATWO).ZPAHTTPClient.Transport = %T, want *http.Transport", sdkCfg.ZPAHTTPClient.Transport)
-	}
-}
-
-func TestZPATWOIdentityTransportOnlyRewritesExpectedEndpoints(t *testing.T) {
+func TestOneAPICloud(t *testing.T) {
 	tests := []struct {
-		name    string
-		url     string
-		wantURL string
+		cloud string
+		want  string
 	}{
-		{
-			name:    "sdk token endpoint",
-			url:     "https://acme.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "https://acme.zslogin.net/oauth2/v1/token",
-		},
-		{
-			name:    "zidentity admin endpoint",
-			url:     "https://acme-admin.zsloginzpatwo.net/admin/api/v1/users",
-			wantURL: "https://acme-admin.zslogin.net/admin/api/v1/users",
-		},
-		{
-			name:    "non zidentity admin path",
-			url:     "https://acme-admin.zsloginzpatwo.net/other/users",
-			wantURL: "https://acme-admin.zsloginzpatwo.net/other/users",
-		},
-		{
-			name:    "different host",
-			url:     "https://other.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "https://other.zsloginzpatwo.net/oauth2/v1/token",
-		},
-		{
-			name:    "non TLS",
-			url:     "http://acme.zsloginzpatwo.net/oauth2/v1/token",
-			wantURL: "http://acme.zsloginzpatwo.net/oauth2/v1/token",
-		},
+		{cloud: "", want: ""},
+		{cloud: "PRODUCTION", want: "PRODUCTION"},
+		{cloud: " production ", want: "PRODUCTION"},
+		{cloud: "alpha", want: "ALPHA"},
+		{cloud: "beta", want: "BETA"},
+		{cloud: "Gov", want: "GOV"},
+		{cloud: "GOVUS", want: "GOVUS"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var gotURL string
-			base := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				gotURL = request.URL.String()
-				return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: request}, nil
-			})
-			transport := oneAPIIdentityTransport(base, "acme", "ZPATWO")
-			request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, test.url, nil)
-			if err != nil {
-				t.Fatalf("http.NewRequestWithContext(%q) error = %v, want nil", test.url, err)
-			}
-			if _, err := transport.RoundTrip(request); err != nil {
-				t.Fatalf("RoundTrip(%q) error = %v, want nil", test.url, err)
-			}
-			if got := request.URL.String(); got != test.url {
-				t.Errorf("RoundTrip(%q) mutated original request URL to %q", test.url, got)
-			}
-			if gotURL != test.wantURL {
-				t.Errorf("RoundTrip(%q) URL = %q, want %q", test.url, gotURL, test.wantURL)
-			}
-		})
+		if err := ValidateSettings(Settings{Cloud: test.cloud}); err != nil {
+			t.Errorf("ValidateSettings(cloud %q) error = %v, want nil", test.cloud, err)
+		}
+		if got := oneAPICloud(test.cloud); got != test.want {
+			t.Errorf("oneAPICloud(%q) = %q, want %q", test.cloud, got, test.want)
+		}
 	}
 }
 
-func TestNewSDKConfigurationZPATWORoutesZidentityToProductionHost(t *testing.T) {
-	cfg := validReaderConfig()
-	cfg.Cloud = "ZPATWO"
-	sdkCfg := newSDKConfiguration(context.Background(), cfg)
-	transport, ok := sdkCfg.HTTPClient.Transport.(*zpaTwoIdentityTransport)
-	if !ok {
-		t.Fatalf("newSDKConfiguration(ZPATWO).HTTPClient.Transport = %T, want *zpaTwoIdentityTransport", sdkCfg.HTTPClient.Transport)
-	}
-	var gotURLs []string
-	transport.base = roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		gotURLs = append(gotURLs, request.URL.String())
-		body := `{"id":"user-1"}`
-		if request.URL.Path == "/oauth2/v1/token" {
-			// Keep expiry within the SDK's one-minute renewal window so this
-			// routing test does not start its background renewal goroutine.
-			body = `{"access_token":"test-token","expires_in":60}`
+// TestNewReaderRejectsProductClouds pins that product cloud names, which
+// operators reasonably try, fail before any request: the SDK would send the
+// client secret to a token host derived from them, and none exists. The
+// error names the fix.
+func TestNewReaderRejectsProductClouds(t *testing.T) {
+	for _, cloud := range []string{"ZPATWO", "zscalertwo", "zscalerthree", "zscaler", "zscloud", "zscalerbeta", "zscalergov", "preview"} {
+		cfg := validReaderConfig()
+		cfg.Cloud = cloud
+		_, err := NewReader(cfg)
+		if !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+			t.Errorf("NewReader(Cloud=%q) error = %v, want ErrInvalidSettings", cloud, err)
+			continue
 		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    request,
-		}, nil
-	})
+		if !strings.Contains(err.Error(), "use PRODUCTION") {
+			t.Errorf("NewReader(Cloud=%q) error = %q, want it to name PRODUCTION", cloud, err)
+		}
+	}
+}
 
-	service, err := zsdk.NewOneAPIClient(sdkCfg)
-	if err != nil {
-		t.Fatalf("NewOneAPIClient(ZPATWO) error = %v, want nil", err)
-	}
-	t.Cleanup(service.Client.Close)
-	if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
-		t.Fatalf("zidusers.GetUser(ZPATWO) error = %v, want nil", err)
-	}
-	wantURLs := []string{
-		"https://zscalerctl-vanity.zslogin.net/oauth2/v1/token",
-		"https://zscalerctl-vanity-admin.zslogin.net/admin/api/v1/users/user-1",
-	}
-	if !reflect.DeepEqual(gotURLs, wantURLs) {
-		t.Errorf("ZPATWO identity request URLs = %v, want %v", gotURLs, wantURLs)
+// TestNewSDKConfigurationRoutesToGatewayHosts pins the hosts the SDK uses for
+// each accepted cloud: the token host, a ZPA call and a Zidentity call.
+func TestNewSDKConfigurationRoutesToGatewayHosts(t *testing.T) {
+	for cloud, want := range map[string][]string{
+		"":           {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
+		"production": {"zscalerctl-vanity.zslogin.net oauth2", "api.zsapi.net zpa", "api.zsapi.net ziam"},
+		"alpha":      {"zscalerctl-vanity.zsloginalpha.net oauth2", "api.alpha.zsapi.net zpa", "api.alpha.zsapi.net ziam"},
+		"beta":       {"zscalerctl-vanity.zsloginbeta.net oauth2", "api.beta.zsapi.net zpa", "api.beta.zsapi.net ziam"},
+		"gov":        {"zscalerctl-vanity.zidentitygov.net oauth2", "api.zscalergov.net zpa", "api.zscalergov.net ziam"},
+		"govus":      {"zscalerctl-vanity.zidentitygov.us oauth2", "api.zscalergov.us zpa", "api.zscalergov.us ziam"},
+	} {
+		cfg := validReaderConfig()
+		cfg.Cloud = cloud
+		sdkCfg := newSDKConfiguration(context.Background(), cfg)
+		var gotURLs []string
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			gotURLs = append(gotURLs, request.URL.String())
+			body := `{}`
+			if request.URL.Path == "/oauth2/v1/token" {
+				// Keep expiry within the SDK's one-minute renewal window so this
+				// routing test does not start its background renewal goroutine.
+				body = `{"access_token":"test-token","expires_in":60}`
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    request,
+			}, nil
+		})
+		sdkCfg.HTTPClient.Transport = transport
+		sdkCfg.ZPAHTTPClient.Transport = transport
+
+		service, err := zsdk.NewOneAPIClient(sdkCfg)
+		if err != nil {
+			t.Fatalf("NewOneAPIClient(%q) error = %v, want nil", cloud, err)
+		}
+		if _, _, err := zpaapplicationsegment.Get(context.Background(), service, "application-1"); err != nil {
+			t.Fatalf("zpaapplicationsegment.Get(%q) error = %v, want nil", cloud, err)
+		}
+		if _, err := zidusers.GetUser(context.Background(), service, "user-1"); err != nil {
+			t.Fatalf("zidusers.GetUser(%q) error = %v, want nil", cloud, err)
+		}
+		service.Client.Close()
+		var hosts []string
+		for _, raw := range gotURLs {
+			u, err := url.Parse(raw)
+			if err != nil {
+				t.Fatalf("url.Parse(%q) error = %v", raw, err)
+			}
+			hosts = append(hosts, u.Host+" "+strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 2)[0])
+		}
+		if !reflect.DeepEqual(hosts, want) {
+			t.Errorf("cloud %q request hosts = %v (URLs %v), want %v", cloud, hosts, gotURLs, want)
+		}
 	}
 }
 
@@ -532,8 +499,8 @@ func TestNewReaderRejectsInvalidVanityDomain(t *testing.T) {
 		t.Run(vanityDomain, func(t *testing.T) {
 			cfg := validReaderConfig()
 			cfg.VanityDomain = vanityDomain
-			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-				t.Errorf("NewReader(VanityDomain=%q) error = %v, want ErrMissingCredentials", vanityDomain, err)
+			if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(VanityDomain=%q) error = %v, want ErrInvalidSettings", vanityDomain, err)
 			}
 		})
 	}
@@ -556,8 +523,8 @@ func TestNewReaderRejectsInvalidCloud(t *testing.T) {
 		t.Run(cloud, func(t *testing.T) {
 			cfg := validReaderConfig()
 			cfg.Cloud = cloud
-			if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-				t.Errorf("NewReader(Cloud=%q) error = %v, want ErrMissingCredentials", cloud, err)
+			if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+				t.Errorf("NewReader(Cloud=%q) error = %v, want ErrInvalidSettings", cloud, err)
 			}
 		})
 	}
@@ -722,6 +689,18 @@ func TestNewLegacyZIAConfigurationDoesNotUseSDKDiscoveryOrProxy(t *testing.T) {
 	}
 }
 
+// TestOneAPIConfigurationBoundsRetries pins the OneAPI retry budget: at most
+// two attempts per request, backoff capped at 3s (a 429's longer Retry-After
+// still wins), and one re-authentication of an invalid session. Zero would mean no bound at all: the SDK's loop retries
+// forever when MaxRetries is 0, and its default of 4 is set only by
+// zsdk.NewConfiguration, which the reader bypasses.
+func TestOneAPIConfigurationBoundsRetries(t *testing.T) {
+	limit := newSDKConfiguration(context.Background(), validReaderConfig()).Zscaler.Client.RateLimit
+	if limit.MaxRetries != 2 || limit.RetryWaitMin != time.Second || limit.RetryWaitMax != 3*time.Second || limit.MaxSessionNotValidRetries != 1 {
+		t.Errorf("newSDKConfiguration() RateLimit = %+v, want MaxRetries 2, waits 1s-3s, MaxSessionNotValidRetries 1", limit)
+	}
+}
+
 func TestNewLegacyZIAConfigurationRefusesCredentialBearingRedirects(t *testing.T) {
 	t.Parallel()
 
@@ -815,8 +794,13 @@ func TestLegacyZIABaseURLRejectsUnreviewedClouds(t *testing.T) {
 			if got != nil {
 				t.Errorf("legacyZIABaseURL(%q) URL = %q, want nil", cloud, got)
 			}
-			if !errors.Is(err, ErrMissingCredentials) {
-				t.Fatalf("legacyZIABaseURL(%q) error = %v, want ErrMissingCredentials", cloud, err)
+			// Unset is a missing credential; set but unreviewed is invalid.
+			want, notWant := ErrInvalidSettings, ErrMissingCredentials
+			if cloud == "" {
+				want, notWant = ErrMissingCredentials, ErrInvalidSettings
+			}
+			if !errors.Is(err, want) || errors.Is(err, notWant) {
+				t.Fatalf("legacyZIABaseURL(%q) error = %v, want %v", cloud, err, want)
 			}
 			if cloud != "" && strings.Contains(err.Error(), cloud) {
 				t.Errorf("legacyZIABaseURL(%q) error = %q, want value-free rejection", cloud, err)
@@ -830,8 +814,8 @@ func TestNewReaderRejectsUnreviewedLegacyZIACloud(t *testing.T) {
 
 	cfg := validLegacyReaderConfig()
 	cfg.ZIALegacy.Cloud = "example"
-	if _, err := NewReader(cfg); !errors.Is(err, ErrMissingCredentials) {
-		t.Fatalf("NewReader(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	if _, err := NewReader(cfg); !errors.Is(err, ErrInvalidSettings) || errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("NewReader(unreviewed legacy cloud) error = %v, want ErrInvalidSettings", err)
 	}
 }
 
@@ -1019,23 +1003,17 @@ func TestReaderListLocationGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 	}
 	// dynamicLocationGroupCriteria and locations are catalog-classified as of
 	// wave 1 and render in standard mode (see
-	// reader_fields_location_groups_test.go); only the admin reference stays
-	// dropped.
-	for _, field := range []string{"lastModUser"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected location-groups = %#v, want no %s", got, field)
-		}
-	}
-	for _, present := range []string{locationCanary, criteriaCanary} {
+	// reader_fields_location_groups_test.go). The lastModUser admin reference
+	// renders too: its id in every mode, the admin name in standard only.
+	assertRefID(t, "location-groups", got, "lastModUser", 1001)
+	for _, present := range []string{locationCanary, criteriaCanary, adminCanary} {
 		if !strings.Contains(fmt.Sprint(got), present) {
 			t.Errorf("projected location-groups = %#v, want %q rendered via promoted fields", got, present)
 		}
 	}
-	for _, forbidden := range []string{adminCanary} {
-		if strings.Contains(fmt.Sprint(got), forbidden) {
-			t.Errorf("projected location-groups = %#v, want no %q", got, forbidden)
-		}
-	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "location-groups", redact.ModeShare, records)
+	assertRefID(t, "location-groups share", shared, "lastModUser", 1001)
+	assertNoCanaries(t, "location-groups share", shared, adminCanary)
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected location-groups SDK shape) error = %v, want nil", err)
 	}
@@ -1099,17 +1077,17 @@ func TestReaderListRuleLabelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 			t.Errorf("projected rule-labels %s = %v, want typed redaction marker", field, got[field])
 		}
 	}
-	for _, field := range []string{"createdBy", "lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected rule-labels = %#v, want no %s", got, field)
-		}
-	}
-	if strings.Contains(fmt.Sprint(got), adminCanary) {
-		t.Errorf("projected rule-labels = %#v, want no %q", got, adminCanary)
-	}
+	// Admin audit references: ids render in every mode, admin names in
+	// standard only.
+	assertRefID(t, "rule-labels", got, "createdBy", 1001)
+	assertRefID(t, "rule-labels", got, "lastModifiedBy", 1002)
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected rule-labels SDK shape) error = %v, want nil", err)
 	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "rule-labels", redact.ModeShare, records)
+	assertRefID(t, "rule-labels share", shared, "createdBy", 1001)
+	assertRefID(t, "rule-labels share", shared, "lastModifiedBy", 1002)
+	assertNoCanaries(t, "rule-labels share", shared, adminCanary)
 }
 
 func TestSourceRecordReferenceHelpersStripExtensions(t *testing.T) {
@@ -1211,8 +1189,8 @@ func TestReaderListAuthSettingsProjectsSingletonThroughAllowList(t *testing.T) {
 
 	const (
 		kerberosCanary = "kerberos-password-canary"
-		strengthCanary = "password-strength-canary"
-		expiryCanary   = "password-expiry-canary"
+		strengthValue  = "MEDIUM"
+		expiryValue    = "NEVER"
 	)
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
@@ -1228,8 +1206,8 @@ func TestReaderListAuthSettingsProjectsSingletonThroughAllowList(t *testing.T) {
 						KerberosPwd:                       kerberosCanary,
 						AuthFrequency:                     "CUSTOM",
 						AuthCustomFrequency:               30,
-						PasswordStrength:                  strengthCanary,
-						PasswordExpiry:                    expiryCanary,
+						PasswordStrength:                  strengthValue,
+						PasswordExpiry:                    expiryValue,
 						LastSyncStartTime:                 1712345000,
 						LastSyncEndTime:                   1712345600,
 						MobileAdminSamlIdpEnabled:         false,
@@ -1247,12 +1225,18 @@ func TestReaderListAuthSettingsProjectsSingletonThroughAllowList(t *testing.T) {
 		t.Fatalf("SDKReader.List(zia, auth-settings) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceAuthSettings, records)
-	for _, field := range []string{"kerberosPwd", "passwordStrength", "passwordExpiry"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected auth-settings = %#v, want no %s", got, field)
-		}
+	if _, ok := got["kerberosPwd"]; ok {
+		t.Errorf("projected auth-settings = %#v, want no kerberosPwd", got)
 	}
-	assertNoCanaries(t, "auth-settings", got, kerberosCanary, strengthCanary, expiryCanary)
+	assertNoCanaries(t, "auth-settings", got, kerberosCanary)
+	// passwordStrength and passwordExpiry are password policy settings, not
+	// credentials: they render in every mode.
+	if got["passwordStrength"] != strengthValue {
+		t.Errorf("projected auth-settings passwordStrength = %v, want %s", got["passwordStrength"], strengthValue)
+	}
+	if got["passwordExpiry"] != expiryValue {
+		t.Errorf("projected auth-settings passwordExpiry = %v, want %s", got["passwordExpiry"], expiryValue)
+	}
 	if got["orgAuthType"] != "SAML" {
 		t.Errorf("projected auth-settings orgAuthType = %v, want SAML", got["orgAuthType"])
 	}
@@ -1333,7 +1317,7 @@ func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 						},
 						ManagedBy: &staticips.ManagedBy{
 							ID:   1001,
-							Name: adminCanary,
+							Name: "static-ip-sdwan-partner",
 						},
 						LastModifiedBy: &staticips.LastModifiedBy{
 							ID:   1002,
@@ -1368,17 +1352,16 @@ func TestReaderListStaticIPsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if !strings.Contains(comment, "<REDACTED:SECRET>") {
 		t.Errorf("projected static-ips comment = %v, want typed redaction marker", got["comment"])
 	}
-	for _, field := range []string{"managedBy", "lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected static-ips = %#v, want no %s", got, field)
-		}
-	}
-	if strings.Contains(fmt.Sprint(got), adminCanary) {
-		t.Errorf("projected static-ips = %#v, want no %q", got, adminCanary)
-	}
+	// managedBy is an {id, name} partner reference; lastModifiedBy is an
+	// admin audit reference whose name renders in standard mode only.
+	assertRefID(t, "static-ips", got, "managedBy", 1001)
+	assertRefID(t, "static-ips", got, "lastModifiedBy", 1002)
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected static-ips SDK shape) error = %v, want nil", err)
 	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "static-ips", redact.ModeShare, records)
+	assertRefID(t, "static-ips share", shared, "lastModifiedBy", 1002)
+	assertNoCanaries(t, "static-ips share", shared, adminCanary)
 }
 
 func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -1407,7 +1390,7 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 						SubCloud:             "us-east",
 						ManagedBy: &gretunnels.ManagedBy{
 							ID:   1001,
-							Name: adminCanary,
+							Name: "gre-tunnel-sdwan-partner",
 						},
 						LastModifiedBy: &gretunnels.LastModifiedBy{
 							ID:   1002,
@@ -1446,25 +1429,22 @@ func TestReaderListGRETunnelsProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if !strings.Contains(comment, "<REDACTED:SECRET>") {
 		t.Errorf("projected gre-tunnels comment = %v, want typed redaction marker", got["comment"])
 	}
-	for _, field := range []string{"managedBy", "lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected gre-tunnels = %#v, want no %s", got, field)
-		}
-	}
+	// managedBy is an {id, name} partner reference; lastModifiedBy is an
+	// admin audit reference whose name renders in standard mode only.
+	assertRefID(t, "gre-tunnels", got, "managedBy", 1001)
+	assertRefID(t, "gre-tunnels", got, "lastModifiedBy", 1002)
 	// primaryDestVip/secondaryDestVip are catalog-classified with explicit
 	// sub-field modeling; virtualIPCanary renders in standard mode only. Mode
 	// behaviour is covered in reader_fields_gre_tunnels_test.go.
 	if vip, ok := valueAtPath(got, "primaryDestVip.virtualIp"); !ok || vip != virtualIPCanary {
 		t.Errorf("projected gre-tunnels primaryDestVip.virtualIp = %v, want %q", vip, virtualIPCanary)
 	}
-	for _, forbidden := range []string{adminCanary} {
-		if strings.Contains(fmt.Sprint(got), forbidden) {
-			t.Errorf("projected gre-tunnels = %#v, want no %q", got, forbidden)
-		}
-	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected gre-tunnels SDK shape) error = %v, want nil", err)
 	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "gre-tunnels", redact.ModeShare, records)
+	assertRefID(t, "gre-tunnels share", shared, "lastModifiedBy", 1002)
+	assertNoCanaries(t, "gre-tunnels share", shared, adminCanary)
 }
 
 func TestReaderListSublocationsProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -1680,19 +1660,16 @@ func TestReaderListSSLInspectionRulesProjectsSDKShapeThroughAllowList(t *testing
 	if decryptSubActions["minServerTLSVersion"] != "TLS_1_3" {
 		t.Errorf("projected ssl-inspection-rules action.decryptSubActions.minServerTLSVersion = %v, want TLS_1_3", decryptSubActions["minServerTLSVersion"])
 	}
-	for _, field := range []string{"lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected ssl-inspection-rules = %#v, want no %s", got, field)
-		}
-	}
-	for _, forbidden := range []string{canary, adminCanary} {
-		if strings.Contains(fmt.Sprint(got), forbidden) {
-			t.Errorf("projected ssl-inspection-rules = %#v, want no %q", got, forbidden)
-		}
-	}
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "ssl-inspection-rules", got, "lastModifiedBy", 1001)
+	assertNoCanaries(t, "ssl-inspection-rules", got, canary)
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected ssl-inspection-rules SDK shape) error = %v, want nil", err)
 	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "ssl-inspection-rules", redact.ModeShare, records)
+	assertRefID(t, "ssl-inspection-rules share", shared, "lastModifiedBy", 1001)
+	assertNoCanaries(t, "ssl-inspection-rules share", shared, canary, adminCanary)
 }
 
 func TestReaderListURLCategoriesProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -1928,10 +1905,13 @@ func TestReaderListURLFilteringRulesProjectsSDKShapeThroughAllowList(t *testing.
 		t.Fatalf("SDKReader.List(zia, url-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "url-filtering-rules", records)
-	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, adminCanary, profileCanary)
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected url-filtering-rules = %#v, want no lastModifiedBy", got)
-	}
+	assertNoCanaries(t, "url-filtering-rules", got, canary, bareFreeTextToken, profileCanary)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "url-filtering-rules", got, "lastModifiedBy", 9001)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "url-filtering-rules", redact.ModeShare, records)
+	assertRefID(t, "url-filtering-rules share", shared, "lastModifiedBy", 9001)
+	assertNoCanaries(t, "url-filtering-rules share", shared, canary, bareFreeTextToken, adminCanary, profileCanary)
 	users := mustProjectedList(t, got, "users")
 	if len(users) != 1 || toString(users[0].(map[string]any)["name"]) != userCanary {
 		t.Errorf("projected url-filtering-rules users = %#v, want one entry named %q", users, userCanary)
@@ -2007,10 +1987,13 @@ func TestReaderListFirewallFilteringRulesProjectsSDKShapeThroughAllowList(t *tes
 		t.Fatalf("SDKReader.List(zia, firewall-filtering-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "firewall-filtering-rules", records)
-	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken, adminCanary)
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected firewall-filtering-rules = %#v, want no lastModifiedBy", got)
-	}
+	assertNoCanaries(t, "firewall-filtering-rules", got, canary, bareFreeTextToken)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "firewall-filtering-rules", got, "lastModifiedBy", 9002)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "firewall-filtering-rules", redact.ModeShare, records)
+	assertRefID(t, "firewall-filtering-rules share", shared, "lastModifiedBy", 9002)
+	assertNoCanaries(t, "firewall-filtering-rules share", shared, canary, bareFreeTextToken, adminCanary)
 	// users and zpaAppSegments are catalog-classified (standard-only) as of
 	// the wave-1 field promotion, so their reference names render here.
 	if !strings.Contains(fmt.Sprint(got["users"]), userCanary) {
@@ -2089,12 +2072,13 @@ func TestReaderListForwardingRulesProjectsSDKShapeThroughAllowList(t *testing.T)
 		t.Fatalf("SDKReader.List(zia, forwarding-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, "forwarding-rules", records)
-	assertNoCanaries(t, "forwarding-rules", got, canary, bareFreeTextToken, adminCanary)
-	for _, field := range []string{"lastModifiedBy"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected forwarding-rules = %#v, want no %s", got, field)
-		}
-	}
+	assertNoCanaries(t, "forwarding-rules", got, canary, bareFreeTextToken)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "forwarding-rules", got, "lastModifiedBy", 9003)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, "forwarding-rules", redact.ModeShare, records)
+	assertRefID(t, "forwarding-rules share", shared, "lastModifiedBy", 9003)
+	assertNoCanaries(t, "forwarding-rules share", shared, canary, bareFreeTextToken, adminCanary)
 	if got["forwardMethod"] != "DIRECT" {
 		t.Errorf("projected forwarding-rules forwardMethod = %v, want DIRECT", got["forwardMethod"])
 	}
@@ -2350,7 +2334,7 @@ func TestZIADeferredOrdinaryBatchProjectionBoundaries(t *testing.T) {
 		name         string
 		record       resources.SourceRecord
 		wantStandard map[string]any
-		absentFields []string
+		shareAbsent  []string
 	}{
 		{
 			name: resourceNetworkSvcGroups,
@@ -2411,8 +2395,14 @@ func TestZIADeferredOrdinaryBatchProjectionBoundaries(t *testing.T) {
 				HtmlMessage:      "<p>html body psk=" + canary + "</p>",
 				TLSEnabled:       true,
 			}),
-			wantStandard: map[string]any{"attachContent": true},
-			absentFields: []string{
+			// The message bodies are standard-only free text: they render
+			// scanned in standard mode and drop in share.
+			wantStandard: map[string]any{
+				"attachContent":    true,
+				"plainTextMessage": "present",
+				"htmlMessage":      "present",
+			},
+			shareAbsent: []string{
 				"plainTextMessage",
 				"htmlMessage",
 			},
@@ -2435,14 +2425,14 @@ func TestZIADeferredOrdinaryBatchProjectionBoundaries(t *testing.T) {
 					t.Fatalf("projected %s field %q = %v, want %v", tc.name, field, value, want)
 				}
 			}
-			for _, field := range tc.absentFields {
-				if _, ok := got[field]; ok {
-					t.Fatalf("projected %s unexpectedly included %q", tc.name, field)
-				}
-			}
 
 			share := projectOneRecordInMode(t, resources.ProductZIA, tc.name, redact.ModeShare, []resources.SourceRecord{tc.record})
 			assertNoCanaries(t, tc.name+" share", share, canary, bareFreeTextToken)
+			for _, field := range tc.shareAbsent {
+				if _, ok := share[field]; ok {
+					t.Fatalf("share projection for %s unexpectedly included %q", tc.name, field)
+				}
+			}
 			if _, ok := share["emails"]; ok {
 				t.Fatalf("share projection for %s included emails", tc.name)
 			}
@@ -2621,6 +2611,10 @@ func TestNetworkApplicationsListAvoidsUnboundedSDKPagination(t *testing.T) {
 	if !strings.Contains(source, "len(applications) >= pageCeiling") {
 		t.Fatalf("network-applications list missing overflow guard; want a len>=ceiling check that fails closed")
 	}
+	// The refusal reports pagination_incomplete like every page walker's.
+	if !strings.Contains(source, `"%w: zia network-applications returned the full single-page ceiling`) {
+		t.Fatalf("network-applications overflow guard does not wrap errPaginationValidation")
+	}
 }
 
 func TestReaderListTimeWindowsProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -2686,12 +2680,12 @@ func TestReaderListProxiesProjectsSDKShapeThroughAllowList(t *testing.T) {
 							Cert: &ziacommon.IDNameExternalID{
 								ID:         11,
 								Name:       "Cert psk=" + canary,
-								ExternalID: canary,
+								ExternalID: "proxy-cert-external-id",
 							},
 							LastModifiedBy: &ziacommon.IDNameExternalID{
 								ID:         12,
 								Name:       "Admin psk=" + canary,
-								ExternalID: canary,
+								ExternalID: "proxy-admin-external-id",
 							},
 							LastModifiedTime: 12345,
 						},
@@ -2712,6 +2706,17 @@ func TestReaderListProxiesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if got["port"] != 8080 {
 		t.Errorf("projected proxies port = %v, want 8080", got["port"])
 	}
+	// External ids are references, not secrets: the cert's renders in every
+	// mode; the admin's (an identity outside ZIA) in standard only.
+	if v, _ := valueAtPath(got, "cert.externalId"); v != "proxy-cert-external-id" {
+		t.Errorf("projected proxies cert.externalId = %v, want proxy-cert-external-id", v)
+	}
+	if v, _ := valueAtPath(got, "lastModifiedBy.externalId"); v != "proxy-admin-external-id" {
+		t.Errorf("projected proxies lastModifiedBy.externalId = %v, want proxy-admin-external-id", v)
+	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceProxies, redact.ModeShare, records)
+	assertRefID(t, "proxies share", shared, "lastModifiedBy", 12)
+	assertNoCanaries(t, "proxies share", shared, canary, bareFreeTextToken, "proxy-admin-external-id")
 }
 
 func TestReaderListProxyGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -2737,12 +2742,12 @@ func TestReaderListProxyGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
 							PrimaryProxy: &ziacommon.IDNameExternalID{
 								ID:         21,
 								Name:       "Primary psk=" + canary,
-								ExternalID: canary,
+								ExternalID: "primary-proxy-external-id",
 							},
 							SecondaryProxy: &ziacommon.IDNameExternalID{
 								ID:         22,
 								Name:       "Secondary psk=" + canary,
-								ExternalID: canary,
+								ExternalID: "secondary-proxy-external-id",
 							},
 							LastModifiedBy: &ziacommon.IDNameExtensions{
 								ID:   23,
@@ -2767,6 +2772,10 @@ func TestReaderListProxyGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
 	if got["failClosed"] != true {
 		t.Errorf("projected proxy-gateways failClosed = %v, want true", got["failClosed"])
 	}
+	if v, _ := valueAtPath(got, "primaryProxy.externalId"); v != "primary-proxy-external-id" {
+		t.Errorf("projected proxy-gateways primaryProxy.externalId = %v, want primary-proxy-external-id", v)
+	}
+	assertRefID(t, "proxy-gateways", got, "lastModifiedBy", 23)
 }
 
 func TestReaderListDedicatedIPGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -2972,10 +2981,13 @@ func TestReaderListBandwidthControlRulesProjectsSDKShapeThroughAllowList(t *test
 		t.Fatalf("SDKReader.List(zia, bandwidth-control-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceBandwidthRules, records)
-	assertNoCanaries(t, "bandwidth-control-rules", got, canary, bareFreeTextToken, adminCanary)
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected bandwidth-control-rules = %#v, want no lastModifiedBy", got)
-	}
+	assertNoCanaries(t, "bandwidth-control-rules", got, canary, bareFreeTextToken)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "bandwidth-control-rules", got, "lastModifiedBy", 9001)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceBandwidthRules, redact.ModeShare, records)
+	assertRefID(t, "bandwidth-control-rules share", shared, "lastModifiedBy", 9001)
+	assertNoCanaries(t, "bandwidth-control-rules share", shared, canary, bareFreeTextToken, adminCanary)
 	if got["maxBandwidth"] != 100 {
 		t.Errorf("projected bandwidth-control-rules maxBandwidth = %v, want 100", got["maxBandwidth"])
 	}
@@ -3027,10 +3039,13 @@ func TestReaderListDNSGatewaysProjectsSDKShapeThroughAllowList(t *testing.T) {
 		t.Fatalf("SDKReader.List(zia, dns-gateways) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceDNSGateways, records)
-	assertNoCanaries(t, "dns-gateways", got, canary, adminCanary)
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected dns-gateways = %#v, want no lastModifiedBy", got)
-	}
+	assertNoCanaries(t, "dns-gateways", got, canary)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "dns-gateways", got, "lastModifiedBy", 9002)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceDNSGateways, redact.ModeShare, records)
+	assertRefID(t, "dns-gateways share", shared, "lastModifiedBy", 9002)
+	assertNoCanaries(t, "dns-gateways share", shared, canary, adminCanary)
 	if got["natZtrGateway"] != true {
 		t.Errorf("projected dns-gateways natZtrGateway = %v, want true", got["natZtrGateway"])
 	}
@@ -3103,10 +3118,13 @@ func TestReaderListNATControlRulesProjectsSDKShapeThroughAllowList(t *testing.T)
 		t.Fatalf("SDKReader.List(zia, nat-control-rules) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceNATRules, records)
-	assertNoCanaries(t, "nat-control-rules", got, canary, bareFreeTextToken, adminCanary)
-	if _, ok := got["lastModifiedBy"]; ok {
-		t.Errorf("projected nat-control-rules = %#v, want no lastModifiedBy", got)
-	}
+	assertNoCanaries(t, "nat-control-rules", got, canary, bareFreeTextToken)
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "nat-control-rules", got, "lastModifiedBy", 9003)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceNATRules, redact.ModeShare, records)
+	assertRefID(t, "nat-control-rules share", shared, "lastModifiedBy", 9003)
+	assertNoCanaries(t, "nat-control-rules share", shared, canary, bareFreeTextToken, adminCanary)
 	if got["redirectPort"] != 443 {
 		t.Errorf("projected nat-control-rules redirectPort = %v, want 443", got["redirectPort"])
 	}
@@ -3252,12 +3270,16 @@ func TestReaderListWorkloadGroupsProjectsSDKShapeThroughAllowList(t *testing.T) 
 		t.Fatalf("SDKReader.List(zia, workload-groups) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceWorkloadGroups, records)
-	assertNoCanaries(t, "workload-groups", got, canary, bareFreeTextToken, adminCanary, tagCanary)
-	for _, field := range []string{"lastModifiedBy", "expressionJson"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected workload-groups = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "workload-groups", got, canary, bareFreeTextToken, tagCanary)
+	if _, ok := got["expressionJson"]; ok {
+		t.Errorf("projected workload-groups = %#v, want no expressionJson", got)
 	}
+	// lastModifiedBy is an admin audit reference: the id renders in every
+	// mode, the admin name in standard only.
+	assertRefID(t, "workload-groups", got, "lastModifiedBy", 9004)
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceWorkloadGroups, redact.ModeShare, records)
+	assertRefID(t, "workload-groups share", shared, "lastModifiedBy", 9004)
+	assertNoCanaries(t, "workload-groups share", shared, canary, bareFreeTextToken, adminCanary, tagCanary)
 	if got["lastModifiedTime"] != 1700000000 {
 		t.Errorf("projected workload-groups lastModifiedTime = %v, want 1700000000", got["lastModifiedTime"])
 	}
@@ -3319,12 +3341,20 @@ func TestReaderListZTWWorkloadGroupsProjectsSDKShapeThroughAllowList(t *testing.
 		t.Fatalf("SDKReader.List(ztw, workload-groups) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZTW, resourceWorkloadGroups, records)
-	assertNoCanaries(t, "ztw workload-groups", got, canary, adminCanary, tagCanary)
-	for _, field := range []string{"expression", "lastModifiedBy", "expressionJson"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected ztw workload-groups = %#v, want no %s", got, field)
-		}
+	assertNoCanaries(t, "ztw workload-groups", got, canary)
+	// The expression, its JSON form and the admin reference render in
+	// standard mode; tag keys/values and the admin name are standard-only.
+	assertRefID(t, "ztw workload-groups", got, "lastModifiedBy", 9004)
+	if _, ok := got["expression"]; !ok {
+		t.Errorf("projected ztw workload-groups = %#v, want expression", got)
 	}
+	if !strings.Contains(fmt.Sprint(got["expressionJson"]), tagCanary) {
+		t.Errorf("projected ztw workload-groups expressionJson = %v, want tag value %q", got["expressionJson"], tagCanary)
+	}
+	shared := projectOneRecordInMode(t, resources.ProductZTW, resourceWorkloadGroups, redact.ModeShare, records)
+	assertRefID(t, "ztw workload-groups share", shared, "lastModifiedBy", 9004)
+	assertFieldsAbsent(t, "ztw workload-groups share", shared, "expression")
+	assertNoCanaries(t, "ztw workload-groups share", shared, canary, adminCanary, tagCanary)
 	if got["lastModifiedTime"] != 1700000100 {
 		t.Errorf("projected ztw workload-groups lastModifiedTime = %v, want 1700000100", got["lastModifiedTime"])
 	}
@@ -3339,9 +3369,9 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 
 	const canary = "ztw-reference-batch-psk-canary"
 	cases := []struct {
-		name         string
-		record       resources.SourceRecord
-		absentFields []string
+		name       string
+		record     resources.SourceRecord
+		wantFields []string
 	}{
 		{
 			name: resourcePublicCloudAccts,
@@ -3368,7 +3398,9 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 					Name: "admin psk=" + canary,
 				},
 			}),
-			absentFields: []string{"ecDnsGatewayOptionsPrimary", "ecDnsGatewayOptionsSecondary", "lastModifiedBy"},
+			// The gateway options are DNS settings and lastModifiedBy an
+			// admin audit reference: they render now.
+			wantFields: []string{"ecDnsGatewayOptionsPrimary", "ecDnsGatewayOptionsSecondary", "lastModifiedBy"},
 		},
 		{
 			name: resourceForwardingGWs,
@@ -3379,8 +3411,8 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 				FailClosed:                   true,
 				ManualPrimary:                "manual psk=" + canary,
 				ManualSecondary:              "secondary psk=" + canary,
-				SubCloudPrimary:              &ztwcommon.CommonIDNameExternalID{ID: 10, Name: "subcloud", ExternalID: canary},
-				SubCloudSecondary:            &ztwcommon.CommonIDNameExternalID{ID: 11, Name: "subcloud secondary", ExternalID: canary},
+				SubCloudPrimary:              &ztwcommon.CommonIDNameExternalID{ID: 10, Name: "subcloud", ExternalID: "subcloud-external-id"},
+				SubCloudSecondary:            &ztwcommon.CommonIDNameExternalID{ID: 11, Name: "subcloud secondary", ExternalID: "subcloud-secondary-external-id"},
 				PrimaryType:                  "MANUAL_OVERRIDE",
 				SecondaryType:                "AUTO",
 				Type:                         "ZIA",
@@ -3393,7 +3425,7 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 				LastModifiedBy:               &ztwcommon.IDNameExtensions{ID: 9006, Name: "admin psk=" + canary},
 				LastModifiedTime:             1700000300,
 			}),
-			absentFields: []string{"ecDnsGatewayOptionsPrimary", "ecDnsGatewayOptionsSecondary", "lastModifiedBy"},
+			wantFields: []string{"ecDnsGatewayOptionsPrimary", "ecDnsGatewayOptionsSecondary", "lastModifiedBy", "subcloudPrimary"},
 		},
 		{
 			name: resourceECGroups,
@@ -3408,11 +3440,11 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 				AzureAvailabilityZone: "azure psk=" + canary,
 				MaxEcCount:            4,
 				TunnelMode:            "GRE",
-				Location:              &ztwcommon.CommonIDNameExternalID{ID: 20, Name: "location", ExternalID: canary},
-				ProvTemplate:          &ztwcommon.CommonIDNameExternalID{ID: 21, Name: "template", ExternalID: canary},
+				Location:              &ztwcommon.CommonIDNameExternalID{ID: 20, Name: "location", ExternalID: "location-external-id"},
+				ProvTemplate:          &ztwcommon.CommonIDNameExternalID{ID: 21, Name: "template", ExternalID: "template-external-id"},
 				ECVMs:                 []ztwcommon.ECVMs{{ID: 30, Name: "ecvm psk=" + canary}},
 			}),
-			absentFields: []string{"ecVMs"},
+			wantFields: []string{"ecVMs", "location", "provTemplate"},
 		},
 		{
 			name: resourceIPSourceGroups,
@@ -3493,11 +3525,13 @@ func TestReaderZTWReferenceBatchProjectsSDKShapesThroughAllowList(t *testing.T) 
 
 			got := projectOneRecord(t, resources.ProductZTW, tc.name, []resources.SourceRecord{tc.record})
 			assertNoCanaries(t, "ztw "+tc.name, got, canary)
-			for _, field := range tc.absentFields {
-				if _, ok := got[field]; ok {
-					t.Errorf("projected ztw %s = %#v, want no %s", tc.name, got, field)
+			for _, field := range tc.wantFields {
+				if _, ok := got[field]; !ok {
+					t.Errorf("projected ztw %s = %#v, want %s", tc.name, got, field)
 				}
 			}
+			shared := projectOneRecordInMode(t, resources.ProductZTW, tc.name, redact.ModeShare, []resources.SourceRecord{tc.record})
+			assertNoCanaries(t, "ztw "+tc.name+" share", shared, canary)
 		})
 	}
 }
@@ -3589,11 +3623,11 @@ func TestReaderZTWAdminGovernanceProjectsSDKShapesThroughAllowList(t *testing.T)
 	for _, field := range []string{"password", "execMobileAppTokens", "role.extensions"} {
 		assertReportContains(t, userReports[0].DroppedFields, field)
 	}
-	for _, field := range []string{"isPasswordLoginAllowed", "isPasswordExpired"} {
-		if _, ok := userGot[field]; ok {
-			t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) includes %s, want dropped", field)
-		}
-		assertReportContains(t, userReports[0].DroppedFields, field)
+	// isPasswordLoginAllowed and isPasswordExpired are account status flags,
+	// not credentials: they render in every mode.
+	if userGot["isPasswordLoginAllowed"] != true || userGot["isPasswordExpired"] != false {
+		t.Errorf("ProjectRecordsAndVerify(ztw/admin-users standard) password status flags = %v/%v, want true/false",
+			userGot["isPasswordLoginAllowed"], userGot["isPasswordExpired"])
 	}
 	assertNoCanaries(t, "ztw/admin-users standard", userGot, canary)
 
@@ -3612,14 +3646,21 @@ func TestReaderZTWAdminGovernanceProjectsSDKShapesThroughAllowList(t *testing.T)
 		"email",
 		"comments",
 		"pwdLastModifiedTime",
-		"adminScopescopeGroupMemberEntities",
-		"adminScopeScopeEntities",
 		"role",
 	} {
 		if _, ok := userShareGot[field]; ok {
 			t.Errorf("ProjectRecordsAndVerify(ztw/admin-users share) includes %s, want dropped", field)
 		}
 		assertReportContains(t, userShareReports[0].DroppedFields, field)
+	}
+	// The admin scope reference lists keep their ids in share; the
+	// standard-only names (carrying the canary) are dropped.
+	for field, wantID := range map[string]int{
+		"adminScopescopeGroupMemberEntities": 10,
+		"adminScopeScopeEntities":            11,
+	} {
+		assertRefListIDsOnly(t, "ztw/admin-users share", userShareGot, field, wantID)
+		assertReportContains(t, userShareReports[0].DroppedFields, field+"[0].name")
 	}
 	assertNoCanaries(t, "ztw/admin-users share", userShareGot, canary, "admin@example.internal", "cloud-admin")
 
@@ -3675,11 +3716,15 @@ func TestReaderZTWAdminGovernanceProjectsSDKShapesThroughAllowList(t *testing.T)
 func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const canary = "ztw-closeout-batch-psk-canary"
+	const (
+		canary          = "ztw-closeout-batch-psk-canary"
+		adminExternalID = "ztw-closeout-admin-external-id"
+	)
 	cases := []struct {
 		name         string
 		record       resources.SourceRecord
 		absentFields []string
+		wantFields   []string
 	}{
 		{
 			name: resourceLocations,
@@ -3703,7 +3748,8 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 					CloudMeta:     ztwlocation.CloudMeta{ID: 3, Name: "vpc psk=" + canary},
 				},
 			}),
-			absentFields: []string{"vpnCredentials", "vpcInfo"},
+			absentFields: []string{"vpnCredentials"},
+			wantFields:   []string{"vpcInfo"},
 		},
 		{
 			name: resourceLocationTmpls,
@@ -3714,13 +3760,13 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 				LocationTemplateDetails: &ztwlocationtemplate.LocationTemplateDetails{
 					TemplatePrefix: "prefix psk=" + canary,
 					AuthRequired:   true,
-					LastModUid:     &ztwcommon.CommonIDNameExternalID{ID: 4, Name: "admin psk=" + canary, ExternalID: canary},
+					LastModUid:     &ztwcommon.CommonIDNameExternalID{ID: 4, Name: "admin psk=" + canary, ExternalID: adminExternalID},
 				},
 				Editable:    true,
 				LastModTime: 1700000500,
-				LastModUid:  &ztwcommon.CommonIDNameExternalID{ID: 5, Name: "admin psk=" + canary, ExternalID: canary},
+				LastModUid:  &ztwcommon.CommonIDNameExternalID{ID: 5, Name: "admin psk=" + canary, ExternalID: adminExternalID},
 			}),
-			absentFields: []string{"lastModUid"},
+			wantFields: []string{"lastModUid"},
 		},
 		{
 			name: resourceAccountGroups,
@@ -3752,7 +3798,7 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 					ID:   8,
 					Name: "account group psk=" + canary,
 				}},
-				LastModUser:      &ztwcommon.CommonIDNameExternalID{ID: 9, Name: "admin psk=" + canary, ExternalID: canary},
+				LastModUser:      &ztwcommon.CommonIDNameExternalID{ID: 9, Name: "admin psk=" + canary, ExternalID: adminExternalID},
 				RegionStatus:     []ztwcommon.RegionStatus{{ID: 10, Name: "us-west-2", CloudType: "AWS", Status: true}},
 				SupportedRegions: []ztwcommon.SupportedRegions{{ID: 11, Name: "us-east-1", CloudType: "AWS"}},
 				AccountDetails: &ztwpubliccloudinfo.AccountDetails{
@@ -3763,7 +3809,7 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 					TrustedAccountID:   "trusted psk=" + canary,
 				},
 			}),
-			absentFields: []string{"externalId", "lastModUser", "accountDetails"},
+			wantFields: []string{"externalId", "lastModUser", "accountDetails"},
 		},
 		{
 			name: resourceZTWZPAAppSegs,
@@ -3801,7 +3847,7 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 					ZPAID:       17,
 				}},
 			}),
-			absentFields: []string{"lastModifiedBy"},
+			wantFields: []string{"lastModifiedBy"},
 		},
 		{
 			name: resourceTrafficDNSRules,
@@ -3821,7 +3867,7 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 				LastModifiedTime: 1700000900,
 				LastModifiedBy:   &ztwcommon.IDNameExtensions{ID: 20, Name: "admin psk=" + canary},
 			}),
-			absentFields: []string{"lastModifiedBy"},
+			wantFields: []string{"lastModifiedBy"},
 		},
 		{
 			name: resourceTrafficLogRules,
@@ -3839,7 +3885,7 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 				LastModifiedTime: 1700001000,
 				LastModifiedBy:   &ztwcommon.IDNameExtensions{ID: 23, Name: "admin psk=" + canary},
 			}),
-			absentFields: []string{"lastModifiedBy"},
+			wantFields: []string{"lastModifiedBy"},
 		},
 	}
 
@@ -3855,11 +3901,22 @@ func TestReaderZTWCloseoutBatchProjectsSDKShapesThroughAllowList(t *testing.T) {
 					t.Errorf("projected ztw %s = %#v, want no %s", tc.name, got, field)
 				}
 			}
+			// Admin audit references, cloud account details and VPC info
+			// render now; their identifying parts are standard-only.
+			for _, field := range tc.wantFields {
+				if _, ok := got[field]; !ok {
+					t.Errorf("projected ztw %s = %#v, want %s", tc.name, got, field)
+				}
+			}
+			shared := projectOneRecordInMode(t, resources.ProductZTW, tc.name, redact.ModeShare, []resources.SourceRecord{tc.record})
+			assertNoCanaries(t, "ztw "+tc.name+" share", shared, canary, adminExternalID)
 		})
 	}
 }
 
-func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
+// TestReaderZTWCloseoutBatchShareModeKeepsCriteriaIDsOnly asserts share
+// mode drops sensitive criteria values and keeps reference lists as ids only.
+func TestReaderZTWCloseoutBatchShareModeKeepsCriteriaIDsOnly(t *testing.T) {
 	t.Parallel()
 
 	const canary = "ztw-closeout-share-psk-canary"
@@ -3867,6 +3924,7 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 		name         string
 		record       resources.SourceRecord
 		absentFields []string
+		idOnlyRefs   map[string]int
 	}{
 		{
 			name: resourceLocations,
@@ -3896,7 +3954,8 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 				DestAddresses: []string{"example.internal psk=" + canary},
 				Locations:     []ztwcommon.IDNameExtensions{{ID: 13, Name: "location psk=" + canary}},
 			}),
-			absentFields: []string{"srcIps", "destAddresses", "locations"},
+			absentFields: []string{"srcIps", "destAddresses"},
+			idOnlyRefs:   map[string]int{"locations": 13},
 		},
 	}
 
@@ -3916,6 +3975,9 @@ func TestReaderZTWCloseoutBatchShareModeDropsSensitiveCriteria(t *testing.T) {
 				if _, ok := got[field]; ok {
 					t.Errorf("ProjectRecordsAndVerify(ztw/%s share) includes %s, want dropped", tc.name, field)
 				}
+			}
+			for field, wantID := range tc.idOnlyRefs {
+				assertRefListIDsOnly(t, "ztw "+tc.name+" share", got, field, wantID)
 			}
 		})
 	}
@@ -4015,12 +4077,19 @@ func TestReaderListCloudAppInstancesProjectsSDKShapeThroughAllowList(t *testing.
 		t.Fatalf("SDKReader.List(zia, cloud-app-instances) error = %v, want nil", err)
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceCloudAppInsts, records)
-	assertNoCanaries(t, "cloud-app-instances", got, adminCanary, identifierCanary)
-	for _, field := range []string{"modifiedBy", "instanceIdentifiers"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected cloud-app-instances = %#v, want no %s", got, field)
-		}
+	// modifiedBy is an admin audit reference and instanceIdentifiers the
+	// tenant identifiers the instance matches: both render, with the admin
+	// name and identifier values standard-only.
+	assertRefID(t, "cloud-app-instances", got, "modifiedBy", 77)
+	if !strings.Contains(fmt.Sprint(got["instanceIdentifiers"]), identifierCanary) {
+		t.Errorf("projected cloud-app-instances instanceIdentifiers = %v, want identifier %q", got["instanceIdentifiers"], identifierCanary)
 	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceCloudAppInsts, redact.ModeShare, records)
+	assertRefID(t, "cloud-app-instances share", shared, "modifiedBy", 77)
+	if _, ok := shared["instanceIdentifiers"]; !ok {
+		t.Errorf("projected cloud-app-instances share = %#v, want instanceIdentifiers", shared)
+	}
+	assertNoCanaries(t, "cloud-app-instances share", shared, adminCanary, identifierCanary)
 	if got["instanceId"] != 902 {
 		t.Errorf("projected cloud-app-instances instanceId = %v, want 902", got["instanceId"])
 	}
@@ -4101,7 +4170,7 @@ func TestReaderListVZENClustersProjectsSDKShapeThroughAllowList(t *testing.T) {
 								{
 									ID:         1,
 									Name:       "Node psk=" + nodeCanary,
-									ExternalID: nodeCanary,
+									ExternalID: "vzen-node-external-id",
 								},
 							},
 						},
@@ -4119,6 +4188,13 @@ func TestReaderListVZENClustersProjectsSDKShapeThroughAllowList(t *testing.T) {
 	}
 	got := projectOneRecord(t, resources.ProductZIA, resourceVZENClusters, records)
 	assertNoCanaries(t, "vzen-clusters", got, nodeCanary)
+	// virtualZenNodes renders in standard mode; the node external id is a
+	// reference id, not a secret.
+	if v, _ := valueAtPath(got, "virtualZenNodes"); !strings.Contains(fmt.Sprint(v), "vzen-node-external-id") {
+		t.Errorf("projected vzen-clusters virtualZenNodes = %v, want node external id", v)
+	}
+	shared := projectOneRecordInMode(t, resources.ProductZIA, resourceVZENClusters, redact.ModeShare, records)
+	assertFieldsAbsent(t, "vzen-clusters share", shared, "virtualZenNodes")
 	if got["ipSecEnabled"] != true {
 		t.Errorf("projected vzen-clusters ipSecEnabled = %v, want true", got["ipSecEnabled"])
 	}
@@ -4217,6 +4293,11 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
+		// shareForbidden are values that render in standard mode only.
+		shareForbidden []string
 	}{
 		{
 			name:     "dlp engine expression is standard-only",
@@ -4232,18 +4313,17 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 			shareAbsent:     []string{"engineExpression"},
 		},
 		{
-			name:     "dlp dictionary detector content is always dropped",
+			name:     "dlp dictionary detector content is standard-only free text",
 			resource: resourceDLPDictionaries,
 			record: resources.NewSourceRecord(map[string]any{
 				"id":                    2,
 				"name":                  "Dictionary",
-				"phrases":               []map[string]any{{"phrase": canary}},
-				"patterns":              []map[string]any{{"pattern": canary}},
-				"exactDataMatchDetails": []map[string]any{{"secondaryFieldMatchOn": canary}},
+				"phrases":               []map[string]any{{"phrase": "dictionary-phrase-value"}},
+				"patterns":              []map[string]any{{"pattern": "dictionary-pattern-value"}},
+				"exactDataMatchDetails": []map[string]any{{"secondaryFieldMatchOn": "MATCHON_ANY"}},
 			}),
-			standardPresent: []string{"name"},
-			standardAbsent:  []string{"phrases", "patterns", "exactDataMatchDetails"},
-			shareAbsent:     []string{"phrases", "patterns", "exactDataMatchDetails"},
+			standardPresent: []string{"name", "phrases", "patterns", "exactDataMatchDetails"},
+			shareForbidden:  []string{"dictionary-phrase-value", "dictionary-pattern-value"},
 		},
 		{
 			name:     "edm schema data model is standard-only or dropped",
@@ -4252,14 +4332,14 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 				"schemaId":         3,
 				"projectName":      "EDM Project",
 				"filename":         "edm.csv",
-				"tokenList":        []map[string]any{{"name": canary}},
-				"modifiedBy":       map[string]any{"id": 1, "name": canary},
+				"tokenList":        []map[string]any{{"name": "edm-column-name"}},
+				"modifiedBy":       map[string]any{"id": 1, "name": "edm-admin-name"},
 				"schedule":         map[string]any{"scheduleType": "DAILY"},
 				"fileUploadStatus": "READY",
 			}),
-			standardPresent: []string{"projectName", "filename"},
-			standardAbsent:  []string{"tokenList", "modifiedBy", "schedule"},
-			shareAbsent:     []string{"projectName", "filename", "tokenList", "modifiedBy", "schedule"},
+			standardPresent: []string{"projectName", "filename", "tokenList", "modifiedBy", "schedule"},
+			shareAbsent:     []string{"projectName", "filename", "schedule"},
+			shareForbidden:  []string{"edm-column-name", "edm-admin-name"},
 		},
 		{
 			name:     "idm profile host and username are standard-only",
@@ -4270,12 +4350,12 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 				"host":           "idm.example.invalid",
 				"profileDirPath": "/srv/idm",
 				"userName":       "svc-idm",
-				"modifiedBy":     map[string]any{"id": 1, "name": canary},
+				"modifiedBy":     map[string]any{"id": 1, "name": "idm-admin-name"},
 				"uploadStatus":   "COMPLETE",
 			}),
-			standardPresent: []string{"profileName", "host", "profileDirPath", "userName"},
-			standardAbsent:  []string{"modifiedBy"},
-			shareAbsent:     []string{"profileName", "host", "profileDirPath", "userName", "modifiedBy"},
+			standardPresent: []string{"profileName", "host", "profileDirPath", "userName", "modifiedBy"},
+			shareAbsent:     []string{"profileName", "host", "profileDirPath", "userName"},
+			shareForbidden:  []string{"idm-admin-name"},
 		},
 		{
 			name:     "web dlp rule criteria is standard-only and recursive subrules drop",
@@ -4284,14 +4364,16 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 				"id":                   5,
 				"name":                 "Web DLP",
 				"externalAuditorEmail": "auditor@example.invalid",
-				"receiver":             map[string]any{"id": 1, "name": "Receiver", "tenant": map[string]any{"name": canary}},
+				"receiver":             map[string]any{"id": 1, "name": "Receiver", "tenant": map[string]any{"name": "receiver-tenant-name"}},
 				"users":                []map[string]any{{"id": 1, "name": "User"}},
 				"subRules":             []map[string]any{{"name": canary}},
 				"state":                "ENABLED",
 			}),
 			standardPresent: []string{"externalAuditorEmail", "receiver", "users"},
 			standardAbsent:  []string{"subRules"},
-			shareAbsent:     []string{"externalAuditorEmail", "receiver", "users", "subRules"},
+			shareAbsent:     []string{"externalAuditorEmail", "receiver", "subRules"},
+			shareIDOnly:     map[string]int{"users": 1},
+			shareForbidden:  []string{"receiver-tenant-name"},
 		},
 		{
 			name:     "web dlp rule receiver without tenant does not panic",
@@ -4311,12 +4393,12 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 				"id":                6,
 				"name":              "Receiver",
 				"onboardableEntity": map[string]any{"id": 1, "name": "Entity", "tenantAuthorizationInfo": map[string]any{"clientSecret": canary}},
-				"lastValidationMsg": map[string]any{"errorMsg": canary},
-				"lastModifiedBy":    map[string]any{"id": 1, "name": canary},
+				"lastValidationMsg": map[string]any{"errorMsg": "validation-error-message"},
+				"lastModifiedBy":    map[string]any{"id": 1, "name": "c2c-admin-name"},
 			}),
-			standardPresent: []string{"onboardableEntity"},
-			standardAbsent:  []string{"lastValidationMsg", "lastModifiedBy"},
-			shareAbsent:     []string{"onboardableEntity", "lastValidationMsg", "lastModifiedBy"},
+			standardPresent: []string{"onboardableEntity", "lastValidationMsg", "lastModifiedBy"},
+			shareAbsent:     []string{"onboardableEntity"},
+			shareForbidden:  []string{"validation-error-message", "c2c-admin-name"},
 		},
 	}
 
@@ -4345,7 +4427,9 @@ func TestDeferredZIABatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
+				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
 		})
 	}
@@ -4362,6 +4446,11 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
+		// shareForbidden are values that render in standard mode only.
+		shareForbidden []string
 	}{
 		{
 			name:     "browser isolation profile URL is standard-only",
@@ -4376,15 +4465,15 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 			shareAbsent:     []string{"id", "url"},
 		},
 		{
-			name:     "edm lite token list is dropped",
+			name:     "edm lite token list column names are standard-only",
 			resource: resourceDLPEDMLite,
 			record: dlpEDMLiteSourceRecord(dlpedmlite.DLPEDMLite{
 				Schema:    dlpedmlite.SchemaIDNameExtension{ID: 1, Name: "Schema", ExternalID: "external-schema"},
-				TokenList: []dlpedmlite.TokenList{{Name: canary, Type: "TEXT", OriginalColumn: 1}},
+				TokenList: []dlpedmlite.TokenList{{Name: "edm-lite-column-name", Type: "TEXT", OriginalColumn: 1}},
 			}),
-			standardPresent: []string{"schema"},
-			standardAbsent:  []string{"tokenList"},
-			shareAbsent:     []string{"schema", "tokenList"},
+			standardPresent: []string{"schema", "tokenList"},
+			shareAbsent:     []string{"schema"},
+			shareForbidden:  []string{"edm-lite-column-name"},
 		},
 		{
 			name:     "dc exclusion datacenter reference is standard-only",
@@ -4395,10 +4484,11 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 				DcName:      &ziacommon.IDNameExtensions{ID: 2, Name: "Datacenter"},
 			}),
 			standardPresent: []string{"dcName"},
-			shareAbsent:     []string{"description", "dcName"},
+			shareAbsent:     []string{"description"},
+			shareIDOnly:     map[string]int{"dcName": 2},
 		},
 		{
-			name:     "sub-cloud nested topology is standard-only and admin identity drops",
+			name:     "sub-cloud nested topology and admin name are standard-only",
 			resource: resourceSubClouds,
 			record: subCloudSourceRecord(subclouds.SubClouds{
 				ID:   1,
@@ -4406,12 +4496,13 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 				Dcs:  []subclouds.DCs{{ID: 2, Name: "DC", Country: "US"}},
 				Exclusions: []subclouds.Exclusions{{
 					Datacenter:       &ziacommon.IDNameExtensions{ID: 3, Name: "Datacenter"},
-					LastModifiedUser: &ziacommon.IDNameExtensions{ID: 4, Name: canary},
+					LastModifiedUser: &ziacommon.IDNameExtensions{ID: 4, Name: "sub-cloud-admin-name"},
 					Country:          "US",
 				}},
 			}),
 			standardPresent: []string{"dcs", "exclusions"},
 			shareAbsent:     []string{"dcs", "exclusions"},
+			shareForbidden:  []string{"sub-cloud-admin-name"},
 		},
 		{
 			name:     "ipv6 config prefixes are standard-only",
@@ -4473,7 +4564,9 @@ func TestZIAListOnlyStaticBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
+				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
 		})
 	}
@@ -4490,6 +4583,11 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
+		// shareForbidden are values that render in standard mode only.
+		shareForbidden []string
 	}{
 		{
 			name:     "pac file content and URLs are standard-only",
@@ -4503,12 +4601,12 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				PACSubURL:  "obfuscated.example.invalid",
 				LastModifiedBy: &ziacommon.IDNameExtensions{
 					ID:   2,
-					Name: canary,
+					Name: "pac-file-admin-name",
 				},
 			}),
-			standardPresent: []string{"domain", "pacUrl", "pacContent", "pacSubURL"},
-			standardAbsent:  []string{"lastModifiedBy"},
-			shareAbsent:     []string{"domain", "pacUrl", "pacContent", "pacSubURL", "lastModifiedBy"},
+			standardPresent: []string{"domain", "pacUrl", "pacContent", "pacSubURL", "lastModifiedBy"},
+			shareAbsent:     []string{"domain", "pacUrl", "pacContent", "pacSubURL"},
+			shareForbidden:  []string{"pac-file-admin-name"},
 		},
 		{
 			name:     "cloud application policy remains shareable",
@@ -4578,7 +4676,7 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 			shareAbsent:     []string{"tenantId", "lastTenantValidationTime", "enterpriseTenantId", "tenantName", "zscalerAppTenantId"},
 		},
 		{
-			name:     "casb dlp rule identifiers and admin identity are constrained",
+			name:     "casb dlp rule identifiers and admin name are standard-only",
 			resource: resourceCASBDLPRules,
 			record: casbDLPRuleSourceRecord(casbdlprules.CasbDLPRules{
 				ID:                   1,
@@ -4586,7 +4684,7 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				BucketOwner:          "owner@example.invalid",
 				ExternalAuditorEmail: "auditor@example.invalid",
 				Domains:              []string{"example.invalid"},
-				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: canary},
+				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: "casb-dlp-admin-name"},
 				Receiver: &casbdlprules.Receiver{
 					ID:   3,
 					Name: "Receiver",
@@ -4596,23 +4694,23 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 					},
 				},
 			}),
-			standardPresent: []string{"bucketOwner", "externalAuditorEmail", "domains", "receiver"},
-			standardAbsent:  []string{"lastModifiedBy"},
-			shareAbsent:     []string{"bucketOwner", "externalAuditorEmail", "domains", "lastModifiedBy", "receiver"},
+			standardPresent: []string{"bucketOwner", "externalAuditorEmail", "domains", "receiver", "lastModifiedBy"},
+			shareAbsent:     []string{"bucketOwner", "externalAuditorEmail", "domains", "receiver"},
+			shareForbidden:  []string{"casb-dlp-admin-name"},
 		},
 		{
-			name:     "casb malware rule identifiers and admin identity are constrained",
+			name:     "casb malware rule identifiers and admin name are standard-only",
 			resource: resourceCASBMalwareRules,
 			record: casbMalwareRuleSourceRecord(casbmalwarerules.CasbMalwareRules{
 				ID:                   1,
 				Name:                 "CASB Malware",
 				QuarantineLocation:   "quarantine://folder",
 				ScanInboundEmailLink: "https://mail.example.invalid",
-				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: canary},
+				LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 2, Name: "casb-malware-admin-name"},
 			}),
-			standardPresent: []string{"quarantineLocation", "scanInboundEmailLink"},
-			standardAbsent:  []string{"lastModifiedBy"},
-			shareAbsent:     []string{"quarantineLocation", "scanInboundEmailLink", "lastModifiedBy"},
+			standardPresent: []string{"quarantineLocation", "scanInboundEmailLink", "lastModifiedBy"},
+			shareAbsent:     []string{"quarantineLocation", "scanInboundEmailLink"},
+			shareForbidden:  []string{"casb-malware-admin-name"},
 		},
 		{
 			name:     "browser control targeting and profile URL are standard-only",
@@ -4630,7 +4728,8 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 				},
 			}),
 			standardPresent: []string{"pluginCheckFrequency", "bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
-			shareAbsent:     []string{"bypassPlugins", "smartIsolationUsers", "smartIsolationProfile"},
+			shareAbsent:     []string{"bypassPlugins", "smartIsolationProfile"},
+			shareIDOnly:     map[string]int{"smartIsolationUsers": 1},
 		},
 		{
 			name:     "supported browser versions remain shareable",
@@ -4692,7 +4791,9 @@ func TestZIASaaSCloudConfigBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary)
+				assertNoCanaries(t, tc.resource+" "+string(mode), got, tc.shareForbidden...)
 			}
 		})
 	}
@@ -4731,8 +4832,9 @@ func TestZIAAdminGovernanceProjectionBoundaries(t *testing.T) {
 					{Token: canary, DeviceName: "device"},
 				},
 			}),
-			standardPresent: []string{"loginName", "userName", "email", "comments", "role"},
-			standardAbsent:  []string{"password", "isPasswordExpired", "execMobileAppTokens"},
+			// isPasswordExpired is an account status flag, not a credential.
+			standardPresent: []string{"loginName", "userName", "email", "comments", "role", "isPasswordExpired"},
+			standardAbsent:  []string{"password", "execMobileAppTokens"},
 			shareAbsent:     []string{"loginName", "userName", "email", "comments", "password", "role", "execMobileAppTokens"},
 		},
 		{
@@ -4798,9 +4900,12 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 		standardPresent []string
 		standardAbsent  []string
 		shareAbsent     []string
+		// shareIDOnly are reference fields whose names are standard-only:
+		// share keeps their ids without names, paranoid drops them.
+		shareIDOnly map[string]int
 	}{
 		{
-			name:     "ips policy selectors are standard-only and admin identity is dropped",
+			name:     "ips policy selectors and admin name are standard-only",
 			resource: resourceIPSPolicies,
 			record: ipsPolicySourceRecord(ipspolicies.FirewallIPSRules{
 				ID:               1,
@@ -4814,11 +4919,11 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 				DestCountries:    []string{"CA"},
 				LastModifiedBy:   &ziacommon.IDNameExtensions{ID: 7, Name: "admin@example.invalid"},
 				Users:            []ziacommon.IDNameExtensions{{ID: 8, Name: "user@example.invalid"}},
-				ZPAAppSegments:   []ziacommon.ZPAAppSegments{{ID: 9, Name: "App Segment", ExternalID: "external-" + canary}},
+				ZPAAppSegments:   []ziacommon.ZPAAppSegments{{ID: 9, Name: "App Segment", ExternalID: "external-zpa-segment"}},
 			}),
-			standardPresent: []string{"name", "srcIps", "destAddresses", "users", "zpaAppSegments"},
-			standardAbsent:  []string{"lastModifiedBy"},
-			shareAbsent:     []string{"description", "srcIps", "destAddresses", "destIpCategories", "resCategories", "users", "zpaAppSegments", "lastModifiedBy"},
+			standardPresent: []string{"name", "srcIps", "destAddresses", "users", "zpaAppSegments", "lastModifiedBy.name"},
+			shareAbsent:     []string{"description", "srcIps", "destAddresses", "destIpCategories", "resCategories", "zpaAppSegments", "lastModifiedBy.name"},
+			shareIDOnly:     map[string]int{"users": 8},
 		},
 		{
 			name:     "auth exempted URLs are standard-only",
@@ -4849,7 +4954,7 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 			shareAbsent:     []string{"version.extensions"},
 		},
 		{
-			name:     "intermediate CA material is dropped or standard-only",
+			name:     "intermediate CA public material is standard-only",
 			resource: resourceIntermediateCAs,
 			record: intermediateCACertificateSourceRecord(intermediatecacertificates.IntermediateCACertificate{
 				ID:                         12,
@@ -4858,12 +4963,12 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 				Type:                       "CUSTOM",
 				Region:                     "tenant-region",
 				Status:                     "ENABLED",
-				PublicKey:                  "-----BEGIN PUBLIC KEY-----" + canary + "-----END PUBLIC KEY-----",
+				PublicKey:                  "-----BEGIN PUBLIC KEY-----tenant-ca-public-key-----END PUBLIC KEY-----",
 				CSRFileName:                "tenant-ca.csr",
 				HSMAttestationVerifiedTime: 123,
 			}),
-			standardPresent: []string{"name", "type", "region", "csrFileName"},
-			standardAbsent:  []string{"publicKey"},
+			// The public key is public material, not a secret.
+			standardPresent: []string{"name", "type", "region", "csrFileName", "publicKey"},
 			shareAbsent:     []string{"description", "region", "publicKey", "csrFileName"},
 		},
 	}
@@ -4893,6 +4998,7 @@ func TestZIAPolicyStatusBatchProjectionBoundaries(t *testing.T) {
 						t.Errorf("%s projected %s includes %s, want dropped", mode, tc.resource, field)
 					}
 				}
+				assertRefIDsOnlyInShare(t, tc.resource, mode, got, tc.shareIDOnly)
 				assertNoCanaries(t, tc.resource+" "+string(mode), got, canary, token)
 			}
 		})
@@ -5045,7 +5151,7 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 
 	const (
 		freeTextCanary = "psk=server-group-canary-value"
-		nestedCanary   = "server-group-nested-canary"
+		appName        = "server-group-app-name"
 	)
 	reader := &SDKReader{
 		cfg: validReaderConfig(),
@@ -5062,7 +5168,7 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 						DynamicDiscovery: true,
 						Applications: []zpaservergroup.Applications{{
 							ID:   "app-1",
-							Name: nestedCanary,
+							Name: appName,
 						}},
 					}}, nil
 				},
@@ -5096,13 +5202,13 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "server-group-canary-value") {
 		t.Errorf("projected server-group description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"applications", "configSpace", "dynamicDiscovery"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected server-group includes %s, want dropped", field)
-		}
+	// Application links and server-group settings render: the application
+	// name in standard and share, ids and settings in every mode.
+	if got["configSpace"] != "DEFAULT" || got["dynamicDiscovery"] != true {
+		t.Errorf("projected server-group configSpace/dynamicDiscovery = %v/%v, want DEFAULT/true", got["configSpace"], got["dynamicDiscovery"])
 	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected server-group = %v, want nested canary absent", got)
+	if !strings.Contains(fmt.Sprint(got["applications"]), appName) {
+		t.Errorf("projected server-group applications = %v, want %q", got["applications"], appName)
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected server-group) error = %v, want nil", err)
@@ -5110,9 +5216,12 @@ func TestReaderListZPAServerGroupsProjectsSDKShapeThroughAllowList(t *testing.T)
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa server-groups) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "applications")
-	assertReportContains(t, reports[0].DroppedFields, "configSpace")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+	paranoid := projectOneRecordInMode(t, resources.ProductZPA, resourceZPAServerGroups, redact.ModeParanoid, records)
+	if _, ok := paranoid["applications"]; !ok {
+		t.Errorf("projected server-group paranoid = %v, want applications ids", paranoid)
+	}
+	assertNoCanaries(t, "server-group paranoid", paranoid, appName, "server-group-canary-value")
 }
 
 func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowList(t *testing.T) {
@@ -5259,6 +5368,8 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 			t.Errorf("projected application-segment serverGroups[0] includes %s, want reference only", field)
 		}
 	}
+	// Link ids, settings and structure render: they were catch-all secrets,
+	// and secret now means credential material only.
 	for _, field := range []string{
 		"modifiedBy",
 		"segmentGroupId",
@@ -5271,12 +5382,14 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 		"tcpPortRange",
 		"udpPortRange",
 	} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected application-segment includes %s, want dropped", field)
+		if _, ok := got[field]; !ok {
+			t.Errorf("projected application-segment omits %s, want it rendered in standard mode", field)
 		}
 	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected application-segment = %v, want nested canary absent", got)
+	// Server group references stay {id, name}: the servers and connector
+	// groups nested inside them are not modeled and never render.
+	if strings.Contains(fmt.Sprint(got["serverGroups"]), nestedCanary) {
+		t.Errorf("projected application-segment serverGroups = %v, want nested servers/connector groups absent", got["serverGroups"])
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected application-segment standard) error = %v, want nil", err)
@@ -5284,10 +5397,6 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa application-segments) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "clientlessApps")
-	assertReportContains(t, reports[0].DroppedFields, "sharedMicrotenantDetails")
-	assertReportContains(t, reports[0].DroppedFields, "tags")
-	assertReportContains(t, reports[0].DroppedFields, "zpnErId")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 
 	shareGot := projectApplicationSegmentMode(t, spec, records, redact.ModeShare)
@@ -5309,6 +5418,14 @@ func TestReaderListZPAApplicationSegmentsProjectsSDKShapeThroughReferenceAllowLi
 	}
 	if shareGot["name"] != "Payroll application" {
 		t.Errorf("share-mode projected application-segment name = %v, want Payroll application", shareGot["name"])
+	}
+	// A clientless app's domain stays standard-only, like domainNames.
+	shareApp := mustProjectedList(t, shareGot, "clientlessApps")[0].(map[string]any)
+	if _, ok := shareApp["domain"]; ok {
+		t.Errorf("share-mode projected clientlessApps[0] = %v, want domain dropped", shareApp)
+	}
+	if _, ok := shareGot["tcpPortRange"]; ok {
+		t.Error("share-mode projected application-segment includes tcpPortRange, want dropped like tcpPortRanges")
 	}
 	shareServerGroup := mustProjectedList(t, shareGot, "serverGroups")[0].(map[string]any)
 	if shareServerGroup["name"] != "Payroll servers" {
@@ -5376,10 +5493,10 @@ func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testi
 						Enabled:     true,
 						ServiceEdges: []zpaserviceedgecontroller.ServiceEdgeController{{
 							ID:                  "edge-1",
-							Name:                nestedCanary,
+							Name:                "service-edge-name",
 							ProvisioningKeyName: nestedCanary,
 						}},
-						EnrollmentCertID: nestedCanary,
+						EnrollmentCertID: "enrollment-cert-id",
 					}}, nil
 				},
 				func(context.Context, string) (*zpaserviceedgegroup.ServiceEdgeGroup, error) { return nil, nil },
@@ -5412,10 +5529,13 @@ func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testi
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-group-canary-value") {
 		t.Errorf("projected service-edge-group description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"serviceEdges", "enrollmentCertId"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected service-edge-group includes %s, want dropped", field)
-		}
+	// Service edge links ({id, name}) and the enrollment cert id render;
+	// unclassified service edge detail (provisioning key name) drops.
+	if got["enrollmentCertId"] != "enrollment-cert-id" {
+		t.Errorf("projected service-edge-group enrollmentCertId = %v, want enrollment-cert-id", got["enrollmentCertId"])
+	}
+	if !strings.Contains(fmt.Sprint(got["serviceEdges"]), "service-edge-name") {
+		t.Errorf("projected service-edge-group serviceEdges = %v, want service-edge-name", got["serviceEdges"])
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected service-edge-group = %v, want nested canary absent", got)
@@ -5426,8 +5546,7 @@ func TestReaderListZPAServiceEdgeGroupsProjectsSDKShapeThroughAllowList(t *testi
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa service-edge-groups) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "serviceEdges")
-	assertReportContains(t, reports[0].DroppedFields, "enrollmentCertId")
+	assertReportContains(t, reports[0].DroppedFields, "serviceEdges[0].provisioningKeyName")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
@@ -5445,10 +5564,10 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 						Name:                             "App connector",
 						Description:                      "psk=app-connector-canary-value",
 						Enabled:                          true,
-						AppConnectorGroupID:              nestedCanary,
+						AppConnectorGroupID:              "app-connector-group-1",
 						AppConnectorGroupName:            "App connector group",
 						ApplicationStartTime:             "1700000000000",
-						AssistantVersion:                 zpaappconnectorcontroller.AssistantVersion{ID: "assistant-1", BrokerId: nestedCanary},
+						AssistantVersion:                 zpaappconnectorcontroller.AssistantVersion{ID: "assistant-1", BrokerId: "broker-1"},
 						ControlChannelStatus:             "CONNECTED",
 						CreationTime:                     "1700000100000",
 						CtrlBrokerName:                   "Broker",
@@ -5456,9 +5575,9 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 						EnrollmentCert:                   map[string]any{"name": nestedCanary},
 						ExpectedUpgradeTime:              "1700000200000",
 						ExpectedVersion:                  "1.2.4",
-						Fingerprint:                      nestedCanary,
+						Fingerprint:                      "app-connector-fingerprint",
 						IPACL:                            "198.51.100.10",
-						IssuedCertID:                     nestedCanary,
+						IssuedCertID:                     "issued-cert-1",
 						LastBrokerConnectTime:            "1700000300000",
 						LastBrokerConnectTimeDuration:    "100",
 						LastBrokerDisconnectTime:         "1700000400000",
@@ -5467,7 +5586,7 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 						Latitude:                         "37.3387",
 						Location:                         "San Jose, CA",
 						Longitude:                        "-121.8853",
-						MicroTenantID:                    nestedCanary,
+						MicroTenantID:                    "microtenant-1",
 						MicroTenantName:                  "Microtenant",
 						ModifiedBy:                       "admin-1",
 						ModifiedTime:                     "1700000600000",
@@ -5475,16 +5594,16 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 						PlatformDetail:                   "el8",
 						PreviousVersion:                  "1.2.2",
 						PrivateIP:                        "10.0.0.20",
-						ProvisioningKeyID:                nestedCanary,
-						ProvisioningKeyName:              nestedCanary,
+						ProvisioningKeyID:                "provisioning-key-1",
+						ProvisioningKeyName:              "provisioning-key-name",
 						PublicIP:                         "203.0.113.20",
 						ReadOnly:                         true,
 						RestrictionType:                  "CUSTOMER",
 						RuntimeOS:                        "linux",
 						SargeVersion:                     "1.2.3",
-						UpgradeAttempt:                   nestedCanary,
+						UpgradeAttempt:                   "1",
 						UpgradeStatus:                    "COMPLETE",
-						ZPNSubModuleUpgrade:              []zpacommon.ZPNSubModuleUpgrade{{ID: "module-1", EntityGid: nestedCanary}},
+						ZPNSubModuleUpgrade:              []zpacommon.ZPNSubModuleUpgrade{{ID: "module-1", EntityGid: "entity-gid-1"}},
 						ZscalerManaged:                   true,
 					}}, nil
 				},
@@ -5523,22 +5642,29 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "app-connector-canary-value") {
 		t.Errorf("projected app-connector description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{
-		"appConnectorGroupId",
-		"assistantVersion",
-		"enrollmentCert",
-		"fingerprint",
-		"issuedCertId",
-		"microtenantId",
-		"provisioningKeyId",
-		"provisioningKeyName",
-		"upgradeAttempt",
-		"zpnSubModuleUpgradeList",
-		"zscalerManaged",
+	// Link ids, version detail, provisioning key references and the cert
+	// fingerprint render; only the enrollment cert blob stays secret.
+	for field, want := range map[string]any{
+		"appConnectorGroupId": "app-connector-group-1",
+		"fingerprint":         "app-connector-fingerprint",
+		"issuedCertId":        "issued-cert-1",
+		"microtenantId":       "microtenant-1",
+		"provisioningKeyId":   "provisioning-key-1",
+		"provisioningKeyName": "provisioning-key-name",
+		"upgradeAttempt":      "1",
+		"zscalerManaged":      true,
 	} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected app-connector includes %s, want dropped", field)
+		if got[field] != want {
+			t.Errorf("projected app-connector %s = %v, want %v", field, got[field], want)
 		}
+	}
+	for _, field := range []string{"assistantVersion", "zpnSubModuleUpgradeList"} {
+		if _, ok := got[field]; !ok {
+			t.Errorf("projected app-connector = %v, want %s", got, field)
+		}
+	}
+	if _, ok := got["enrollmentCert"]; ok {
+		t.Errorf("projected app-connector includes enrollmentCert, want dropped")
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected app-connector = %v, want nested canary absent", got)
@@ -5549,18 +5675,13 @@ func TestReaderListZPAAppConnectorsProjectsSDKShapeThroughAllowList(t *testing.T
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa app-connectors) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "appConnectorGroupId")
-	assertReportContains(t, reports[0].DroppedFields, "assistantVersion")
 	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
-	assertReportContains(t, reports[0].DroppedFields, "fingerprint")
-	assertReportContains(t, reports[0].DroppedFields, "issuedCertId")
-	assertReportContains(t, reports[0].DroppedFields, "microtenantId")
-	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyId")
-	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
-	assertReportContains(t, reports[0].DroppedFields, "upgradeAttempt")
-	assertReportContains(t, reports[0].DroppedFields, "zpnSubModuleUpgradeList")
-	assertReportContains(t, reports[0].DroppedFields, "zscalerManaged")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPAAppConnectors, mode, records)
+		assertFieldsAbsent(t, "app-connector "+string(mode), other, "enrollmentCert", "fingerprint")
+		assertNoCanaries(t, "app-connector "+string(mode), other, nestedCanary, "app-connector-fingerprint")
+	}
 }
 
 func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -5577,7 +5698,7 @@ func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T)
 						Name:                "Service edge",
 						Description:         "psk=service-edge-canary-value",
 						Enabled:             true,
-						ProvisioningKeyName: nestedCanary,
+						ProvisioningKeyName: "service-edge-provisioning-key",
 						EnrollmentCert: map[string]interface{}{
 							"name": nestedCanary,
 						},
@@ -5619,10 +5740,16 @@ func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T)
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "service-edge-canary-value") {
 		t.Errorf("projected service-edge description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"enrollmentCert", "privateBrokerVersion", "provisioningKeyName"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected service-edge includes %s, want dropped", field)
-		}
+	if _, ok := got["enrollmentCert"]; ok {
+		t.Errorf("projected service-edge includes enrollmentCert, want dropped")
+	}
+	// The provisioning key name and broker version render; the unclassified
+	// tunnel id inside the version drops.
+	if got["provisioningKeyName"] != "service-edge-provisioning-key" {
+		t.Errorf("projected service-edge provisioningKeyName = %v, want service-edge-provisioning-key", got["provisioningKeyName"])
+	}
+	if v, _ := valueAtPath(got, "privateBrokerVersion.id"); v != "broker-1" {
+		t.Errorf("projected service-edge privateBrokerVersion.id = %v, want broker-1", v)
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected service-edge = %v, want nested canary absent", got)
@@ -5634,8 +5761,7 @@ func TestReaderListZPAServiceEdgesProjectsSDKShapeThroughAllowList(t *testing.T)
 		t.Fatalf("ProjectRecords(zpa service-edges) reports length = %d, want 1", len(reports))
 	}
 	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
-	assertReportContains(t, reports[0].DroppedFields, "privateBrokerVersion")
-	assertReportContains(t, reports[0].DroppedFields, "provisioningKeyName")
+	assertReportContains(t, reports[0].DroppedFields, "privateBrokerVersion.tunnelId")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
@@ -5653,10 +5779,10 @@ func TestReaderListZPACloudConnectorGroupsProjectsSDKShapeThroughAllowList(t *te
 						Name:          "Cloud connector group",
 						Description:   "psk=cloud-connector-group-canary-value",
 						Enabled:       true,
-						GeolocationID: nestedCanary,
+						GeolocationID: "geo-location-1",
 						CloudConnectors: []zpacloudconnectorgroup.CloudConnectors{{
 							ID:          "connector-1",
-							Name:        nestedCanary,
+							Name:        "cloud-connector-name",
 							Fingerprint: nestedCanary,
 							SigningCert: map[string]any{
 								"name": nestedCanary,
@@ -5696,10 +5822,13 @@ func TestReaderListZPACloudConnectorGroupsProjectsSDKShapeThroughAllowList(t *te
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cloud-connector-group-canary-value") {
 		t.Errorf("projected cloud-connector-group description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"cloudConnectors", "geoLocationId"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected cloud-connector-group includes %s, want dropped", field)
-		}
+	// The geolocation id and cloud connector links ({id, name}) render; the
+	// unclassified connector fingerprint and signing cert drop.
+	if got["geoLocationId"] != "geo-location-1" {
+		t.Errorf("projected cloud-connector-group geoLocationId = %v, want geo-location-1", got["geoLocationId"])
+	}
+	if !strings.Contains(fmt.Sprint(got["cloudConnectors"]), "cloud-connector-name") {
+		t.Errorf("projected cloud-connector-group cloudConnectors = %v, want cloud-connector-name", got["cloudConnectors"])
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected cloud-connector-group = %v, want nested canary absent", got)
@@ -5710,8 +5839,8 @@ func TestReaderListZPACloudConnectorGroupsProjectsSDKShapeThroughAllowList(t *te
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa cloud-connector-groups) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "cloudConnectors")
-	assertReportContains(t, reports[0].DroppedFields, "geoLocationId")
+	assertReportContains(t, reports[0].DroppedFields, "cloudConnectors[0].fingerprint")
+	assertReportContains(t, reports[0].DroppedFields, "cloudConnectors[0].signingCert")
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
@@ -5729,11 +5858,11 @@ func TestReaderListZPACloudConnectorsProjectsSDKShapeThroughAllowList(t *testing
 						Name:                   "Cloud connector",
 						Description:            "psk=cloud-connector-canary-value",
 						Enabled:                true,
-						EdgeConnectorGroupID:   nestedCanary,
+						EdgeConnectorGroupID:   "edge-connector-group-1",
 						EdgeConnectorGroupName: "Cloud connector group",
-						Fingerprint:            nestedCanary,
+						Fingerprint:            "cloud-connector-fingerprint",
 						IpAcl:                  []string{"198.51.100.10"},
-						IssuedCertID:           nestedCanary,
+						IssuedCertID:           "issued-cert-1",
 						EnrollmentCert: map[string]any{
 							"name": nestedCanary,
 						},
@@ -5774,10 +5903,19 @@ func TestReaderListZPACloudConnectorsProjectsSDKShapeThroughAllowList(t *testing
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cloud-connector-canary-value") {
 		t.Errorf("projected cloud-connector description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"edgeConnectorGroupId", "enrollmentCert", "fingerprint", "issuedCertId"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected cloud-connector includes %s, want dropped", field)
+	// Link ids and the cert fingerprint render; the enrollment cert blob
+	// stays secret.
+	for field, want := range map[string]any{
+		"edgeConnectorGroupId": "edge-connector-group-1",
+		"fingerprint":          "cloud-connector-fingerprint",
+		"issuedCertId":         "issued-cert-1",
+	} {
+		if got[field] != want {
+			t.Errorf("projected cloud-connector %s = %v, want %v", field, got[field], want)
 		}
+	}
+	if _, ok := got["enrollmentCert"]; ok {
+		t.Errorf("projected cloud-connector includes enrollmentCert, want dropped")
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected cloud-connector = %v, want nested canary absent", got)
@@ -5788,17 +5926,20 @@ func TestReaderListZPACloudConnectorsProjectsSDKShapeThroughAllowList(t *testing
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa cloud-connectors) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "edgeConnectorGroupId")
 	assertReportContains(t, reports[0].DroppedFields, "enrollmentCert")
-	assertReportContains(t, reports[0].DroppedFields, "fingerprint")
-	assertReportContains(t, reports[0].DroppedFields, "issuedCertId")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPACloudConns, mode, records)
+		assertFieldsAbsent(t, "cloud-connector "+string(mode), other, "enrollmentCert", "fingerprint")
+		assertNoCanaries(t, "cloud-connector "+string(mode), other, nestedCanary, "cloud-connector-fingerprint")
+	}
 	assertReportContains(t, reports[0].RedactedFields, "description")
 }
 
 func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const nestedCanary = "nested-posture-profile-secret-canary"
+	// standardOnly is planted in fields that render in standard mode only.
+	const standardOnly = "nested-posture-profile-standard-only-canary"
 	reader := SDKReader{
 		handlers: map[resourceKey]resourceHandler{
 			{product: resources.ProductZPA, name: resourceZPAPostureProfs}: newListGetHandler(
@@ -5812,9 +5953,9 @@ func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing
 						CRLCheckEnabled:                true,
 						NonExportablePrivateKeyEnabled: true,
 						PostureType:                    "cert",
-						PostureudID:                    nestedCanary,
-						RootCert:                       nestedCanary,
-						ZscalerCustomerID:              nestedCanary,
+						PostureudID:                    standardOnly,
+						RootCert:                       standardOnly,
+						ZscalerCustomerID:              standardOnly,
 					}}, nil
 				},
 				func(context.Context, string) (*zpapostureprofile.PostureProfile, error) {
@@ -5848,13 +5989,15 @@ func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing
 	if got["domain"] != "example.internal" {
 		t.Errorf("projected posture-profile domain = %v, want example.internal", got["domain"])
 	}
-	for _, field := range []string{"nonExportablePrivateKeyEnabled", "postureUdid", "rootCert", "zscalerCustomerId"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected posture-profile includes %s, want dropped", field)
+	// The posture identifiers and root cert are standard-only identifiers;
+	// nonExportablePrivateKeyEnabled is a flag that renders in every mode.
+	for _, field := range []string{"postureUdid", "rootCert", "zscalerCustomerId"} {
+		if got[field] != standardOnly {
+			t.Errorf("projected posture-profile %s = %v, want %s", field, got[field], standardOnly)
 		}
 	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected posture-profile = %v, want nested canary absent", got)
+	if got["nonExportablePrivateKeyEnabled"] != true {
+		t.Errorf("projected posture-profile nonExportablePrivateKeyEnabled = %v, want true", got["nonExportablePrivateKeyEnabled"])
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected posture-profile) error = %v, want nil", err)
@@ -5862,16 +6005,21 @@ func TestReaderListZPAPostureProfilesProjectsSDKShapeThroughAllowList(t *testing
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa posture-profiles) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "nonExportablePrivateKeyEnabled")
-	assertReportContains(t, reports[0].DroppedFields, "postureUdid")
-	assertReportContains(t, reports[0].DroppedFields, "rootCert")
-	assertReportContains(t, reports[0].DroppedFields, "zscalerCustomerId")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPAPostureProfs, mode, records)
+		assertFieldsAbsent(t, "posture-profile "+string(mode), other, "postureUdid", "rootCert", "zscalerCustomerId")
+		assertNoCanaries(t, "posture-profile "+string(mode), other, standardOnly)
+		if other["nonExportablePrivateKeyEnabled"] != true {
+			t.Errorf("projected posture-profile %s nonExportablePrivateKeyEnabled = %v, want true", mode, other["nonExportablePrivateKeyEnabled"])
+		}
+	}
 }
 
 func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const nestedCanary = "nested-cbi-zpa-profile-secret-canary"
+	// standardOnly is planted in a field that renders in standard mode only.
+	const standardOnly = "nested-cbi-zpa-profile-standard-only-canary"
 	reader := SDKReader{
 		handlers: map[resourceKey]resourceHandler{
 			{product: resources.ProductZPA, name: resourceZPACBIZPAProfs}: newListGetHandler(
@@ -5886,7 +6034,7 @@ func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.
 						ModifiedBy:   "admin-1",
 						ModifiedTime: "1700000100000",
 						CBIProfileID: "cbi-profile-1",
-						CBITenantID:  nestedCanary,
+						CBITenantID:  standardOnly,
 						CBIURL:       "https://cbi.example.invalid/profile",
 					}}, nil
 				},
@@ -5925,11 +6073,9 @@ func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "cbi-zpa-profile-canary-value") {
 		t.Errorf("projected cbi-zpa-profile description = %v, want redacted canary value", got["description"])
 	}
-	if _, ok := got["cbiTenantId"]; ok {
-		t.Errorf("projected cbi-zpa-profile includes cbiTenantId, want dropped")
-	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected cbi-zpa-profile = %v, want nested canary absent", got)
+	// cbiTenantId is a standard-only identifier.
+	if got["cbiTenantId"] != standardOnly {
+		t.Errorf("projected cbi-zpa-profile cbiTenantId = %v, want %s", got["cbiTenantId"], standardOnly)
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected cbi-zpa-profile) error = %v, want nil", err)
@@ -5937,14 +6083,19 @@ func TestReaderListZPACBIZPAProfilesProjectsSDKShapeThroughAllowList(t *testing.
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa cbi-zpa-profiles) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "cbiTenantId")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPACBIZPAProfs, mode, records)
+		assertFieldsAbsent(t, "cbi-zpa-profile "+string(mode), other, "cbiTenantId")
+		assertNoCanaries(t, "cbi-zpa-profile "+string(mode), other, standardOnly)
+	}
 }
 
 func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const nestedCanary = "nested-c2c-ip-range-secret-canary"
+	// standardOnly is planted in a field that renders in standard mode only.
+	const standardOnly = "216196257331281920"
 	reader := SDKReader{
 		handlers: map[resourceKey]resourceHandler{
 			{product: resources.ProductZPA, name: resourceZPAC2CIPRanges}: newListGetHandler(
@@ -5958,7 +6109,7 @@ func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) 
 						AvailableIps:  "8",
 						CountryCode:   "US",
 						CreationTime:  "1700000000000",
-						CustomerId:    nestedCanary,
+						CustomerId:    standardOnly,
 						IpRangeBegin:  "198.51.100.10",
 						IpRangeEnd:    "198.51.100.20",
 						IsDeleted:     "false",
@@ -6012,11 +6163,9 @@ func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) 
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "c2c-ip-range-canary-value") {
 		t.Errorf("projected c2c-ip-range description = %v, want redacted canary value", got["description"])
 	}
-	if _, ok := got["customerId"]; ok {
-		t.Errorf("projected c2c-ip-range includes customerId, want dropped")
-	}
-	if strings.Contains(fmt.Sprint(got), nestedCanary) {
-		t.Errorf("projected c2c-ip-range = %v, want nested canary absent", got)
+	// customerId is a standard-only identifier.
+	if got["customerId"] != standardOnly {
+		t.Errorf("projected c2c-ip-range customerId = %v, want %s", got["customerId"], standardOnly)
 	}
 	if err := resources.AssertRenderedSubset(spec, redact.ModeStandard, got); err != nil {
 		t.Errorf("AssertRenderedSubset(projected c2c-ip-range) error = %v, want nil", err)
@@ -6024,8 +6173,12 @@ func TestReaderListZPAC2CIPRangesProjectsSDKShapeThroughAllowList(t *testing.T) 
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa c2c-ip-ranges) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "customerId")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPAC2CIPRanges, mode, records)
+		assertFieldsAbsent(t, "c2c-ip-range "+string(mode), other, "customerId")
+		assertNoCanaries(t, "c2c-ip-range "+string(mode), other, standardOnly)
+	}
 }
 
 func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -6039,13 +6192,13 @@ func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing
 				func(context.Context) ([]zpaconfigoverride.ConfigOverrides, error) {
 					return []zpaconfigoverride.ConfigOverrides{{
 						BrokerName:     "Broker",
-						ConfigKey:      nestedCanary,
+						ConfigKey:      "config.override.key",
 						ConfigValue:    "psk=" + nestedCanary,
 						ConfigValueInt: "12345",
-						CustomerId:     nestedCanary,
+						CustomerId:     "customer-1",
 						CustomerName:   "Customer",
 						Description:    "psk=config-override-canary-value",
-						TargetGid:      nestedCanary,
+						TargetGid:      "target-gid-1",
 						TargetName:     "Target",
 						TargetType:     "BROKER",
 					}}, nil
@@ -6085,10 +6238,20 @@ func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing
 	if !ok || !strings.Contains(description, "<REDACTED:SECRET>") || strings.Contains(description, "config-override-canary-value") {
 		t.Errorf("projected config-overrides description = %v, want redacted canary value", got["description"])
 	}
-	for _, field := range []string{"configKey", "configValue", "configValueInt", "customerId", "targetGid"} {
-		if _, ok := got[field]; ok {
-			t.Errorf("projected config-overrides includes %s, want dropped", field)
+	// The override key, value and target render; the value is scanned
+	// standard-only free text, so the psk= canary inside it is redacted.
+	for field, want := range map[string]any{
+		"configKey":      "config.override.key",
+		"configValueInt": "12345",
+		"customerId":     "customer-1",
+		"targetGid":      "target-gid-1",
+	} {
+		if got[field] != want {
+			t.Errorf("projected config-overrides %s = %v, want %v", field, got[field], want)
 		}
+	}
+	if value, ok := got["configValue"].(string); !ok || !strings.Contains(value, "<REDACTED:SECRET>") {
+		t.Errorf("projected config-overrides configValue = %v, want redacted canary value", got["configValue"])
 	}
 	if strings.Contains(fmt.Sprint(got), nestedCanary) {
 		t.Errorf("projected config-overrides = %v, want nested canary absent", got)
@@ -6099,12 +6262,13 @@ func TestReaderListZPAConfigOverridesProjectsSDKShapeThroughAllowList(t *testing
 	if len(reports) != 1 {
 		t.Fatalf("ProjectRecords(zpa config-overrides) reports length = %d, want 1", len(reports))
 	}
-	assertReportContains(t, reports[0].DroppedFields, "configKey")
-	assertReportContains(t, reports[0].DroppedFields, "configValue")
-	assertReportContains(t, reports[0].DroppedFields, "configValueInt")
-	assertReportContains(t, reports[0].DroppedFields, "customerId")
-	assertReportContains(t, reports[0].DroppedFields, "targetGid")
 	assertReportContains(t, reports[0].RedactedFields, "description")
+	assertReportContains(t, reports[0].RedactedFields, "configValue")
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		other := projectOneRecordInMode(t, resources.ProductZPA, resourceZPAConfigOvrds, mode, records)
+		assertFieldsAbsent(t, "config-overrides "+string(mode), other, "configValue", "customerId")
+		assertNoCanaries(t, "config-overrides "+string(mode), other, nestedCanary, "customer-1")
+	}
 }
 
 func TestReaderListZidentityGroupsProjectsSDKShapeThroughAllowList(t *testing.T) {
@@ -6207,7 +6371,7 @@ func TestReaderListZidentityUsersProjectsSDKShapeThroughAllowList(t *testing.T) 
 						LastName:       "Doe",
 						PrimaryEmail:   "jane.doe@example.internal",
 						SecondaryEmail: "jane.alt@example.internal",
-						Status:         true,
+						Status:         func() *bool { status := true; return &status }(),
 						Department: &zidcommon.IDNameDisplayName{
 							ID:          "dept-1",
 							Name:        "Engineering",
@@ -7022,6 +7186,21 @@ func assertNoCanaries(t *testing.T, resource string, record map[string]any, cana
 		if strings.Contains(body, canary) {
 			t.Errorf("projected %s = %#v, want no %q", resource, record, canary)
 		}
+	}
+}
+
+// assertRefID asserts that record[field] rendered as an {id, ...} reference
+// map whose id prints as wantID (admin audit references, link ids).
+func assertRefID(t *testing.T, resource string, record map[string]any, field string, wantID any) {
+	t.Helper()
+
+	ref, ok := record[field].(map[string]any)
+	if !ok {
+		t.Errorf("projected %s %s = %T(%v), want reference map", resource, field, record[field], record[field])
+		return
+	}
+	if fmt.Sprint(ref["id"]) != fmt.Sprint(wantID) {
+		t.Errorf("projected %s %s.id = %v, want %v", resource, field, ref["id"], wantID)
 	}
 }
 

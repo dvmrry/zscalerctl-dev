@@ -34,6 +34,11 @@ The same Windows ACL limitation applies to individual files created with
 `--output`: mode `0600` does not restrict their inherited ACLs, so select an
 already restricted destination directory.
 
+On Linux, `dump`, `dump --force`, and `diff --from-dump` need `/proc` mounted:
+they open dump directories through `/proc/self/fd` so a FIFO substituted for a
+directory cannot hang them. Without it they fail closed with an error naming
+the unavailable descriptor directory. macOS uses `/dev/fd`.
+
 Windows can atomically publish a dump when the requested destination does not
 exist. Replacing an existing directory (including `dump --force`) fails closed:
 Windows does not provide the directory-exchange primitive needed to avoid a
@@ -77,7 +82,7 @@ gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz \
 
 ## Build From A Checkout
 
-Source builds require Go 1.26.6 or newer; the module rejects older patch
+Source builds require Go 1.26.10 or newer; the module rejects older patch
 releases so the shipped binary cannot be built with a standard library that is
 missing required security fixes.
 
@@ -116,14 +121,26 @@ for interactive shells. `ZSCALERCTL_ZPA_CUSTOMER_ID` is required only when
 reading ZPA resources; ZIA, ZTW, and Zidentity resources use the standard
 OneAPI credential set without an extra product customer ID.
 
-Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported
-with SDK v3.8.48. Its Zidentity admin URL builder still uses commercial
-`zslogin` suffixes for those clouds, despite the separate government OAuth
-and gateway routes. The CLI rejects that product/cloud combination before
-OAuth or API requests instead of inventing an admin endpoint. Commercial
-Zidentity and the existing ZPATWO routing remain available; other products
-retain their SDK government routing. Government tenant behavior still needs
-an operator smoke test before release.
+`ZSCALERCTL_CLOUD` names the OneAPI gateway, not the cloud a tenant's products
+run on. Tenants on zscalertwo, zscalerthree, ZPATWO and the other ZIA and ZPA
+product clouds authenticate and read every product through the production
+gateway, so they use `PRODUCTION`. The accepted values (any case) are
+`PRODUCTION` (the default when unset), `ALPHA`, `BETA`, `GOV` and `GOVUS`.
+Any other value is rejected before the client secret is resolved, because the
+SDK would derive the token host that receives it from the value; for product
+cloud names no such host exists. A read fails with kind `invalid_config`
+(exit 2), and `auth status` and `doctor` report `invalid settings` with the
+reason, through the same check the reader runs. An invalid
+`ZSCALERCTL_VANITY_DOMAIN` (it must be a single DNS label) or legacy
+`ZSCALERCTL_ZIA_CLOUD` is reported the same way.
+
+Zidentity reads on OneAPI clouds `gov` and `govus` are explicitly unsupported.
+Since SDK v3.8.49 Zidentity is served through the OneAPI gateway under
+`/ziam`; this project has not verified that prefix on the government gateways.
+The CLI rejects those product/cloud combinations before OAuth or API requests
+instead of guessing a route. Other products retain their SDK government
+routing. Government tenant behavior still needs an operator smoke test before
+release.
 
 Product API access is granted per product on the OneAPI OAuth client, not by
 extra environment variables. ZCC and ZTW resources use the same
@@ -194,7 +211,13 @@ reviewed wrapper script and point `argv` at that script. Set
 
 **Source/profile selection:** `--config` (or `ZSCALERCTL_CONFIG`) chooses which
 config file to load; `--profile` (or `ZSCALERCTL_PROFILE`) chooses which named
-profile within that file to use.
+profile within that file to use. Without either, the file's `default_profile`
+(or a profile named `default`) is used. When the file defines more than one
+profile and the choice came from that default, a command that reads a tenant
+and succeeds prints one line to stderr naming the profile, for example
+`zscalerctl: using profile "prod" (default_profile; 2 profiles configured); pass --profile to choose`.
+Stdout is unchanged, and a failing command's stderr is still only its error
+envelope. Pass `--profile` to make the choice explicit.
 
 **Per-field value precedence (highest to lowest):** flag > `ZSCALERCTL_*`
 environment variable > profile value > built-in default. A field set as a flag
@@ -374,6 +397,12 @@ export ZSCALERCTL_PROXY_URL=http://proxy.example.invalid:8080
 
 `ZSCALERCTL_PROXY_URL` and `ZSCALERCTL_PROXY_FROM_ENV` are mutually exclusive.
 Status commands report only whether a proxy is configured, never the proxy URL.
+When `HTTPS_PROXY` is set but neither setting is, `doctor` reports the proxy as
+`direct (HTTPS_PROXY is set but not used; ...)`: on a network that reaches the
+API only through the proxy, a dropped connect waits out `--timeout` (30
+seconds by default; possibly more than once, as the SDK retries) and fails as
+`timeout`; a refused one fails at once as a network error. Such a timeout or
+network error then ends with the same `HTTPS_PROXY is set but not used` hint.
 
 ## Shell Completions
 

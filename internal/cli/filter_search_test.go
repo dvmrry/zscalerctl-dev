@@ -181,10 +181,10 @@ func TestFilterNoMatchIsEmptySuccess(t *testing.T) {
 }
 
 // TestFilterSearchCannotReachSecretOrDroppedFields proves the safety property:
-// narrowing runs strictly post-projection, so a --filter naming a secret or
-// unmodeled field, or a --search for a secret's value, matches nothing — the
-// data was already dropped by the allow-list before narrowing ran, in every
-// redaction mode.
+// a --filter naming a secret or unmodeled field is a usage error before any
+// read (a filter that can never match would pose as an empty result), and a
+// --search for a secret's value matches nothing because narrowing runs
+// strictly post-projection, after the allow-list dropped the data.
 func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 	t.Parallel()
 
@@ -195,11 +195,11 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 	}{
 		{
 			name: "exact filter on secret field",
-			args: []string{"--filter", "preSharedKey=" + filterSecretCanary},
+			args: []string{"--filter", "preSharedKey=" + filterSecretCanary}, wantUsage: true,
 		},
 		{
 			name: "substring filter on secret field",
-			args: []string{"--filter", "preSharedKey~psk"},
+			args: []string{"--filter", "preSharedKey~psk"}, wantUsage: true,
 		},
 		{
 			name: "filter on unmodeled field",
@@ -233,6 +233,9 @@ func TestFilterSearchCannotReachSecretOrDroppedFields(t *testing.T) {
 				}
 				if out.Len() != 0 || errOut.Len() != 0 {
 					t.Fatalf("App.Run(%v) output = stdout=%q stderr=%q, want empty", args, out.String(), errOut.String())
+				}
+				if strings.Contains(err.Error(), filterSecretCanary) {
+					t.Errorf("App.Run(%v) error = %q echoes the secret canary", args, err.Error())
 				}
 				return
 			}
@@ -321,6 +324,98 @@ func TestFieldsIsUsageErrorOutsideResourceReads(t *testing.T) {
 				t.Errorf("App.Run(%v) stdout = %q, want empty", tt.args, out.String())
 			}
 		})
+	}
+}
+
+// TestFilterNestedPathMatchesGroupMembership is the group-membership report
+// case: a substring filter on the whole groups list matches APP_INFOSEC_DEV
+// for "_DEV", while a nested path matches each group name exactly.
+func TestFilterNestedPathMatchesGroupMembership(t *testing.T) {
+	t.Parallel()
+
+	group := func(id int, name string) map[string]any { return map[string]any{"id": id, "name": name} }
+	reader := fakeResourceReader{list: []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "alice", "groups": []any{group(10, "APP_DEV")}}),
+		resources.NewSourceRecord(map[string]any{"id": 2, "name": "bob", "groups": []any{group(11, "APP_INFOSEC_DEV")}}),
+		resources.NewSourceRecord(map[string]any{"id": 3, "name": "carol"}),
+	}}
+	for _, tc := range []struct{ filter, want string }{
+		{"groups~_DEV", "alice,bob"},
+		{"groups.name=APP_DEV", "alice"},
+		{"groups.id=11", "bob"},
+		{"groups.name~infosec", "bob"},
+	} {
+		args := []string{"--format", "json", "--filter", tc.filter, "zia", "users", "list"}
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+		}
+		var decoded []map[string]any
+		if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(App.Run(%v)) error = %v; output=%q", args, err, out.String())
+		}
+		if got := recordNames(decoded); got != tc.want {
+			t.Errorf("App.Run(%v) records = %q, want %q", args, got, tc.want)
+		}
+	}
+
+	// A path that is not in the nested catalog is a usage error before any read.
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: failingResourceReader{}})
+	args := []string{"--filter", "groups.notAField=x", "zia", "users", "list"}
+	if err := app.Run(context.Background(), args); !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("App.Run(%v) error = %v, want ErrUsage", args, err)
+	}
+}
+
+// TestFieldsDottedPathNarrowsNestedValues pins --fields paths end to end: JSON
+// keeps the nested shape with only the selected keys, and the table gets one
+// column per path holding what it reaches.
+func TestFieldsDottedPathNarrowsNestedValues(t *testing.T) {
+	t.Parallel()
+
+	group := func(id int, name string) map[string]any { return map[string]any{"id": id, "name": name} }
+	reader := fakeResourceReader{list: []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "alice", "groups": []any{group(10, "APP_DEV"), group(12, "Ops")}}),
+		resources.NewSourceRecord(map[string]any{"id": 3, "name": "carol"}),
+	}}
+
+	run := func(format string) string {
+		t.Helper()
+		args := []string{"--format", format, "--fields", "name,groups.id", "zia", "users", "list"}
+		var out, errOut bytes.Buffer
+		app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+		if err := app.Run(context.Background(), args); err != nil {
+			t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+		}
+		return out.String()
+	}
+
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(run("json")), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
+	got, _ := json.Marshal(decoded)
+	if want := `[{"groups":[{"id":10},{"id":12}],"name":"alice"},{"name":"carol"}]`; string(got) != want {
+		t.Errorf("--fields name,groups.id json = %s, want %s", got, want)
+	}
+
+	table := run("table")
+	if want := "name\tgroups.id\nalice\t10,12\ncarol\t\n"; table != want {
+		t.Errorf("--fields name,groups.id table = %q, want %q", table, want)
+	}
+
+	// get renders key/value rows, one per path.
+	getReader := fakeResourceReader{get: reader.list[0]}
+	args := []string{"--format", "table", "--color", "never", "--fields", "name,groups.id", "zia", "users", "get", "1"}
+	var out, errOut bytes.Buffer
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: getReader})
+	if err := app.Run(context.Background(), args); err != nil {
+		t.Fatalf("App.Run(%v) error = %v, want nil", args, err)
+	}
+	if got := out.String(); !strings.Contains(got, "groups.id") || !strings.Contains(got, "10,12") {
+		t.Errorf("--fields name,groups.id get table = %q, want a groups.id row holding 10,12", got)
 	}
 }
 

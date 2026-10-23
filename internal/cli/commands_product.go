@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/dvmrry/zscalerctl/internal/config"
@@ -102,7 +103,13 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 				return
 			}
 		}
-		if err := helpRenderer.writeHelp(c.OutOrStdout(), c); err != nil {
+		// Subcommands (url-lookup, admin-audit-logs) inherit this help func;
+		// only the product command itself lists the resources.
+		section := ""
+		if c == cmd {
+			section = productResourcesHelp(product, catalog)
+		}
+		if err := helpRenderer.writeHelpWithSection(c.OutOrStdout(), c, section); err != nil {
 			c.PrintErrln(err)
 		}
 	})
@@ -112,8 +119,35 @@ func (a *App) newProductCmd(product resources.Product, opts globalOptions) *cobr
 	// DisableFlagParsing to preserve its strict no-flags error message.
 	if product == resources.ProductZIA {
 		cmd.AddCommand(a.newURLLookupCmd(opts))
+		cmd.AddCommand(a.newAdminAuditLogsCmd(opts))
 	}
 	return cmd
+}
+
+// productResourcesHelp lists a product's catalog resources and their read
+// operations for `<product> --help`, which the unknown-resource error points
+// at. Resources are positional arguments, not Cobra subcommands, so Cobra's
+// own help cannot list them.
+func productResourcesHelp(product resources.Product, catalog resources.ResourceCatalog) string {
+	var specs []resources.ResourceSpec
+	width := 0
+	for _, spec := range catalog {
+		if spec.Product == product {
+			specs = append(specs, spec)
+			width = max(width, len(spec.Name))
+		}
+	}
+	if len(specs) == 0 {
+		return ""
+	}
+	slices.SortFunc(specs, func(a, b resources.ResourceSpec) int { return strings.Compare(a.Name, b.Name) })
+	var b strings.Builder
+	fmt.Fprintf(&b, "Resources (zscalerctl %s <resource> <operation>; add --help after a resource for its fields):\n", product)
+	for _, spec := range specs {
+		fmt.Fprintf(&b, "  %-*s  %s\n", width, spec.Name, strings.Join(readOperationNames(spec), ", "))
+	}
+	fmt.Fprintf(&b, "\nNot read by zscalerctl: zscalerctl --format json schema gaps %s\n", product)
+	return b.String()
 }
 
 // newURLLookupCmd returns the "url-lookup" subcommand of the "zia" product
@@ -152,4 +186,30 @@ func (a *App) newURLLookupCmd(opts globalOptions) *cobra.Command {
 			return a.runURLLookup(cmd.Context(), opts, args)
 		},
 	}
+}
+
+// newAdminAuditLogsCmd returns the ZIA-only administrator audit-log
+// diagnostic group. It remains outside the resource catalog.
+func (a *App) newAdminAuditLogsCmd(opts globalOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   adminAuditLogsCommandName,
+		Short: "inspect administrator audit-log report status",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return UsageError{Message: "usage: zscalerctl zia admin-audit-logs status"}
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "show current administrator audit-log report status",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			"introspect/output-fields": strings.Join(adminAuditLogsStatusFieldOrder, ","),
+			effectsAnnotation:          credentialedReadEffects,
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.runAdminAuditLogsStatus(cmd.Context(), opts)
+		},
+	})
+	return cmd
 }

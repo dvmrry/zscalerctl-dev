@@ -17,9 +17,14 @@
   help
   introspect
   machine manifest
+  refs check
+  refs to
   schema describe
+  schema gaps
   schema list
+  schema references
   version
+  zia admin-audit-logs status
   zia url-lookup
 
 ## catalog resources
@@ -90,6 +95,7 @@
   zia  ipv6-nat64-prefixes  list
   zia  location-groups  list|get
   zia  locations  list|get
+  zia  locations-lite  list
   zia  malicious-urls  show
   zia  mobile-threat-settings  show
   zia  nat-control-rules  list|get

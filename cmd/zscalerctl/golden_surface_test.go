@@ -43,10 +43,12 @@ var updateGolden = flag.Bool("update", false, "regenerate golden files")
 var goldenBinary string
 
 const (
-	goldenSurfaceFixtureEnv        = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
-	goldenSurfaceReadFixture       = "resource-read"
-	goldenSurfaceInvalidIDFixture  = "invalid-resource-id"
-	goldenSurfaceMissingZPAFixture = "missing-zpa-customer-id"
+	goldenSurfaceFixtureEnv                    = "ZSCALERCTL_GOLDEN_SURFACE_FIXTURE"
+	goldenSurfaceReadFixture                   = "resource-read"
+	goldenSurfaceInvalidIDFixture              = "invalid-resource-id"
+	goldenSurfaceMissingZPAFixture             = "missing-zpa-customer-id"
+	goldenSurfaceAuditStatusUnavailableFixture = "audit-status-progress-unavailable"
+	goldenSurfaceAuditStatusZeroFixture        = "audit-status-explicit-zero"
 )
 
 // TestMain builds the binary once for all golden tests.
@@ -70,7 +72,10 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/zscalerctl")
+	// -buildvcs=false: the version goldens expect an unstamped binary. Go
+	// stamps a build from a main checkout (not from a linked worktree), so
+	// without it the version cases fail in a plain clone.
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, "./cmd/zscalerctl")
 	cmd.Dir = filepath.Join("..", "..")
 	out, buildErr := cmd.CombinedOutput()
 	if buildErr != nil {
@@ -203,6 +208,20 @@ func collapseIntrospectFieldArrays(s string) string {
 	return reIntrospectFieldArrays.ReplaceAllString(s, `"$1": ["<omitted>"]`)
 }
 
+// goldenCaseTimeout bounds one golden case. Cases take under 1.5 s here even
+// with every core oversubscribed threefold; an external run once hit the old
+// 15 s limit on introspect under parallel load, so the limit leaves room for
+// a slower host and a timeout reports how long the case ran.
+const goldenCaseTimeout = 60 * time.Second
+
+// truncate keeps at most n bytes of s for a failure message.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // runCase executes one golden case against the pre-built binary or, for
 // fixture-backed resource read cases, against this test binary's helper process.
 // It returns scrubbed stdout, scrubbed stderr, and the actual exit code.
@@ -212,8 +231,9 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 		return runFixtureCase(t, homeDir, args, extraEnv, fixture)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), goldenCaseTimeout)
 	defer cancel()
+	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, goldenBinary, args...)
 	cmd.Env = hermeticEnv(homeDir, extraEnv)
@@ -225,10 +245,12 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 	runErr := cmd.Run()
 	code = 0
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
+		// A context kill also returns an *exec.ExitError (signal: killed), so
+		// check the deadline first or a timeout reads as exit code -1.
+		if ctx.Err() != nil {
+			t.Fatalf("case timed out after %s (limit %s): args=%v\nstderr so far:\n%s", time.Since(start).Round(time.Millisecond), goldenCaseTimeout, args, truncate(errBuf.String(), 2000))
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
 			code = exitErr.ExitCode()
-		} else if ctx.Err() != nil {
-			t.Fatalf("case timed out after 15s: args=%v", args)
 		} else {
 			t.Fatalf("exec error (not exit): %v", runErr)
 		}
@@ -241,8 +263,9 @@ func runCase(t *testing.T, homeDir string, args []string, extraEnv []string, fix
 
 func runFixtureCase(t *testing.T, homeDir string, args []string, extraEnv []string, fixture string) (stdout, stderr string, code int) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), goldenCaseTimeout)
 	defer cancel()
+	start := time.Now()
 
 	helperArgs := append([]string{"-test.run=^TestGoldenSurfaceFixtureHelper$", "--"}, args...)
 	cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...)
@@ -255,10 +278,12 @@ func runFixtureCase(t *testing.T, homeDir string, args []string, extraEnv []stri
 	runErr := cmd.Run()
 	code = 0
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
+		// A context kill also returns an *exec.ExitError (signal: killed), so
+		// check the deadline first or a timeout reads as exit code -1.
+		if ctx.Err() != nil {
+			t.Fatalf("fixture case timed out after %s (limit %s): args=%v\nstderr so far:\n%s", time.Since(start).Round(time.Millisecond), goldenCaseTimeout, args, truncate(errBuf.String(), 2000))
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
 			code = exitErr.ExitCode()
-		} else if ctx.Err() != nil {
-			t.Fatalf("fixture case timed out after 15s: args=%v", args)
 		} else {
 			t.Fatalf("fixture exec error (not exit): %v", runErr)
 		}
@@ -364,6 +389,24 @@ func (r goldenSurfaceReader) Show(_ context.Context, product resources.Product, 
 		}), nil
 	}
 	return resources.SourceRecord{}, fmt.Errorf("surface fixture %q has no show result for %s/%s", r.fixture, product, resource)
+}
+
+func (r goldenSurfaceReader) AdminAuditLogsStatus(context.Context) (zscaler.AdminAuditLogsStatus, error) {
+	switch r.fixture {
+	case goldenSurfaceAuditStatusUnavailableFixture:
+		return zscaler.AdminAuditLogsStatus{Status: "completed"}, nil
+	case goldenSurfaceAuditStatusZeroFixture:
+		progressItemsComplete := 0
+		return zscaler.AdminAuditLogsStatus{
+			Status:                "completed",
+			ProgressItemsComplete: &progressItemsComplete,
+		}, nil
+	default:
+		return zscaler.AdminAuditLogsStatus{}, fmt.Errorf(
+			"surface fixture %q has no administrator audit-log status result",
+			r.fixture,
+		)
+	}
 }
 
 // goldenPath returns the path to the golden file for a given case name.
@@ -521,6 +564,21 @@ func TestGoldenSurface(t *testing.T) {
 			args:     []string{"zia", "url-lookup", "--help"},
 			wantCode: 0,
 			note:     "cobra-help-surface",
+		},
+		// ── administrator audit-log status JSON contract ─────────────────────────
+		{
+			name:     "zia-admin-audit-logs-status-progress-unavailable-json",
+			args:     []string{"--format", "json", "zia", "admin-audit-logs", "status"},
+			fixture:  goldenSurfaceAuditStatusUnavailableFixture,
+			wantCode: 0,
+			note:     "optional-upstream-progress-field",
+		},
+		{
+			name:     "zia-admin-audit-logs-status-explicit-zero-json",
+			args:     []string{"--format", "json", "zia", "admin-audit-logs", "status"},
+			fixture:  goldenSurfaceAuditStatusZeroFixture,
+			wantCode: 0,
+			note:     "explicit-zero-progress-field",
 		},
 		// ── resource help (SetHelpFunc resource-specific help) ───────────────────
 		{

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -39,6 +40,12 @@ type Options struct {
 
 	Catalog    resources.ResourceCatalog
 	DiagLogger *slog.Logger
+	// Notices receives one-line operator notices before a live reader is
+	// built, such as which profile was chosen when the config file defines
+	// several and none was requested. They are written before the operation
+	// can still fail, so a host whose failures are a single stderr envelope
+	// must buffer them and write them only after success. Nil discards them.
+	Notices io.Writer
 
 	loadConfig configLoader
 	newReader  readerFactory
@@ -225,6 +232,20 @@ func applyOptions(cfg *config.Config, opts Options) error {
 	return nil
 }
 
+// readerSettings returns the non-secret settings the reader gets for the
+// effective auth mode, so they can be checked before any secret is resolved.
+func readerSettings(cfg config.Config) zscaler.Settings {
+	settings := zscaler.Settings{AuthMode: zscaler.AuthMode(cfg.EffectiveAuthMode())}
+	switch cfg.EffectiveAuthMode() {
+	case config.AuthModeOneAPI:
+		settings.VanityDomain = cfg.VanityDomain
+		settings.Cloud = cfg.Cloud
+	case config.AuthModeZIALegacy:
+		settings.ZIALegacyCloud = cfg.ZIALegacy.Cloud
+	}
+	return settings
+}
+
 func readerConfigFromConfig(
 	ctx context.Context,
 	cfg config.Config,
@@ -232,6 +253,14 @@ func readerConfigFromConfig(
 ) (zscaler.ReaderConfig, error) {
 	cfg = normalizeConfigSecretSources(cfg)
 	authMode := cfg.EffectiveAuthMode()
+	// Reject an unusable or incomplete configuration before resolving any
+	// secret, so no provider runs for a read certain to fail.
+	if err := zscaler.ValidateSettings(readerSettings(cfg)); err != nil {
+		return zscaler.ReaderConfig{}, err
+	}
+	if missing := cfg.MissingCredentials(); len(missing) > 0 {
+		return zscaler.ReaderConfig{}, &zscaler.MissingCredentialsError{Missing: missing}
+	}
 	var clientSecret, ziaPassword, ziaAPIKey secret.Secret
 	switch authMode {
 	case config.AuthModeOneAPI:
@@ -241,9 +270,6 @@ func readerConfigFromConfig(
 			return zscaler.ReaderConfig{}, fmt.Errorf("%w: %w (while resolving the client secret)", zscaler.ErrMissingCredentials, err)
 		}
 	case config.AuthModeZIALegacy:
-		if err := zscaler.ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
-			return zscaler.ReaderConfig{}, err
-		}
 		var err error
 		ziaPassword, err = cfg.ZIALegacy.Password.Resolve(ctx)
 		if err != nil {
@@ -291,6 +317,7 @@ func newReaderFromConfig(
 	if err := applyOptions(cfg, opts); err != nil {
 		return nil, err
 	}
+	writeProfileNotice(opts.Notices, *cfg)
 	readerConfig, err := readerConfigFromConfig(ctx, *cfg, opts)
 	if err != nil {
 		return nil, err
@@ -302,6 +329,21 @@ func newReaderFromConfig(
 		}
 	}
 	return newReader(readerConfig)
+}
+
+// writeProfileNotice names the profile a live read will use when the config
+// file defines several and the choice came from its default, so a read
+// against an unintended tenant is visible.
+func writeProfileNotice(w io.Writer, cfg config.Config) {
+	if w == nil || !cfg.ImplicitProfileAmongMany() {
+		return
+	}
+	how := "default_profile"
+	if cfg.ProfileSource == config.ProfileFromBuiltinDefault {
+		how = "no default_profile set"
+	}
+	_, _ = fmt.Fprintf(w, "zscalerctl: using profile %q (%s; %d profiles configured); pass --profile to choose\n",
+		cfg.Profile, how, cfg.ProfileCount)
 }
 
 func newMachineFromReader(

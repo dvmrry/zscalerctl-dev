@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -92,8 +93,8 @@ import (
 	vzenclusters "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_clusters"
 	vzennodes "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/vzen_nodes"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/workloadgroups"
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
 	zpaapplicationsegment "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegment"
 	zpaapplicationsegmentbrowseraccess "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/applicationsegmentbrowseraccess"
 	zpacommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zpa/services/common"
@@ -128,6 +129,43 @@ func (e *MissingCredentialsError) Error() string {
 
 func (e *MissingCredentialsError) Unwrap() error { return ErrMissingCredentials }
 
+// ErrInvalidSettings marks a non-secret reader setting that is set but
+// unusable, such as an unsupported cloud. It is configuration, not a missing
+// credential.
+var ErrInvalidSettings = errors.New("invalid zscaler settings")
+
+// InvalidSettingsError says which setting is unusable and why. Its reason is
+// one of the settingsReason constants and never includes the configured
+// value. Another package can only build the zero value, whose message is the
+// sentinel's, so the message is safe to render at any boundary.
+type InvalidSettingsError struct {
+	reason settingsReason
+}
+
+type settingsReason string
+
+const (
+	reasonVanityDomain   settingsReason = "ZSCALERCTL_VANITY_DOMAIN must be a single DNS label"
+	reasonOneAPICloud    settingsReason = "ZSCALERCTL_CLOUD must be PRODUCTION, ALPHA, BETA, GOV or GOVUS; it names the OneAPI gateway, so tenants on zscalertwo, zscalerthree, ZPATWO and other product clouds use PRODUCTION"
+	reasonLegacyZIACloud settingsReason = "ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud"
+	reasonAuthMode       settingsReason = "ZSCALERCTL_AUTH_MODE must be oneapi or zia-legacy"
+)
+
+func (e *InvalidSettingsError) Error() string {
+	if e.reason == "" {
+		return ErrInvalidSettings.Error()
+	}
+	return string(e.reason)
+}
+
+func (e *InvalidSettingsError) Unwrap() error { return ErrInvalidSettings }
+
+// isSetupError reports a failure of the reader's configuration rather than of
+// a live request, so callers pass it through instead of normalizing it.
+func isSetupError(err error) bool {
+	return errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrInvalidSettings)
+}
+
 var (
 	ErrInvalidResourceID  = resources.ErrInvalidResourceID
 	ErrResourceNotFound   = errors.New("zscaler resource not found")
@@ -145,6 +183,7 @@ const (
 	resourceStaticIPs         = "static-ips"
 	resourceGRETunnels        = "gre-tunnels"
 	resourceSublocations      = "sublocations"
+	resourceLocationsLite     = "locations-lite"
 	resourceSSLRules          = "ssl-inspection-rules"
 	resourceURLCategories     = "url-categories"
 	resourceURLRules          = "url-filtering-rules"
@@ -294,9 +333,9 @@ const (
 	resourceZidentityGroups            = "groups"
 	resourceZidentityUsers             = "users"
 	resourceZidentityResourceServers   = "resource-servers"
-	zidentityGroupsEndpoint            = "/admin/api/v1/groups"
-	zidentityUsersEndpoint             = "/admin/api/v1/users"
-	zidentityResourceServersEndpoint   = "/admin/api/v1/resource-servers"
+	zidentityGroupsEndpoint            = "/ziam/admin/api/v1/groups"
+	zidentityUsersEndpoint             = "/ziam/admin/api/v1/users"
+	zidentityResourceServersEndpoint   = "/ziam/admin/api/v1/resource-servers"
 )
 
 type AuthMode string
@@ -404,7 +443,7 @@ func (r *SDKReader) Session(ctx context.Context, product resources.Product) (Res
 	}
 	service, cleanup, err := perCallService{cfg: r.cfg}.service(ctx, product)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) {
+		if isSetupError(err) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "authenticate", product, "session", err)
@@ -481,7 +520,7 @@ func listResource(
 	}
 	records, err := handler.List(ctx)
 	if err != nil {
-		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
+		if isSetupError(err) || errors.Is(err, ErrUnsupportedResource) {
 			return nil, err
 		}
 		return nil, normalizeLiveError(ctx, "list", product, name, err)
@@ -504,7 +543,7 @@ func getResource(
 	if err != nil {
 		if errors.Is(err, ErrInvalidResourceID) ||
 			errors.Is(err, ErrUnsupportedResource) ||
-			errors.Is(err, ErrMissingCredentials) {
+			isSetupError(err) {
 			return resources.SourceRecord{}, err
 		}
 		// A scan-miss not-found (list-backed get) carries the sentinel rather
@@ -533,7 +572,7 @@ func showResource(
 		// Missing credentials are caught upstream at session creation, but keep
 		// the passthrough symmetric with listResource/getResource so a future
 		// per-call surfacing classifies as a credential error, not live access.
-		if errors.Is(err, ErrMissingCredentials) || errors.Is(err, ErrUnsupportedResource) {
+		if isSetupError(err) || errors.Is(err, ErrUnsupportedResource) {
 			return resources.SourceRecord{}, err
 		}
 		return resources.SourceRecord{}, normalizeLiveError(ctx, "show", product, name, err)
@@ -589,7 +628,7 @@ func getNetworkApplicationsPage(ctx context.Context, service *zsdk.Service) ([]n
 	// possibly-incomplete list as complete — silent truncation is worse than a
 	// visible error for an audit/diff tool.
 	if len(applications) >= pageCeiling {
-		return nil, fmt.Errorf("zia network-applications returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", pageCeiling)
+		return nil, fmt.Errorf("%w: zia network-applications returned the full single-page ceiling of %d records; this endpoint does not paginate, so completeness cannot be guaranteed", errPaginationValidation, pageCeiling)
 	}
 	return applications, nil
 }
@@ -617,7 +656,7 @@ func newListGetHandler[T any](
 		resourceName: resourceName,
 		list:         list,
 		get:          get,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
@@ -629,7 +668,7 @@ func newListOnlyHandler[T any](
 	return listOnlyHandler[T]{
 		resourceName: resourceName,
 		list:         list,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
@@ -694,7 +733,7 @@ func newSingletonHandler[T any](
 	return singletonHandler[T]{
 		resourceName: resourceName,
 		show:         show,
-		sourceRecord: sourceRecord,
+		sourceRecord: preserveEmptyLists(sourceRecord),
 	}
 }
 
@@ -832,26 +871,42 @@ func ziaSDKListGetByIntID[T any](
 	list func(context.Context, *zsdk.Service) ([]T, error),
 	idOf func(T) int,
 ) func(context.Context, string) (*T, error) {
+	return scanGetByIntID(ziaSDKList(client, list), idOf)
+}
+
+// scanGetByIntID and scanGetByStringID answer a get by reading the complete
+// list and matching the ID. Use them for any get the API cannot answer
+// directly (and in place of an SDK Get that scans and returns a plain "not
+// found" error): the list call succeeded, so a miss has no HTTP 404 to
+// classify downstream and must carry the not-found sentinel itself, or it
+// surfaces as a live-access failure (exit 5 instead of 4).
+func scanGetByIntID[T any](list func(context.Context) ([]T, error), idOf func(T) int) func(context.Context, string) (*T, error) {
 	return intIDGetter(func(ctx context.Context, id int) (*T, error) {
-		service, cleanup, err := client.service(ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer cleanup()
-		items, err := list(ctx, service)
-		if err != nil {
-			return nil, err
-		}
-		for i := range items {
-			if idOf(items[i]) == id {
-				return &items[i], nil
-			}
-		}
-		// The list call succeeded, so there is no HTTP 404 to classify
-		// downstream: a scan miss must carry the not-found sentinel itself or
-		// it surfaces as a live-access failure (exit 5 instead of 4).
-		return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
+		return scanGet(ctx, list, func(item T) bool { return idOf(item) == id })
 	})
+}
+
+func scanGetByStringID[T any](list func(context.Context) ([]T, error), idOf func(T) string) func(context.Context, string) (*T, error) {
+	return func(ctx context.Context, id string) (*T, error) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("%w: empty", ErrInvalidResourceID)
+		}
+		return scanGet(ctx, list, func(item T) bool { return idOf(item) == id })
+	}
+}
+
+func scanGet[T any](ctx context.Context, list func(context.Context) ([]T, error), match func(T) bool) (*T, error) {
+	items, err := list(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if match(items[i]) {
+			return &items[i], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %w", ErrResourceNotFound, resources.ErrRecordNotFound)
 }
 
 func sdkProductList[T any](
@@ -1068,7 +1123,7 @@ func (s perCallService) service(ctx context.Context, product resources.Product) 
 	// Do not replace this with zsdk.NewConfiguration. That SDK constructor
 	// reads ZSCALER_* environment variables and ~/.zscaler/zscaler.yaml before
 	// setters run. This adapter must only use explicit ZSCALERCTL_* config.
-	service, err := zsdk.NewOneAPIClient(cfg)
+	service, err := newOneAPIService(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1137,10 +1192,10 @@ func (s fixedService) service(ctx context.Context, product resources.Product) (*
 }
 
 // unsupportedOneAPIZidentityCloud keeps the OneAPI Zidentity admin path
-// fail-closed on government clouds. The SDK's government OAuth and product
-// API routes are reviewed, but its /admin/api/v1 host is still derived from
-// the vanity domain without a verified government admin origin. Do not create
-// a client for this product/cloud pair until that endpoint is established.
+// fail-closed where its gateway is unverified. Since SDK v3.8.49 Zidentity is
+// served by the OneAPI gateway under /ziam/admin/api/v1. No government
+// gateway has been verified to serve that prefix. Do not create a client for
+// these product/cloud pairs until the route is established.
 func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product) error {
 	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI || product != resources.ProductZidentity {
 		return nil
@@ -1159,6 +1214,7 @@ func unsupportedOneAPIZidentityCloud(cfg ReaderConfig, product resources.Product
 }
 
 func newLegacyZIAClient(cfg *sdkzia.Configuration) (*sdkzia.Client, error) {
+	withSignInTransport(cfg.HTTPClient)
 	neutralizeForeignSDKEnv()
 	restore := suppressSDKLogEnv()
 	defer restore()
@@ -1216,13 +1272,9 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 		Timeout:   timeout,
 		Transport: transport,
 	}
-	authHTTPClient := &http.Client{
-		Timeout:   timeout,
-		Transport: oneAPIIdentityTransport(transport, cfg.VanityDomain, cfg.Cloud),
-	}
 	sdkCfg := &zsdk.Configuration{
 		Logger:        newSDKLogger(cfg.DiagLogger),
-		HTTPClient:    authHTTPClient,
+		HTTPClient:    httpClient,
 		ZIAHTTPClient: httpClient,
 		ZPAHTTPClient: httpClient,
 		ZTWHTTPClient: httpClient,
@@ -1236,7 +1288,7 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.ClientID = cfg.ClientID.Reveal()
 	sdkCfg.Zscaler.Client.ClientSecret = cfg.ClientSecret.Reveal()
 	sdkCfg.Zscaler.Client.VanityDomain = cfg.VanityDomain
-	sdkCfg.Zscaler.Client.Cloud = cfg.Cloud
+	sdkCfg.Zscaler.Client.Cloud = oneAPICloud(cfg.Cloud)
 	sdkCfg.Zscaler.Client.CustomerID = strings.TrimSpace(cfg.ZPACustomerID)
 	sdkCfg.Zscaler.Client.MicrotenantID = strings.TrimSpace(cfg.ZPAMicrotenantID)
 	sdkCfg.Zscaler.Client.RequestTimeout = timeout
@@ -1244,8 +1296,8 @@ func newSDKConfiguration(ctx context.Context, cfg ReaderConfig) *zsdk.Configurat
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMin = time.Second
 	sdkCfg.Zscaler.Client.RateLimit.RetryWaitMax = 3 * time.Second
 	// OneAPI-only: the OAuth session can become invalid mid-run, so bound the
-	// re-auth retries. The legacy ZIA client's RateLimit struct has no such field
-	// (different auth/session model), which is why the legacy path omits it.
+	// re-auth retries. The legacy path sets no RateLimit fields at all; see
+	// newLegacyZIAConfiguration.
 	sdkCfg.Zscaler.Client.RateLimit.MaxSessionNotValidRetries = 1
 	// SDK response caching remains disabled for every read path. NoCache is
 	// retained in ReaderConfig so future cache support has to make a deliberate
@@ -1280,9 +1332,10 @@ func newLegacyZIAConfiguration(ctx context.Context, cfg ReaderConfig) (*sdkzia.C
 	ziaCfg.ZIA.Client.ZIAApiKey = cfg.ZIALegacy.APIKey.Reveal()
 	ziaCfg.ZIA.Client.ZIACloud = strings.ToLower(strings.TrimSpace(cfg.ZIALegacy.Cloud))
 	ziaCfg.ZIA.Client.RequestTimeout = timeout
-	ziaCfg.ZIA.Client.RateLimit.MaxRetries = 2
-	ziaCfg.ZIA.Client.RateLimit.RetryWaitMin = time.Second
-	ziaCfg.ZIA.Client.RateLimit.RetryWaitMax = 3 * time.Second
+	// No RateLimit retry settings: the SDK reads them only to build its own
+	// retrying HTTP client, which this explicit HTTPClient replaces. Legacy
+	// requests get the SDK's fixed loop: up to 5 attempts, retrying only a 401
+	// (after refreshing the session once); a 429 or 5xx is not retried.
 	ziaCfg.ZIA.Client.Cache.Enabled = false
 	return ziaCfg, nil
 }
@@ -1293,11 +1346,38 @@ func refuseLegacyZIARedirect(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-// ValidateLegacyZIACloud rejects any cloud that does not map to a reviewed,
-// exact legacy ZIA origin. Callers can use it before resolving secret sources.
-func ValidateLegacyZIACloud(cloud string) error {
-	_, err := legacyZIABaseURL(cloud)
-	return err
+// Settings are the non-secret values a reader needs besides credentials.
+type Settings struct {
+	AuthMode       AuthMode
+	VanityDomain   string
+	Cloud          string
+	ZIALegacyCloud string
+}
+
+// ValidateSettings is the one check of Settings: reader construction, secret
+// resolution and status reporting all use it, so a setting status calls
+// usable is one a read accepts. It runs before any secret is resolved. An
+// unset value is not an error here; it is a missing credential, which the
+// reader reports by name.
+func ValidateSettings(s Settings) error {
+	switch effectiveAuthMode(s.AuthMode) {
+	case AuthModeZIALegacy:
+		if strings.TrimSpace(s.ZIALegacyCloud) == "" {
+			return nil
+		}
+		_, err := legacyZIABaseURL(s.ZIALegacyCloud)
+		return err
+	case AuthModeOneAPI:
+		if s.VanityDomain != "" && !validDNSLabel(s.VanityDomain) {
+			return &InvalidSettingsError{reason: reasonVanityDomain}
+		}
+		if _, ok := oneAPIClouds[strings.ToLower(strings.TrimSpace(s.Cloud))]; !ok {
+			return &InvalidSettingsError{reason: reasonOneAPICloud}
+		}
+		return nil
+	default:
+		return &InvalidSettingsError{reason: reasonAuthMode}
+	}
 }
 
 func legacyZIABaseURL(cloud string) (*url.URL, error) {
@@ -1329,7 +1409,7 @@ func legacyZIABaseURL(cloud string) (*url.URL, error) {
 	case "zspreview":
 		host = "admin.zspreview.net"
 	default:
-		return nil, fmt.Errorf("%w: ZSCALERCTL_ZIA_CLOUD is not a supported legacy ZIA cloud", ErrMissingCredentials)
+		return nil, &InvalidSettingsError{reason: reasonLegacyZIACloud}
 	}
 	return &url.URL{Scheme: "https", Host: host}, nil
 }
@@ -1341,61 +1421,37 @@ func effectiveContext(ctx context.Context) context.Context {
 	return ctx
 }
 
+// directTransport is net/http's default transport with the configured proxy
+// and no connect or TLS handshake limit of its own: the defaults (30 s dial,
+// 10 s handshake) would cut off a slow connect whatever --timeout says. The
+// client's Timeout (--timeout) bounds both with the rest of the request.
 func directTransport(proxy ProxyConfig) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = proxyFunc(proxy)
+	transport.DialContext = (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = 0
 	return transport
 }
 
-type zpaTwoIdentityTransport struct {
-	base             http.RoundTripper
-	invalidOAuthHost string
-	validOAuthHost   string
-	invalidAdminHost string
-	validAdminHost   string
+// oneAPIClouds are the supported OneAPI clouds, each with a token host and
+// API gateway that exist. The OneAPI cloud names the gateway, not the cloud a
+// tenant's products run on: tenants on zscalertwo, zscalerthree, ZPATWO and
+// the other product clouds all use PRODUCTION. For a product cloud name the
+// SDK would derive the OAuth host (which receives the client secret) and the
+// API host from operator text, and neither exists, so the list is closed like
+// legacy ZIA's.
+var oneAPIClouds = map[string]string{
+	"":           "",
+	"production": "PRODUCTION",
+	"alpha":      "ALPHA",
+	"beta":       "BETA",
+	"gov":        "GOV",
+	"govus":      "GOVUS",
 }
 
-// oneAPIIdentityTransport works around zscaler-sdk-go treating ZPATWO as an
-// identity-cloud suffix. ZPATWO selects a distinct ZPA API gateway, but its
-// OneAPI token and ZIdentity admin endpoints remain on zslogin.net.
-func oneAPIIdentityTransport(base http.RoundTripper, vanityDomain, cloud string) http.RoundTripper {
-	if !strings.EqualFold(strings.TrimSpace(cloud), "ZPATWO") {
-		return base
-	}
-	vanityDomain = strings.TrimSpace(vanityDomain)
-	return &zpaTwoIdentityTransport{
-		base:             base,
-		invalidOAuthHost: vanityDomain + ".zsloginzpatwo.net",
-		validOAuthHost:   vanityDomain + ".zslogin.net",
-		invalidAdminHost: vanityDomain + "-admin.zsloginzpatwo.net",
-		validAdminHost:   vanityDomain + "-admin.zslogin.net",
-	}
-}
-
-// RoundTrip rewrites only invalid identity endpoints emitted by the SDK. All
-// product API requests and every other host or path pass through unchanged.
-func (t *zpaTwoIdentityTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request.URL.Scheme != "https" {
-		return t.base.RoundTrip(request)
-	}
-	validHost := ""
-	switch {
-	case strings.EqualFold(request.URL.Host, t.invalidOAuthHost) && request.URL.Path == "/oauth2/v1/token":
-		validHost = t.validOAuthHost
-	case strings.EqualFold(request.URL.Host, t.invalidAdminHost) && isZidentityAdminPath(request.URL.Path):
-		validHost = t.validAdminHost
-	default:
-		return t.base.RoundTrip(request)
-	}
-	cloned := request.Clone(request.Context())
-	clonedURL := *request.URL
-	cloned.URL = &clonedURL
-	cloned.URL.Host = validHost
-	return t.base.RoundTrip(cloned)
-}
-
-func isZidentityAdminPath(path string) bool {
-	return path == "/admin/api/v1" || strings.HasPrefix(path, "/admin/api/v1/")
+// oneAPICloud returns the SDK spelling of a validated OneAPI cloud.
+func oneAPICloud(cloud string) string {
+	return oneAPIClouds[strings.ToLower(strings.TrimSpace(cloud))]
 }
 
 func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
@@ -1412,6 +1468,10 @@ func proxyFunc(proxy ProxyConfig) func(*http.Request) (*url.URL, error) {
 
 func validateReaderConfig(cfg ReaderConfig) error {
 	if err := ValidateProxyConfig(cfg.Proxy); err != nil {
+		return err
+	}
+	// A set but unusable setting wins over missing values, as in status.
+	if err := ValidateSettings(cfg.Settings()); err != nil {
 		return err
 	}
 	switch effectiveAuthMode(cfg.AuthMode) {
@@ -1432,10 +1492,6 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
-		if err := ValidateLegacyZIACloud(cfg.ZIALegacy.Cloud); err != nil {
-			return err
-		}
-		return nil
 	case AuthModeOneAPI:
 		var missing []string
 		if !cfg.ClientID.IsSet() {
@@ -1450,15 +1506,17 @@ func validateReaderConfig(cfg ReaderConfig) error {
 		if len(missing) > 0 {
 			return &MissingCredentialsError{Missing: missing}
 		}
-		if !validDNSLabel(cfg.VanityDomain) {
-			return fmt.Errorf("%w: ZSCALERCTL_VANITY_DOMAIN must be a single DNS label", ErrMissingCredentials)
-		}
-		if cfg.Cloud != "" && !validDNSLabel(cfg.Cloud) {
-			return fmt.Errorf("%w: ZSCALERCTL_CLOUD must be a single DNS label", ErrMissingCredentials)
-		}
-		return nil
-	default:
-		return fmt.Errorf("%w: unsupported auth mode %q", ErrMissingCredentials, cfg.AuthMode)
+	}
+	return nil
+}
+
+// Settings returns the non-secret settings ValidateSettings checks.
+func (cfg ReaderConfig) Settings() Settings {
+	return Settings{
+		AuthMode:       cfg.AuthMode,
+		VanityDomain:   cfg.VanityDomain,
+		Cloud:          cfg.Cloud,
+		ZIALegacyCloud: cfg.ZIALegacy.Cloud,
 	}
 }
 
@@ -1478,11 +1536,6 @@ func validDNSLabel(value string) bool {
 	}
 	return true
 }
-
-// ValidateReaderConfig exposes credential validation for callers that inject a
-// ResourceReader via cli.Options.Reader (which bypasses NewReader), so the agent-eval
-// fixture binary can still exercise the real missing-credentials path.
-func ValidateReaderConfig(cfg ReaderConfig) error { return validateReaderConfig(cfg) }
 
 func validateProductConfig(cfg ReaderConfig, product resources.Product) error {
 	if effectiveAuthMode(cfg.AuthMode) != AuthModeOneAPI {
@@ -1542,7 +1595,9 @@ func effectiveTimeout(timeout time.Duration) time.Duration {
 // silently redirect every ZPA read to the wrong microtenant), and
 // ZSCALER_SANDBOX_TOKEN is a call-time credential fallback. Clearing them for
 // the process lifetime upholds the contract that zscalerctl honors only
-// explicit ZSCALERCTL_* configuration.
+// explicit ZSCALERCTL_* configuration. The config loader snapshots values
+// named by profile env: refs before SDK construction, so clearing these
+// variables does not break those references on later reads.
 func neutralizeForeignSDKEnv() {
 	for _, key := range []string{"ZPA_MICROTENANT_ID", "ZSCALER_SANDBOX_TOKEN"} {
 		_ = os.Unsetenv(key)
@@ -4372,11 +4427,12 @@ func zidentityServiceScopesSource(values []zidresourceservers.ServiceScopes) []a
 
 func zidentityServiceRefSource(value zidresourceservers.Service) map[string]any {
 	return map[string]any{
-		"id":          value.ID,
-		"name":        value.Name,
-		"displayName": value.DisplayName,
-		"cloudName":   value.CloudName,
-		"orgName":     value.OrgName,
+		"id":           value.ID,
+		"name":         value.Name,
+		"displayName":  value.DisplayName,
+		"externalName": value.ExternalName,
+		"cloudName":    value.CloudName,
+		"orgName":      value.OrgName,
 	}
 }
 
@@ -4726,14 +4782,19 @@ func normalizeLiveError(ctx context.Context, operation string, product resources
 	// condition (exit 4) rather than a generic live-access failure (exit 5). Scope
 	// this to get; a list/show/authenticate 404 is an endpoint/access problem, not
 	// a missing record.
-	if operation == "get" && statusCode == http.StatusNotFound {
+	// Sign-in happens inside whichever read first needs the client, and a
+	// sign-in 404 is a wrong host, not a missing ID.
+	if operation == "get" && statusCode == http.StatusNotFound && !errors.As(err, new(*signInError)) {
 		return resourceNotFoundError{product: product, resource: resource}
 	}
+	reason, retryable := classifyFailure(err, statusCode)
 	return liveAccessError{
 		operation:  operation,
 		product:    product,
 		resource:   resource,
 		statusCode: statusCode,
+		reason:     reason,
+		retryable:  retryable,
 	}
 }
 
@@ -4758,6 +4819,16 @@ type liveAccessError struct {
 	product    resources.Product
 	resource   string
 	statusCode int
+	reason     string
+	retryable  bool
+}
+
+// FailureDetail reports the value-free failure reason, the HTTP status (0 when
+// there was no HTTP response), and whether a retry could succeed. Callers
+// reach it through errors.As with a matching interface, so the CLI and dump
+// artifacts can say why a read failed without the backend message.
+func (e liveAccessError) FailureDetail() (reason string, status int, retryable bool) {
+	return e.reason, e.statusCode, e.retryable
 }
 
 func (e liveAccessError) Error() string {
@@ -4798,15 +4869,24 @@ func (e resourceNotFoundError) ErrorContext() ErrorContext {
 	return ErrorContext{Product: string(e.product), Resource: e.resource, Operation: "get"}
 }
 
+// sdkStatusCode returns the HTTP status of a failed SDK call or sign-in, or 0
+// when there is none. A status outside 100..599 (a body-parsed value can be
+// anything) is treated as no status, so the reason, the error envelope, errors.ndjson and
+// the stdio wire all agree with the published 100..599 range.
 func sdkStatusCode(err error) int {
+	valid := func(status int) bool { return status >= 100 && status <= 599 }
+	var signIn *signInError
+	if errors.As(err, &signIn) && valid(signIn.status) {
+		return signIn.status
+	}
 	var sdkErr *sdkerrorx.ErrorResponse
 	if !errors.As(err, &sdkErr) || sdkErr == nil {
 		return 0
 	}
-	if sdkErr.Response != nil && sdkErr.Response.StatusCode > 0 {
+	if sdkErr.Response != nil && valid(sdkErr.Response.StatusCode) {
 		return sdkErr.Response.StatusCode
 	}
-	if sdkErr.Parsed != nil && sdkErr.Parsed.Status > 0 {
+	if sdkErr.Parsed != nil && valid(sdkErr.Parsed.Status) {
 		return sdkErr.Parsed.Status
 	}
 	return 0

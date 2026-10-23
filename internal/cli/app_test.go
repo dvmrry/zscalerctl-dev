@@ -159,6 +159,7 @@ func TestCredentialedReadAdvertisesConfiguredProviderExecution(t *testing.T) {
 profiles:
   default:
     client_id: client-id
+    vanity_domain: example
     client_secret_ref:
       cmd:
         argv: [%q, "-test.run=^TestCLIConfigCmdHelperProcess$", "--", "touch", %q]
@@ -1832,31 +1833,29 @@ func TestResourceNarrowingPreflightRunsBeforeConfigAndReader(t *testing.T) {
 	}
 }
 
-func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
+// TestResourceListRejectsFilterOnFieldTheModeOmits pins the mode-aware filter
+// contract: a filter on a real catalog field that the active mode never renders
+// (secret, or standard-only under share) is a usage error before any read. A
+// silent empty result would read as a confident "no such records". The error
+// names the field and the mode that renders it, never the filter value.
+func TestResourceListRejectsFilterOnFieldTheModeOmits(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		filter string
+		name     string
+		filter   string
+		value    string
+		wantText string
 	}{
-		{name: "secret field", filter: "internalToken=raw-token-value"},
-		{name: "standard only field in share", filter: "hostname=host-01"},
+		{name: "secret field", filter: "internalToken=raw-token-value", value: "raw-token-value", wantText: "is secret and never renders"},
+		{name: "standard only field in share", filter: "hostname=host-01", value: "host-01", wantText: "renders with --redaction standard"},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			reader := fakeResourceReader{
-				list: []resources.SourceRecord{
-					resources.NewSourceRecord(map[string]any{
-						"id":            "1",
-						"name":          "HQ",
-						"hostname":      "host-01",
-						"internalToken": "raw-token-value",
-					}),
-				},
-			}
+			reader := &countingResourceReader{}
 			var out, errOut bytes.Buffer
 			app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{
 				Reader:  reader,
@@ -1869,17 +1868,45 @@ func TestResourceListDoesNotWarnForCatalogFieldDroppedByMode(t *testing.T) {
 				"zia", "locations", "list",
 				"--filter", tt.filter,
 			})
-			if err != nil {
-				t.Fatalf("App.Run(list --filter catalog field dropped by mode) error = %v, want nil", err)
+			var usage cli.UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("App.Run(list --filter omitted field) error = %v, want UsageError", err)
 			}
-			if got := strings.TrimSpace(out.String()); got != "[]" {
-				t.Fatalf("App.Run(list --filter catalog field dropped by mode) stdout = %q, want []", out.String())
+			if !strings.Contains(usage.Message, tt.wantText) {
+				t.Errorf("usage message = %q, want it to contain %q", usage.Message, tt.wantText)
 			}
-			if errOut.Len() != 0 {
-				t.Errorf("App.Run(list --filter catalog field dropped by mode) stderr = %q, want empty", errOut.String())
+			if strings.Contains(usage.Message, tt.value) {
+				t.Errorf("usage message = %q echoes the filter value", usage.Message)
+			}
+			if reader.calls != 0 {
+				t.Errorf("reader calls = %d, want 0 (rejected before any read)", reader.calls)
+			}
+			if out.Len() != 0 {
+				t.Errorf("stdout = %q, want empty", out.String())
 			}
 		})
 	}
+}
+
+// countingResourceReader records reads so tests can prove a request was
+// rejected before reaching the reader.
+type countingResourceReader struct {
+	calls int
+}
+
+func (r *countingResourceReader) List(context.Context, resources.Product, string) ([]resources.SourceRecord, error) {
+	r.calls++
+	return nil, nil
+}
+
+func (r *countingResourceReader) Get(context.Context, resources.Product, string, string) (resources.SourceRecord, error) {
+	r.calls++
+	return resources.SourceRecord{}, nil
+}
+
+func (r *countingResourceReader) Show(context.Context, resources.Product, string) (resources.SourceRecord, error) {
+	r.calls++
+	return resources.SourceRecord{}, nil
 }
 
 // TestNonRecordCommandsRejectNDJSON asserts every non-record command rejects
@@ -2202,8 +2229,10 @@ func TestResourceListRuleLabelsUsesCatalogProjection(t *testing.T) {
 	if len(decoded) != 1 {
 		t.Fatalf("decoded rule-labels list length = %d, want 1", len(decoded))
 	}
-	if _, ok := decoded[0]["createdBy"]; ok {
-		t.Errorf("decoded rule-labels list = %#v, want no unmodeled createdBy", decoded[0])
+	// createdBy is an admin reference: its name renders in standard mode
+	// (the default here) and is a person, so it is standard-only.
+	if createdBy, ok := decoded[0]["createdBy"].(map[string]any); !ok || createdBy["name"] != "admin@example.invalid" {
+		t.Errorf("decoded rule-labels createdBy = %#v, want the admin reference with its name", decoded[0]["createdBy"])
 	}
 	for _, field := range []string{"name", "description"} {
 		value, ok := decoded[0][field].(string)
@@ -2537,6 +2566,24 @@ func TestDumpResourceFilterRejectsUnknownResourceBeforeReader(t *testing.T) {
 	}
 }
 
+// TestDumpResourceFilterNamesCoverageGap pins that dump --resources says why
+// a declared gap cannot be dumped, by surface or alias in any case, and does
+// not echo the alias.
+func TestDumpResourceFilterNamesCoverageGap(t *testing.T) {
+	t.Parallel()
+
+	for _, item := range []string{"zpa/policy-rules", "zpa/Access_Policies", "Access_Policies"} {
+		app := cli.NewWithOptions(io.Discard, io.Discard, nil, cli.Options{Reader: failingResourceReader{}})
+		err := app.Run(context.Background(), []string{"dump", "--products", "zpa", "--resources", item, "--out", filepath.Join(t.TempDir(), "dump")})
+		if !errors.Is(err, cli.ErrUsage) || !strings.Contains(err.Error(), "zscalerctl does not read zpa/policy-rules (") {
+			t.Errorf("App.Run(dump --resources %s) error = %v, want usage naming the gap", item, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "Access_Policies") {
+			t.Errorf("App.Run(dump --resources %s) error echoed the alias: %v", item, err)
+		}
+	}
+}
+
 func TestDumpResourceFilterRejectsResourceOutsideSelectedProductsBeforeReader(t *testing.T) {
 	t.Parallel()
 
@@ -2842,7 +2889,7 @@ func TestDumpContinueOnErrorWritesPartialManifestAndValueFreeErrors(t *testing.T
 	if err := json.Unmarshal([]byte(lines[0]), &errorRecord); err != nil {
 		t.Fatalf("json.Unmarshal(errors.ndjson line) error = %v, want nil", err)
 	}
-	if errorRecord.Schema != "zscalerctl.dump.error.v1" ||
+	if errorRecord.Schema != "zscalerctl.dump.error.v2" ||
 		errorRecord.Product != "zia" ||
 		errorRecord.Name != "rule-labels" ||
 		errorRecord.Operation != "list" ||
@@ -3307,7 +3354,7 @@ func filterWarningCatalog() resources.ResourceCatalog {
 			},
 			{
 				Name:           "internalToken",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}}
@@ -4138,4 +4185,42 @@ func TestCLIConfigCmdHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// classifiedReadError stands in for the reader's live failure: value-free
+// detail behind a message that must never reach an artifact.
+type classifiedReadError struct{}
+
+func (classifiedReadError) Error() string { return "client_secret=raw-error-value" }
+func (classifiedReadError) FailureDetail() (string, int, bool) {
+	return "rate_limited", 429, true
+}
+
+// TestDumpErrorRecordsCarryTheReadFailureReason drives the dump pipeline end
+// to end: a resource whose read fails with a classified error lands in
+// errors.ndjson with its reason, status and retry hint, and nothing else.
+func TestDumpErrorRecordsCarryTheReadFailureReason(t *testing.T) {
+	t.Parallel()
+
+	reader := selectiveErrorResourceReader{
+		list:     []resources.SourceRecord{resources.NewSourceRecord(map[string]any{"id": "123", "name": "HQ"})},
+		failures: map[string]error{"zia/rule-labels": fmt.Errorf("read: %w", classifiedReadError{})},
+	}
+	var out, errOut bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "dump")
+	app := cli.NewWithOptions(&out, &errOut, nil, cli.Options{Reader: reader})
+	err := app.Run(context.Background(), []string{
+		"dump", "--products", "zia", "--resources", "locations,rule-labels", "--continue-on-error", "--out", outDir,
+	})
+	if !errors.Is(err, cli.ErrPartialDump) {
+		t.Fatalf("App.Run(dump) error = %v, want ErrPartialDump", err)
+	}
+	body, readErr := os.ReadFile(filepath.Join(outDir, "errors.ndjson"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	want := `{"schema":"zscalerctl.dump.error.v2","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed","reason":"rate_limited","status":429,"retryable":true}`
+	if got := strings.TrimSpace(string(body)); got != want {
+		t.Errorf("errors.ndjson = %s, want %s", got, want)
+	}
 }

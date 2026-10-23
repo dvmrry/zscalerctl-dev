@@ -134,7 +134,7 @@ explicitly converted engine manifest. The following is a structurally complete
 minimal frame; a build advertises every capability it actually provides.
 
 ```json
-{"type":"ready","protocol":"zscalerctl.engine.stdio","version":"1","schema":{"id":"urn:zscalerctl:engine-stdio:protocol:1","sha256":"6cba5a8170e538bd6eacde38c84526873f691421d6dc5f57cacfbd5f9438c522"},"server":{"name":"zscalerctl-engine","version":"dev"},"limits":{"client_frame_bytes":1048576,"server_frame_bytes":1048576,"json_depth":64,"aggregate_item_bytes":67108864,"fragment_chunk_bytes":524288,"url_count":1024,"read_field_count":1024,"read_filter_count":1024,"product_selector_count":16,"resource_selector_count":4096,"path_bytes":32768,"control_string_bytes":8192},"engine":{"version":"engine.v1","tenant_read_only":true,"capabilities":[{"name":"engine.manifest","operations":["manifest"],"input":"none","result":"engine_manifest","tenant_read_only":true,"effects":[]}]}}
+{"type":"ready","protocol":"zscalerctl.engine.stdio","version":"1","schema":{"id":"urn:zscalerctl:engine-stdio:protocol:1","sha256":"30d4aa99e021116a34f07b797a85ce936e3bb7f17009ac59ffcb422f2d2ae601"},"server":{"name":"zscalerctl-engine","version":"dev"},"limits":{"client_frame_bytes":1048576,"server_frame_bytes":1048576,"json_depth":64,"aggregate_item_bytes":67108864,"fragment_chunk_bytes":524288,"url_count":1024,"read_field_count":1024,"read_filter_count":1024,"product_selector_count":16,"resource_selector_count":4096,"path_bytes":32768,"control_string_bytes":8192},"engine":{"version":"engine.v1","tenant_read_only":true,"capabilities":[{"name":"engine.manifest","operations":["manifest"],"input":"none","result":"engine_manifest","tenant_read_only":true,"effects":[]}]}}
 ```
 
 No request is accepted before `ready`. Unknown bootstrap fields, duplicate
@@ -436,8 +436,10 @@ from resource phase:
 ```
 
 Closed phases are `list`, `show`, `project`, and `validate`; kinds are
-`list_failed`, `show_failed`, `projection_failed`, and `subset_failed`. Final
-dump failures exactly match warning frames in order and content.
+`list_failed`, `show_failed`, `projection_failed`, and `subset_failed`. A
+`list` or `show` warning may add the same `reason`, `status` and `retryable`
+as a `live_access_failed` operation error. Final dump failures exactly match
+warning frames in order and content.
 
 On a successful dump, every selected resource is accounted for exactly once:
 `resources_written + warning_count` equals the final progress total. Diff
@@ -478,6 +480,19 @@ converted only from admitted `DiffResult`.
 Wire operation errors contain no message, Go cause, backend text, path, rejected
 selector, or provider detail. They are a closed kind plus an optional allow-
 listed missing-credential variable list. The client owns presentation text.
+
+A `live_access_failed` error may also say why, in value-free terms: `reason`
+from a closed vocabulary (`credentials_rejected`, `unauthorized`, `forbidden`, `not_found`,
+`rate_limited`, `server_error`, `client_error`, `transport`, `timeout`,
+`pagination_incomplete`, `decode_failed`, `not_subscribed`, `unknown`), the HTTP
+`status` when there was a response, and `retryable: true` when a retry could
+plausibly succeed. Each is omitted when unknown; `status` and `retryable` never
+appear without `reason`, and no other kind carries them. These are the same
+fields the CLI error envelope and dump `errors.ndjson` carry:
+
+```json
+{"type":"failed","id":1,"seq":2,"error":{"kind":"live_access_failed","reason":"rate_limited","status":429,"retryable":true}}
+```
 
 Operation kinds include the existing machine taxonomy plus
 `response_too_large`. Unknown Go errors map to static `internal`; the adapter

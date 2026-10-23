@@ -815,3 +815,40 @@ func assertStringSliceEqual(t *testing.T, label string, got []string, want []str
 		}
 	}
 }
+
+// TestPartialDumpErrorRecordsCarryFailureDetailAndReadV1 pins the v2 error
+// record (reason, status, retryable) and keeps dumps written with v1 records
+// readable.
+func TestPartialDumpErrorRecordsCarryFailureDetailAndRejectV1(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "dump")
+	entry := projectedDumpEntry(t, resources.ProductZIA, "locations", []resources.SourceRecord{
+		resources.NewSourceRecord(map[string]any{"id": 1, "name": "HQ"}),
+	})
+	failed := NewResourceError(resources.ProductZIA, "rule-labels", "list", "list_failed").
+		WithFailure("forbidden", 403, false)
+	if err := Write(dir, redact.ModeShare, Result{Entries: []ResourceDump{entry}, Errors: []ResourceError{failed}}); err != nil {
+		t.Fatalf("Write(partial) error = %v", err)
+	}
+	errorsPath := filepath.Join(dir, "errors.ndjson")
+	line := strings.TrimSpace(readFile(t, errorsPath))
+	want := `{"schema":"zscalerctl.dump.error.v2","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed","reason":"forbidden","status":403}`
+	if line != want {
+		t.Fatalf("errors.ndjson = %s, want %s", line, want)
+	}
+	if _, err := ValidateArtifactContext(context.Background(), dir); err != nil {
+		t.Fatalf("ValidateArtifactContext(v2) error = %v", err)
+	}
+
+	// Only v2 is read; v1 (pre-failure-detail) and unknown versions are invalid.
+	for _, schema := range []string{"zscalerctl.dump.error.v1", "zscalerctl.dump.error.v9"} {
+		line := `{"schema":"` + schema + `","product":"zia","name":"rule-labels","operation":"list","kind":"list_failed"}` + "\n"
+		if err := os.WriteFile(errorsPath, []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ValidateArtifactContext(context.Background(), dir); !errors.Is(err, ErrInvalidArtifact) {
+			t.Fatalf("ValidateArtifactContext(%s) error = %v, want ErrInvalidArtifact", schema, err)
+		}
+	}
+}

@@ -210,9 +210,12 @@ func resourceReadRuntimeBoundaryError(err error, req machine.ResourceReadRequest
 		machineErr.Kind = machine.ErrorKindInvalidProxyConfig
 		machineErr.Message = "invalid proxy configuration"
 		sentinel = zscaler.ErrInvalidProxyConfig
+	case errors.Is(err, zscaler.ErrInvalidSettings):
+		machineErr.Kind = machine.ErrorKindInvalidConfig
+		machineErr.Message, sentinel = sanitizedInvalidSettings(err)
 	case errors.Is(err, zscaler.ErrMissingCredentials):
 		machineErr.Kind = machine.ErrorKindMissingCredentials
-		machineErr.Message, sentinel = sanitizedRuntimeMissingCredentials(err)
+		machineErr.Message, sentinel = sanitizedMissingCredentials(err)
 		var missingErr *zscaler.MissingCredentialsError
 		if errors.As(sentinel, &missingErr) {
 			machineErr.Missing = append([]string(nil), missingErr.Missing...)
@@ -230,5 +233,6 @@ func resourceReadRuntimeBoundaryError(err error, req machine.ResourceReadRequest
 		// adapter still maps them to its static internal failure.
 		return err
 	}
+	machineErr.AttachFailure(err)
 	return newBoundaryError(machineErr, sentinel)
 }

@@ -30,14 +30,8 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:           []redact.Mode{redact.ModeStandard},
 					StandardFreeTextReason: standardFreeTextReason("ZIA location description"),
 				},
-				{
-					Name:           "preSharedKey",
-					Classification: ClassSecret,
-				},
-				{
-					Name:           "vpnCredentials",
-					Classification: ClassSecret,
-				},
+				credentialField("preSharedKey"),
+				credentialField("vpnCredentials"),
 				operationalField("parentId", standardShareModes()),
 				sensitiveIdentifierField("country"),
 				sensitiveIdentifierField("state"),
@@ -202,9 +196,7 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
-				// Admin identity reference: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("lastModUser"),
+				ziaAdminRefField("lastModUser"),
 			},
 		},
 		{
@@ -238,10 +230,8 @@ func catalogZIA() ResourceCatalog {
 					Classification: ClassOperational,
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid},
 				},
-				// Admin identity references: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("createdBy"),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("createdBy"),
+				ziaAdminRefField("lastModifiedBy"),
 			},
 		},
 		{
@@ -254,11 +244,11 @@ func catalogZIA() ResourceCatalog {
 				operationalField("oneTimeAuth", standardShareModes()),
 				operationalField("samlEnabled", standardShareModes()),
 				operationalField("kerberosEnabled", standardShareModes()),
-				secretField("kerberosPwd"),
+				credentialField("kerberosPwd"),
 				operationalField("authFrequency", standardShareModes()),
 				operationalField("authCustomFrequency", standardShareModes()),
-				secretField("passwordStrength"),
-				secretField("passwordExpiry"),
+				namedOperationalField("passwordStrength", allModes(), "the required strength level for hosted-database user passwords, not a password"),
+				namedOperationalField("passwordExpiry", allModes(), "the password expiry period setting for hosted-database users, not a password"),
 				operationalField("lastSyncStartTime", standardShareModes()),
 				operationalField("lastSyncEndTime", standardShareModes()),
 				operationalField("mobileAdminSamlIdpEnabled", standardShareModes()),
@@ -313,10 +303,8 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 				},
 				idNameField("city", standardOnlyMode()),
-				// Admin identity references: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("managedBy"),
-				secretField("lastModifiedBy"),
+				idNameRefField("managedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 			},
 		},
 		{
@@ -377,10 +365,8 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   []redact.Mode{redact.ModeStandard, redact.ModeShare},
 					Fields:         greDestVipFields(),
 				},
-				// Admin identity references: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("managedBy"),
-				secretField("lastModifiedBy"),
+				idNameRefField("managedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 			},
 		},
 		{
@@ -526,10 +512,7 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("staticLocationGroups", standardOnlyMode()),
 				idNameExtensionsField("virtualZenClusters", standardOnlyMode()),
 				idNameExtensionsField("virtualZens", standardOnlyMode()),
-				{
-					Name:           "vpnCredentials",
-					Classification: ClassSecret,
-				},
+				credentialField("vpnCredentials"),
 			},
 		},
 		{
@@ -657,7 +640,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("roadWarriorForKerberos", allModes()),
 				tenantConfigField("userAgentTypes", standardShareModes()),
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("labels", standardShareModes()),
 				idNameExtensionsField("timeWindows", standardShareModes()),
 				idNameExtensionsField("locations", standardOnlyMode()),
@@ -854,9 +837,7 @@ func catalogZIA() ResourceCatalog {
 				// Flat device-posture enum slice; mirrors the identical
 				// ssl-inspection-rules deviceTrustLevels classification.
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
-				// Admin identity reference: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("sourceCountries", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("enforceTimeValidity", allModes()),
@@ -877,7 +858,7 @@ func catalogZIA() ResourceCatalog {
 					Fields: []FieldSpec{
 						operationalField("id", allModes()),
 						tenantConfigField("name", standardShareModes()),
-						secretField("url"),
+						sensitiveIdentifierField("url"),
 						operationalField("profileSeq", allModes()),
 					},
 				},
@@ -929,9 +910,7 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("destAddresses"),
 				sensitiveIdentifierField("destIpCategories"),
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
-				// Admin identity reference: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("labels", standardShareModes()),
 				idNameExtensionsField("timeWindows", standardShareModes()),
 				idNameExtensionsField("locations", standardOnlyMode()),
@@ -959,11 +938,6 @@ func catalogZIA() ResourceCatalog {
 			Fields: []FieldSpec{
 				operationalField("id", allModes()),
 				tenantConfigField("name", standardShareModes()),
-				// Suricata/Snort signature bodies embed tenant network
-				// indicators (IPs, hostnames, payload regexes); the rule text
-				// is never emitted in any mode and never reaches the source
-				// record.
-				secretField("ruleText"),
 				freeTextField("description", "ZIA IPS signature rule description"),
 				{
 					Name:           "category",
@@ -1010,7 +984,7 @@ func catalogZIA() ResourceCatalog {
 					sensitiveIdentifierField("destAddresses"),
 					sensitiveIdentifierField("destIpCategories"),
 					sensitiveIdentifierField("resCategories"),
-					secretField("lastModifiedBy"),
+					ziaAdminRefField("lastModifiedBy"),
 					idNameExtensionsField("labels", standardShareModes()),
 					idNameExtensionsField("timeWindows", standardShareModes()),
 					idNameExtensionsField("locations", standardOnlyMode()),
@@ -1059,7 +1033,7 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("groups", standardOnlyMode()),
 				idNameExtensionsField("users", standardOnlyMode()),
 				idNameExtensionsField("deviceGroups", standardOnlyMode()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("srcIpGroups", standardOnlyMode()),
 				idNameExtensionsField("srcIpv6Groups", standardOnlyMode()),
 				idNameExtensionsField("destIpGroups", standardOnlyMode()),
@@ -1222,7 +1196,13 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("insertXauHeader", standardShareModes()),
 				tenantConfigField("base64EncodeXauHeader", standardShareModes()),
 				idNameExternalIDField("cert", standardShareModes()),
-				secretField("lastModifiedBy"),
+				// The SDK types this admin reference as IDNameExternalID; the
+				// reader adds externalId only when it is set.
+				func() FieldSpec {
+					field := ziaAdminRefField("lastModifiedBy")
+					field.Fields = append(field.Fields, sensitiveIdentifierField("externalId"))
+					return field
+				}(),
 				operationalField("lastModifiedTime", standardShareModes()),
 			},
 		},
@@ -1238,7 +1218,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("type", allModes()),
 				idNameExternalIDField("primaryProxy", standardShareModes()),
 				idNameExternalIDField("secondaryProxy", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("lastModifiedTime", standardShareModes()),
 			},
 		},
@@ -1254,7 +1234,7 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("secondaryDataCenter", standardShareModes()),
 				operationalField("createTime", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("default", allModes()),
 			},
 		},
@@ -1308,7 +1288,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("defaultRule", allModes()),
 				tenantConfigField("protocols", standardShareModes()),
 				tenantConfigField("deviceTrustLevels", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("bandwidthClasses", standardShareModes()),
 				idNameExtensionsField("labels", standardShareModes()),
 				idNameExtensionsField("timeWindows", standardShareModes()),
@@ -1333,7 +1313,7 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("protocols", standardShareModes()),
 				tenantConfigField("failureBehavior", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("autoCreated", allModes()),
 				operationalField("natZtrGateway", allModes()),
 				tenantConfigField("dnsGatewayProtocols", standardShareModes()),
@@ -1355,7 +1335,7 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("redirectIp"),
 				tenantConfigField("redirectPort", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("trustedResolverRule", allModes()),
 				operationalField("enableFullLogging", allModes()),
 				operationalField("predefined", allModes()),
@@ -1443,7 +1423,7 @@ func catalogZIA() ResourceCatalog {
 				freeTextField("comments", "ZIA user comments"),
 				sensitiveIdentifierField("tempAuthEmail"),
 				tenantConfigField("authMethods", standardOnlyMode()),
-				secretField("password"),
+				credentialField("password"),
 				operationalField("adminUser", standardShareModes()),
 				tenantConfigField("type", standardShareModes()),
 				operationalField("deleted", allModes()),
@@ -1491,9 +1471,7 @@ func catalogZIA() ResourceCatalog {
 				freeTextField("description", "ZIA workload group description"),
 				sensitiveIdentifierField("expression"),
 				operationalField("lastModifiedTime", standardShareModes()),
-				// Admin identity reference: classified secret and never
-				// rendered, matching the rule-family lastModifiedBy precedent.
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 			},
 		},
 		{
@@ -1553,7 +1531,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("certStartDate", standardShareModes()),
 				operationalField("certExpDate", standardShareModes()),
 				tenantConfigField("currentState", standardShareModes()),
-				secretField("publicKey"),
+				namedOperationalField("publicKey", standardOnlyMode(), "the intermediate CA public key; public certificate material, no private key"),
 				operationalField("keyGenerationTime", standardShareModes()),
 				operationalField("hsmAttestationVerifiedTime", standardShareModes()),
 				sensitiveIdentifierField("csrFileName"),
@@ -1570,8 +1548,23 @@ func catalogZIA() ResourceCatalog {
 				operationalField("instanceType", allModes()),
 				tenantConfigField("instanceName", standardShareModes()),
 				operationalField("modifiedAt", standardShareModes()),
-				secretField("modifiedBy"),
-				secretField("instanceIdentifiers"),
+				ziaAdminRefField("modifiedBy"),
+				// Each identifier names a tenant SaaS host or URL, so the
+				// identifier and its label are standard-only; ids, types
+				// and audit fields render like the record's own.
+				{
+					Name:           "instanceIdentifiers",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						operationalField("instanceId", allModes()),
+						sensitiveIdentifierField("instanceIdentifier"),
+						sensitiveIdentifierField("instanceIdentifierName"),
+						operationalField("identifierType", allModes()),
+						operationalField("modifiedAt", standardShareModes()),
+						ziaAdminRefField("modifiedBy"),
+					},
+				},
 			},
 		},
 		{
@@ -1664,13 +1657,62 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("thresholdType", standardShareModes()),
 				tenantConfigField("dictionaryType", standardShareModes()),
 				operationalField("proximity", allModes()),
-				secretField("phrases"),
-				secretField("patterns"),
-				secretField("exactDataMatchDetails"),
-				secretField("idmProfileMatchAccuracyDetails"),
+				// Former catch-all secrets, reclassified. Phrases, patterns
+				// and BIN numbers are what the dictionary matches, so they are
+				// free text; actions, match settings and link ids render in
+				// every mode. Keys follow the SDK json tags.
+				{
+					Name:           "phrases",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						tenantConfigField("action", allModes()),
+						freeTextField("phrase", "ZIA DLP dictionary phrase"),
+					},
+				},
+				{
+					Name:           "patterns",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						tenantConfigField("action", allModes()),
+						freeTextField("pattern", "ZIA DLP dictionary pattern"),
+					},
+				},
+				{
+					Name:           "exactDataMatchDetails",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						operationalField("dictionaryEdmMappingId", allModes()),
+						operationalField("schemaId", allModes()),
+						tenantConfigField("primaryFields", allModes()),
+						tenantConfigField("secondaryFields", allModes()),
+						tenantConfigField("secondaryFieldMatchOn", allModes()),
+					},
+				},
+				{
+					Name:           "idmProfileMatchAccuracyDetails",
+					Classification: ClassTenantConfig,
+					AllowedModes:   allModes(),
+					Fields: []FieldSpec{
+						{
+							Name:           "adpIdmProfile",
+							Classification: ClassTenantConfig,
+							AllowedModes:   allModes(),
+							Fields: []FieldSpec{
+								operationalField("id", allModes()),
+								// Matches dlp-idm-profiles profileName.
+								sensitiveIdentifierField("name"),
+								unstructuredField("extensions"),
+							},
+						},
+						tenantConfigField("matchAccuracy", allModes()),
+					},
+				},
 				operationalField("ignoreExactMatchIdmDict", allModes()),
 				operationalField("includeBinNumbers", allModes()),
-				secretField("binNumbers"),
+				freeTextField("binNumbers", "ZIA DLP dictionary BIN numbers"),
 				operationalField("dictTemplateId", allModes()),
 				operationalField("predefinedClone", allModes()),
 				tenantConfigField("predefinedCountActionType", standardShareModes()),
@@ -1679,8 +1721,8 @@ func catalogZIA() ResourceCatalog {
 				operationalField("dictionaryCloningEnabled", allModes()),
 				operationalField("customPhraseSupported", allModes()),
 				operationalField("hierarchicalDictionary", allModes()),
-				secretField("hierarchicalIdentifiers"),
-				secretField("predefinedPhrases"),
+				tenantConfigField("hierarchicalIdentifiers", allModes()),
+				freeTextField("predefinedPhrases", "ZIA DLP dictionary predefined phrases"),
 				operationalField("thresholdAllowed", allModes()),
 				tenantConfigField("confidenceLevelForPredefinedDict", standardShareModes()),
 			},
@@ -1701,13 +1743,24 @@ func catalogZIA() ResourceCatalog {
 				operationalField("schemaStatus", allModes()),
 				operationalField("origColCount", standardOnlyMode()),
 				operationalField("lastModifiedTime", allModes()),
-				secretField("modifiedBy"),
-				secretField("createdBy"),
+				ziaAdminRefField("modifiedBy"),
+				ziaAdminRefField("createdBy"),
 				operationalField("cellsUsed", standardOnlyMode()),
 				operationalField("schemaActive", allModes()),
 				operationalField("schedulePresent", allModes()),
-				secretField("tokenList"),
-				secretField("schedule"),
+				ziaEDMTokenListField(),
+				{
+					Name:           "schedule",
+					Classification: ClassTenantConfig,
+					AllowedModes:   standardOnlyMode(),
+					Fields: []FieldSpec{
+						tenantConfigField("scheduleType", standardOnlyMode()),
+						tenantConfigField("scheduleDayOfMonth", standardOnlyMode()),
+						tenantConfigField("scheduleDayOfWeek", standardOnlyMode()),
+						operationalField("scheduleTime", standardOnlyMode()),
+						operationalField("scheduleDisabled", standardOnlyMode()),
+					},
+				},
 			},
 		},
 		{
@@ -1721,7 +1774,7 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("clientVm", standardOnlyMode()),
 				operationalField("numDocuments", standardOnlyMode()),
 				operationalField("lastModifiedTime", allModes()),
-				secretField("modifiedBy"),
+				ziaAdminRefField("modifiedBy"),
 			},
 		},
 		{
@@ -1750,7 +1803,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("volumeOfDocuments", standardOnlyMode()),
 				operationalField("numDocuments", standardOnlyMode()),
 				operationalField("lastModifiedTime", allModes()),
-				secretField("modifiedBy"),
+				ziaAdminRefField("modifiedBy"),
 			},
 		},
 		{
@@ -1780,7 +1833,7 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("eunTemplateId"),
 				sensitiveIdentifierField("externalAuditorEmail"),
 				idNameField("auditor", standardOnlyMode()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameField("notificationTemplate", standardOnlyMode()),
 				idNameField("icapServer", standardOnlyMode()),
 				{
@@ -1791,7 +1844,7 @@ func catalogZIA() ResourceCatalog {
 						operationalField("id", allModes()),
 						tenantConfigField("name", standardShareModes()),
 						operationalField("type", allModes()),
-						secretField("tenant"),
+						idNameExtensionsField("tenant", standardOnlyMode()),
 					},
 				},
 				idNameExtensionsField("locations", standardOnlyMode()),
@@ -1813,7 +1866,9 @@ func catalogZIA() ResourceCatalog {
 				idNameField("fileTypeCategories", standardOnlyMode()),
 				tenantConfigField("severity", standardShareModes()),
 				operationalField("parentRule", allModes()),
-				secretField("subRules"),
+				// Sub-rules are whole DLP web rules (a recursive SDK type) that
+				// the reader passes through as raw SDK structs.
+				unstructuredField("subRules"),
 				tenantConfigField("userRiskScoreLevels", standardOnlyMode()),
 				tenantConfigField("dlpContentLocationsScopes", standardShareModes()),
 				operationalField("inspectHttpGetEnabled", allModes()),
@@ -1851,8 +1906,8 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("name", standardShareModes()),
 				freeTextField("subject", "DLP notification template subject"),
 				tenantConfigField("attachContent", standardOnlyMode()),
-				secretField("plainTextMessage"),
-				secretField("htmlMessage"),
+				freeTextField("plainTextMessage", "DLP notification template plain-text message"),
+				freeTextField("htmlMessage", "DLP notification template HTML message"),
 				tenantConfigField("tlsEnabled", standardShareModes()),
 			},
 		},
@@ -1866,8 +1921,8 @@ func catalogZIA() ResourceCatalog {
 				operationalField("status", allModes()),
 				operationalField("modifiedTime", allModes()),
 				operationalField("lastTenantValidationTime", standardOnlyMode()),
-				secretField("lastValidationMsg"),
-				secretField("lastModifiedBy"),
+				ziaC2CValidationMsgField(),
+				ziaAdminRefField("lastModifiedBy"),
 				{
 					Name:           "onboardableEntity",
 					Classification: ClassTenantConfig,
@@ -1878,8 +1933,8 @@ func catalogZIA() ResourceCatalog {
 						operationalField("type", allModes()),
 						sensitiveIdentifierField("enterpriseTenantId"),
 						tenantConfigField("application", standardShareModes()),
-						secretField("lastValidationMsg"),
-						secretField("tenantAuthorizationInfo"),
+						ziaC2CValidationMsgField(),
+						credentialField("tenantAuthorizationInfo"),
 						idNameExtensionsField("zscalerAppTenantId", standardOnlyMode()),
 					},
 				},
@@ -1899,34 +1954,34 @@ func catalogZIA() ResourceCatalog {
 				idNameExternalIDField("customTags", standardOnlyMode()),
 				idNameExtensionsField("modifiedBy", standardOnlyMode()),
 				sensitiveIdentifierField("sourceIpRestrictions"),
-				secretField("adminAuditLogs"),
-				secretField("certifications"),
-				secretField("dataBreach"),
-				secretField("dataEncryptionInTransit"),
-				secretField("dnsCaaPolicy"),
-				secretField("domainBasedMessageAuth"),
-				secretField("domainKeysIdentifiedMail"),
-				secretField("evasive"),
-				secretField("excludeCertificates"),
-				secretField("fileSharing"),
-				secretField("httpSecurityHeaders"),
-				secretField("malwareScanningForContent"),
-				secretField("mfaSupport"),
-				secretField("passwordStrength"),
-				secretField("poorItemsOfService"),
-				secretField("remoteScreenSharing"),
-				secretField("riskIndex"),
-				secretField("senderPolicyFramework"),
-				secretField("sslCertKeySize"),
-				secretField("sslCertValidity"),
-				secretField("sslPinned"),
-				secretField("supportForWaf"),
-				secretField("vulnerability"),
-				secretField("vulnerabilityDisclosure"),
-				secretField("vulnerableToHeartBleed"),
-				secretField("vulnerableToLogJam"),
-				secretField("vulnerableToPoodle"),
-				secretField("weakCipherSupport"),
+				tenantConfigField("adminAuditLogs", allModes()),
+				tenantConfigField("certifications", allModes()),
+				tenantConfigField("dataBreach", allModes()),
+				tenantConfigField("dataEncryptionInTransit", allModes()),
+				tenantConfigField("dnsCaaPolicy", allModes()),
+				tenantConfigField("domainBasedMessageAuth", allModes()),
+				tenantConfigField("domainKeysIdentifiedMail", allModes()),
+				tenantConfigField("evasive", allModes()),
+				tenantConfigField("excludeCertificates", allModes()),
+				tenantConfigField("fileSharing", allModes()),
+				tenantConfigField("httpSecurityHeaders", allModes()),
+				tenantConfigField("malwareScanningForContent", allModes()),
+				tenantConfigField("mfaSupport", allModes()),
+				ziaNamedTenantConfigField("passwordStrength", allModes(), "a risk-profile criterion on the cloud app's password strength rating, not a password"),
+				tenantConfigField("poorItemsOfService", allModes()),
+				tenantConfigField("remoteScreenSharing", allModes()),
+				tenantConfigField("riskIndex", allModes()),
+				tenantConfigField("senderPolicyFramework", allModes()),
+				tenantConfigField("sslCertKeySize", allModes()),
+				tenantConfigField("sslCertValidity", allModes()),
+				tenantConfigField("sslPinned", allModes()),
+				tenantConfigField("supportForWaf", allModes()),
+				tenantConfigField("vulnerability", allModes()),
+				tenantConfigField("vulnerabilityDisclosure", allModes()),
+				tenantConfigField("vulnerableToHeartBleed", allModes()),
+				tenantConfigField("vulnerableToLogJam", allModes()),
+				tenantConfigField("vulnerableToPoodle", allModes()),
+				tenantConfigField("weakCipherSupport", allModes()),
 			},
 		},
 		{
@@ -1960,17 +2015,19 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("siemType", standardShareModes()),
 				operationalField("maxBatchSize", allModes()),
 				sensitiveIdentifierField("connectionURL"),
-				secretField("authenticationToken"),
-				secretField("connectionHeaders"),
+				tokenField("authenticationToken"),
+				// Headers may carry an Authorization value.
+				opaqueBlobField("connectionHeaders"),
 				operationalField("lastSuccessFullTest", standardShareModes()),
 				operationalField("testConnectivityCode", allModes()),
-				secretField("base64EncodedCertificate"),
+				namedOperationalField("base64EncodedCertificate", standardOnlyMode(), "the public certificate for the feed connection; no private key"),
 				operationalField("nssType", allModes()),
-				secretField("clientId"),
-				secretField("clientSecret"),
+				sensitiveIdentifierField("clientId"),
+				credentialField("clientSecret"),
 				sensitiveIdentifierField("authenticationUrl"),
 				tenantConfigField("grantType", standardShareModes()),
-				secretField("scope"),
+				// An OAuth scope can name the tenant's SIEM app registration.
+				sensitiveIdentifierField("scope"),
 				operationalField("cloudNss", allModes()),
 				operationalField("oauthAuthentication", allModes()),
 				sensitiveIdentifierField("serverIps"),
@@ -1985,8 +2042,8 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("clientSourceIps"),
 				tenantConfigField("firewallActions", standardShareModes()),
 				operationalField("countries", standardShareModes()),
-				secretField("serverSourcePorts"),
-				secretField("clientSourcePorts"),
+				sensitiveIdentifierField("serverSourcePorts"),
+				sensitiveIdentifierField("clientSourcePorts"),
 				tenantConfigField("actionFilter", standardShareModes()),
 				tenantConfigField("emailDlpPolicyAction", standardShareModes()),
 				tenantConfigField("direction", standardShareModes()),
@@ -2016,25 +2073,25 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("pageRiskIndexes", standardShareModes()),
 				sensitiveIdentifierField("clientDestinationPorts"),
 				sensitiveIdentifierField("tunnelSourcePort"),
-				secretField("customEscapedCharacter"),
-				secretField("casbSeverity"),
-				secretField("casbApplications"),
-				secretField("casbAction"),
-				secretField("webApplications"),
-				secretField("webApplicationClasses"),
-				secretField("malwareNames"),
-				secretField("urlClasses"),
-				secretField("malwareClasses"),
-				secretField("advancedThreats"),
-				secretField("trafficForwards"),
-				secretField("webTrafficForwards"),
-				secretField("alerts"),
-				secretField("objectType"),
-				secretField("activity"),
-				secretField("objectType1"),
-				secretField("objectType2"),
-				secretField("endPointDLPLogType"),
-				secretField("emailDLPLogType"),
+				tenantConfigField("customEscapedCharacter", allModes()),
+				tenantConfigField("casbSeverity", allModes()),
+				tenantConfigField("casbApplications", allModes()),
+				tenantConfigField("casbAction", allModes()),
+				tenantConfigField("webApplications", allModes()),
+				tenantConfigField("webApplicationClasses", allModes()),
+				tenantConfigField("malwareNames", allModes()),
+				tenantConfigField("urlClasses", allModes()),
+				tenantConfigField("malwareClasses", allModes()),
+				tenantConfigField("advancedThreats", allModes()),
+				tenantConfigField("trafficForwards", allModes()),
+				tenantConfigField("webTrafficForwards", allModes()),
+				tenantConfigField("alerts", allModes()),
+				tenantConfigField("objectType", allModes()),
+				tenantConfigField("activity", allModes()),
+				tenantConfigField("objectType1", allModes()),
+				tenantConfigField("objectType2", allModes()),
+				tenantConfigField("endPointDLPLogType", allModes()),
+				tenantConfigField("emailDLPLogType", allModes()),
 				tenantConfigField("fileTypeSuperCategories", standardShareModes()),
 				tenantConfigField("fileTypeCategories", standardShareModes()),
 				tenantConfigField("casbFileType", standardShareModes()),
@@ -2065,14 +2122,17 @@ func catalogZIA() ResourceCatalog {
 				idNameExtensionsField("dlpDictionaries", standardOnlyMode()),
 				idNameExtensionsField("rules", standardOnlyMode()),
 				idNameExtensionsField("nwServices", standardOnlyMode()),
-				secretField("casbTenant"),
-				secretField("locations"),
-				secretField("locationGroups"),
-				secretField("users"),
-				secretField("departments"),
-				secretField("senderName"),
-				secretField("buckets"),
-				secretField("vpnCredentials"),
+				ziaNSSFilterField("casbTenant", tenantConfigField("name", standardShareModes())),
+				ziaNSSFilterField("locations", tenantConfigField("name", standardShareModes())),
+				ziaNSSFilterField("locationGroups", tenantConfigField("name", standardShareModes())),
+				ziaNSSFilterField("users", sensitiveIdentifierField("name")),
+				ziaNSSFilterField("departments", tenantConfigField("name", standardShareModes())),
+				ziaNSSFilterField("senderName", sensitiveIdentifierField("name")),
+				ziaNSSFilterField("buckets", sensitiveIdentifierField("name")),
+				withSensitiveNameReason(
+					ziaNSSFilterField("vpnCredentials", sensitiveIdentifierField("name")),
+					"a feed filter listing VPN credential entries by id and name; no pre-shared keys",
+				),
 			},
 		},
 		{
@@ -2091,7 +2151,7 @@ func catalogZIA() ResourceCatalog {
 				operationalField("sizeQuota", standardShareModes()),
 				operationalField("accessControl", standardShareModes()),
 				operationalField("capturePCAP", allModes()),
-				secretField("passwordProtected"),
+				namedOperationalField("passwordProtected", allModes(), "a rule criterion: whether to match password-protected files, not a password"),
 				tenantConfigField("operation", standardShareModes()),
 				operationalField("activeContent", allModes()),
 				operationalField("unscannable", allModes()),
@@ -2103,7 +2163,7 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("protocols", standardShareModes()),
 				tenantConfigField("urlCategories", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("locations", standardOnlyMode()),
 				idNameExtensionsField("locationGroups", standardOnlyMode()),
 				idNameExtensionsField("groups", standardOnlyMode()),
@@ -2138,7 +2198,7 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("baPolicyCategories", standardShareModes()),
 				tenantConfigField("fileTypes", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				idNameExtensionsField("locations", standardOnlyMode()),
 				idNameExtensionsField("locationGroups", standardOnlyMode()),
 				idNameExtensionsField("groups", standardOnlyMode()),
@@ -2169,7 +2229,7 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("redirectIp"),
 				tenantConfigField("blockResponseCode", standardShareModes()),
 				operationalField("lastModifiedTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				sensitiveIdentifierField("srcIps"),
 				sensitiveIdentifierField("destAddresses"),
 				sensitiveIdentifierField("destIpCategories"),
@@ -2232,9 +2292,38 @@ func catalogZIA() ResourceCatalog {
 				idNameExternalIDField("zpaServerGroup", standardOnlyMode()),
 				idNameExternalIDField("zpaAppSegments", standardOnlyMode()),
 				sensitiveIdentifierField("zpaTenantId"),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("lastModifiedTime", standardShareModes()),
 				operationalField("type", allModes()),
+			},
+		},
+		// GET /locations/lite: a short location view that also returns
+		// predefined locations absent from /locations (Road Warrior, id -3).
+		// Fields mirror zia/locations (pinned by test).
+		{
+			Product:    ProductZIA,
+			Name:       "locations-lite",
+			Operations: ListOperations(),
+			Fields: []FieldSpec{
+				operationalField("id", allModes()),
+				tenantConfigField("name", standardShareModes()),
+				operationalField("parentId", standardShareModes()),
+				operationalField("ecLocation", standardShareModes()),
+				operationalField("otherSubLocation", standardShareModes()),
+				tenantConfigField("aupBlockInternetUntilAccepted", standardShareModes()),
+				tenantConfigField("aupEnabled", standardShareModes()),
+				tenantConfigField("aupForceSslInspection", standardShareModes()),
+				tenantConfigField("cautionEnabled", standardShareModes()),
+				tenantConfigField("digestAuthEnabled", standardShareModes()),
+				tenantConfigField("iotDiscoveryEnabled", standardShareModes()),
+				tenantConfigField("ipsControl", standardShareModes()),
+				tenantConfigField("kerberosAuth", standardShareModes()),
+				tenantConfigField("ofwEnabled", standardShareModes()),
+				tenantConfigField("surrogateIP", standardShareModes()),
+				tenantConfigField("surrogateIPEnforcedForKnownBrowsers", standardShareModes()),
+				tenantConfigField("tz", standardShareModes()),
+				tenantConfigField("xffForwardEnabled", standardShareModes()),
+				tenantConfigField("zappSslScanEnabled", standardShareModes()),
 			},
 		},
 		{
@@ -2263,7 +2352,7 @@ func catalogZIA() ResourceCatalog {
 						sensitiveIdentifierField("externalId"),
 					},
 				},
-				secretField("tokenList"),
+				ziaEDMTokenListField(),
 			},
 		},
 		{
@@ -2302,7 +2391,7 @@ func catalogZIA() ResourceCatalog {
 					AllowedModes:   standardOnlyMode(),
 					Fields: []FieldSpec{
 						idNameExtensionsField("datacenter", standardOnlyMode()),
-						secretField("lastModifiedUser"),
+						ziaAdminRefField("lastModifiedUser"),
 						sensitiveIdentifierField("country"),
 						operationalField("expired", allModes()),
 						operationalField("disabledByOps", allModes()),
@@ -2368,7 +2457,7 @@ func catalogZIA() ResourceCatalog {
 				freeTextField("pacCommitMessage", "ZIA PAC file commit message"),
 				operationalField("totalHits", standardShareModes()),
 				operationalField("lastModificationTime", standardShareModes()),
-				secretField("lastModifiedBy"),
+				ziaAdminRefField("lastModifiedBy"),
 				operationalField("createTime", standardShareModes()),
 			},
 		},
@@ -2432,7 +2521,7 @@ func catalogZIA() ResourceCatalog {
 					Fields: []FieldSpec{
 						operationalField("id", allModes()),
 						tenantConfigField("name", standardShareModes()),
-						secretField("url"),
+						sensitiveIdentifierField("url"),
 						operationalField("profileSeq", allModes()),
 						operationalField("defaultProfile", allModes()),
 						// Reveals the isolation profile's security posture;
@@ -2564,7 +2653,7 @@ func catalogZIA() ResourceCatalog {
 					idNameExtensionsField("groups", standardOnlyMode()),
 					idNameExtensionsField("departments", standardOnlyMode()),
 					idNameExtensionsField("dlpEngines", standardOnlyMode()),
-					secretField("lastModifiedBy"),
+					ziaAdminRefField("lastModifiedBy"),
 					idNameField("auditor", standardOnlyMode()),
 					idNameField("zscalerIncidentReceiver", standardOnlyMode()),
 					idNameField("auditorNotification", standardOnlyMode()),
@@ -2596,7 +2685,7 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigFields("type", "name", "state", "action", "accessControl"),
 				sensitiveIdentifierFields("quarantineLocation", "scanInboundEmailLink"),
 				[]FieldSpec{
-					secretField("lastModifiedBy"),
+					ziaAdminRefField("lastModifiedBy"),
 					idNameField("casbEmailLabel", standardOnlyMode()),
 					idNameField("casbTombstoneTemplate", standardOnlyMode()),
 					idNameExtensionsField("buckets", standardOnlyMode()),
@@ -2707,11 +2796,11 @@ func catalogZIA() ResourceCatalog {
 				sensitiveIdentifierField("email"),
 				freeTextField("comments", "ZIA admin user comments"),
 				operationalField("disabled", allModes()),
-				secretField("password"),
+				credentialField("password"),
 				operationalField("pwdLastModifiedTime", standardOnlyMode()),
 				operationalField("isNonEditable", allModes()),
-				secretField("isPasswordLoginAllowed"),
-				secretField("isPasswordExpired"),
+				namedOperationalField("isPasswordLoginAllowed", allModes(), "whether the admin may sign in with a password, not a password"),
+				namedOperationalField("isPasswordExpired", allModes(), "whether the admin password has expired, not a password"),
 				operationalField("isAuditor", allModes()),
 				tenantConfigField("isSecurityReportCommEnabled", standardShareModes()),
 				tenantConfigField("isServiceUpdateCommEnabled", standardShareModes()),
@@ -2728,10 +2817,10 @@ func catalogZIA() ResourceCatalog {
 						operationalField("id", allModes()),
 						tenantConfigField("name", standardShareModes()),
 						operationalField("isNameL10nTag", allModes()),
-						secretField("extensions"),
+						unstructuredField("extensions"),
 					},
 				},
-				secretField("execMobileAppTokens"),
+				tokenField("execMobileAppTokens"),
 			},
 		},
 		{
@@ -2756,8 +2845,8 @@ func catalogZIA() ResourceCatalog {
 				tenantConfigField("logsLimit", standardOnlyMode()),
 				tenantConfigField("roleType", standardShareModes()),
 				tenantConfigField("reportTimeDuration", standardOnlyMode()),
-				secretField("featurePermissions"),
-				secretField("extFeaturePermissions"),
+				unstructuredField("featurePermissions"),
+				unstructuredField("extFeaturePermissions"),
 			},
 		},
 		{
@@ -2830,7 +2919,20 @@ func catalogZIA() ResourceCatalog {
 					"preferSniOverConnHostApps",
 					"sniDnsOptimizationBypassUrlCategories",
 				),
-				secretFields("ecsObject"),
+				[]FieldSpec{
+					// The ECS prefix object DNS queries carry (common.IDNameExternalID).
+					{
+						Name:           "ecsObject",
+						Classification: ClassTenantConfig,
+						AllowedModes:   allModes(),
+						Fields: []FieldSpec{
+							operationalField("id", allModes()),
+							tenantConfigField("name", standardShareModes()),
+							sensitiveIdentifierField("externalId"),
+							unstructuredField("extensions"),
+						},
+					},
+				},
 			),
 		},
 		{
@@ -2949,17 +3051,19 @@ func catalogZIA() ResourceCatalog {
 					"urlCatReviewCustomLocation",
 					"webDlpReviewCustomLocation",
 				),
-				secretFields(
-					"aupMessage",
-					"cautionCustomText",
-					"customText",
-					"idpProxyNotificationText",
-					"orgPolicyLink",
-					"quarantineCustomNotificationText",
-					"securityReviewText",
-					"urlCatReviewText",
-					"webDlpReviewText",
-				),
+				// Former catch-all secrets, reclassified: notification texts
+				// are free text; the policy link is a URL like redirectUrl.
+				sensitiveIdentifierFields("orgPolicyLink"),
+				[]FieldSpec{
+					freeTextField("aupMessage", "ZIA end-user notification AUP message"),
+					freeTextField("cautionCustomText", "ZIA end-user notification caution text"),
+					freeTextField("customText", "ZIA end-user notification custom text"),
+					freeTextField("idpProxyNotificationText", "ZIA end-user notification IdP proxy text"),
+					freeTextField("quarantineCustomNotificationText", "ZIA end-user notification quarantine text"),
+					freeTextField("securityReviewText", "ZIA end-user notification security review text"),
+					freeTextField("urlCatReviewText", "ZIA end-user notification URL category review text"),
+					freeTextField("webDlpReviewText", "ZIA end-user notification web DLP review text"),
+				},
 			),
 		},
 		{
@@ -2994,53 +3098,59 @@ func catalogZIA() ResourceCatalog {
 					"zpaTenantCloud",
 					"zpaTenantId",
 				),
-				secretFields(
+				// Former catch-all secrets, reclassified: contact people and
+				// their phones, emails, titles and insights links are standard-only
+				// identifiers; contact types render in every mode; the logo stays
+				// an opaque blob.
+				operationalFields(
+					"primaryBillingContactcontactType",
+					"primaryBusinessContactcontactType",
+					"primaryTechnicalContactcontactType",
+					"secondaryBillingContactcontactType",
+					"secondaryBusinessContactcontactType",
+					"secondaryTechnicalContactcontactType",
+				),
+				tenantConfigFields("industryVertical"),
+				sensitiveIdentifierFields(
 					"execInsightsHref",
-					"industryVertical",
-					"logoBase64Data",
 					"primaryBillingContactAltPhone",
 					"primaryBillingContactEmail",
 					"primaryBillingContactInsightsHref",
 					"primaryBillingContactName",
 					"primaryBillingContactPhone",
 					"primaryBillingContactTitle",
-					"primaryBillingContactcontactType",
 					"primaryBusinessContactAltPhone",
 					"primaryBusinessContactEmail",
 					"primaryBusinessContactInsightsHref",
 					"primaryBusinessContactName",
 					"primaryBusinessContactPhone",
 					"primaryBusinessContactTitle",
-					"primaryBusinessContactcontactType",
 					"primaryTechnicalContactAltPhone",
 					"primaryTechnicalContactEmail",
 					"primaryTechnicalContactInsightsHref",
 					"primaryTechnicalContactName",
 					"primaryTechnicalContactPhone",
 					"primaryTechnicalContactTitle",
-					"primaryTechnicalContactcontactType",
 					"secondaryBillingContactAltPhone",
 					"secondaryBillingContactEmail",
 					"secondaryBillingContactInsightsHref",
 					"secondaryBillingContactName",
 					"secondaryBillingContactPhone",
 					"secondaryBillingContactTitle",
-					"secondaryBillingContactcontactType",
 					"secondaryBusinessContactAltPhone",
 					"secondaryBusinessContactEmail",
 					"secondaryBusinessContactInsightsHref",
 					"secondaryBusinessContactName",
 					"secondaryBusinessContactPhone",
 					"secondaryBusinessContactTitle",
-					"secondaryBusinessContactcontactType",
 					"secondaryTechnicalContactAltPhone",
 					"secondaryTechnicalContactEmail",
 					"secondaryTechnicalContactInsightsHref",
 					"secondaryTechnicalContactName",
 					"secondaryTechnicalContactPhone",
 					"secondaryTechnicalContactTitle",
-					"secondaryTechnicalContactcontactType",
 				),
+				[]FieldSpec{opaqueBlobField("logoBase64Data")},
 			),
 		},
 		{
@@ -3116,9 +3226,9 @@ func catalogZIA() ResourceCatalog {
 			Name:       "url-allow-list",
 			Operations: ShowOperation(),
 			Fields: fieldList(
-				// The SDK shape carries both URL lists; each resource renders only its own list.
-				sensitiveIdentifierFields("whitelistUrls"),
-				secretFields("blacklistUrls"),
+				// The SDK shape carries both URL lists, but each endpoint fills only
+				// its own list; both are URLs, so both are standard-only.
+				sensitiveIdentifierFields("whitelistUrls", "blacklistUrls"),
 			),
 		},
 		{
@@ -3126,9 +3236,9 @@ func catalogZIA() ResourceCatalog {
 			Name:       "url-deny-list",
 			Operations: ShowOperation(),
 			Fields: fieldList(
-				// The SDK shape carries both URL lists; each resource renders only its own list.
-				sensitiveIdentifierFields("blacklistUrls"),
-				secretFields("whitelistUrls"),
+				// The SDK shape carries both URL lists, but each endpoint fills only
+				// its own list; both are URLs, so both are standard-only.
+				sensitiveIdentifierFields("blacklistUrls", "whitelistUrls"),
 			),
 		},
 	}
@@ -3152,5 +3262,93 @@ func greDestVipFields() []FieldSpec {
 		sensitiveIdentifierField("city"),
 		sensitiveIdentifierField("countryCode"),
 		sensitiveIdentifierField("region"),
+	}
+}
+
+// ziaAdminRefField is an {id, name} reference to the ZIA admin who created or
+// last changed a record (lastModifiedBy, createdBy, modifiedBy, lastModUser).
+// The admin id renders in every mode, like other reference ids; the name is an
+// admin login, so it is a standard-only sensitive identifier.
+func ziaAdminRefField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassOperational,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			sensitiveIdentifierField("name"),
+		},
+	}
+}
+
+// ziaNamedTenantConfigField is a tenant setting whose name looks sensitive
+// (passwordStrength) but whose value is not: reason says why.
+func ziaNamedTenantConfigField(name string, allowed []redact.Mode, reason string) FieldSpec {
+	field := tenantConfigField(name, allowed)
+	field.SensitiveNameReason = reason
+	return field
+}
+
+// ziaNSSFilterField is an NSS feed filter list of common.CommonNSS entries,
+// keyed as the reader's commonNSSSource emits them. Ids and flags render in
+// every mode; entryName classifies the entry name, which is a config name for
+// locations or departments but a person or account identifier for users,
+// senders, buckets and VPN credentials.
+func ziaNSSFilterField(name string, entryName FieldSpec) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			operationalField("pid", allModes()),
+			entryName,
+			freeTextField("description", "ZIA NSS feed filter entry description"),
+			operationalField("deleted", allModes()),
+			operationalField("getlId", allModes()),
+		},
+	}
+}
+
+// ziaEDMTokenListField is an EDM schema's tokenList: one entry per column of
+// the indexed data file. A "token" here is a column (match criterion), not an
+// auth token. Column names describe the customer's data set, so they are
+// standard-only; types, flags and positions render in every mode.
+func ziaEDMTokenListField() FieldSpec {
+	return FieldSpec{
+		Name:                "tokenList",
+		Classification:      ClassTenantConfig,
+		AllowedModes:        allModes(),
+		SensitiveNameReason: "EDM schema columns (match criteria), not auth tokens",
+		Fields: []FieldSpec{
+			sensitiveIdentifierField("name"),
+			tenantConfigField("type", allModes()),
+			operationalField("primaryKey", allModes()),
+			operationalField("originalColumn", allModes()),
+			operationalField("hashfileColumnOrder", allModes()),
+			operationalField("colLengthBitmap", allModes()),
+		},
+	}
+}
+
+// withSensitiveNameReason returns field with SensitiveNameReason set, for a
+// field whose name looks sensitive but whose value is not.
+func withSensitiveNameReason(field FieldSpec, reason string) FieldSpec {
+	field.SensitiveNameReason = reason
+	return field
+}
+
+// ziaC2CValidationMsgField is a C2C incident receiver's last validation
+// result (c2cincidentreceiver.LastValidationMsg): the error code renders in
+// every mode; the message is free text.
+func ziaC2CValidationMsgField() FieldSpec {
+	return FieldSpec{
+		Name:           "lastValidationMsg",
+		Classification: ClassOperational,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			freeTextField("errorMsg", "ZIA C2C incident receiver validation message"),
+			operationalField("errorCode", allModes()),
+		},
 	}
 }

@@ -419,15 +419,15 @@ func runtimeHarnessSpec(
 			},
 			{
 				Name:           "apiKey",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 			{
 				Name:           "password",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 			{
 				Name:           "rawOnly",
-				Classification: resources.ClassSecret,
+				Classification: resources.ClassSecret, SecretReason: resources.SecretCredential,
 			},
 		},
 	}

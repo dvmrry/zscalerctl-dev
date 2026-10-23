@@ -17,7 +17,8 @@ const (
 
 // wave1ForwardingRuleFixture carries a distinctive value in every field
 // promoted for zia/forwarding-rules in wave 1, plus canaries in the
-// excluded lastModifiedBy reference and the secret externalId sub-field.
+// lastModifiedBy admin name and the zpaAppSegments externalId, both of which
+// render in standard mode only.
 func wave1ForwardingRuleFixture() forwardingrules.ForwardingRules {
 	return forwardingrules.ForwardingRules{
 		ID:            707,
@@ -113,8 +114,13 @@ func TestForwardingRulesPromotedFieldsRenderInStandardMode(t *testing.T) {
 	if _, ok := segment["id"]; !ok {
 		t.Errorf("projected forwarding-rules zpaAppSegments[0] missing id")
 	}
-	if _, ok := segment["externalId"]; ok {
-		t.Errorf("projected forwarding-rules zpaAppSegments[0] = %#v, want no externalId (secret)", segment)
+	if segment["externalId"] != wave1FwdExternalIDCanary {
+		t.Errorf("projected forwarding-rules zpaAppSegments[0] = %#v, want externalId %q (the ZPA segment id)", segment, wave1FwdExternalIDCanary)
+	}
+
+	lastModifiedBy := assertAuditRefID(t, "forwarding-rules", got, "lastModifiedBy", 9100)
+	if lastModifiedBy["name"] != wave1FwdAdminCanary {
+		t.Errorf("projected forwarding-rules lastModifiedBy = %#v, want name %q", lastModifiedBy, wave1FwdAdminCanary)
 	}
 
 	appSegment := wave1ProjectedEntry(t, got, "zpaApplicationSegments")
@@ -158,13 +164,9 @@ func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 	share := projectOneRecordInMode(t, resources.ProductZIA, resourceForwardingRules, redact.ModeShare, records)
 	paranoid := projectOneRecordInMode(t, resources.ProductZIA, resourceForwardingRules, redact.ModeParanoid, records)
 
-	// Every promoted field is standard-only: present in standard, dropped in
-	// share and paranoid, exactly per its AllowedModes.
+	// The ZPA segment fields are standard-only: present in standard, dropped in
+	// share and paranoid, exactly per their AllowedModes.
 	promoted := []string{
-		"departments",
-		"groups",
-		"users",
-		"deviceGroups",
 		"zpaAppSegments",
 		"zpaApplicationSegments",
 		"zpaApplicationSegmentGroups",
@@ -181,16 +183,37 @@ func TestForwardingRulesPromotedFieldsFollowAllowedModes(t *testing.T) {
 		}
 	}
 
-	// lastModifiedBy is classified secret and must never render, and no
-	// canary value from an excluded or secret field may leak in any mode.
+	// The criteria reference lists name their references in standard only:
+	// share keeps the ids without names, paranoid drops the lists.
+	refLists := []struct {
+		field string
+		id    int
+		name  string
+	}{
+		{"departments", 7101, "dept-canary-finance"},
+		{"groups", 7102, "group-canary-engineering"},
+		{"users", 7103, "user-canary-jdoe"},
+		{"deviceGroups", 7104, "devicegroup-canary-laptops"},
+	}
+	for _, ref := range refLists {
+		if _, ok := standard[ref.field]; !ok {
+			t.Errorf("projected forwarding-rules standard mode missing %s", ref.field)
+		}
+		assertRefListIDsOnly(t, "forwarding-rules share", share, ref.field, ref.id)
+		if _, ok := paranoid[ref.field]; ok {
+			t.Errorf("projected forwarding-rules paranoid mode = %#v, want no %s", paranoid, ref.field)
+		}
+		assertNoCanaries(t, "forwarding-rules share", share, ref.name)
+		assertNoCanaries(t, "forwarding-rules paranoid", paranoid, ref.name)
+	}
+
+	// The lastModifiedBy admin reference keeps only its id outside standard
+	// mode, and no standard-only canary value may leak there.
 	for mode, record := range map[string]map[string]any{
-		"standard": standard,
 		"share":    share,
 		"paranoid": paranoid,
 	} {
-		if _, ok := record["lastModifiedBy"]; ok {
-			t.Errorf("projected forwarding-rules %s mode = %#v, want no lastModifiedBy", mode, record)
-		}
+		assertAuditRefIDOnly(t, "forwarding-rules "+mode, record, "lastModifiedBy", 9100)
 		assertNoCanaries(t, "forwarding-rules "+mode, record, wave1FwdAdminCanary, wave1FwdExternalIDCanary)
 	}
 }

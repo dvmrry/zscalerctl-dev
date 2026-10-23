@@ -54,6 +54,20 @@ type ResourceError struct {
 	Name      string `json:"name"`
 	Operation string `json:"operation"`
 	Kind      string `json:"kind"`
+	// Reason, Status and Retryable say why a live read failed (schema v2).
+	// They are value-free: a closed reason vocabulary, an HTTP status, and a
+	// retry hint. Empty when the failure was not a live read or is unknown.
+	Reason    string `json:"reason,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
+}
+
+// WithFailure returns a copy of the record carrying the read failure detail.
+func (e ResourceError) WithFailure(reason string, status int, retryable bool) ResourceError {
+	e.Reason = reason
+	e.Status = status
+	e.Retryable = retryable
+	return e
 }
 
 // NewResourceError builds a value-free dump failure record.
@@ -230,7 +244,7 @@ func publishContextWithCatalogAndHooks(
 		cleanupStagingPath(stagingDir, stagingInfo, nil)
 		return fmt.Errorf("chmod dump staging directory: %w", err)
 	}
-	stagingRoot, err := os.OpenRoot(stagingDir)
+	stagingRoot, err := OpenRootDirectory(stagingDir, false)
 	if err != nil {
 		cleanupStagingPath(stagingDir, stagingInfo, nil)
 		return fmt.Errorf("open dump staging directory: %w", err)
@@ -472,7 +486,7 @@ func cleanupStagingPath(path string, original os.FileInfo, beforeRelocate func(s
 		_ = renameNoReplace(quarantinedRoot, path)
 		return
 	}
-	root, err := os.OpenRoot(quarantinedRoot)
+	root, err := OpenRootDirectory(quarantinedRoot, false)
 	if err != nil {
 		_ = renameNoReplace(quarantinedRoot, path)
 		return
@@ -493,25 +507,57 @@ func preflightProcessStagingCleanup(path string, original os.FileInfo) error {
 	if err != nil || !os.SameFile(original, current) || !current.IsDir() {
 		return fmt.Errorf("%w: process staging root changed before cleanup", ErrUnsafePath)
 	}
-	return filepath.WalkDir(path, func(entryPath string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%w: process staging path is a symlink", ErrUnsafePath)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.IsDir() && info.Mode().Perm()&0o300 != 0o300 {
-			return fmt.Errorf("%w: process staging directory is not owner-writable", ErrUnsafePath)
-		}
-		if err := validateAbsoluteCleanupEntry(entryPath, info, info.IsDir()); err != nil {
-			return err
-		}
+	return preflightProcessStagingEntry(path, current)
+}
+
+// preflightProcessStagingEntry enumerates directories through nonblocking,
+// identity-checked handles. Each directory is closed before descending.
+func preflightProcessStagingEntry(path string, info os.FileInfo) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: process staging path is a symlink", ErrUnsafePath)
+	}
+	if info.IsDir() && info.Mode().Perm()&0o300 != 0o300 {
+		return fmt.Errorf("%w: process staging directory is not owner-writable", ErrUnsafePath)
+	}
+	if err := validateAbsoluteCleanupEntry(path, info, info.IsDir()); err != nil {
+		return err
+	}
+	if !info.IsDir() {
 		return nil
+	}
+	directory, err := openPathEntry(path, info)
+	if err != nil {
+		return fmt.Errorf("%w: open process staging directory: %v", ErrUnsafePath, err)
+	}
+	runInventoryDirectoryTestHook(path, ".")
+	if err := validateAbsoluteCleanupEntry(path, info, true); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	if readErr != nil {
+		return fmt.Errorf("%w: read process staging directory: %v", ErrUnsafePath, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("%w: close process staging directory: %v", ErrUnsafePath, closeErr)
+	}
+	if err := validateAbsoluteCleanupEntry(path, info, true); err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
 	})
+	for _, entry := range entries {
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("%w: inspect process staging path: %v", ErrUnsafePath, err)
+		}
+		if err := preflightProcessStagingEntry(filepath.Join(path, entry.Name()), entryInfo); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func publishDirectoryNoReplace(ctx context.Context, stagingDir, destination string) error {
@@ -608,10 +654,6 @@ func uniqueFields(
 	return fields
 }
 
-func writeJSONFile(path string, mode redact.Mode, value safeJSON) error {
-	return writeJSONFileContext(context.Background(), path, mode, value)
-}
-
 func writeJSONFileContext(ctx context.Context, path string, mode redact.Mode, value safeJSON) error {
 	ctx = contextOrBackground(ctx)
 	if err := checkContext(ctx); err != nil {
@@ -675,10 +717,6 @@ func rejectExistingContext(ctx context.Context, path string) error {
 		return fmt.Errorf("inspect dump path: %w", err)
 	}
 	return nil
-}
-
-func writeFileExclusive(path string, body []byte) error {
-	return writeFileExclusiveContext(context.Background(), path, body)
 }
 
 func writeFileExclusiveContext(ctx context.Context, path string, body []byte) error {
@@ -752,10 +790,6 @@ func writeFileExclusiveContext(ctx context.Context, path string, body []byte) er
 	}
 	cleanup = false
 	return nil
-}
-
-func ensureDir(dir string) error {
-	return ensureDirContext(context.Background(), dir)
 }
 
 func ensureDirContext(ctx context.Context, dir string) error {

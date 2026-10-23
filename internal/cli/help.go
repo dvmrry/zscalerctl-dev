@@ -50,11 +50,22 @@ func configureHelp(root *cobra.Command, style output.Style) {
 }
 
 func (r helpRenderer) writeHelp(w io.Writer, cmd *cobra.Command) error {
+	return r.writeHelpWithSection(w, cmd, "")
+}
+
+// writeHelpWithSection is writeHelp with an extra block (ending in a
+// newline) between the description and the usage block, so it survives a
+// reader that keeps only the first lines.
+func (r helpRenderer) writeHelpWithSection(w io.Writer, cmd *cobra.Command, section string) error {
 	var b strings.Builder
 	usage := strings.TrimRightFunc(firstNonEmpty(cmd.Long, cmd.Short), unicode.IsSpace)
 	if usage != "" {
 		b.WriteString(usage)
 		b.WriteString("\n\n")
+	}
+	if section != "" {
+		b.WriteString(section)
+		b.WriteString("\n")
 	}
 	if cmd.Runnable() || cmd.HasSubCommands() {
 		r.writeUsageBlock(&b, cmd)

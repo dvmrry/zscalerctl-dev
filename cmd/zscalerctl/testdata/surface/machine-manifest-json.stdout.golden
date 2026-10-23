@@ -1773,6 +1773,28 @@
     },
     {
       "name": "resources.read",
+      "title": "Read zia/locations-lite",
+      "description": "Read projected and redacted zia/locations-lite resource records.",
+      "operations": [
+        "list"
+      ],
+      "input": {
+        "product": "zia",
+        "resource": "locations-lite"
+      },
+      "output": {
+        "name": "projected-records",
+        "version": "1"
+      },
+      "meta": {
+        "product": "zia",
+        "resource": "locations-lite",
+        "shape": "list",
+        "read_only": true
+      }
+    },
+    {
+      "name": "resources.read",
       "title": "Read zia/malicious-urls",
       "description": "Read projected and redacted zia/malicious-urls resource records.",
       "operations": [
@@ -3853,6 +3875,6 @@
   "meta": {
     "version": "1",
     "read_only": true,
-    "count": 165
+    "count": 166
   }
 }

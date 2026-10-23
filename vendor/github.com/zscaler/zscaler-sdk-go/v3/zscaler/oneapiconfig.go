@@ -419,9 +419,12 @@ func (c *Client) buildRequest(ctx context.Context, method, endpoint string, body
 	isSandboxRequest := strings.Contains(endpoint, "/zscsb")
 	isZPARequest := strings.Contains(endpoint, "/zpa")
 	isZCCRequest := strings.Contains(endpoint, "/zcc")
-	isZIdentityRequest := strings.Contains(endpoint, "/admin/api/v1")
 
-	// Build the full URL for Sandbox, ZPA, ZCC, ZIdentity, or OAuth2-based requests
+	// Build the full URL for Sandbox, ZPA, ZCC, or OAuth2-based requests.
+	//
+	// ZIAM (the ZIdentity admin API) deliberately has no branch of its own: the
+	// OneAPI gateway serves it under the /ziam prefix, exactly like /zia, /zpa,
+	// and /zdx, so it resolves against GetAPIBaseURL along with everything else.
 	fullURL := ""
 	baseUrl := ""
 
@@ -433,19 +436,6 @@ func (c *Client) buildRequest(ctx context.Context, method, endpoint string, body
 	if isSandboxRequest {
 		fullURL = fmt.Sprintf("%s%s", c.GetSandboxURL(), endpoint)
 		urlParams.Set("api_token", c.GetSandboxToken()) // Append Sandbox token
-	} else if isZIdentityRequest {
-		// For zidentity endpoints, construct URL using vanity domain directly
-		// Format: https://{vanity_domain}-admin.zslogin{cloud}.net/admin/api/v1/...
-		vanityDomain := c.oauth2Credentials.Zscaler.Client.VanityDomain
-		cloud := c.oauth2Credentials.Zscaler.Client.Cloud
-
-		var zidentityBaseURL string
-		if cloud == "" || strings.EqualFold(cloud, "PRODUCTION") {
-			zidentityBaseURL = fmt.Sprintf("https://%s-admin.zslogin.net", vanityDomain)
-		} else {
-			zidentityBaseURL = fmt.Sprintf("https://%s-admin.zslogin%s.net", vanityDomain, strings.ToLower(cloud))
-		}
-		fullURL = fmt.Sprintf("%s%s", zidentityBaseURL, endpoint)
 	} else if isZPARequest {
 		// Only append customerId to query parameters if it's not already in the URL path
 		if !strings.Contains(endpoint, fmt.Sprintf("/customers/%s", c.oauth2Credentials.Zscaler.Client.CustomerID)) && c.oauth2Credentials.Zscaler.Client.CustomerID != "" {
@@ -494,13 +484,13 @@ func (c *Client) buildRequest(ctx context.Context, method, endpoint string, body
 		if token, ok := ctx.Value(ContextAccessToken).(string); ok && token != "" {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 			if c.oauth2Credentials.Debug {
-				c.oauth2Credentials.Logger.Printf("[DEBUG] Using Authorization header from context: Bearer %s...", token[:min(len(token), 20)])
+				// Never log token content, not even a prefix.
+				c.oauth2Credentials.Logger.Printf("[DEBUG] Using Authorization header from context")
 			}
 		} else {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.oauth2Credentials.Zscaler.Client.AuthToken.AccessToken))
 			if c.oauth2Credentials.Debug {
-				token := c.oauth2Credentials.Zscaler.Client.AuthToken.AccessToken
-				c.oauth2Credentials.Logger.Printf("[DEBUG] Using Authorization header from AuthToken: Bearer %s...", token[:min(len(token), 20)])
+				c.oauth2Credentials.Logger.Printf("[DEBUG] Using Authorization header from AuthToken")
 			}
 		}
 	}
@@ -599,6 +589,16 @@ func (c *Client) ExecuteRequest(ctx context.Context, method, endpoint string, bo
 			parentKey := baseKey[:idx]
 			c.oauth2Credentials.CacheManager.ClearAllKeysWithPrefix(parentKey)
 		}
+		// The same ZPA object can be written through one API version and read
+		// through another (segment groups: PUT /mgmtconfig/v2/..., GET
+		// /mgmtconfig/v1/...). Invalidate the other version's entries too, so
+		// a read right after the write is not served stale.
+		for _, related := range cache.RelatedAPIVersionKeys(baseKey) {
+			c.oauth2Credentials.CacheManager.ClearAllKeysWithPrefix(related)
+			if idx := strings.LastIndex(related, "/"); idx > 0 {
+				c.oauth2Credentials.CacheManager.ClearAllKeysWithPrefix(related[:idx])
+			}
+		}
 	}
 
 	var resp *http.Response
@@ -636,8 +636,8 @@ func (c *Client) ExecuteRequest(ctx context.Context, method, endpoint string, bo
 			return nil, resp, nil, err
 		}
 
-		// ✅ Check for session invalidation errors in 401 responses
-		if resp.StatusCode == http.StatusUnauthorized {
+		// ✅ Check for session invalidation errors in 401 / 403 responses
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			bodyCopy, readErr := io.ReadAll(resp.Body)
 			if readErr == nil {
 				resp.Body = io.NopCloser(bytes.NewReader(bodyCopy)) // rewind
@@ -697,7 +697,7 @@ func (c *Client) ExecuteRequest(ctx context.Context, method, endpoint string, bo
 		}
 
 		// Reset session retry counter on successful requests or other errors
-		if resp.StatusCode != http.StatusUnauthorized {
+		if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 			sessionNotValidRetryCount = 0
 		}
 

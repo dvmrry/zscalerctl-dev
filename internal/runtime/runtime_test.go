@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 	"github.com/dvmrry/zscalerctl/internal/secret"
+	"github.com/dvmrry/zscalerctl/internal/secretref"
 	"github.com/dvmrry/zscalerctl/internal/zscaler"
 )
 
@@ -146,8 +148,10 @@ func TestReaderConfigFromConfigResolvesOnlyOneAPISecret(t *testing.T) {
 	legacyPassword := &runtimeRecordingSecretSource{err: errors.New("inactive legacy password resolved")}
 	legacyAPIKey := &runtimeRecordingSecretSource{err: errors.New("inactive legacy API key resolved")}
 	cfg := config.Config{
-		AuthMode: config.AuthModeOneAPI,
+		AuthMode:     config.AuthModeOneAPI,
+		VanityDomain: "example",
 		Credentials: config.Credentials{
+			ClientID:     secret.New("client-id"),
 			ClientSecret: clientSecret,
 		},
 		ZIALegacy: config.ZIALegacyCredentials{
@@ -198,6 +202,7 @@ func TestReaderConfigFromConfigResolvesOnlyZIALegacySecrets(t *testing.T) {
 			MicrotenantID: "inactive-microtenant-id",
 		},
 		ZIALegacy: config.ZIALegacyCredentials{
+			Username: secret.New("admin@example.invalid"),
 			Password: legacyPassword,
 			APIKey:   legacyAPIKey,
 			Cloud:    "zscaler",
@@ -251,8 +256,8 @@ func TestNewReaderFromConfigRejectsLegacyCloudBeforeResolvingSecrets(t *testing.
 	}
 
 	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
-	if !errors.Is(err, zscaler.ErrMissingCredentials) {
-		t.Fatalf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want ErrMissingCredentials", err)
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want ErrInvalidSettings", err)
 	}
 	if errors.Is(err, providerErr) {
 		t.Errorf("newReaderFromConfig(unreviewed legacy cloud) error = %v, want cloud rejection before provider error", err)
@@ -269,6 +274,77 @@ func TestNewReaderFromConfigRejectsLegacyCloudBeforeResolvingSecrets(t *testing.
 	}
 }
 
+func TestNewReaderFromConfigRejectsOneAPICloudBeforeResolvingSecrets(t *testing.T) {
+	t.Parallel()
+
+	providerErr := errors.New("provider must not run")
+	clientSecret := &runtimeRecordingSecretSource{err: providerErr}
+	cfg := config.Config{
+		AuthMode:     config.AuthModeOneAPI,
+		VanityDomain: "example",
+		Cloud:        "zscalertwo",
+		Credentials: config.Credentials{
+			ClientID:     secret.New("client-id"),
+			ClientSecret: clientSecret,
+		},
+	}
+
+	_, err := newReaderFromConfig(context.Background(), &cfg, Options{})
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("newReaderFromConfig(product cloud) error = %v, want ErrInvalidSettings", err)
+	}
+	if errors.Is(err, providerErr) || clientSecret.calls != 0 {
+		t.Errorf("newReaderFromConfig(product cloud) error = %v, client secret calls = %d, want rejection before resolving", err, clientSecret.calls)
+	}
+}
+
+// TestReaderConfigFromConfigResolvesNoSecretWhenValuesAreMissing pins that a
+// configuration certain to fail runs no provider: each missing value is
+// reported by name before any secret is resolved.
+func TestReaderConfigFromConfigResolvesNoSecretWhenValuesAreMissing(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		cfg  func(source *runtimeRecordingSecretSource) config.Config
+		want string
+	}{
+		"legacy cloud": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeZIALegacy, ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("admin@example.invalid"), Password: source, APIKey: source,
+				}}
+			},
+			want: config.EnvZIACloud,
+		},
+		"vanity domain": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeOneAPI, Credentials: config.Credentials{
+					ClientID: secret.New("client-id"), ClientSecret: source,
+				}}
+			},
+			want: config.EnvVanityDomain,
+		},
+		"client id": {
+			cfg: func(source *runtimeRecordingSecretSource) config.Config {
+				return config.Config{AuthMode: config.AuthModeOneAPI, VanityDomain: "example", Credentials: config.Credentials{
+					ClientSecret: source,
+				}}
+			},
+			want: config.EnvClientID,
+		},
+	} {
+		source := &runtimeRecordingSecretSource{value: "secret"}
+		_, err := readerConfigFromConfig(context.Background(), test.cfg(source), Options{})
+		var missing *zscaler.MissingCredentialsError
+		if !errors.As(err, &missing) || !slices.Equal(missing.Missing, []string{test.want}) {
+			t.Errorf("readerConfigFromConfig(%s) error = %v, want only %s missing", name, err, test.want)
+		}
+		if source.calls != 0 {
+			t.Errorf("readerConfigFromConfig(%s) resolved a secret %d times, want 0", name, source.calls)
+		}
+	}
+}
+
 func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T) {
 	t.Parallel()
 
@@ -278,7 +354,8 @@ func TestReaderConfigFromConfigInfersAuthModeWithNilInactiveSources(t *testing.T
 		var typedNil *runtimeRecordingSecretSource
 		clientSecret := &runtimeRecordingSecretSource{value: "client-secret"}
 		got, err := readerConfigFromConfig(context.Background(), config.Config{
-			Credentials: config.Credentials{ClientSecret: clientSecret},
+			VanityDomain: "example",
+			Credentials:  config.Credentials{ClientID: secret.New("client-id"), ClientSecret: clientSecret},
 			ZIALegacy: config.ZIALegacyCredentials{
 				Password: typedNil,
 				APIKey:   typedNil,
@@ -418,8 +495,10 @@ func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T
 		{
 			name: "oneapi canceled",
 			cfg: config.Config{
-				AuthMode: config.AuthModeOneAPI,
+				AuthMode:     config.AuthModeOneAPI,
+				VanityDomain: "example",
 				Credentials: config.Credentials{
+					ClientID:     secret.New("client-id"),
 					ClientSecret: &runtimeRecordingSecretSource{err: context.Canceled},
 				},
 			},
@@ -430,6 +509,7 @@ func TestReaderConfigFromConfigPreservesActiveProviderErrorIdentity(t *testing.T
 			cfg: config.Config{
 				AuthMode: config.AuthModeZIALegacy,
 				ZIALegacy: config.ZIALegacyCredentials{
+					Username: secret.New("admin@example.invalid"),
 					Password: &runtimeRecordingSecretSource{err: context.DeadlineExceeded},
 					APIKey:   &runtimeRecordingSecretSource{value: "legacy-api-key"},
 					Cloud:    "zscaler",
@@ -462,8 +542,8 @@ func TestNewReaderFromConfigRejectsInvalidDirectAuthMode(t *testing.T) {
 	_, err := NewReaderFromConfig(context.Background(), config.Config{
 		AuthMode: config.AuthMode("invalid"),
 	}, Options{})
-	if !errors.Is(err, zscaler.ErrMissingCredentials) {
-		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrMissingCredentials", err)
+	if !errors.Is(err, zscaler.ErrInvalidSettings) || errors.Is(err, zscaler.ErrMissingCredentials) {
+		t.Fatalf("NewReaderFromConfig(invalid auth mode) error = %v, want ErrInvalidSettings", err)
 	}
 }
 
@@ -611,6 +691,153 @@ func TestEngineReadStreamConstructsRuntimeAndForwardsEvents(t *testing.T) {
 	if !reflect.DeepEqual(reader.calls, []string{"list:zia/locations"}) {
 		t.Fatalf("Engine.ReadStream(list locations) reader calls = %#v, want one list", reader.calls)
 	}
+}
+
+func TestEngineReadResolvesSDKEnvRefAcrossRuntimeRebuilds(t *testing.T) {
+	// No t.Parallel(): this test mutates the process environment.
+	const canary = "sdk-env-reference-canary"
+	t.Setenv("ZSCALER_SANDBOX_TOKEN", canary)
+	configPath := runtimeWriteConfig(t, `
+profiles:
+  default:
+    auth_mode: oneapi
+    vanity_domain: example
+    client_id: client-id
+    client_secret_ref: env:ZSCALER_SANDBOX_TOKEN
+`)
+	var resolved []string
+	engine, err := NewEngine(Options{
+		Env:        []string{"ZSCALER_SANDBOX_TOKEN=" + canary},
+		ConfigPath: configPath,
+		Catalog:    runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+		newReader: func(cfg zscaler.ReaderConfig) (browser.RecordReader, error) {
+			resolved = append(resolved, cfg.ClientSecret.Reveal())
+			if err := os.Unsetenv("ZSCALER_SANDBOX_TOKEN"); err != nil {
+				return nil, err
+			}
+			return &runtimeFakeReader{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v, want nil", err)
+	}
+	request := machine.ResourceReadRequest{
+		RequestID: "sdk-env-reference",
+		Operation: machine.OperationList,
+		Input: machine.ResourceReadInput{
+			Product: "zia", Resource: "locations",
+		},
+	}
+	for i := range 2 {
+		if _, err := engine.Read(context.Background(), request); err != nil {
+			t.Fatalf("Engine.Read(%d) error = %v, want nil", i+1, err)
+		}
+	}
+	if !reflect.DeepEqual(resolved, []string{canary, canary}) {
+		t.Fatalf("resolved client secrets = %#v, want two reads of configured env ref", resolved)
+	}
+}
+
+func TestEngineReadCmdProviderCancellationPreservesContextIdentity(t *testing.T) {
+	for _, operation := range []string{"read", "read_stream"} {
+		operation := operation
+		t.Run(operation, func(t *testing.T) {
+			readyPath := filepath.Join(t.TempDir(), "provider-ready")
+			resolver := secretref.NewResolver(secretref.ResolverOpts{AllowCmd: true})
+			ref := secretref.SecretRef{
+				Scheme: "cmd",
+				Argv: []string{
+					os.Args[0],
+					"-test.run=^TestRuntimeCmdProviderHelperProcess$",
+					"--",
+					"block",
+					readyPath,
+				},
+			}
+			engine, err := NewEngine(Options{
+				Catalog: runtimeTestCatalog(t, resources.ProductZIA, "locations"),
+				loadConfig: func([]string, config.LoadOptions) (config.Config, error) {
+					return config.Config{
+						AuthMode:     config.AuthModeOneAPI,
+						VanityDomain: "example",
+						Credentials: config.Credentials{
+							ClientID:     secret.New("client-id"),
+							ClientSecret: secretref.Deferred(ref, resolver),
+						},
+					}, nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewEngine() error = %v, want nil", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			request := machine.ResourceReadRequest{
+				RequestID: "canceled-cmd-provider",
+				Operation: machine.OperationList,
+				Input: machine.ResourceReadInput{
+					Product: "zia", Resource: "locations",
+				},
+			}
+			result := make(chan error, 1)
+			go func() {
+				var err error
+				if operation == "read" {
+					_, err = engine.Read(ctx, request)
+				} else {
+					err = engine.ReadStream(ctx, request, func(machine.Event) error { return nil })
+				}
+				result <- err
+			}()
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if _, err := os.Stat(readyPath); err == nil {
+					break
+				} else if !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("os.Stat(provider ready marker) error = %v", err)
+				}
+				if time.Now().After(deadline) {
+					cancel()
+					t.Fatal("cmd provider did not start before deadline")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			cancel()
+			select {
+			case err := <-result:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("Engine.%s() error = %v, want context.Canceled", operation, err)
+				}
+				if !runtimeMachineErrorKind(err, machine.ErrorKindCanceled) {
+					t.Fatalf("Engine.%s() error = %v, want canceled MachineError", operation, err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("Engine.%s() did not return after cancellation", operation)
+			}
+		})
+	}
+}
+
+func TestRuntimeCmdProviderHelperProcess(t *testing.T) {
+	index := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return
+	}
+	args := os.Args[index+1:]
+	if len(args) != 2 || args[0] != "block" {
+		os.Exit(2)
+	}
+	if err := os.WriteFile(args[1], []byte("ready"), 0o600); err != nil {
+		os.Exit(1)
+	}
+	time.Sleep(time.Hour)
+	os.Exit(0)
 }
 
 func TestEngineTypedReadsRejectNonReadBeforeRuntimeConstruction(t *testing.T) {

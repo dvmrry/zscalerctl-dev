@@ -73,6 +73,61 @@ func TestLoadCollectionReadsLocationsURLRulesSingletonAndGet(t *testing.T) {
 	}
 }
 
+func TestLoadCollectionPreservesCredentialMetadataDescriptions(t *testing.T) {
+	const uuid = "123e4567-e89b-12d3-a456-426614174000"
+	spec, ok := resources.FindSpec(resources.ProductZIA, "locations")
+	if !ok {
+		t.Fatal("FindSpec(zia, locations) ok = false, want true")
+	}
+	catalog := resources.ResourceCatalog{spec}
+	for _, tt := range []struct {
+		description string
+		wantErr     bool
+	}{
+		{"API token ID: " + uuid, false},
+		{"Access token ID: " + uuid, false},
+		{"API key ID: " + uuid, false},
+		{"API key name is " + uuid, false},
+		{"API token: <REDACTED:SECRET>", false},
+		{"Access token: <REDACTED:SECRET>", false},
+		{"API key: <REDACTED:SECRET>", false},
+		{"API token: " + uuid, true},
+		{"Access token: " + uuid, true},
+		{"API key: " + uuid, true},
+		{"API key is " + uuid, true},
+	} {
+		t.Run(tt.description, func(t *testing.T) {
+			// Write the stored record directly so current projection cannot
+			// mask a regression in admission of previously sanitized data.
+			payload := `[{"id":"1","name":"HQ","description":"` + tt.description + `"}]`
+			dir := writeTestDump(t, catalog, dumpFixture{
+				entries: []dumpEntryFixture{{spec: spec, payload: payload}},
+			})
+			collection, err := LoadCollection(context.Background(), dir, catalog)
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidDump) {
+					t.Fatalf("LoadCollection() error = %v, want ErrInvalidDump", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadCollection() error = %v, want nil", err)
+			}
+			projected, err := collection.ListProjected(context.Background(), "zia", "locations")
+			if err != nil {
+				t.Fatalf("Collection.ListProjected(locations) error = %v, want nil", err)
+			}
+			records := projected.Records()
+			if len(records) != 1 {
+				t.Fatalf("Collection.ListProjected(locations) records = %d, want 1", len(records))
+			}
+			if value, ok := records[0].Value("description"); !ok || value != tt.description {
+				t.Errorf("admitted description = %#v (present %t), want %q", value, ok, tt.description)
+			}
+		})
+	}
+}
+
 func TestLoadCollectionEnforcesWriterPayloadShape(t *testing.T) {
 	listSpec := collectionLocationsSpec()
 	showSpec := collectionSingletonSpec()

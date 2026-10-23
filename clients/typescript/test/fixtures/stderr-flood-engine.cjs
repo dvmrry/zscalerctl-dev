@@ -30,7 +30,7 @@ input.on("line", (line) => {
       version: "1",
       schema: {
         id: "urn:zscalerctl:engine-stdio:protocol:1",
-        sha256: "6cba5a8170e538bd6eacde38c84526873f691421d6dc5f57cacfbd5f9438c522",
+        sha256: "30d4aa99e021116a34f07b797a85ce936e3bb7f17009ac59ffcb422f2d2ae601",
       },
       server: { name: "zscalerctl-engine", version: "test" },
       limits: {

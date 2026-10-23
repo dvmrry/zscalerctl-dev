@@ -148,9 +148,19 @@ zscalerctl --format json introspect |
   '
 ```
 
-The field query is a catalog preflight. Validate requested fields against the
-active mode's renderable names before a live call; a known field that the mode
-suppresses is accepted by the CLI but omitted. Secret fields never render.
+The field query is a catalog preflight. Requested `--fields` that the active
+mode omits are dropped from output and named on stderr
+(`zscalerctl: requested zia/users fields omitted in share mode: ...`); a
+`--filter` on such a field is a usage error (exit 2) before any read. Secret
+fields never render.
+
+Each `schema list` field, nested ones included, may have a `type`:
+`string`, `integer`, `number`, `boolean`, `object`, or `array<T>` of those,
+the JSON type zscalerctl emits for it (observed by running each reader on
+sample SDK values). It is absent where that is not fixed: secret fields,
+values the reader derives from content, and open SDK shapes. Any typed field
+may also be `null` (an unset value), so guard list iteration (`.x // []`). A
+redacted value renders as a marker string whatever its type.
 
 Then read with separate `list`, `get <id>`, or `show` commands (singletons):
 
@@ -206,7 +216,10 @@ an operator-specified argv directly with no shell and can be disabled with
 `ZSCALERCTL_DISALLOW_CMD=true`. Do not invent or edit provider commands while
 driving the CLI — ask the operator. Run
 `zscalerctl doctor`: it reports exactly which variables or profile-backed
-secret refs are set or missing without contacting Zscaler. The canonical env
+secret refs are set or missing without contacting Zscaler. Its `status` is
+`OK` only when live reads can run, otherwise `not ready`; `credentials`
+(`configured`, `partial`, `invalid settings` or `not configured`) and
+`live_api` say why. The canonical env
 set is in the [README](README.md#authentication)
 (`ZSCALERCTL_CLIENT_ID`, `ZSCALERCTL_CLIENT_SECRET` or `..._FILE`,
 `ZSCALERCTL_VANITY_DOMAIN`, `ZSCALERCTL_CLOUD`, plus
@@ -228,13 +241,29 @@ environment, provider choice, and platform are reviewed and pinned.
 - Do not parse `pretty` or `table` output in automation; those are human
   presentation formats.
 - Failures emit a JSON envelope on stderr:
-  `{"error": {"kind": "...", "message": "...", "product": "...", "resource": "..."}}`
-- Exit codes are a stable contract: `0` ok, `1` internal, `2` usage,
-  `3` credentials missing/invalid, `4` not found/unsupported (including a
+  `{"error": {"kind": "...", "message": "...", "product": "...", "resource": "..."}}`.
+  A live read failure adds `reason`, `status` and `retryable`, e.g.
+  `{"error": {"kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "reason": "forbidden", "status": 403, ...}}`;
+  `retryable: true` (rate_limited, server_error, transport, timeout) means a
+  retry can succeed, while forbidden, unauthorized and not_subscribed mean the
+  API role or licence does not allow the resource. credentials_rejected means
+  the sign-in itself was refused: fix the configured credentials or account.
+- Live reads ignore `HTTPS_PROXY`/`HTTP_PROXY` unless
+  `ZSCALERCTL_PROXY_FROM_ENV=true` (or `ZSCALERCTL_PROXY_URL` is set). When
+  `HTTPS_PROXY` is set but unused, a `timeout` or `transport` failure's
+  message ends with a hint saying so; on a network that requires the proxy,
+  opt in rather than retrying.
+- Exit codes are a stable contract: `0` ok, `1` internal, `2` usage or an
+  unusable setting (`invalid_config`), `3` credentials missing (unset,
+  incomplete, or a secret that could not be resolved; credentials the API
+  rejects are `5`), `4` not found/unsupported (including a
   `get` of a nonexistent id), `5` live API failure, `6` partial dump,
   `7` drift detected when `diff --fail-on-drift` is used.
 - Narrow resource `list`, `get`, and `show` output with
-  `--fields a,b,c` (can only narrow, never widen). For a JSON resource
+  `--fields a,b,c` (can only narrow, never widen). A dotted path such as
+  `--fields name,groups.id` keeps the nested shape with only that key:
+  `"groups":[{"id":1},{"id":2}]`, one entry per element; a table gets one
+  `groups.id` column. For a JSON resource
   `list`, `--limit N` emits a bounded `records`/`pagination` page and
   requires positive N; `--offset K` is nonnegative and requires `--limit`.
   These flags are list-only, JSON-only output views over a complete collected
@@ -255,11 +284,41 @@ environment, provider choice, and platform are reviewed and pinned.
 
 `list` operations narrow in-process (no `jq` needed); field names come from
 `schema list`. Unknown `--filter` and `--fields` names are usage errors (exit
-2) before configuration or live reads. A known field omitted by projection or
-redaction is simply unavailable: it cannot be recovered and does not match a
-filter. An absent field is not false, empty, or unconfigured.
+2) before configuration or live reads. A `--filter` on a known field that the
+active mode omits, or on a secret field, is also a usage error (exit 2), naming
+the mode that renders it; it would otherwise match nothing and read as "no such
+records". When the mode omits fields, a successful read names them on stderr
+(`zscalerctl: share mode omits zia/users fields: name, email, groups, ...`),
+including nested paths such as `groups.name`; standard mode omits only secrets,
+so it prints no mode-omission notice. Secret fields are credential material only (passwords,
+pre-shared keys, client secrets, tokens, key material, opaque blobs that may
+embed them, and unmodeled free-form maps such as `extensions`); they never
+render in any mode and are named only when requested. `schema list` marks
+each with its `secret_reason`. Link ids, settings and structure are not
+secret. Any other missing key means the
+source had no renderable value for it (empty, null, or a value outside the
+catalog's projection). A list field renders `[]` only when the API itself returned an empty list,
+so `[]` means none. A missing list key means the API did not send it, the
+mode omits it, or it is not modeled: it does not prove none are set, and it
+never means false. Omitted fields
+cannot be recovered except by reading in a mode that renders them.
+
+Count instead of listing with `--count-by` (list only): it groups the narrowed
+records by the values at each comma-separated path and returns only those
+values and counts, so an audit can count without pulling records into
+context. A path into a list counts per element, once per record
+(`--count-by groups.id` on `zia users` gives members per group), and records
+with no value count under `null`. Paths through the same list pair values
+from the same element (`groups.id,groups.name` gives each group's own name);
+paths on different branches combine. JSON output is
+`{"count_by":[...],"records":N,"distinct":D,"truncated":false,"counts":[{"values":{"groups.id":10},"count":2},...]}`
+with the largest counts first; `--limit N` keeps the top N and sets
+`truncated` when it dropped any. `--fields`,
+`--offset`, an empty or repeated `--count-by`, a repeated path, an object
+path, or a field the mode omits is a usage error.
 
 ```sh
+zscalerctl --redaction standard --format json --count-by groups.id zia users list  # members per group
 zscalerctl zia url-filtering-rules list --filter name~social        # substring, case-insensitive
 zscalerctl zia locations list --filter country=US --filter name~hq  # exact + AND
 zscalerctl zia locations list --search branch                       # any rendered field value
@@ -291,7 +350,8 @@ mode. `--redaction` (`standard`, `share`, or `paranoid`) only tunes value-scrubb
 of rendered fields — it never widens the allow-list, so no mode can surface a
 dropped or secret field. Do not try to recover dropped fields — absence is deliberate
 ([docs/FIELD_COVERAGE.md](docs/FIELD_COVERAGE.md)). Resources failing with
-exit `4`/`5` on a live tenant may be entitlement-gated, not broken.
+exit `4`/`5` on a live tenant may be entitlement-gated, not broken; the error's
+`reason` (`forbidden`, `not_subscribed`) says so.
 Dump directories and diff reports contain sanitized but still confidential
 tenant inventory; use ignored scratch paths and do not paste payloads into
 tickets or chats. `diff` only compares dump directories already on disk; it
@@ -348,3 +408,67 @@ exit 4. Only fields renderable in the requested mode are described; the default
 is `standard`, independent of configuration. Continue using `schema list` to
 validate all available field names. An omitted value never establishes that a
 setting is false, empty, or unconfigured.
+
+## Find what points at a resource
+
+Reference fields name their target in the catalog: `schema list` shows
+`"references": [{"product": ..., "resource": ...}]` on each mapped field,
+usually one target; a field whose ids may belong to several resources lists
+them all (a ZIA rule's `locations` may name a location, a sublocation, or a
+predefined location such as Road Warrior that only `zia locations-lite`
+returns).
+To find every field that points at one resource, ask once instead of reading
+every resource:
+
+```sh
+zscalerctl --format json schema references zia locations
+```
+
+It is config-free. Each `referred_by` entry names the resource and field, the
+`match` path to filter on, the modes that render it (`allowed_modes`), and the field's
+`targets`, so the next call is direct:
+
+```sh
+zscalerctl --format json --redaction standard --filter locations.id=12345 zia url-filtering-rules list
+```
+
+A flat id list such as `urlCategories` matches when any one element equals
+the id. A reference no mode renders (a secret one) is listed with no `match`
+and no modes: it shows the relationship exists but cannot be read. A field whose target has not been
+verified is not listed, so an empty `referred_by` does not prove nothing
+points at the resource.
+
+`refs` does those reads for you, live or with `--from-dump`:
+
+```sh
+zscalerctl --format json refs to zia groups 12345        # records whose fields hold that id
+zscalerctl --format json refs check zia url-filtering-rules  # referenced ids not in the target lists
+```
+
+`refs to` lists each referencing record's id and name with the field that
+holds the id. `refs check` lists each referenced id that is not in its target
+lists as read; that is all it claims, not that the object is missing from the
+tenant. Both list under `not_checked` every field the redaction mode omits,
+every resource that could not be read (with the failure reason), and every
+field whose target could not be read. `refs check` also lists there, as
+`audit_field`, each reference field that records which account created or
+last changed a record (such as `lastModifiedBy` or `lastModUser`; `schema references`
+lists them as references to `admin-users`), because their ids can name
+accounts outside `admin-users`; `refs to` still matches them. Both report what
+references what, never what a reference does. Add `--log-level info` to see
+each resource as it is read.
+
+Some Zscaler surfaces are not read at all: ZPA policy rule sets, entitlement-
+gated modules, credential material, reports. Before concluding a tenant has
+none of something, check that zscalerctl reads it:
+
+```sh
+zscalerctl --format json schema gaps zpa
+```
+
+Each entry names the `surface`, a `status` (`deferred` may be added once its
+blocker clears; `out_of_scope` is not planned), a `reason`, a value-free
+`note`, and, for a lite or alternate view or an action whose status is read,
+the covered resources to read `instead`. Asking for a declared
+gap (or a common alias, such as `zpa access-policies`) exits 4 with a message
+naming it, so an absent resource is not mistaken for an empty one.

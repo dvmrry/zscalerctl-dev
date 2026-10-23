@@ -1713,7 +1713,7 @@ func testSecretSpec() resources.ResourceSpec {
 		Operations: resources.ReadOperations(),
 		Fields: []resources.FieldSpec{
 			{Name: "id", Classification: resources.ClassOperational, AllowedModes: testAllModes()},
-			{Name: "token", Classification: resources.ClassSecret},
+			{Name: "token", Classification: resources.ClassSecret, SecretReason: resources.SecretCredential},
 		},
 	}
 }

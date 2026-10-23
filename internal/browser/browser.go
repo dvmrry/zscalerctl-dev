@@ -120,7 +120,7 @@ func (s Service) Resources(filter Filter) []ResourceInfo {
 // resources call Reader.List; show-backed resources call Reader.Show and return
 // a single record.
 func (s Service) Load(ctx context.Context, product, resource string) ([]Record, error) {
-	spec, projected, err := s.loadProjected(ctx, product, resource)
+	spec, projected, err := s.loadProjected(ctx, product, resource, "")
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (s Service) Load(ctx context.Context, product, resource string) ([]Record, 
 // choosing a presentation shape. It is intended for non-UI callers that already
 // render resources.ProjectedRecords through their own output contract.
 func (s Service) LoadProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error) {
-	_, projected, err := s.loadProjected(ctx, product, resource)
+	_, projected, err := s.loadProjected(ctx, product, resource, "")
 	if err != nil {
 		return resources.ProjectedRecords{}, err
 	}
@@ -141,7 +141,7 @@ func (s Service) LoadProjected(ctx context.Context, product, resource string) (r
 // ListProjected returns projected and redacted records for a list-backed
 // resource. It fails instead of falling back to show when list is unsupported.
 func (s Service) ListProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error) {
-	_, projected, err := s.loadProjectedOperation(ctx, product, resource, "list")
+	_, projected, err := s.loadProjected(ctx, product, resource, "list")
 	if err != nil {
 		return resources.ProjectedRecords{}, err
 	}
@@ -151,7 +151,7 @@ func (s Service) ListProjected(ctx context.Context, product, resource string) (r
 // ShowProjected returns one projected and redacted singleton record. It fails
 // instead of falling back to list when show is unsupported.
 func (s Service) ShowProjected(ctx context.Context, product, resource string) (resources.ProjectedRecords, error) {
-	_, projected, err := s.loadProjectedOperation(ctx, product, resource, "show")
+	_, projected, err := s.loadProjected(ctx, product, resource, "show")
 	if err != nil {
 		return resources.ProjectedRecords{}, err
 	}
@@ -209,7 +209,9 @@ func (s Service) GetProjectedByID(
 	return resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
 }
 
-func (s Service) loadProjectedOperation(
+// loadProjected reads and projects one resource. operation is "list" or
+// "show"; empty picks show when the resource supports it, else list.
+func (s Service) loadProjected(
 	ctx context.Context,
 	product string,
 	resource string,
@@ -228,63 +230,23 @@ func (s Service) loadProjectedOperation(
 	if err := resources.AssertReadOnly(spec); err != nil {
 		return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
 	}
-	mode := redact.EffectiveMode(s.Mode)
-	switch operation {
-	case "list":
-		if !spec.SupportsReadOperation("list") {
+	if operation == "" {
+		switch {
+		case spec.SupportsReadOperation("show"):
+			operation = "show"
+		case spec.SupportsReadOperation("list"):
+			operation = "list"
+		default:
 			return resources.ResourceSpec{}, resources.ProjectedRecords{},
-				fmt.Errorf("%w: %s/%s list", ErrUnsupportedLoad, spec.Product, spec.Name)
+				fmt.Errorf("%w: %s/%s", ErrUnsupportedLoad, spec.Product, spec.Name)
 		}
-		records, err := s.Reader.List(ctx, spec.Product, spec.Name)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		projected, _, err := resources.ProjectRecordsAndVerify(spec, mode, records)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		return spec, projected, nil
-	case "show":
-		if !spec.SupportsReadOperation("show") {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{},
-				fmt.Errorf("%w: %s/%s show", ErrUnsupportedLoad, spec.Product, spec.Name)
-		}
-		record, err := s.Reader.Show(ctx, spec.Product, spec.Name)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		projected, _, err := resources.ProjectRecordAndVerify(spec, mode, record)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		return spec, resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
-	default:
+	}
+	if (operation != "list" && operation != "show") || !spec.SupportsReadOperation(operation) {
 		return resources.ResourceSpec{}, resources.ProjectedRecords{},
 			fmt.Errorf("%w: %s/%s %s", ErrUnsupportedLoad, spec.Product, spec.Name, operation)
 	}
-}
-
-func (s Service) loadProjected(
-	ctx context.Context,
-	product string,
-	resource string,
-) (resources.ResourceSpec, resources.ProjectedRecords, error) {
-	if s.Reader == nil {
-		return resources.ResourceSpec{}, resources.ProjectedRecords{}, ErrMissingReader
-	}
-	spec, ok := s.catalog().FindSpec(resources.Product(product), resource)
-	if !ok {
-		return resources.ResourceSpec{}, resources.ProjectedRecords{}, UnknownResourceError{
-			Product:  product,
-			Resource: resource,
-		}
-	}
-	if err := resources.AssertReadOnly(spec); err != nil {
-		return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-	}
 	mode := redact.EffectiveMode(s.Mode)
-	switch {
-	case spec.SupportsReadOperation("show"):
+	if operation == "show" {
 		record, err := s.Reader.Show(ctx, spec.Product, spec.Name)
 		if err != nil {
 			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
@@ -294,20 +256,16 @@ func (s Service) loadProjected(
 			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
 		}
 		return spec, resources.NewProjectedRecords([]resources.ProjectedRecord{projected}), nil
-	case spec.SupportsReadOperation("list"):
-		records, err := s.Reader.List(ctx, spec.Product, spec.Name)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		projected, _, err := resources.ProjectRecordsAndVerify(spec, mode, records)
-		if err != nil {
-			return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
-		}
-		return spec, projected, nil
-	default:
-		return resources.ResourceSpec{}, resources.ProjectedRecords{},
-			fmt.Errorf("%w: %s/%s", ErrUnsupportedLoad, spec.Product, spec.Name)
 	}
+	records, err := s.Reader.List(ctx, spec.Product, spec.Name)
+	if err != nil {
+		return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+	}
+	projected, _, err := resources.ProjectRecordsAndVerify(spec, mode, records)
+	if err != nil {
+		return resources.ResourceSpec{}, resources.ProjectedRecords{}, err
+	}
+	return spec, projected, nil
 }
 
 func (s Service) catalog() resources.ResourceCatalog {

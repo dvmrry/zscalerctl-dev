@@ -1,25 +1,36 @@
 {
   "schema": "zscalerctl/field-coverage/v2",
   "totals": {
-    "resources": 165,
-    "total_fields": 3010,
-    "classified_fields": 2982,
-    "ignored_fields": 28,
-    "deliberate_fields": 28,
+    "resources": 166,
+    "total_fields": 3068,
+    "classified_fields": 3020,
+    "ignored_fields": 48,
+    "deliberate_fields": 48,
     "deferred_fields": 0,
-    "coverage_percent": 99.1,
+    "coverage_percent": 98.4,
     "decided_coverage_percent": 100
   },
   "products": [
     {
-      "product": "zia",
-      "resources": 102,
-      "total_fields": 1696,
-      "classified_fields": 1672,
-      "ignored_fields": 24,
-      "deliberate_fields": 24,
+      "product": "zidentity",
+      "resources": 3,
+      "total_fields": 74,
+      "classified_fields": 56,
+      "ignored_fields": 18,
+      "deliberate_fields": 18,
       "deferred_fields": 0,
-      "coverage_percent": 98.6,
+      "coverage_percent": 75.7,
+      "decided_coverage_percent": 100
+    },
+    {
+      "product": "zia",
+      "resources": 103,
+      "total_fields": 1715,
+      "classified_fields": 1690,
+      "ignored_fields": 25,
+      "deliberate_fields": 25,
+      "deferred_fields": 0,
+      "coverage_percent": 98.5,
       "decided_coverage_percent": 100
     },
     {
@@ -36,23 +47,12 @@
     {
       "product": "zcc",
       "resources": 11,
-      "total_fields": 325,
-      "classified_fields": 325,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
+      "total_fields": 333,
+      "classified_fields": 332,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
       "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100
-    },
-    {
-      "product": "zidentity",
-      "resources": 3,
-      "total_fields": 43,
-      "classified_fields": 43,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
+      "coverage_percent": 99.7,
       "decided_coverage_percent": 100
     },
     {
@@ -68,6 +68,89 @@
     }
   ],
   "resources": [
+    {
+      "product": "zidentity",
+      "resource": "users",
+      "sdk_types": [
+        "zidcommon.IDNameDisplayName (users)",
+        "zidusers.UserGroup",
+        "zidusers.Users"
+      ],
+      "total_fields": 44,
+      "classified_fields": 27,
+      "ignored_fields": 17,
+      "deliberate_fields": 17,
+      "deferred_fields": 0,
+      "coverage_percent": 61.4,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 8
+        },
+        {
+          "class": "secret",
+          "count": 1
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 9
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 9
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: group attributes belong to zidentity/groups; a user's membership renders id and name only",
+          "bucket": "deliberate",
+          "fields": [
+            "adminEntitlementDisabled",
+            "dynamicGroup",
+            "emergencyGroup",
+            "entityType",
+            "objectName",
+            "readOnly",
+            "serviceEntitlementDisabled",
+            "source",
+            "status"
+          ]
+        },
+        {
+          "reason": "deliberate: mirrors loginName on every user observed; loginName renders",
+          "bucket": "deliberate",
+          "fields": [
+            "name",
+            "objectName"
+          ]
+        },
+        {
+          "reason": "deliberate: org-chart relationship returned as a bare user id; not configuration",
+          "bucket": "deliberate",
+          "fields": [
+            "manager"
+          ]
+        },
+        {
+          "reason": "deliberate: per-user display preference with no configuration value",
+          "bucket": "deliberate",
+          "fields": [
+            "language",
+            "timeZone"
+          ]
+        },
+        {
+          "reason": "deliberate: personal contact data with no configuration value; never read into output",
+          "bucket": "deliberate",
+          "fields": [
+            "addresses",
+            "mobilePhone",
+            "primaryPhone"
+          ]
+        }
+      ]
+    },
     {
       "product": "zia",
       "resource": "users",
@@ -144,19 +227,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 2
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 3
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": [
@@ -283,6 +358,43 @@
     },
     {
       "product": "zia",
+      "resource": "ips-signature-rules",
+      "sdk_types": [
+        "ips_signature_rules.IPSSignatureRules"
+      ],
+      "total_fields": 14,
+      "classified_fields": 13,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 92.9,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 10
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 2
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: the Suricata/Snort signature body embeds tenant network indicators (IPs, hostnames, payload regexes); the reader never maps it",
+          "bucket": "deliberate",
+          "fields": [
+            "ruleText"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zia",
       "resource": "ssl-inspection-rules",
       "sdk_types": [
         "sslinspection.SSLInspectionRules"
@@ -301,11 +413,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 9
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 10
         },
         {
           "class": "tenant_configuration",
@@ -319,6 +427,50 @@
           "fields": [
             "endPointApplicationGroups",
             "endPointApplications"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zidentity",
+      "resource": "resource-servers",
+      "sdk_types": [
+        "zidresourceservers.ResourceServers",
+        "zidresourceservers.Scopes",
+        "zidresourceservers.Service",
+        "zidresourceservers.ServiceScopes"
+      ],
+      "total_fields": 18,
+      "classified_fields": 17,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 94.4,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "free_text",
+          "count": 1
+        },
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 9
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: undocumented flag whose meaning is unknown",
+          "bucket": "deliberate",
+          "fields": [
+            "zapsOnboarded"
           ]
         }
       ]
@@ -343,11 +495,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 12
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 13
         },
         {
           "class": "sensitive_identifier",
@@ -389,11 +537,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 13
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 14
         },
         {
           "class": "sensitive_identifier",
@@ -477,11 +621,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 23
-        },
-        {
-          "class": "secret",
-          "count": 16
+          "count": 33
         },
         {
           "class": "sensitive_identifier",
@@ -489,7 +629,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 11
         }
       ],
       "ignored_by_reason": [
@@ -522,11 +662,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 26
-        },
-        {
-          "class": "secret",
-          "count": 16
+          "count": 36
         },
         {
           "class": "sensitive_identifier",
@@ -534,7 +670,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 11
         }
       ],
       "ignored_by_reason": [
@@ -567,11 +703,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 22
-        },
-        {
-          "class": "secret",
-          "count": 20
+          "count": 32
         },
         {
           "class": "sensitive_identifier",
@@ -579,7 +711,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 15
         }
       ],
       "ignored_by_reason": [
@@ -612,11 +744,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 23
-        },
-        {
-          "class": "secret",
-          "count": 22
+          "count": 35
         },
         {
           "class": "sensitive_identifier",
@@ -624,7 +752,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 6
+          "count": 16
         }
       ],
       "ignored_by_reason": [
@@ -633,6 +761,44 @@
           "bucket": "deliberate",
           "fields": [
             "guestDetails"
+          ]
+        }
+      ]
+    },
+    {
+      "product": "zcc",
+      "resource": "company-info",
+      "sdk_types": [
+        "zcccompany.CompanyInfo",
+        "zcccompany.DevicePostureFrequency"
+      ],
+      "total_fields": 119,
+      "classified_fields": 118,
+      "ignored_fields": 1,
+      "deliberate_fields": 1,
+      "deferred_fields": 0,
+      "coverage_percent": 99.2,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 106
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 8
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 4
+        }
+      ],
+      "ignored_by_reason": [
+        {
+          "reason": "deliberate: about 185 string flags behind the ZCC admin portal, mostly portal feature toggles plus some client settings (e.g. enableFipsMode); too broad to classify flag by flag, so excluded fail-closed",
+          "bucket": "deliberate",
+          "fields": [
+            "webAppConfig"
           ]
         }
       ]
@@ -653,52 +819,19 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 13
+          "count": 14
         },
         {
           "class": "secret",
-          "count": 35
+          "count": 3
         },
         {
           "class": "sensitive_identifier",
-          "count": 26
+          "count": 31
         },
         {
           "class": "tenant_configuration",
-          "count": 52
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zcc",
-      "resource": "company-info",
-      "sdk_types": [
-        "zcccompany.CompanyInfo"
-      ],
-      "total_fields": 111,
-      "classified_fields": 111,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 101
-        },
-        {
-          "class": "secret",
-          "count": 2
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 6
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 2
+          "count": 78
         }
       ],
       "ignored_by_reason": []
@@ -719,19 +852,19 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 9
+          "count": 15
         },
         {
           "class": "secret",
-          "count": 45
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 13
+          "count": 50
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -760,11 +893,11 @@
         },
         {
           "class": "secret",
-          "count": 2
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         },
         {
           "class": "tenant_configuration",
@@ -793,11 +926,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
@@ -829,12 +958,12 @@
           "count": 24
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
           "count": 26
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 1
         }
       ],
       "ignored_by_reason": []
@@ -859,11 +988,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 15
+          "count": 16
         },
         {
           "class": "secret",
-          "count": 2
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
@@ -921,11 +1050,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 22
+          "count": 28
         },
         {
           "class": "secret",
-          "count": 21
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
@@ -933,7 +1062,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 7
         }
       ],
       "ignored_by_reason": []
@@ -958,19 +1087,19 @@
         },
         {
           "class": "operational_metadata",
-          "count": 17
+          "count": 23
         },
         {
           "class": "secret",
-          "count": 11
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 6
+          "count": 7
         },
         {
           "class": "tenant_configuration",
-          "count": 10
+          "count": 13
         }
       ],
       "ignored_by_reason": []
@@ -995,11 +1124,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 14
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 15
         },
         {
           "class": "sensitive_identifier",
@@ -1032,19 +1157,19 @@
         },
         {
           "class": "operational_metadata",
-          "count": 16
+          "count": 21
         },
         {
           "class": "secret",
-          "count": 9
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 8
+          "count": 9
         },
         {
           "class": "tenant_configuration",
-          "count": 10
+          "count": 12
         }
       ],
       "ignored_by_reason": []
@@ -1072,16 +1197,12 @@
           "count": 12
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
           "count": 4
         },
         {
           "class": "tenant_configuration",
-          "count": 24
+          "count": 25
         }
       ],
       "ignored_by_reason": []
@@ -1106,19 +1227,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 17
-        },
-        {
-          "class": "secret",
-          "count": 13
+          "count": 26
         },
         {
           "class": "sensitive_identifier",
-          "count": 5
+          "count": 6
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 8
         }
       ],
       "ignored_by_reason": []
@@ -1143,19 +1260,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 16
-        },
-        {
-          "class": "secret",
-          "count": 14
+          "count": 23
         },
         {
           "class": "sensitive_identifier",
-          "count": 5
+          "count": 7
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 10
         }
       ],
       "ignored_by_reason": []
@@ -1209,11 +1322,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 6
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 7
         },
         {
           "class": "sensitive_identifier",
@@ -1245,7 +1354,7 @@
           "count": 34
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 3
         },
         {
@@ -1275,11 +1384,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
@@ -1311,16 +1416,12 @@
           "count": 5
         },
         {
-          "class": "secret",
-          "count": 28
-        },
-        {
           "class": "sensitive_identifier",
           "count": 1
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 31
         }
       ],
       "ignored_by_reason": []
@@ -1345,11 +1446,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 11
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 12
         },
         {
           "class": "sensitive_identifier",
@@ -1382,11 +1479,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 13
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 15
         },
         {
           "class": "sensitive_identifier",
@@ -1414,16 +1507,16 @@
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
+          "class": "free_text",
+          "count": 8
+        },
+        {
           "class": "operational_metadata",
           "count": 14
         },
         {
-          "class": "secret",
-          "count": 9
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 6
+          "count": 7
         },
         {
           "class": "tenant_configuration",
@@ -1454,11 +1547,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
@@ -1466,7 +1555,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -1487,19 +1576,19 @@
       "class_breakdown": [
         {
           "class": "free_text",
-          "count": 1
+          "count": 3
         },
         {
           "class": "operational_metadata",
           "count": 14
         },
         {
-          "class": "secret",
-          "count": 7
+          "class": "sensitive_identifier",
+          "count": 1
         },
         {
           "class": "tenant_configuration",
-          "count": 7
+          "count": 11
         }
       ],
       "ignored_by_reason": []
@@ -1524,11 +1613,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 10
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 11
         },
         {
           "class": "tenant_configuration",
@@ -1561,19 +1646,19 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
+          "count": 9
         },
         {
           "class": "secret",
-          "count": 2
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 5
         },
         {
           "class": "tenant_configuration",
-          "count": 15
+          "count": 12
         }
       ],
       "ignored_by_reason": []
@@ -1594,11 +1679,7 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 10
-        },
-        {
-          "class": "secret",
-          "count": 7
+          "count": 13
         },
         {
           "class": "sensitive_identifier",
@@ -1606,7 +1687,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 5
         }
       ],
       "ignored_by_reason": []
@@ -1626,16 +1707,16 @@
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
+          "class": "free_text",
+          "count": 1
+        },
+        {
           "class": "operational_metadata",
           "count": 17
         },
         {
-          "class": "secret",
-          "count": 2
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 6
+          "count": 7
         }
       ],
       "ignored_by_reason": []
@@ -1660,11 +1741,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
+          "count": 7
         },
         {
           "class": "secret",
-          "count": 4
+          "count": 2
         },
         {
           "class": "sensitive_identifier",
@@ -1697,11 +1778,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 7
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 8
         },
         {
           "class": "tenant_configuration",
@@ -1730,11 +1807,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 9
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 10
         },
         {
           "class": "sensitive_identifier",
@@ -1770,12 +1843,8 @@
           "count": 10
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 8
+          "count": 9
         },
         {
           "class": "tenant_configuration",
@@ -1804,11 +1873,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
+          "count": 10
         },
         {
           "class": "secret",
-          "count": 3
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
@@ -1841,11 +1910,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
+          "count": 7
         },
         {
           "class": "secret",
-          "count": 4
+          "count": 2
         },
         {
           "class": "sensitive_identifier",
@@ -1881,12 +1950,8 @@
           "count": 8
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -1915,11 +1980,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 7
-        },
-        {
-          "class": "secret",
-          "count": 9
+          "count": 12
         },
         {
           "class": "sensitive_identifier",
@@ -1927,7 +1988,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -1962,6 +2023,31 @@
       "ignored_by_reason": []
     },
     {
+      "product": "zia",
+      "resource": "locations-lite",
+      "sdk_types": [
+        "ziaLiteLocation"
+      ],
+      "total_fields": 19,
+      "classified_fields": 19,
+      "ignored_fields": 0,
+      "deliberate_fields": 0,
+      "deferred_fields": 0,
+      "coverage_percent": 100,
+      "decided_coverage_percent": 100,
+      "class_breakdown": [
+        {
+          "class": "operational_metadata",
+          "count": 4
+        },
+        {
+          "class": "tenant_configuration",
+          "count": 15
+        }
+      ],
+      "ignored_by_reason": []
+    },
+    {
       "product": "zpa",
       "resource": "version-profiles",
       "sdk_types": [
@@ -1984,7 +2070,7 @@
           "count": 12
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 4
         },
         {
@@ -2014,15 +2100,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 7
-        },
-        {
-          "class": "secret",
-          "count": 3
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
-          "count": 4
+          "count": 5
         },
         {
           "class": "tenant_configuration",
@@ -2047,11 +2129,7 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 4
         },
         {
           "class": "sensitive_identifier",
@@ -2083,12 +2161,8 @@
           "count": 3
         },
         {
-          "class": "secret",
-          "count": 4
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 9
+          "count": 13
         },
         {
           "class": "tenant_configuration",
@@ -2113,11 +2187,7 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 9
-        },
-        {
-          "class": "secret",
-          "count": 4
+          "count": 11
         },
         {
           "class": "sensitive_identifier",
@@ -2125,7 +2195,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -2150,19 +2220,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
-          "count": 3
+          "count": 4
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 1
         }
       ],
       "ignored_by_reason": []
@@ -2187,11 +2253,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 6
-        },
-        {
-          "class": "secret",
-          "count": 4
+          "count": 9
         },
         {
           "class": "sensitive_identifier",
@@ -2199,7 +2261,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 4
+          "count": 5
         }
       ],
       "ignored_by_reason": []
@@ -2346,42 +2408,6 @@
       "ignored_by_reason": []
     },
     {
-      "product": "zidentity",
-      "resource": "resource-servers",
-      "sdk_types": [
-        "zidresourceservers.ResourceServers",
-        "zidresourceservers.Scopes",
-        "zidresourceservers.Service",
-        "zidresourceservers.ServiceScopes"
-      ],
-      "total_fields": 16,
-      "classified_fields": 16,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 3
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 8
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
       "product": "zpa",
       "resource": "posture-profiles",
       "sdk_types": [
@@ -2397,19 +2423,15 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 7
-        },
-        {
-          "class": "secret",
-          "count": 6
+          "count": 8
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 5
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -2434,15 +2456,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 8
-        },
-        {
-          "class": "secret",
-          "count": 5
+          "count": 11
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 4
         }
       ],
       "ignored_by_reason": []
@@ -2467,11 +2485,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 6
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 7
         },
         {
           "class": "sensitive_identifier",
@@ -2480,40 +2494,6 @@
         {
           "class": "tenant_configuration",
           "count": 5
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zidentity",
-      "resource": "users",
-      "sdk_types": [
-        "zidcommon.IDNameDisplayName (users)",
-        "zidusers.Users"
-      ],
-      "total_fields": 15,
-      "classified_fields": 15,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "sensitive_identifier",
-          "count": 5
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -2538,15 +2518,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
+          "count": 8
         },
         {
           "class": "secret",
-          "count": 5
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         },
         {
           "class": "tenant_configuration",
@@ -2578,7 +2558,7 @@
           "count": 10
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 3
         }
       ],
@@ -2604,11 +2584,15 @@
         },
         {
           "class": "secret",
-          "count": 7
+          "count": 2
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -2629,11 +2613,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 11
+          "count": 13
         },
         {
           "class": "secret",
-          "count": 3
+          "count": 1
         }
       ],
       "ignored_by_reason": []
@@ -2654,52 +2638,15 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 6
         },
         {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",
-          "count": 6
-        }
-      ],
-      "ignored_by_reason": []
-    },
-    {
-      "product": "zia",
-      "resource": "ips-signature-rules",
-      "sdk_types": [
-        "ips_signature_rules.IPSSignatureRules"
-      ],
-      "total_fields": 14,
-      "classified_fields": 14,
-      "ignored_fields": 0,
-      "deliberate_fields": 0,
-      "deferred_fields": 0,
-      "coverage_percent": 100,
-      "decided_coverage_percent": 100,
-      "class_breakdown": [
-        {
-          "class": "free_text",
-          "count": 1
-        },
-        {
-          "class": "operational_metadata",
-          "count": 10
-        },
-        {
-          "class": "secret",
-          "count": 1
-        },
-        {
-          "class": "tenant_configuration",
-          "count": 2
+          "count": 5
         }
       ],
       "ignored_by_reason": []
@@ -2727,12 +2674,8 @@
           "count": 8
         },
         {
-          "class": "secret",
-          "count": 2
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -2764,12 +2707,8 @@
           "count": 7
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -2794,11 +2733,15 @@
         },
         {
           "class": "secret",
-          "count": 7
+          "count": 2
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -2852,15 +2795,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
+          "count": 7
         },
         {
           "class": "secret",
-          "count": 4
+          "count": 1
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         },
         {
           "class": "tenant_configuration",
@@ -2889,11 +2832,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 6
         },
         {
           "class": "sensitive_identifier",
@@ -2985,11 +2924,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "secret",
-          "count": 3
+          "count": 8
         },
         {
           "class": "sensitive_identifier",
@@ -3043,15 +2978,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 6
+          "count": 7
         },
         {
-          "class": "secret",
-          "count": 4
+          "class": "sensitive_identifier",
+          "count": 2
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -3076,11 +3011,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 6
         },
         {
           "class": "sensitive_identifier",
@@ -3113,11 +3044,15 @@
         },
         {
           "class": "secret",
-          "count": 7
+          "count": 2
+        },
+        {
+          "class": "sensitive_identifier",
+          "count": 3
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -3171,19 +3106,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         },
         {
           "class": "tenant_configuration",
-          "count": 4
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -3208,11 +3139,7 @@
         },
         {
           "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
@@ -3220,7 +3147,7 @@
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -3273,12 +3200,12 @@
           "count": 3
         },
         {
-          "class": "secret",
-          "count": 3
+          "class": "sensitive_identifier",
+          "count": 2
         },
         {
           "class": "tenant_configuration",
-          "count": 5
+          "count": 6
         }
       ],
       "ignored_by_reason": []
@@ -3299,15 +3226,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 4
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 4
         },
         {
           "class": "tenant_configuration",
@@ -3372,12 +3295,8 @@
           "count": 5
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -3402,19 +3321,19 @@
       "class_breakdown": [
         {
           "class": "free_text",
-          "count": 1
+          "count": 2
         },
         {
           "class": "operational_metadata",
+          "count": 2
+        },
+        {
+          "class": "sensitive_identifier",
           "count": 1
         },
         {
-          "class": "secret",
-          "count": 5
-        },
-        {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 5
         }
       ],
       "ignored_by_reason": []
@@ -3442,12 +3361,8 @@
           "count": 5
         },
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -3476,15 +3391,11 @@
         },
         {
           "class": "operational_metadata",
-          "count": 5
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 6
         },
         {
           "class": "tenant_configuration",
-          "count": 2
+          "count": 3
         }
       ],
       "ignored_by_reason": []
@@ -3505,15 +3416,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 3
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
-          "count": 2
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -3575,15 +3482,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 4
+          "count": 5
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 1
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -3608,15 +3515,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 4
+          "count": 5
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 1
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -3670,19 +3577,15 @@
         },
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 4
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         },
         {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -3703,15 +3606,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "secret",
-          "count": 3
+          "count": 5
         },
         {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 3
         },
         {
           "class": "tenant_configuration",
@@ -3736,11 +3635,7 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 4
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 6
         },
         {
           "class": "tenant_configuration",
@@ -3918,15 +3813,11 @@
       "class_breakdown": [
         {
           "class": "free_text",
-          "count": 1
+          "count": 3
         },
         {
           "class": "operational_metadata",
           "count": 1
-        },
-        {
-          "class": "secret",
-          "count": 2
         },
         {
           "class": "tenant_configuration",
@@ -3988,14 +3879,10 @@
         },
         {
           "class": "operational_metadata",
-          "count": 3
+          "count": 5
         },
         {
-          "class": "secret",
-          "count": 2
-        },
-        {
-          "class": "tenant_configuration",
+          "class": "sensitive_identifier",
           "count": 1
         }
       ],
@@ -4024,7 +3911,7 @@
           "count": 3
         },
         {
-          "class": "secret",
+          "class": "sensitive_identifier",
           "count": 1
         },
         {
@@ -4057,12 +3944,12 @@
           "count": 2
         },
         {
-          "class": "secret",
-          "count": 3
+          "class": "sensitive_identifier",
+          "count": 2
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -4083,15 +3970,11 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 2
+          "count": 4
         },
         {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -4174,11 +4057,7 @@
       "class_breakdown": [
         {
           "class": "operational_metadata",
-          "count": 3
-        },
-        {
-          "class": "secret",
-          "count": 1
+          "count": 4
         },
         {
           "class": "sensitive_identifier",
@@ -4948,8 +4827,12 @@
           "count": 1
         },
         {
+          "class": "sensitive_identifier",
+          "count": 1
+        },
+        {
           "class": "tenant_configuration",
-          "count": 3
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -5236,12 +5119,8 @@
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "tenant_configuration",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -5261,12 +5140,8 @@
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []
@@ -5286,12 +5161,8 @@
       "decided_coverage_percent": 100,
       "class_breakdown": [
         {
-          "class": "secret",
-          "count": 1
-        },
-        {
           "class": "sensitive_identifier",
-          "count": 1
+          "count": 2
         }
       ],
       "ignored_by_reason": []

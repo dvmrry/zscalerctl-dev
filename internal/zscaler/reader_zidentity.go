@@ -4,9 +4,9 @@ import (
 	"context"
 
 	zsdk "github.com/zscaler/zscaler-sdk-go/v3/zscaler"
-	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
-	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/groups"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
@@ -76,7 +76,37 @@ func zidentityUserSourceRecord(user zidusers.Users) resources.SourceRecord {
 		"lastName":       user.LastName,
 		"primaryEmail":   user.PrimaryEmail,
 		"secondaryEmail": user.SecondaryEmail,
-		"status":         user.Status,
+	}
+	for name, value := range map[string]string{
+		"title":        user.Title,
+		"division":     user.Division,
+		"costCenter":   user.CostCenter,
+		"organization": user.Organization,
+		"entityType":   user.EntityType,
+	} {
+		if value != "" {
+			fields[name] = value
+		}
+	}
+	for name, value := range map[string]*bool{
+		"status":               user.Status,
+		"guest":                user.Guest,
+		"belongInternalDomain": user.BelongInternalDomain,
+		"hostedIdp":            user.HostedIdp,
+	} {
+		if value != nil {
+			fields[name] = *value
+		}
+	}
+	if user.SkipMfaUntil != nil {
+		fields["skipMfaUntil"] = *user.SkipMfaUntil
+	}
+	if len(user.Groups) > 0 {
+		groups := make([]any, 0, len(user.Groups))
+		for _, group := range user.Groups {
+			groups = append(groups, map[string]any{"id": group.ID, "name": group.Name})
+		}
+		fields["groups"] = groups
 	}
 	if user.Department != nil {
 		fields["department"] = zidIDNameDisplayNameSource(user.Department)

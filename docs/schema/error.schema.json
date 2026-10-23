@@ -1,16 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "zscalerctl.error.v1",
+  "$id": "zscalerctl.error.v2",
   "title": "zscalerctl error envelope",
   "description": "Structured error written to stderr when a command fails and the resolved output format is JSON. The message is redaction-filtered and never contains raw secrets or live tenant values.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["error"],
+  "required": [
+    "error"
+  ],
   "properties": {
     "error": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "message"],
+      "required": [
+        "kind",
+        "message"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -40,7 +45,9 @@
         },
         "missing": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Variable NAMES (never values) of credential environment variables that are unset. Present only for missing_credentials errors."
         },
         "operation": {
@@ -54,6 +61,35 @@
         "resource": {
           "type": "string",
           "description": "Resource context, when applicable."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "credentials_rejected",
+            "unauthorized",
+            "forbidden",
+            "not_found",
+            "rate_limited",
+            "server_error",
+            "client_error",
+            "transport",
+            "timeout",
+            "pagination_incomplete",
+            "decode_failed",
+            "not_subscribed",
+            "unknown"
+          ],
+          "description": "Why a live read failed, from a closed value-free vocabulary: credentials_rejected (sign-in refused with 400, 401 or 403), unauthorized (401), forbidden (403: the API role or licence does not allow it), not_found (404 on a list/show endpoint), rate_limited (429), server_error (5xx), client_error (other 4xx), transport (network failure), timeout (the request hit --timeout), pagination_incomplete (the CLI refused a list it could not prove complete), decode_failed (the response did not match the expected shape), not_subscribed (the feature is not licensed), unknown. Present only for live read failures."
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599,
+          "description": "HTTP status of the failed request, when there was a response."
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "True when a retry (or a longer --timeout) could plausibly succeed: rate_limited, server_error, transport, timeout. Omitted when false."
         }
       }
     }

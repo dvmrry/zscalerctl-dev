@@ -62,10 +62,16 @@ var globalFlagDefs = []globalFlagDef{
 		usage:      "config file path",
 	},
 	{
+		name:       "count-by",
+		kind:       "string",
+		defaultVal: "",
+		usage:      "count list records by comma-separated fields instead of listing them; a path such as groups.id counts per list element",
+	},
+	{
 		name:       "fields",
 		kind:       "string",
 		defaultVal: "",
-		usage:      "comma-separated output fields to keep (narrows the sanitized output)",
+		usage:      "comma-separated output fields to keep; a dotted path such as groups.id keeps only that key of each nested value (narrows the sanitized output)",
 	},
 	{
 		// filter is repeatable: stringArray in pflag, repeatableFlag Var in stdlib.
@@ -76,7 +82,7 @@ var globalFlagDefs = []globalFlagDef{
 		name:       "filter",
 		kind:       "stringArray",
 		defaultVal: "",
-		usage:      "narrow list results: key=value (exact) or key~value (substring); repeatable, all must match",
+		usage:      "narrow list results: key=value (exact) or key~value (substring); key may be a nested path such as groups.name; repeatable, all must match",
 	},
 	{
 		name:       "format",
@@ -190,6 +196,7 @@ type globalFlagPointers struct {
 	noColor     *bool
 	logLevel    *string
 	fieldsFlag  *string
+	countBy     *countedStringFlag
 	filterFlags *repeatableFlag // points at the Var registered on fs
 	searchFlag  *string
 }
@@ -207,6 +214,15 @@ func defineGlobalFlags(fs *flag.FlagSet, filterVar *repeatableFlag) globalFlagPo
 	for _, d := range globalFlagDefs {
 		switch d.kind {
 		case "string":
+			if d.name == "count-by" {
+				// A counted Var, so a repeat is detected by the parser itself
+				// rather than by scanning arguments, where a flag-shaped value
+				// of another flag would look like a repeat.
+				counted := &countedStringFlag{}
+				fs.Var(counted, d.name, d.usage)
+				p.countBy = counted
+				continue
+			}
 			ptr := fs.String(d.name, d.defaultVal, d.usage)
 			switch d.name {
 			case "profile":

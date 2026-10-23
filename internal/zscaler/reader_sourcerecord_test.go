@@ -13,6 +13,7 @@ package zscaler
 // assertNoCanaries, mustProjectedList) from the same package.
 
 import (
+	"fmt"
 	"testing"
 
 	c2cincidentreceiver "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/c2c_incident_receiver"
@@ -33,6 +34,7 @@ import (
 	ipssignaturerules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/ips_control_policies/ips_signature_rules"
 	sandboxrules "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/sandbox/sandbox_rules"
 
+	"github.com/dvmrry/zscalerctl/internal/redact"
 	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
@@ -73,6 +75,112 @@ func mustFirstProjectedItem(t *testing.T, record map[string]any, field string) m
 	return object
 }
 
+// assertRefListIDsOnly asserts record[field] rendered as a non-empty list of
+// {id} references: every element carries an id and nothing else (no name, no
+// extensions). Reference lists ({id, name, extensions}) render their ids in
+// share mode even where the referenced names are standard-only. When wantIDs
+// is given, the element ids must print as those values, in order.
+func assertRefListIDsOnly(t *testing.T, resource string, record map[string]any, field string, wantIDs ...any) {
+	t.Helper()
+
+	value, ok := record[field]
+	if !ok {
+		t.Errorf("projected %s missing %s, want id-only reference list", resource, field)
+		return
+	}
+	items, ok := value.([]any)
+	if !ok || len(items) == 0 {
+		t.Errorf("projected %s %s = %T(%v), want non-empty reference list", resource, field, value, value)
+		return
+	}
+	if len(wantIDs) > 0 && len(items) != len(wantIDs) {
+		t.Errorf("projected %s %s = %#v, want %d references", resource, field, items, len(wantIDs))
+	}
+	for i, item := range items {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			t.Errorf("projected %s %s[%d] = %T, want reference map", resource, field, i, item)
+			continue
+		}
+		id, hasID := ref["id"]
+		if !hasID {
+			t.Errorf("projected %s %s[%d] = %#v, want id", resource, field, i, ref)
+		}
+		if i < len(wantIDs) && fmt.Sprint(id) != fmt.Sprint(wantIDs[i]) {
+			t.Errorf("projected %s %s[%d].id = %v, want %v", resource, field, i, id, wantIDs[i])
+		}
+		for key := range ref {
+			if key != "id" {
+				t.Errorf("projected %s %s[%d] = %#v, want only id (key %q must not render)", resource, field, i, ref, key)
+			}
+		}
+	}
+}
+
+// assertRefIDsOnlyInShare checks reference fields whose names are
+// standard-only: in share mode each renders as id-only (a single {id} map or a
+// list of them) with the wanted id; in paranoid mode each is absent.
+func assertRefIDsOnlyInShare(t *testing.T, resource string, mode redact.Mode, record map[string]any, refs map[string]int) {
+	t.Helper()
+
+	for field, wantID := range refs {
+		if mode != redact.ModeShare {
+			if _, ok := record[field]; ok {
+				t.Errorf("%s projected %s includes %s, want dropped", mode, resource, field)
+			}
+			continue
+		}
+		if _, ok := record[field].(map[string]any); ok {
+			assertAuditRefIDOnly(t, resource+" share", record, field, wantID)
+			continue
+		}
+		assertRefListIDsOnly(t, resource+" share", record, field, wantID)
+	}
+}
+
+// projectSourceRecordInModes projects records in share and paranoid mode,
+// asserts that none of the canaries survive in either, and returns the
+// projections keyed by mode. Use it for values that render in standard mode
+// only: the catalog must keep them out of the wider-audience modes.
+func projectSourceRecordInModes(
+	t *testing.T,
+	resource string,
+	records []resources.SourceRecord,
+	canaries ...string,
+) map[redact.Mode]map[string]any {
+	t.Helper()
+
+	out := map[redact.Mode]map[string]any{}
+	for _, mode := range []redact.Mode{redact.ModeShare, redact.ModeParanoid} {
+		got := projectOneRecordInMode(t, resources.ProductZIA, resource, mode, records)
+		assertNoCanaries(t, resource+" ("+string(mode)+")", got, canaries...)
+		out[mode] = got
+	}
+	return out
+}
+
+// assertAdminRef asserts an admin audit reference rendered with the wanted
+// id, and with the admin name only when wantName is non-empty.
+func assertAdminRef(t *testing.T, resource string, record map[string]any, field string, wantID int, wantName string) {
+	t.Helper()
+
+	ref, ok := record[field].(map[string]any)
+	if !ok {
+		t.Errorf("projected %s %s = %T(%v), want admin reference map", resource, field, record[field], record[field])
+		return
+	}
+	if ref["id"] != wantID {
+		t.Errorf("projected %s %s = %#v, want id %d", resource, field, ref, wantID)
+	}
+	name, hasName := ref["name"]
+	switch {
+	case wantName == "" && hasName:
+		t.Errorf("projected %s %s = %#v, want no name", resource, field, ref)
+	case wantName != "" && name != wantName:
+		t.Errorf("projected %s %s = %#v, want name %q", resource, field, ref, wantName)
+	}
+}
+
 func TestDLPEngineSourceRecordProjectsThroughAllowList(t *testing.T) {
 	t.Parallel()
 
@@ -105,10 +213,17 @@ func TestDLPEngineSourceRecordProjectsThroughAllowList(t *testing.T) {
 	}
 }
 
-func TestDLPDictionarySourceRecordDropsDetectionContent(t *testing.T) {
+// TestDLPDictionarySourceRecordKeepsDetectionContentStandardOnly pins the
+// dictionary detection content (phrases, patterns, predefined phrases, BIN
+// numbers) as standard-only free text: it renders for the operator and never
+// reaches share or paranoid output. Match structure renders in every mode.
+func TestDLPDictionarySourceRecordKeepsDetectionContentStandardOnly(t *testing.T) {
 	t.Parallel()
 
-	const canary = "dlp-dictionary-psk-canary"
+	const (
+		canary        = "dlp-dictionary-psk-canary"
+		contentCanary = "dlp-dictionary-content-canary"
+	)
 	dictionary := dlpdictionaries.DlpDictionary{
 		ID:                    602,
 		Name:                  "Custom dictionary",
@@ -121,35 +236,61 @@ func TestDLPDictionarySourceRecordDropsDetectionContent(t *testing.T) {
 		DictionaryType:        "PATTERNS_AND_PHRASES",
 		Proximity:             40,
 		Phrases: []dlpdictionaries.Phrases{
-			{Action: "PHRASE_COUNT_TYPE_ALL", Phrase: canary},
+			{Action: "PHRASE_COUNT_TYPE_ALL", Phrase: contentCanary},
 		},
 		Patterns: []dlpdictionaries.Patterns{
-			{Action: "PATTERN_COUNT_TYPE_ALL", Pattern: canary},
+			{Action: "PATTERN_COUNT_TYPE_ALL", Pattern: contentCanary},
 		},
 		EDMMatchDetails: []dlpdictionaries.EDMMatchDetails{
 			{DictionaryEdmMappingID: 21, SchemaID: 22},
 		},
 		IDMProfileMatchAccuracy: []dlpdictionaries.IDMProfileMatchAccuracy{
-			{MatchAccuracy: canary},
+			{MatchAccuracy: "HEAVY"},
 		},
-		HierarchicalIdentifiers:          []string{canary},
-		PredefinedPhrases:                []string{canary},
+		HierarchicalIdentifiers:          []string{"CREDIT_CARD"},
+		PredefinedPhrases:                []string{contentCanary},
 		BinNumbers:                       []int{424242},
 		DictTemplateId:                   23,
 		ConfidenceLevelForPredefinedDict: "CONFIDENCE_LEVEL_LOW",
 	}
+	records := []resources.SourceRecord{dlpDictionarySourceRecord(dictionary)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceDLPDictionaries, []resources.SourceRecord{dlpDictionarySourceRecord(dictionary)})
+	got := projectOneRecord(t, resources.ProductZIA, resourceDLPDictionaries, records)
 	assertNoCanaries(t, "dlp-dictionaries", got, canary)
-	assertFieldsAbsent(t, "dlp-dictionaries", got,
-		"phrases",
-		"patterns",
-		"exactDataMatchDetails",
-		"idmProfileMatchAccuracyDetails",
-		"binNumbers",
-		"hierarchicalIdentifiers",
-		"predefinedPhrases",
-	)
+	phrase := mustFirstProjectedItem(t, got, "phrases")
+	if phrase["phrase"] != contentCanary || phrase["action"] != "PHRASE_COUNT_TYPE_ALL" {
+		t.Errorf("projected dlp-dictionaries phrases[0] = %#v, want phrase and action", phrase)
+	}
+	pattern := mustFirstProjectedItem(t, got, "patterns")
+	if pattern["pattern"] != contentCanary || pattern["action"] != "PATTERN_COUNT_TYPE_ALL" {
+		t.Errorf("projected dlp-dictionaries patterns[0] = %#v, want pattern and action", pattern)
+	}
+	if fmt.Sprint(got["predefinedPhrases"]) != "["+contentCanary+"]" {
+		t.Errorf("projected dlp-dictionaries predefinedPhrases = %#v, want [%s]", got["predefinedPhrases"], contentCanary)
+	}
+	if fmt.Sprint(got["binNumbers"]) != "[424242]" {
+		t.Errorf("projected dlp-dictionaries binNumbers = %#v, want [424242]", got["binNumbers"])
+	}
+	if fmt.Sprint(got["hierarchicalIdentifiers"]) != "[CREDIT_CARD]" {
+		t.Errorf("projected dlp-dictionaries hierarchicalIdentifiers = %#v, want [CREDIT_CARD]", got["hierarchicalIdentifiers"])
+	}
+	edm := mustFirstProjectedItem(t, got, "exactDataMatchDetails")
+	if fmt.Sprint(edm["dictionaryEdmMappingId"]) != "21" || fmt.Sprint(edm["schemaId"]) != "22" {
+		t.Errorf("projected dlp-dictionaries exactDataMatchDetails[0] = %#v, want mapping 21 schema 22", edm)
+	}
+	accuracy := mustFirstProjectedItem(t, got, "idmProfileMatchAccuracyDetails")
+	if accuracy["matchAccuracy"] != "HEAVY" {
+		t.Errorf("projected dlp-dictionaries idmProfileMatchAccuracyDetails[0] = %#v, want matchAccuracy HEAVY", accuracy)
+	}
+
+	// Detection content is standard-only; the match structure is not.
+	for mode, wider := range projectSourceRecordInModes(t, resourceDLPDictionaries, records, canary, contentCanary) {
+		assertFieldsAbsent(t, "dlp-dictionaries ("+string(mode)+")", wider, "binNumbers", "predefinedPhrases")
+		phrase := mustFirstProjectedItem(t, wider, "phrases")
+		if _, ok := phrase["phrase"]; ok || phrase["action"] != "PHRASE_COUNT_TYPE_ALL" {
+			t.Errorf("projected dlp-dictionaries (%s) phrases[0] = %#v, want action only", mode, phrase)
+		}
+	}
 	if got["name"] != "Custom dictionary" {
 		t.Errorf("projected dlp-dictionaries name = %v, want Custom dictionary", got["name"])
 	}
@@ -164,10 +305,16 @@ func TestDLPDictionarySourceRecordDropsDetectionContent(t *testing.T) {
 	}
 }
 
-func TestDLPEDMSchemaSourceRecordDropsScheduleAndAdmins(t *testing.T) {
+// TestDLPEDMSchemaSourceRecordScheduleAndAdminsFollowModes pins the EDM
+// schedule, column names and admin names as standard-only, admin ids in every
+// mode, and the edmClient extensions as never rendered.
+func TestDLPEDMSchemaSourceRecordScheduleAndAdminsFollowModes(t *testing.T) {
 	t.Parallel()
 
-	const canary = "dlp-edm-schema-psk-canary"
+	const (
+		canary         = "dlp-edm-schema-psk-canary"
+		standardCanary = "edm-standard-canary"
+	)
 	schema := dlpexactdatamatch.DLPEDMSchema{
 		SchemaID: 603,
 		EDMClient: &ziacommon.IDNameExtensions{
@@ -183,20 +330,39 @@ func TestDLPEDMSchemaSourceRecordDropsScheduleAndAdmins(t *testing.T) {
 		SchemaStatus:     "EDM_PROD_OK",
 		OrigColCount:     7,
 		LastModifiedTime: 1700000100,
-		ModifiedBy:       &ziacommon.IDNameExtensions{ID: 32, Name: canary},
-		CreatedBy:        &ziacommon.IDNameExtensions{ID: 33, Name: canary},
+		ModifiedBy:       &ziacommon.IDNameExtensions{ID: 32, Name: standardCanary},
+		CreatedBy:        &ziacommon.IDNameExtensions{ID: 33, Name: standardCanary},
 		CellsUsed:        11,
 		SchemaActive:     true,
 		SchedulePresent:  true,
 		TokenList: []dlpexactdatamatch.TokenList{
-			{Name: canary, Type: "EDM_TOKEN"},
+			{Name: standardCanary, Type: "EDM_TOKEN"},
 		},
-		Schedule: dlpexactdatamatch.Schedule{ScheduleType: canary},
+		Schedule: dlpexactdatamatch.Schedule{ScheduleType: standardCanary},
 	}
+	records := []resources.SourceRecord{dlpEDMSchemaSourceRecord(schema)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceDLPEDMSchemas, []resources.SourceRecord{dlpEDMSchemaSourceRecord(schema)})
+	got := projectOneRecord(t, resources.ProductZIA, resourceDLPEDMSchemas, records)
 	assertNoCanaries(t, "dlp-edm-schemas", got, canary)
-	assertFieldsAbsent(t, "dlp-edm-schemas", got, "modifiedBy", "createdBy", "tokenList", "schedule")
+	assertAdminRef(t, "dlp-edm-schemas", got, "modifiedBy", 32, standardCanary)
+	assertAdminRef(t, "dlp-edm-schemas", got, "createdBy", 33, standardCanary)
+	token := mustFirstProjectedItem(t, got, "tokenList")
+	if token["name"] != standardCanary || token["type"] != "EDM_TOKEN" {
+		t.Errorf("projected dlp-edm-schemas tokenList[0] = %#v, want name and type", token)
+	}
+	if schedule := mustProjectedMap(t, got, "schedule"); schedule["scheduleType"] != standardCanary {
+		t.Errorf("projected dlp-edm-schemas schedule = %#v, want scheduleType %s", schedule, standardCanary)
+	}
+	for mode, wider := range projectSourceRecordInModes(t, resourceDLPEDMSchemas, records, canary, standardCanary) {
+		label := "dlp-edm-schemas (" + string(mode) + ")"
+		assertFieldsAbsent(t, label, wider, "schedule")
+		assertAdminRef(t, label, wider, "modifiedBy", 32, "")
+		assertAdminRef(t, label, wider, "createdBy", 33, "")
+		token := mustFirstProjectedItem(t, wider, "tokenList")
+		if _, ok := token["name"]; ok || token["type"] != "EDM_TOKEN" {
+			t.Errorf("projected %s tokenList[0] = %#v, want type only", label, token)
+		}
+	}
 	if got["schemaId"] != 603 {
 		t.Errorf("projected dlp-edm-schemas schemaId = %v, want 603", got["schemaId"])
 	}
@@ -228,9 +394,13 @@ func TestDLPIDMProfileLiteSourceRecordCoversBothPointerArms(t *testing.T) {
 		ModifiedBy:       &ziacommon.IDNameExtensions{ID: 42, Name: canary},
 	}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceDLPIDMLite, []resources.SourceRecord{dlpIDMProfileLiteSourceRecord(profile)})
-	assertNoCanaries(t, "dlp-idm-profile-lite", got, canary)
-	assertFieldsAbsent(t, "dlp-idm-profile-lite", got, "modifiedBy")
+	records := []resources.SourceRecord{dlpIDMProfileLiteSourceRecord(profile)}
+	got := projectOneRecord(t, resources.ProductZIA, resourceDLPIDMLite, records)
+	// The admin name is standard-only; the admin id renders in every mode.
+	assertAdminRef(t, "dlp-idm-profile-lite", got, "modifiedBy", 42, canary)
+	for mode, wider := range projectSourceRecordInModes(t, resourceDLPIDMLite, records, canary) {
+		assertAdminRef(t, "dlp-idm-profile-lite ("+string(mode)+")", wider, "modifiedBy", 42, "")
+	}
 	if got["profileId"] != 604 {
 		t.Errorf("projected dlp-idm-profile-lite profileId = %v, want 604", got["profileId"])
 	}
@@ -252,7 +422,10 @@ func TestDLPIDMProfileLiteSourceRecordCoversBothPointerArms(t *testing.T) {
 func TestDLPIDMProfileSourceRecordProjectsThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const canary = "dlp-idm-profile-psk-canary"
+	const (
+		canary    = "dlp-idm-profile-psk-canary"
+		adminName = "idm-profile-admin"
+	)
 	profile := dlpidmprofiles.DLPIDMProfile{
 		ProfileID:          606,
 		ProfileName:        "IDM profile",
@@ -274,12 +447,17 @@ func TestDLPIDMProfileSourceRecordProjectsThroughAllowList(t *testing.T) {
 		VolumeOfDocuments:  9,
 		NumDocuments:       13,
 		LastModifiedTime:   1700000300,
-		ModifiedBy:         &ziacommon.IDNameExtensions{ID: 52, Name: canary},
+		ModifiedBy:         &ziacommon.IDNameExtensions{ID: 52, Name: adminName},
 	}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceDLPIDMProfiles, []resources.SourceRecord{dlpIDMProfileSourceRecord(profile)})
+	records := []resources.SourceRecord{dlpIDMProfileSourceRecord(profile)}
+	got := projectOneRecord(t, resources.ProductZIA, resourceDLPIDMProfiles, records)
 	assertNoCanaries(t, "dlp-idm-profiles", got, canary)
-	assertFieldsAbsent(t, "dlp-idm-profiles", got, "modifiedBy")
+	// The admin name is standard-only; the admin id renders in every mode.
+	assertAdminRef(t, "dlp-idm-profiles", got, "modifiedBy", 52, adminName)
+	for mode, wider := range projectSourceRecordInModes(t, resourceDLPIDMProfiles, records, canary, adminName) {
+		assertAdminRef(t, "dlp-idm-profiles ("+string(mode)+")", wider, "modifiedBy", 52, "")
+	}
 	if got["profileName"] != "IDM profile" {
 		t.Errorf("projected dlp-idm-profiles profileName = %v, want IDM profile", got["profileName"])
 	}
@@ -301,61 +479,100 @@ func TestDLPIDMProfileSourceRecordProjectsThroughAllowList(t *testing.T) {
 	}
 }
 
-func TestRiskProfileSourceRecordDropsRiskAttributes(t *testing.T) {
+// TestRiskProfileSourceRecordProjectsRiskAttributes pins the risk-profile
+// criteria (the app attributes the profile matches on) as tenant
+// configuration that renders in every mode, while reference extensions stay
+// dropped.
+func TestRiskProfileSourceRecordProjectsRiskAttributes(t *testing.T) {
 	t.Parallel()
 
-	const canary = "risk-profile-psk-canary"
+	const (
+		canary    = "risk-profile-psk-canary"
+		criterion = "risk-criterion-value"
+	)
 	profile := riskprofiles.RiskProfiles{
 		ID:                        607,
 		ProfileName:               "Risk profile",
 		ProfileType:               "CLOUD_APPLICATIONS",
 		Status:                    "SANCTIONED",
 		ExcludeCertificates:       4242,
-		PoorItemsOfService:        canary,
-		AdminAuditLogs:            canary,
-		DataBreach:                canary,
+		PoorItemsOfService:        criterion,
+		AdminAuditLogs:            criterion,
+		DataBreach:                criterion,
 		SourceIpRestrictions:      "YES",
-		MfaSupport:                canary,
-		SslPinned:                 canary,
-		HttpSecurityHeaders:       canary,
-		Evasive:                   canary,
-		DnsCaaPolicy:              canary,
-		WeakCipherSupport:         canary,
-		PasswordStrength:          canary,
-		SslCertValidity:           canary,
-		Vulnerability:             canary,
-		MalwareScanningForContent: canary,
-		FileSharing:               canary,
-		SslCertKeySize:            canary,
-		VulnerableToHeartBleed:    canary,
-		VulnerableToLogJam:        canary,
-		VulnerableToPoodle:        canary,
-		VulnerabilityDisclosure:   canary,
-		SupportForWaf:             canary,
-		RemoteScreenSharing:       canary,
-		SenderPolicyFramework:     canary,
-		DomainKeysIdentifiedMail:  canary,
-		DomainBasedMessageAuth:    canary,
+		MfaSupport:                criterion,
+		SslPinned:                 criterion,
+		HttpSecurityHeaders:       criterion,
+		Evasive:                   criterion,
+		DnsCaaPolicy:              criterion,
+		WeakCipherSupport:         criterion,
+		PasswordStrength:          criterion,
+		SslCertValidity:           criterion,
+		Vulnerability:             criterion,
+		MalwareScanningForContent: criterion,
+		FileSharing:               criterion,
+		SslCertKeySize:            criterion,
+		VulnerableToHeartBleed:    criterion,
+		VulnerableToLogJam:        criterion,
+		VulnerableToPoodle:        criterion,
+		VulnerabilityDisclosure:   criterion,
+		SupportForWaf:             criterion,
+		RemoteScreenSharing:       criterion,
+		SenderPolicyFramework:     criterion,
+		DomainKeysIdentifiedMail:  criterion,
+		DomainBasedMessageAuth:    criterion,
 		LastModTime:               1700000400,
 		CreateTime:                1700000500,
-		Certifications:            []string{canary},
-		DataEncryptionInTransit:   []string{canary},
+		Certifications:            []string{criterion},
+		DataEncryptionInTransit:   []string{criterion},
 		RiskIndex:                 []int{4242},
-		ModifiedBy:                &ziacommon.IDNameExtensions{ID: 61, Name: "Risk admin"},
-		CustomTags:                []ziacommon.IDNameExternalID{{ID: 62, Name: "tag-context", ExternalID: canary}},
+		ModifiedBy: &ziacommon.IDNameExtensions{
+			ID:         61,
+			Name:       "Risk admin",
+			Extensions: map[string]any{"token": canary},
+		},
+		CustomTags: []ziacommon.IDNameExternalID{{
+			ID:         62,
+			Name:       "tag-context",
+			ExternalID: "tag-external-62",
+			Extensions: map[string]any{"token": canary},
+		}},
 	}
+	records := []resources.SourceRecord{riskProfileSourceRecord(profile)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceRiskProfiles, []resources.SourceRecord{riskProfileSourceRecord(profile)})
-	assertNoCanaries(t, "risk-profiles", got, canary)
-	assertFieldsAbsent(t, "risk-profiles", got,
-		"adminAuditLogs", "certifications", "dataBreach", "dataEncryptionInTransit",
-		"dnsCaaPolicy", "domainBasedMessageAuth", "domainKeysIdentifiedMail", "evasive",
-		"excludeCertificates", "fileSharing", "httpSecurityHeaders", "malwareScanningForContent",
-		"mfaSupport", "passwordStrength", "poorItemsOfService", "remoteScreenSharing",
-		"riskIndex", "senderPolicyFramework", "sslCertKeySize", "sslCertValidity",
+	stringCriteria := []string{
+		"adminAuditLogs", "dataBreach", "dnsCaaPolicy", "domainBasedMessageAuth",
+		"domainKeysIdentifiedMail", "evasive", "fileSharing", "httpSecurityHeaders",
+		"malwareScanningForContent", "mfaSupport", "passwordStrength", "poorItemsOfService",
+		"remoteScreenSharing", "senderPolicyFramework", "sslCertKeySize", "sslCertValidity",
 		"sslPinned", "supportForWaf", "vulnerability", "vulnerabilityDisclosure",
 		"vulnerableToHeartBleed", "vulnerableToLogJam", "vulnerableToPoodle", "weakCipherSupport",
-	)
+	}
+	listCriteria := map[string]string{
+		"certifications":          "[" + criterion + "]",
+		"dataEncryptionInTransit": "[" + criterion + "]",
+		"riskIndex":               "[4242]",
+	}
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		got := projectOneRecordInMode(t, resources.ProductZIA, resourceRiskProfiles, mode, records)
+		label := "risk-profiles (" + string(mode) + ")"
+		assertNoCanaries(t, label, got, canary)
+		for _, field := range stringCriteria {
+			if got[field] != criterion {
+				t.Errorf("projected %s %s = %v, want %s", label, field, got[field], criterion)
+			}
+		}
+		for field, want := range listCriteria {
+			if fmt.Sprint(got[field]) != want {
+				t.Errorf("projected %s %s = %#v, want %s", label, field, got[field], want)
+			}
+		}
+		if got["excludeCertificates"] != 4242 {
+			t.Errorf("projected %s excludeCertificates = %v, want 4242", label, got["excludeCertificates"])
+		}
+	}
+
+	got := projectOneRecord(t, resources.ProductZIA, resourceRiskProfiles, records)
 	if got["profileName"] != "Risk profile" {
 		t.Errorf("projected risk-profiles profileName = %v, want Risk profile", got["profileName"])
 	}
@@ -369,12 +586,18 @@ func TestRiskProfileSourceRecordDropsRiskAttributes(t *testing.T) {
 	if modifiedBy["name"] != "Risk admin" {
 		t.Errorf("projected risk-profiles modifiedBy = %#v, want name Risk admin", modifiedBy)
 	}
+	if _, ok := modifiedBy["extensions"]; ok {
+		t.Errorf("projected risk-profiles modifiedBy = %#v, want no extensions", modifiedBy)
+	}
 	customTag := mustFirstProjectedItem(t, got, "customTags")
 	if customTag["name"] != "tag-context" {
 		t.Errorf("projected risk-profiles customTags[0] = %#v, want name tag-context", customTag)
 	}
-	if _, ok := customTag["externalId"]; ok {
-		t.Errorf("projected risk-profiles customTags[0] = %#v, want no externalId", customTag)
+	if customTag["externalId"] != "tag-external-62" {
+		t.Errorf("projected risk-profiles customTags[0] = %#v, want externalId tag-external-62", customTag)
+	}
+	if _, ok := customTag["extensions"]; ok {
+		t.Errorf("projected risk-profiles customTags[0] = %#v, want no extensions", customTag)
 	}
 }
 
@@ -413,7 +636,10 @@ func TestNSSServerSourceRecordProjectsThroughAllowList(t *testing.T) {
 func TestNSSFeedSourceRecordDropsCredentials(t *testing.T) {
 	t.Parallel()
 
-	const canary = "nss-feed-psk-canary"
+	const (
+		canary         = "nss-feed-psk-canary"
+		standardCanary = "nss-feed-standard-canary"
+	)
 	feed := cloudnss.NSSFeed{
 		ID:                       609,
 		Name:                     "SIEM feed",
@@ -430,27 +656,49 @@ func TestNSSFeedSourceRecordDropsCredentials(t *testing.T) {
 		ConnectionURL:            "https://siem.internal.test/services/collector",
 		AuthenticationToken:      canary,
 		ConnectionHeaders:        []string{"X-Auth: " + canary},
-		Base64EncodedCertificate: canary,
+		Base64EncodedCertificate: standardCanary,
 		NssType:                  "NSS_FOR_WEB",
-		ClientID:                 canary,
+		ClientID:                 standardCanary,
 		ClientSecret:             canary,
 		AuthenticationUrl:        "https://login.internal.test/oauth2/token",
 		GrantType:                "CLIENT_CREDENTIALS",
-		Scope:                    canary,
+		Scope:                    standardCanary,
 		CloudNSS:                 true,
 		OauthAuthentication:      true,
 		ServerIps:                []string{"203.0.113.10"},
 		Domains:                  []string{"internal.test"},
-		Users:                    []ziacommon.CommonNSS{{ID: 81, Name: canary}},
-		Locations:                []ziacommon.CommonNSS{{ID: 82, Name: canary}},
+		Users:                    []ziacommon.CommonNSS{{ID: 81, Name: standardCanary}},
+		Locations:                []ziacommon.CommonNSS{{ID: 82, Name: "HQ"}},
 	}
+	records := []resources.SourceRecord{nssFeedSourceRecord(feed)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceNSSFeeds, []resources.SourceRecord{nssFeedSourceRecord(feed)})
+	// Credentials (token, client secret, connection headers) never render.
+	got := projectOneRecord(t, resources.ProductZIA, resourceNSSFeeds, records)
 	assertNoCanaries(t, "nss-feeds", got, canary)
-	assertFieldsAbsent(t, "nss-feeds", got,
-		"authenticationToken", "clientId", "clientSecret", "scope",
-		"base64EncodedCertificate", "connectionHeaders", "users", "locations",
-	)
+	assertFieldsAbsent(t, "nss-feeds", got, "authenticationToken", "clientSecret", "connectionHeaders")
+	// OAuth client id, scope and certificate are standard-only identifiers;
+	// filter entries render with their ids in every mode.
+	for _, field := range []string{"clientId", "scope", "base64EncodedCertificate"} {
+		if got[field] != standardCanary {
+			t.Errorf("projected nss-feeds %s = %v, want %s", field, got[field], standardCanary)
+		}
+	}
+	if user := mustFirstProjectedItem(t, got, "users"); user["id"] != 81 || user["name"] != standardCanary {
+		t.Errorf("projected nss-feeds users[0] = %#v, want id 81 name %s", user, standardCanary)
+	}
+	if location := mustFirstProjectedItem(t, got, "locations"); location["id"] != 82 || location["name"] != "HQ" {
+		t.Errorf("projected nss-feeds locations[0] = %#v, want id 82 name HQ", location)
+	}
+	for mode, wider := range projectSourceRecordInModes(t, resourceNSSFeeds, records, canary, standardCanary) {
+		label := "nss-feeds (" + string(mode) + ")"
+		assertFieldsAbsent(t, label, wider,
+			"authenticationToken", "clientSecret", "connectionHeaders",
+			"clientId", "scope", "base64EncodedCertificate",
+		)
+		if user := mustFirstProjectedItem(t, wider, "users"); user["id"] != 81 {
+			t.Errorf("projected %s users[0] = %#v, want id 81", label, user)
+		}
+	}
 	if got["name"] != "SIEM feed" {
 		t.Errorf("projected nss-feeds name = %v, want SIEM feed", got["name"])
 	}
@@ -471,7 +719,10 @@ func TestNSSFeedSourceRecordDropsCredentials(t *testing.T) {
 func TestFileTypeRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const canary = "file-type-rule-psk-canary"
+	const (
+		canary    = "file-type-rule-psk-canary"
+		adminName = "file-type-rule-admin"
+	)
 	rule := filetypecontrol.FileTypeRules{
 		ID:                   610,
 		Name:                 "File type rule",
@@ -497,14 +748,21 @@ func TestFileTypeRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 		URLCategories:        []string{"FINANCE"},
 		DeviceTrustLevels:    []string{"HIGH_TRUST"},
 		LastModifiedTime:     1700000600,
-		LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 91, Name: canary},
-		Locations:            []ziacommon.IDNameExtensions{{ID: 92, Name: "HQ"}},
-		ZPAAppSegments:       []ziacommon.ZPAAppSegments{{ID: 93, Name: "Segment", ExternalID: canary}},
+		LastModifiedBy:       &ziacommon.IDNameExtensions{ID: 91, Name: adminName},
+		Locations:            []ziacommon.IDNameExtensions{{ID: 92, Name: "HQ", Extensions: map[string]any{"token": canary}}},
+		ZPAAppSegments:       []ziacommon.ZPAAppSegments{{ID: 93, Name: "Segment", ExternalID: "segment-external-93"}},
 	}
+	records := []resources.SourceRecord{fileTypeRuleSourceRecord(rule)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceFileTypeRules, []resources.SourceRecord{fileTypeRuleSourceRecord(rule)})
+	got := projectOneRecord(t, resources.ProductZIA, resourceFileTypeRules, records)
 	assertNoCanaries(t, "file-type-rules", got, canary)
-	assertFieldsAbsent(t, "file-type-rules", got, "passwordProtected", "lastModifiedBy")
+	if got["passwordProtected"] != true {
+		t.Errorf("projected file-type-rules passwordProtected = %v, want true", got["passwordProtected"])
+	}
+	assertAdminRef(t, "file-type-rules", got, "lastModifiedBy", 91, adminName)
+	for mode, wider := range projectSourceRecordInModes(t, resourceFileTypeRules, records, canary, adminName) {
+		assertAdminRef(t, "file-type-rules ("+string(mode)+")", wider, "lastModifiedBy", 91, "")
+	}
 	if got["name"] != "File type rule" {
 		t.Errorf("projected file-type-rules name = %v, want File type rule", got["name"])
 	}
@@ -522,15 +780,18 @@ func TestFileTypeRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 	if segment["name"] != "Segment" {
 		t.Errorf("projected file-type-rules zpaAppSegments[0] = %#v, want name Segment", segment)
 	}
-	if _, ok := segment["externalId"]; ok {
-		t.Errorf("projected file-type-rules zpaAppSegments[0] = %#v, want no externalId", segment)
+	if segment["externalId"] != "segment-external-93" {
+		t.Errorf("projected file-type-rules zpaAppSegments[0] = %#v, want externalId segment-external-93", segment)
 	}
 }
 
 func TestSandboxRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const canary = "sandbox-rule-psk-canary"
+	const (
+		canary    = "sandbox-rule-psk-canary"
+		adminName = "sandbox-rule-admin"
+	)
 	rule := sandboxrules.SandboxRules{
 		ID:                 611,
 		Name:               "Sandbox rule",
@@ -549,15 +810,19 @@ func TestSandboxRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 		FileTypes:          []string{"FTCATEGORY_BZIP2"},
 		URLCategories:      []string{"FINANCE"},
 		LastModifiedTime:   1700000700,
-		LastModifiedBy:     &ziacommon.IDNameExtensions{ID: 95, Name: canary},
-		Labels:             []ziacommon.IDNameExtensions{{ID: 96, Name: "Label"}},
-		ZPAAppSegments:     []ziacommon.ZPAAppSegments{{ID: 97, Name: "Segment", ExternalID: canary}},
+		LastModifiedBy:     &ziacommon.IDNameExtensions{ID: 95, Name: adminName},
+		Labels:             []ziacommon.IDNameExtensions{{ID: 96, Name: "Label", Extensions: map[string]any{"token": canary}}},
+		ZPAAppSegments:     []ziacommon.ZPAAppSegments{{ID: 97, Name: "Segment", ExternalID: "segment-external-97"}},
 		DefaultRule:        true,
 	}
+	records := []resources.SourceRecord{sandboxRuleSourceRecord(rule)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceSandboxRules, []resources.SourceRecord{sandboxRuleSourceRecord(rule)})
+	got := projectOneRecord(t, resources.ProductZIA, resourceSandboxRules, records)
 	assertNoCanaries(t, "sandbox-rules", got, canary)
-	assertFieldsAbsent(t, "sandbox-rules", got, "lastModifiedBy")
+	assertAdminRef(t, "sandbox-rules", got, "lastModifiedBy", 95, adminName)
+	for mode, wider := range projectSourceRecordInModes(t, resourceSandboxRules, records, canary, adminName) {
+		assertAdminRef(t, "sandbox-rules ("+string(mode)+")", wider, "lastModifiedBy", 95, "")
+	}
 	if got["baRuleAction"] != "BLOCK" {
 		t.Errorf("projected sandbox-rules baRuleAction = %v, want BLOCK", got["baRuleAction"])
 	}
@@ -572,15 +837,18 @@ func TestSandboxRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 		t.Errorf("projected sandbox-rules labels[0] = %#v, want name Label", label)
 	}
 	segment := mustFirstProjectedItem(t, got, "zpaAppSegments")
-	if _, ok := segment["externalId"]; ok {
-		t.Errorf("projected sandbox-rules zpaAppSegments[0] = %#v, want no externalId", segment)
+	if segment["externalId"] != "segment-external-97" {
+		t.Errorf("projected sandbox-rules zpaAppSegments[0] = %#v, want externalId segment-external-97", segment)
 	}
 }
 
 func TestFirewallDNSRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 	t.Parallel()
 
-	const canary = "firewall-dns-rule-psk-canary"
+	const (
+		canary    = "firewall-dns-rule-psk-canary"
+		adminName = "dns-rule-admin"
+	)
 	rule := firewalldnscontrolpolicies.FirewallDNSRules{
 		ID:                  612,
 		Name:                "DNS rule",
@@ -593,7 +861,7 @@ func TestFirewallDNSRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 		RedirectIP:          "203.0.113.20",
 		BlockResponseCode:   "SERVFAIL",
 		LastModifiedTime:    1700000800,
-		LastModifiedBy:      &ziacommon.IDNameExtensions{ID: 101, Name: canary},
+		LastModifiedBy:      &ziacommon.IDNameExtensions{ID: 101, Name: adminName},
 		SrcIps:              []string{"198.51.100.7"},
 		DestAddresses:       []string{"203.0.113.30"},
 		DestCountries:       []string{"COUNTRY_CA"},
@@ -606,9 +874,13 @@ func TestFirewallDNSRuleSourceRecordProjectsThroughAllowList(t *testing.T) {
 		Locations:           []ziacommon.IDNameExtensions{{ID: 104, Name: "HQ"}},
 	}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceFirewallDNSRules, []resources.SourceRecord{firewallDNSRuleSourceRecord(rule)})
+	records := []resources.SourceRecord{firewallDNSRuleSourceRecord(rule)}
+	got := projectOneRecord(t, resources.ProductZIA, resourceFirewallDNSRules, records)
 	assertNoCanaries(t, "firewall-dns-rules", got, canary)
-	assertFieldsAbsent(t, "firewall-dns-rules", got, "lastModifiedBy")
+	assertAdminRef(t, "firewall-dns-rules", got, "lastModifiedBy", 101, adminName)
+	for mode, wider := range projectSourceRecordInModes(t, resourceFirewallDNSRules, records, canary, adminName) {
+		assertAdminRef(t, "firewall-dns-rules ("+string(mode)+")", wider, "lastModifiedBy", 101, "")
+	}
 	// Nil-pointer arms of addIDNamePtr: unset references must stay absent.
 	assertFieldsAbsent(t, "firewall-dns-rules", got, "zpaIpGroup", "ednsEcsObject")
 	if got["action"] != "BLOCK" {
@@ -657,10 +929,16 @@ func TestCustomFileTypeSourceRecordProjectsThroughAllowList(t *testing.T) {
 	}
 }
 
-func TestZPAGatewaySourceRecordDropsExternalIdentifiers(t *testing.T) {
+// TestZPAGatewaySourceRecordDropsReferenceExtensions pins the ZPA server
+// group and app segment references: their external ids (the ZPA object ids)
+// render, their extensions never do.
+func TestZPAGatewaySourceRecordDropsReferenceExtensions(t *testing.T) {
 	t.Parallel()
 
-	const canary = "zpa-gateway-psk-canary"
+	const (
+		canary    = "zpa-gateway-psk-canary"
+		adminName = "zpa-gateway-admin"
+	)
 	gateway := zpagateways.ZPAGateways{
 		ID:          614,
 		Name:        "ZPA gateway",
@@ -668,21 +946,25 @@ func TestZPAGatewaySourceRecordDropsExternalIdentifiers(t *testing.T) {
 		ZPAServerGroup: zpagateways.ZPAServerGroup{
 			ID:         106,
 			Name:       "Server group",
-			ExternalID: canary,
+			ExternalID: "server-group-external-106",
 			Extensions: map[string]any{"token": canary},
 		},
 		ZPAAppSegments: []zpagateways.ZPAAppSegments{
-			{ID: 107, Name: "Segment", ExternalID: canary, Extensions: map[string]any{"token": canary}},
+			{ID: 107, Name: "Segment", ExternalID: "segment-external-107", Extensions: map[string]any{"token": canary}},
 		},
 		ZPATenantId:      108,
-		LastModifiedBy:   &ziacommon.IDNameExtensions{ID: 109, Name: canary},
+		LastModifiedBy:   &ziacommon.IDNameExtensions{ID: 109, Name: adminName},
 		LastModifiedTime: 1700000900,
 		Type:             "ZPA",
 	}
+	records := []resources.SourceRecord{zpaGatewaySourceRecord(gateway)}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceZPAGateways, []resources.SourceRecord{zpaGatewaySourceRecord(gateway)})
+	got := projectOneRecord(t, resources.ProductZIA, resourceZPAGateways, records)
 	assertNoCanaries(t, "zpa-gateways", got, canary)
-	assertFieldsAbsent(t, "zpa-gateways", got, "lastModifiedBy")
+	assertAdminRef(t, "zpa-gateways", got, "lastModifiedBy", 109, adminName)
+	for mode, wider := range projectSourceRecordInModes(t, resourceZPAGateways, records, canary, adminName) {
+		assertAdminRef(t, "zpa-gateways ("+string(mode)+")", wider, "lastModifiedBy", 109, "")
+	}
 	if got["name"] != "ZPA gateway" {
 		t.Errorf("projected zpa-gateways name = %v, want ZPA gateway", got["name"])
 	}
@@ -696,19 +978,21 @@ func TestZPAGatewaySourceRecordDropsExternalIdentifiers(t *testing.T) {
 	if serverGroup["name"] != "Server group" {
 		t.Errorf("projected zpa-gateways zpaServerGroup = %#v, want name Server group", serverGroup)
 	}
-	for _, secret := range []string{"externalId", "extensions"} {
-		if _, ok := serverGroup[secret]; ok {
-			t.Errorf("projected zpa-gateways zpaServerGroup = %#v, want no %s", serverGroup, secret)
-		}
+	if serverGroup["externalId"] != "server-group-external-106" {
+		t.Errorf("projected zpa-gateways zpaServerGroup = %#v, want externalId server-group-external-106", serverGroup)
+	}
+	if _, ok := serverGroup["extensions"]; ok {
+		t.Errorf("projected zpa-gateways zpaServerGroup = %#v, want no extensions", serverGroup)
 	}
 	segment := mustFirstProjectedItem(t, got, "zpaAppSegments")
 	if segment["name"] != "Segment" {
 		t.Errorf("projected zpa-gateways zpaAppSegments[0] = %#v, want name Segment", segment)
 	}
-	for _, secret := range []string{"externalId", "extensions"} {
-		if _, ok := segment[secret]; ok {
-			t.Errorf("projected zpa-gateways zpaAppSegments[0] = %#v, want no %s", segment, secret)
-		}
+	if segment["externalId"] != "segment-external-107" {
+		t.Errorf("projected zpa-gateways zpaAppSegments[0] = %#v, want externalId segment-external-107", segment)
+	}
+	if _, ok := segment["extensions"]; ok {
+		t.Errorf("projected zpa-gateways zpaAppSegments[0] = %#v, want no extensions", segment)
 	}
 
 	// Empty-slice arm: a gateway with no app segments must not render the key.
@@ -720,22 +1004,25 @@ func TestZPAGatewaySourceRecordDropsExternalIdentifiers(t *testing.T) {
 func TestC2CIncidentReceiverSourceRecordDropsTenantAuthorization(t *testing.T) {
 	t.Parallel()
 
-	const canary = "c2c-incident-receiver-psk-canary"
+	const (
+		canary         = "c2c-incident-receiver-psk-canary"
+		standardCanary = "c2c-standard-canary"
+	)
 	receiver := c2cincidentreceiver.C2CIncidentReceiver{
 		ID:                       616,
 		Name:                     "C2C receiver",
 		Status:                   []string{"ENABLED"},
 		ModifiedTime:             1700001000,
 		LastTenantValidationTime: 1700001100,
-		LastValidationMsg:        &c2cincidentreceiver.LastValidationMsg{ErrorMsg: canary, ErrorCode: canary},
-		LastModifiedBy:           &ziacommon.IDNameExtensions{ID: 111, Name: canary},
+		LastValidationMsg:        &c2cincidentreceiver.LastValidationMsg{ErrorMsg: standardCanary, ErrorCode: "VALIDATION_FAILED"},
+		LastModifiedBy:           &ziacommon.IDNameExtensions{ID: 111, Name: standardCanary},
 		OnboardableEntity: &c2cincidentreceiver.OnboardableEntity{
 			ID:                 112,
 			Name:               "Onboardable entity",
 			Type:               "INCIDENT_RECEIVER",
 			EnterpriseTenantID: "tenant-ref-1",
 			Application:        "ZSCALER_INCIDENT_RECEIVER",
-			LastValidationMsg:  c2cincidentreceiver.LastValidationMsg{ErrorMsg: canary},
+			LastValidationMsg:  c2cincidentreceiver.LastValidationMsg{ErrorMsg: standardCanary, ErrorCode: "OK"},
 			TenantAuthorizationInfo: c2cincidentreceiver.TenantAuthorizationInfo{
 				AccessToken: canary,
 				BotToken:    canary,
@@ -744,9 +1031,23 @@ func TestC2CIncidentReceiverSourceRecordDropsTenantAuthorization(t *testing.T) {
 		},
 	}
 
-	got := projectOneRecord(t, resources.ProductZIA, resourceC2CIncidentRcvs, []resources.SourceRecord{c2cIncidentReceiverSourceRecord(receiver)})
+	records := []resources.SourceRecord{c2cIncidentReceiverSourceRecord(receiver)}
+	got := projectOneRecord(t, resources.ProductZIA, resourceC2CIncidentRcvs, records)
 	assertNoCanaries(t, "c2c-incident-receivers", got, canary)
-	assertFieldsAbsent(t, "c2c-incident-receivers", got, "lastValidationMsg", "lastModifiedBy")
+	assertAdminRef(t, "c2c-incident-receivers", got, "lastModifiedBy", 111, standardCanary)
+	validation := mustProjectedMap(t, got, "lastValidationMsg")
+	if validation["errorMsg"] != standardCanary || validation["errorCode"] != "VALIDATION_FAILED" {
+		t.Errorf("projected c2c-incident-receivers lastValidationMsg = %#v, want errorMsg and errorCode", validation)
+	}
+	// The tenant authorization (access and bot tokens) never renders; the
+	// validation message and admin name are standard-only.
+	for mode, wider := range projectSourceRecordInModes(t, resourceC2CIncidentRcvs, records, canary, standardCanary) {
+		label := "c2c-incident-receivers (" + string(mode) + ")"
+		assertAdminRef(t, label, wider, "lastModifiedBy", 111, "")
+		if validation := mustProjectedMap(t, wider, "lastValidationMsg"); validation["errorCode"] != "VALIDATION_FAILED" {
+			t.Errorf("projected %s lastValidationMsg = %#v, want errorCode only", label, validation)
+		}
+	}
 	if got["name"] != "C2C receiver" {
 		t.Errorf("projected c2c-incident-receivers name = %v, want C2C receiver", got["name"])
 	}
@@ -760,10 +1061,11 @@ func TestC2CIncidentReceiverSourceRecordDropsTenantAuthorization(t *testing.T) {
 	if entity["enterpriseTenantId"] != "tenant-ref-1" {
 		t.Errorf("projected c2c-incident-receivers onboardableEntity = %#v, want enterpriseTenantId tenant-ref-1", entity)
 	}
-	for _, secret := range []string{"lastValidationMsg", "tenantAuthorizationInfo"} {
-		if _, ok := entity[secret]; ok {
-			t.Errorf("projected c2c-incident-receivers onboardableEntity = %#v, want no %s", entity, secret)
-		}
+	if _, ok := entity["tenantAuthorizationInfo"]; ok {
+		t.Errorf("projected c2c-incident-receivers onboardableEntity = %#v, want no tenantAuthorizationInfo", entity)
+	}
+	if validation := mustProjectedMap(t, entity, "lastValidationMsg"); validation["errorMsg"] != standardCanary || validation["errorCode"] != "OK" {
+		t.Errorf("projected c2c-incident-receivers onboardableEntity.lastValidationMsg = %#v, want errorMsg and errorCode", validation)
 	}
 	appTenant, ok := entity["zscalerAppTenantId"].(map[string]any)
 	if !ok {

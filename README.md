@@ -33,7 +33,7 @@ See [docs/RESOURCES.md](docs/RESOURCES.md) for the resource reference and [docs/
 
 Release archives for macOS, Linux, and Windows include checksums, CycloneDX SBOMs, and GitHub provenance attestations. See [docs/INSTALL.md](docs/INSTALL.md) for verification, credentials, proxy, completions, and platform notes.
 
-With Go 1.26.6 or newer (no checkout needed):
+With Go 1.26.10 or newer (no checkout needed):
 
 ```sh
 go install github.com/dvmrry/zscalerctl/cmd/zscalerctl@latest
@@ -90,6 +90,7 @@ Use an existing complete dump with normal resource commands:
 zscalerctl --format json --from-dump ./scratch-live-dump --fields id,name --limit 20 zia locations list
 zscalerctl --format json --from-dump ./scratch-live-dump zia locations get 12345
 zscalerctl --format json schema describe zia url-filtering-rules
+zscalerctl --format json schema references zia locations
 ```
 
 `--from-dump` bypasses configuration, credentials, secret providers and network
@@ -104,6 +105,10 @@ applies the normal narrowing options. Separate calls reload the directory.
 ZIA locations, URL filtering rules and rule labels. It describes selected
 catalog fields and confirmed references; other known resources explicitly
 report `not_reviewed`. It does not change the existing `schema list` contract.
+`schema references <product> <resource>` lists the catalog fields that point at
+a resource, with the `--filter` path that holds its id.
+`schema gaps [product]` lists the Zscaler surfaces zscalerctl does not read,
+and why, so an absent resource is not mistaken for an empty one.
 These development capabilities must be discovered on the installed binary
 before use. See the [agent workflow](docs/cli/agent-machine-workflow.md),
 [implementation scope and follow-on experiments](docs/CORE_INVESTIGATION_SCOPE.md),
@@ -122,6 +127,11 @@ export ZSCALERCTL_ZPA_CUSTOMER_ID=<zpa-customer-id>          # ZPA resources onl
 export ZSCALERCTL_ZPA_MICROTENANT_ID=<zpa-microtenant-id>   # optional, ZPA microtenants
 ```
 
+`ZSCALERCTL_CLOUD` names the OneAPI gateway, not the cloud your products run
+on: tenants on zscalertwo, zscalerthree, ZPATWO and the other product clouds
+use `PRODUCTION`. The accepted values are `PRODUCTION` (the default),
+`ALPHA`, `BETA`, `GOV` and `GOVUS`.
+
 ZIA legacy credentials are supported for ZIA resources. Legacy, profile, proxy, Windows, and secret-file details live in [docs/INSTALL.md](docs/INSTALL.md). Environment variables remain the highest-precedence configuration path; optional owner-only profiles are for local operator convenience. Corporate proxy use is opt-in via `ZSCALERCTL_PROXY_FROM_ENV=true`.
 
 Zidentity on OneAPI `gov`/`govus` clouds is currently unsupported because the
@@ -136,8 +146,8 @@ Exit codes are stable for scripting:
 | --- | --- |
 | `0` | Success |
 | `1` | Internal, canceled, or unclassified failure |
-| `2` | Usage or argument error |
-| `3` | Missing or invalid credentials |
+| `2` | Usage or argument error, or an unusable setting |
+| `3` | Missing credentials: unset, incomplete, or a secret that could not be resolved (credentials the API rejects are `5`) |
 | `4` | Product/resource not found or unsupported |
 | `5` | Live Zscaler API access failure, including machine request deadline exceeded |
 | `6` | Partial dump written (inspect `manifest.json` and `errors.ndjson`) |
@@ -149,10 +159,21 @@ Configuration and proxy errors (an invalid `ZSCALERCTL_*` value) map to `2`; mac
 { "error": { "kind": "missing_credentials", "message": "missing zscaler API credentials" } }
 ```
 
-List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Filters and search apply to `list` only and run after projection and redaction. Unknown `--filter` or `--fields` names fail with usage exit `2` before configuration or credentials are loaded. A known field suppressed by redaction stays omitted or nonmatching; narrowing cannot widen the sanitized output. Discover exact names with `--format json schema list`. No matches is success with an empty result.
+A live read failure also says why: `reason` (`credentials_rejected`, `forbidden`, `unauthorized`, `not_subscribed`, `rate_limited`, `server_error`, `transport`, `timeout`, `pagination_incomplete`, `decode_failed`, `not_found`, `client_error`, `unknown`), the HTTP `status` when there was a response, and `retryable: true` when a retry could succeed. Dump `errors.ndjson` records carry the same fields.
+
+```json
+{ "error": { "kind": "live_access_failed", "message": "resource read failed: forbidden (HTTP 403)", "operation": "list", "product": "zia", "resource": "dlp-dictionaries", "reason": "forbidden", "status": 403 } }
+```
+
+List results can be narrowed in-process: `--filter key=value` keeps records whose rendered field equals the value, `--filter key~value` matches a case-insensitive substring, repeated filters must all match (AND), and `--search term` keeps records where any rendered field value contains the term. Filters and search apply to `list` only and run after projection and redaction. Unknown `--filter` or `--fields` names fail with usage exit `2` before configuration or credentials are loaded. A `--filter` on a known field the active redaction mode omits (or on a secret field) is also a usage error (exit `2`), since it could never match; when the mode omits fields, a successful read names them on stderr. Narrowing cannot widen the sanitized output. Discover exact names with `--format json schema list`. No matches is success with an empty result.
+
+`--count-by a,b` counts list records instead of listing them: records are grouped by the values at each path, a path into a list such as `groups.id` counts per element (members per group on `zia users`), and records with no value count under `null`. Paths through the same list pair values from the same element. JSON output is `{"count_by", "records", "distinct", "truncated", "counts"}`, each count `{"values": {path: value}, "count": N}`, largest first; `--limit N` keeps the top N and sets `truncated` when it dropped any. Filters and search apply first.
+
+A filter key can be a dotted path into nested fields, such as `groups.name` or `groups.id`. A path matches when any element it reaches matches, so `--filter groups.name=APP_DEV` keeps users in a group named exactly `APP_DEV` and not one named `APP_INFOSEC_DEV`. A path must end at a field without nested fields; `schema list` shows nested names under each field's `fields`. Repeated dotted filters are matched independently, so `--filter groups.name=APP_DEV --filter groups.id=11` can be satisfied by two different groups. A top-level key (`groups~DEV`) matches against the whole rendered value, and a top-level list also matches when any one element does, so `--filter urlCategories=SOCIAL_NETWORKING` keeps every rule that lists that category. `--fields` takes the same dotted paths: `--fields name,groups.id` keeps each record's `groups` with only `id` in each element (`"groups":[{"id":1},{"id":2}]`), and a table gets a `groups.id` column.
 
 ```sh
 zscalerctl zia locations list --filter country=US --filter name~branch
+zscalerctl zia users list --filter groups.name=APP_DEV
 ```
 
 For agents, use explicit JSON and bounded output when the installed binary

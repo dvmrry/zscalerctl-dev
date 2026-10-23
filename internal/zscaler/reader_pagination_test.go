@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	sdkerrorx "github.com/zscaler/zscaler-sdk-go/v3/zscaler/errorx"
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +17,8 @@ import (
 	zcccommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zcc/services/common"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/location/locationgroups"
 	"github.com/zscaler/zscaler-sdk-go/v3/zscaler/zia/services/urlfilteringpolicies"
+
+	"github.com/dvmrry/zscalerctl/internal/resources"
 )
 
 // TestZCCPaginateCeilingFailsClosed drives the zccPaginate page ceiling: an
@@ -259,6 +263,100 @@ func TestZCCListHandlersAvoidUnboundedSDKPagination(t *testing.T) {
 			t.Errorf("reader_zcc.go missing bounded paginator wiring %q", required)
 		}
 	}
+	if got, want := strings.Count(source, "return zccPaginateWithTotalCount(ctx, func"), 5; got != want {
+		t.Errorf("reader_zcc.go total-count paginator wiring count = %d, want %d", got, want)
+	}
+}
+
+func TestZCCApplicationProfilesHonorsTotalCountAcrossShortPages(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	repeatedPageContent := false
+	var productRequests []*http.Request
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := []byte("{\"access_token\":\"test-token\",\"expires_in\":60}")
+		statusCode := http.StatusOK
+		if request.URL.Path == "/zcc/papi/public/v1/application-profiles" {
+			cloned := request.Clone(request.Context())
+			clonedURL := *request.URL
+			cloned.URL = &clonedURL
+			productRequests = append(productRequests, cloned)
+
+			switch page := request.URL.Query().Get("page"); {
+			case repeatedPageContent && (page == "1" || page == "2"):
+				// Replaying page 1 as page 2 reaches the declared total
+				// without ever fetching records 3 and 4.
+				body = []byte("{\"totalCount\":4,\"policies\":[{\"id\":1,\"name\":\"first\"},{\"id\":2,\"name\":\"second\"}]}")
+			case !repeatedPageContent && page == "1":
+				body = []byte("{\"totalCount\":3,\"policies\":[{\"id\":1,\"name\":\"first\"}]}")
+			case !repeatedPageContent && page == "2":
+				body = []byte("{\"totalCount\":3,\"policies\":[{\"id\":2,\"name\":\"second\"},{\"id\":3,\"name\":\"third\"}]}")
+			default:
+				statusCode = http.StatusBadRequest
+				body = []byte("{\"message\":\"unexpected page\"}")
+			}
+		} else if request.URL.Path != "/oauth2/v1/token" {
+			statusCode = http.StatusNotFound
+			body = []byte("{}")
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZCCHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	handlers := make(map[resourceKey]resourceHandler)
+	addZCCHandlers(handlers, sdkClient{
+		services: fixedService{cfg: cfg, sdkService: service},
+	})
+	handler := handlers[resourceKey{product: resources.ProductZCC, name: resourceZCCAppProfiles}]
+	if handler == nil {
+		t.Fatal("application-profiles handler = nil, want registered handler")
+	}
+	records, err := handler.List(context.Background())
+	if err != nil {
+		t.Fatalf("application-profiles handler List() error = %v, want nil", err)
+	}
+	if got, want := len(records), 3; got != want {
+		t.Fatalf("application-profiles record count = %d, want %d", got, want)
+	}
+	if got, want := len(productRequests), 2; got != want {
+		t.Fatalf("application-profiles request count = %d, want %d", got, want)
+	}
+	for index, request := range productRequests {
+		query := request.URL.Query()
+		if got, want := query.Get("page"), strconv.Itoa(index+1); got != want {
+			t.Errorf("request %d page = %q, want %q", index+1, got, want)
+		}
+		if got, want := query.Get("pageSize"), strconv.Itoa(zccPageSize); got != want {
+			t.Errorf("request %d pageSize = %q, want %q", index+1, got, want)
+		}
+	}
+
+	repeatedPageContent = true
+	productRequests = nil
+	reader := &SDKReader{handlers: handlers}
+	repeatedRecords, err := reader.List(context.Background(), resources.ProductZCC, resourceZCCAppProfiles)
+	if !errors.Is(err, ErrLiveAccessFailed) {
+		t.Fatalf("application-profiles reader List(repeated page) error = %v, want ErrLiveAccessFailed", err)
+	}
+	if repeatedRecords != nil {
+		t.Errorf("application-profiles reader List(repeated page) records = %#v, want nil", repeatedRecords)
+	}
+	if got, want := len(productRequests), 2; got != want {
+		t.Errorf("application-profiles repeated-page request count = %d, want %d", got, want)
+	}
 }
 
 func TestZTWPaginateCeilingFailsClosed(t *testing.T) {
@@ -434,12 +532,11 @@ func TestZTWListHandlersAvoidUnboundedSDKPagination(t *testing.T) {
 func TestZIAPaginateCeilingFailsClosed(t *testing.T) {
 	t.Parallel()
 
-	const pageSize = 10000
+	const pageSize = 1
 	calls := 0
-	full := make([]int, pageSize)
-	_, err := ziaPaginate(context.Background(), pageSize, func(_ context.Context, page, size int) ([]int, error) {
+	_, err := ziaPaginate(context.Background(), pageSize, func(_ context.Context, page, _ int) ([]int, error) {
 		calls++
-		return full, nil
+		return []int{page}, nil
 	})
 	if err == nil {
 		t.Fatal("ziaPaginate(always-full) error = nil, want ceiling error")
@@ -465,6 +562,248 @@ func TestZIAPaginateStopsOnShortPage(t *testing.T) {
 	}
 	if len(got) != pageSize+5 {
 		t.Errorf("ziaPaginate returned %d records, want %d", len(got), pageSize+5)
+	}
+}
+
+func TestZIAPaginateRejectsInvalidPageSize(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	got, err := ziaPaginate(context.Background(), 0, func(_ context.Context, _, _ int) ([]int, error) {
+		calls++
+		return nil, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "page size must be positive") {
+		t.Fatalf("ziaPaginate(page size 0) error = %v, want positive-page-size error", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(page size 0) result = %#v, want nil", got)
+	}
+	if calls != 0 {
+		t.Errorf("ziaPaginate(page size 0) calls = %d, want 0", calls)
+	}
+}
+
+func TestZIAPaginateContinuesWhenServerClampsPageSize(t *testing.T) {
+	t.Parallel()
+
+	const requestedPageSize = 1000
+	first := make([]int, 20)
+	second := make([]int, 20)
+	for index := range first {
+		first[index] = index + 1
+		second[index] = index + 21
+	}
+	pages := [][]int{first, second, {41, 42, 43}}
+	calls := 0
+	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, size int) ([]int, error) {
+		calls++
+		if size != requestedPageSize {
+			t.Errorf("ziaPaginate(clamped) requested page size = %d, want %d", size, requestedPageSize)
+		}
+		return pages[page-1], nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(clamped) error = %v, want nil", err)
+	}
+	if got, want := len(got), 43; got != want {
+		t.Errorf("ziaPaginate(clamped) record count = %d, want %d", got, want)
+	}
+	if calls != len(pages) {
+		t.Errorf("ziaPaginate(clamped) calls = %d, want %d", calls, len(pages))
+	}
+}
+
+func TestZIAPaginateConfirmsShortFirstPageWithEmptySecondPage(t *testing.T) {
+	t.Parallel()
+
+	const requestedPageSize = 1000
+	pages := [][]int{{1, 2, 3}, nil}
+	calls := 0
+	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, _ int) ([]int, error) {
+		calls++
+		return pages[page-1], nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(short first page) error = %v, want nil", err)
+	}
+	if got, want := len(got), 3; got != want {
+		t.Errorf("ziaPaginate(short first page) record count = %d, want %d", got, want)
+	}
+	if calls != len(pages) {
+		t.Errorf("ziaPaginate(short first page) calls = %d, want %d", calls, len(pages))
+	}
+}
+
+// TestZIAPaginateAcceptsEndpointThatIgnoresPaging covers an endpoint that
+// returns every record whatever page and pageSize say: page 2 repeats a short
+// page 1, a smaller page size still returns everything, so page 1 is complete.
+func TestZIAPaginateAcceptsEndpointThatIgnoresPaging(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]int, error) {
+		calls++
+		return []int{1, 2}, nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(unpaged endpoint) error = %v, want nil", err)
+	}
+	if !slices.Equal(got, []int{1, 2}) {
+		t.Errorf("ziaPaginate(unpaged endpoint) = %v, want [1 2]", got)
+	}
+	if calls != 3 {
+		t.Errorf("ziaPaginate(unpaged endpoint) calls = %d, want 3 (page 1, page 2, size probe)", calls)
+	}
+}
+
+// TestZIAPaginateRejectsRepeatWhenSmallerPageSizeIsHonored keeps the capping
+// case fail-closed: the endpoint repeats page 1 but honors a smaller page
+// size, so page 1 may be min(pageSize, cap) of a larger collection.
+func TestZIAPaginateRejectsRepeatWhenSmallerPageSizeIsHonored(t *testing.T) {
+	t.Parallel()
+
+	all := []int{1, 2}
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, size int) ([]int, error) {
+		return all[:min(size, len(all))], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "honored a smaller page size") {
+		t.Fatalf("ziaPaginate(capping endpoint) error = %v, want the capped-page error", err)
+	}
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("ziaPaginate(capping endpoint) error = %v, want errPaginationValidation", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(capping endpoint) result = %#v, want nil", got)
+	}
+}
+
+// TestZIAPaginateRejectsAdjacentRepeatedPage keeps a repeated full first page
+// fail-closed: the server filled the request and may hold more records.
+func TestZIAPaginateRejectsAdjacentRepeatedPage(t *testing.T) {
+	t.Parallel()
+
+	const requestedPageSize = 2
+	pages := [][]int{{1, 2}, {1, 2}}
+	calls := 0
+	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, _ int) ([]int, error) {
+		calls++
+		return pages[page-1], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "repeated page") {
+		t.Fatalf("ziaPaginate(adjacent repeated page) error = %v, want repeated-page error", err)
+	}
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("ziaPaginate(adjacent repeated page) error = %v, want errPaginationValidation", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(adjacent repeated page) result = %#v, want nil", got)
+	}
+	if calls != 2 {
+		t.Errorf("ziaPaginate(adjacent repeated page) calls = %d, want 2", calls)
+	}
+}
+
+func TestZIAPaginateRejectsRepeatedNonAdjacentPage(t *testing.T) {
+	t.Parallel()
+
+	const requestedPageSize = 1000
+	pages := [][]int{{1, 2}, {3, 4}, {1, 2}, {5}}
+	calls := 0
+	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, _ int) ([]int, error) {
+		calls++
+		return pages[page-1], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "repeated page") {
+		t.Fatalf("ziaPaginate(A/B/A/short) error = %v, want repeated-page error", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(A/B/A/short) result = %#v, want nil", got)
+	}
+	if calls != 3 {
+		t.Errorf("ziaPaginate(A/B/A/short) calls = %d, want 3", calls)
+	}
+}
+
+func TestZIAPaginateRejectsDuplicateRecordIdentities(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	pages := [][]item{
+		{{ID: 1, Name: "first"}, {ID: 2, Name: "second"}},
+		{{ID: 2, Name: "second-updated"}},
+	}
+	calls := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, page, _ int) ([]item, error) {
+		calls++
+		return pages[page-1], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate record identity") {
+		t.Fatalf("ziaPaginate(duplicate identity) error = %v, want duplicate-identity error", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(duplicate identity) result = %#v, want nil", got)
+	}
+	if calls != 2 {
+		t.Errorf("ziaPaginate(duplicate identity) calls = %d, want 2", calls)
+	}
+}
+
+func TestZIAPaginateIgnoresZeroValueRecordIdentities(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	pages := [][]item{
+		{{Name: "first"}, {Name: "second"}},
+		{{Name: "third"}},
+	}
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, page, _ int) ([]item, error) {
+		return pages[page-1], nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(zero-value identities) error = %v, want nil", err)
+	}
+	if got, want := len(got), 3; got != want {
+		t.Errorf("ziaPaginate(zero-value identities) record count = %d, want %d", got, want)
+	}
+}
+
+func TestZIAPaginatePageWidthGrowthFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	const requestedPageSize = 1000
+	pages := [][]int{make([]int, 20), make([]int, 21)}
+	got, err := ziaPaginate(context.Background(), requestedPageSize, func(_ context.Context, page, _ int) ([]int, error) {
+		return pages[page-1], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "page width changed") {
+		t.Fatalf("ziaPaginate(growing page width) error = %v, want page-width error", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(growing page width) result = %#v, want nil", got)
+	}
+}
+
+func TestZIAPaginatePropagatesPageFingerprintMarshalError(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		Callback func()
+	}
+	got, err := ziaPaginate(context.Background(), 1, func(_ context.Context, _, _ int) ([]item, error) {
+		return []item{{Callback: func() {}}}, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "fingerprint") {
+		t.Fatalf("ziaPaginate(unmarshalable page) error = %v, want fingerprint error", err)
+	}
+	if got != nil {
+		t.Errorf("ziaPaginate(unmarshalable page) result = %#v, want nil", got)
 	}
 }
 
@@ -571,12 +910,25 @@ func TestGetZIAAllPagesPreservesQueryAndReadsEveryPage(t *testing.T) {
 func TestNormalizeZIABrowserIsolationListError(t *testing.T) {
 	t.Parallel()
 
-	subscriptionErr := errors.New(
-		"request failed: Cloud Browser Isolation subscription is required (status 403)",
-	)
-	got := normalizeZIABrowserIsolationListError(subscriptionErr)
+	withStatus := func(code int) error {
+		return &sdkerrorx.ErrorResponse{
+			Response: &http.Response{StatusCode: code, Status: http.StatusText(code), Request: httptestRequest()},
+			Message:  "Cloud Browser Isolation subscription is required",
+		}
+	}
+	got := normalizeZIABrowserIsolationListError(withStatus(http.StatusForbidden))
 	if want := "NOT_SUBSCRIBED: Cloud Browser Isolation subscription is required"; got == nil || got.Error() != want {
-		t.Errorf("normalize subscription error = %v, want %q", got, want)
+		t.Errorf("normalize 403 subscription error = %v, want %q", got, want)
+	}
+	// The text alone is not a licence verdict: a 5xx or 429 keeps its own
+	// (retryable) classification, and so does an error with no status.
+	for _, code := range []int{http.StatusInternalServerError, http.StatusTooManyRequests, http.StatusRequestTimeout} {
+		if got := normalizeZIABrowserIsolationListError(withStatus(code)); errors.Is(got, errNotSubscribed) {
+			t.Errorf("normalize %d with subscription text = %v, want not NOT_SUBSCRIBED", code, got)
+		}
+	}
+	if got := normalizeZIABrowserIsolationListError(errors.New("Cloud Browser Isolation subscription is required")); errors.Is(got, errNotSubscribed) {
+		t.Errorf("normalize status-free subscription text = %v, want not NOT_SUBSCRIBED", got)
 	}
 
 	otherErr := errors.New("ordinary browser isolation failure")
@@ -641,31 +993,79 @@ func TestGetZIAUsersAllPagesPreservesSDKSortDefaults(t *testing.T) {
 	}
 }
 
-func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
+// urlCategoryPageServer fakes /zia/api/v1/urlCategories the way the live API
+// behaves: whatever page size is requested, it returns at most 20 records per
+// page, and pages past the inventory are empty. With ignorePage it returns the
+// first page for every request instead.
+// urlCategoryPaging selects how the fake urlCategories endpoint pages.
+type urlCategoryPaging int
+
+const (
+	// urlCategoriesPaged clamps each page to min(pageSize, 20) and honors page.
+	urlCategoriesPaged urlCategoryPaging = iota
+	// urlCategoriesCappedIgnoringPage clamps to min(pageSize, 20) but always
+	// serves page 1: no client can read past the cap.
+	urlCategoriesCappedIgnoringPage
+	// urlCategoriesUnpaged ignores page and pageSize and returns every record,
+	// as live tenants were observed to do.
+	urlCategoriesUnpaged
+)
+
+func urlCategoryPageServer(t *testing.T, total int, paging ...urlCategoryPaging) (*zsdk.Service, *[]*http.Request) {
+	t.Helper()
+	const clampedWidth = 20
+	mode := urlCategoriesPaged
+	if len(paging) > 0 {
+		mode = paging[0]
+	}
 	cfg := validReaderConfig()
 	sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
-	var productRequest *http.Request
+	var productRequests []*http.Request
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		body := `{"access_token":"test-token","expires_in":60}`
+		body := []byte("{\"access_token\":\"test-token\",\"expires_in\":60}")
 		statusCode := http.StatusOK
 		if request.URL.Path == "/zia/api/v1/urlCategories" {
 			cloned := request.Clone(request.Context())
 			clonedURL := *request.URL
 			cloned.URL = &clonedURL
-			productRequest = cloned
-			body = `[
-				{"id":"CUSTOM_URL","type":"URL_CATEGORY"},
-				{"id":"CUSTOM_TLD","type":"TLD_CATEGORY","customUrlsCount":1}
-			]`
+			productRequests = append(productRequests, cloned)
+			page, err := strconv.Atoi(request.URL.Query().Get("page"))
+			if err != nil || page < 1 {
+				t.Errorf("urlCategories request page = %q, want a positive integer", request.URL.Query().Get("page"))
+				page = 1
+			}
+			width := clampedWidth
+			if size, err := strconv.Atoi(request.URL.Query().Get("pageSize")); err == nil && size > 0 && size < width {
+				width = size
+			}
+			switch mode {
+			case urlCategoriesCappedIgnoringPage:
+				page = 1
+			case urlCategoriesUnpaged:
+				page, width = 1, total
+			}
+			var records []map[string]any
+			for i := (page - 1) * width; i < total && i < page*width; i++ {
+				record := map[string]any{"id": "CUSTOM_" + strconv.Itoa(i+1), "type": "URL_CATEGORY"}
+				if i == total-1 {
+					record["type"] = "TLD_CATEGORY"
+					record["customUrlsCount"] = 1
+				}
+				records = append(records, record)
+			}
+			if records == nil {
+				records = []map[string]any{}
+			}
+			body, _ = json.Marshal(records)
 		} else if request.URL.Path != "/oauth2/v1/token" {
 			statusCode = http.StatusNotFound
-			body = `{}`
+			body = []byte("{}")
 		}
 		return &http.Response{
 			StatusCode: statusCode,
 			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
+			Body:       io.NopCloser(strings.NewReader(string(body))),
 			Request:    request,
 		}, nil
 	})
@@ -677,39 +1077,73 @@ func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
 		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
 	}
 	t.Cleanup(service.Client.Close)
+	return service, &productRequests
+}
+
+// TestGetZIAURLCategoriesAllRequestsAllCategoryTypes covers the live 20-record
+// clamp: a 5,000-record request returns 20 categories, so the reader must keep
+// walking until a short page instead of accepting the first page as complete.
+func TestGetZIAURLCategoriesAllRequestsAllCategoryTypes(t *testing.T) {
+	service, productRequests := urlCategoryPageServer(t, 47)
 
 	categories, err := getZIAURLCategoriesAll(context.Background(), service)
 	if err != nil {
 		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
 	}
-	if productRequest == nil {
-		t.Fatal("getZIAURLCategoriesAll() product request = nil, want URL-category request")
+	if got, want := len(*productRequests), 3; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() product request count = %d, want %d", got, want)
 	}
-	if got, want := productRequest.URL.Host, "api.zsapi.net"; got != want {
-		t.Errorf("getZIAURLCategoriesAll() host = %q, want %q", got, want)
-	}
-	query := productRequest.URL.Query()
-	for key, want := range map[string]string{
-		"includeOnlyUrlKeywordCounts": "true",
-		"page":                        "1",
-		"pageSize":                    "5000",
-		"type":                        "ALL",
-	} {
-		if got := query.Get(key); got != want {
-			t.Errorf("getZIAURLCategoriesAll() query[%q] = %q, want %q", key, got, want)
+	for index, productRequest := range *productRequests {
+		if got, want := productRequest.URL.Host, "api.zsapi.net"; got != want {
+			t.Errorf("getZIAURLCategoriesAll() request %d host = %q, want %q", index+1, got, want)
+		}
+		query := productRequest.URL.Query()
+		for key, want := range map[string]string{
+			"includeOnlyUrlKeywordCounts": "true",
+			"page":                        strconv.Itoa(index + 1),
+			"pageSize":                    "5000",
+			"type":                        "ALL",
+		} {
+			if got := query.Get(key); got != want {
+				t.Errorf("getZIAURLCategoriesAll() request %d query[%q] = %q, want %q", index+1, key, got, want)
+			}
 		}
 	}
-	if got, want := len(categories), 2; got != want {
+	if got, want := len(categories), 47; got != want {
 		t.Fatalf("getZIAURLCategoriesAll() category count = %d, want %d", got, want)
+	}
+	seen := make(map[string]bool, len(categories))
+	for index, category := range categories {
+		if want := "CUSTOM_" + strconv.Itoa(index+1); category.ID != want {
+			t.Errorf("getZIAURLCategoriesAll() categories[%d].ID = %q, want %q", index, category.ID, want)
+		}
+		if seen[category.ID] {
+			t.Errorf("getZIAURLCategoriesAll() repeated category %q", category.ID)
+		}
+		seen[category.ID] = true
 	}
 	if got, want := categories[0].Type, "URL_CATEGORY"; got != want {
 		t.Errorf("getZIAURLCategoriesAll() categories[0].Type = %q, want %q", got, want)
 	}
-	if got, want := categories[1].Type, "TLD_CATEGORY"; got != want {
-		t.Errorf("getZIAURLCategoriesAll() categories[1].Type = %q, want %q", got, want)
+	if got, want := categories[46].Type, "TLD_CATEGORY"; got != want {
+		t.Errorf("getZIAURLCategoriesAll() categories[46].Type = %q, want %q", got, want)
 	}
-	if got, want := categories[1].CustomUrlsCount, 1; got != want {
-		t.Errorf("getZIAURLCategoriesAll() categories[1].CustomUrlsCount = %d, want %d", got, want)
+}
+
+// TestGetZIAURLCategoriesAllClampedExactMultiple covers an inventory that is an
+// exact multiple of the clamped width: the walk ends on the empty page.
+func TestGetZIAURLCategoriesAllClampedExactMultiple(t *testing.T) {
+	service, productRequests := urlCategoryPageServer(t, 40)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
+	}
+	if got, want := len(categories), 40; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() category count = %d, want %d", got, want)
+	}
+	if got, want := len(*productRequests), 3; got != want {
+		t.Fatalf("getZIAURLCategoriesAll() product request count = %d, want %d", got, want)
 	}
 }
 
@@ -833,28 +1267,38 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 			cfg := validReaderConfig()
 			sdkCfg := newSDKConfiguration(context.Background(), cfg)
 
+			parentListRequests := 0
 			var parentPaths []string
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				body := `{"access_token":"test-token","expires_in":60}`
 				statusCode := http.StatusOK
 				switch request.URL.Path {
 				case "/zia/api/v1/locations":
-					body = `[{"id":1,"name":"first"},{"id":2,"name":"second"}]`
+					parentListRequests++
+					if request.URL.Query().Get("page") == "1" {
+						body = `[{"id":1,"name":"first"},{"id":2,"name":"second"}]`
+					} else {
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"parent confirmation page unavailable"}`
+					}
 				case "/zia/api/v1/locations/1/sublocations":
 					parentPaths = append(parentPaths, request.URL.Path)
 					if test.firstParentFails {
 						statusCode = http.StatusInternalServerError
 						body = `{"message":"parent unavailable"}`
-					} else {
-						body = `[{"id":99,"name":"target"}]`
-					}
-				case "/zia/api/v1/locations/2/sublocations":
-					parentPaths = append(parentPaths, request.URL.Path)
-					if test.firstParentFails {
+					} else if request.URL.Query().Get("page") == "1" {
 						body = `[{"id":99,"name":"target"}]`
 					} else {
 						statusCode = http.StatusInternalServerError
-						body = `{"message":"later parent unavailable"}`
+						body = `{"message":"confirmation page unavailable"}`
+					}
+				case "/zia/api/v1/locations/2/sublocations":
+					parentPaths = append(parentPaths, request.URL.Path)
+					if test.firstParentFails && request.URL.Query().Get("page") == "1" {
+						body = `[{"id":99,"name":"target"}]`
+					} else {
+						statusCode = http.StatusInternalServerError
+						body = `{"message":"confirmation or later parent unavailable"}`
 					}
 				case "/oauth2/v1/token":
 				default:
@@ -884,6 +1328,9 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 			if item == nil || item.ID != 99 {
 				t.Fatalf("getZIASublocationByID(99) = %#v, want ID 99", item)
 			}
+			if parentListRequests != 1 {
+				t.Errorf("parent-list request count = %d, want exactly 1", parentListRequests)
+			}
 			firstPath := "/zia/api/v1/locations/1/sublocations"
 			secondPath := "/zia/api/v1/locations/2/sublocations"
 			firstCount := 0
@@ -896,8 +1343,12 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 					secondCount++
 				}
 			}
-			if firstCount == 0 {
-				t.Errorf("sublocation parent paths = %v, want at least one first-parent request", parentPaths)
+			if test.firstParentFails {
+				if firstCount == 0 {
+					t.Errorf("first-parent request count = 0, want at least 1 (paths %v)", parentPaths)
+				}
+			} else if firstCount != 1 {
+				t.Errorf("first-parent request count = %d, want exactly 1 (paths %v)", firstCount, parentPaths)
 			}
 			if got := secondCount > 0; got != test.wantSecondParent {
 				t.Errorf(
@@ -908,6 +1359,59 @@ func TestGetZIASublocationByIDPreservesEarlyMatchAndParentTolerance(t *testing.T
 				)
 			}
 		})
+	}
+}
+
+func TestGetZIASublocationByIDPropagatesPaginationValidationError(t *testing.T) {
+	cfg := validReaderConfig()
+	sdkCfg := newSDKConfiguration(context.Background(), cfg)
+
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := `{"access_token":"test-token","expires_in":60}`
+		statusCode := http.StatusOK
+		switch request.URL.Path {
+		case "/zia/api/v1/locations":
+			if request.URL.Query().Get("page") == "1" {
+				body = `[{"id":1,"name":"parent"}]`
+			} else {
+				body = `[]`
+			}
+		case "/zia/api/v1/locations/1/sublocations":
+			// Every page replays page 1 and a smaller page size is honored
+			// (a capping endpoint), so the per-parent walk must fail
+			// pagination validation rather than be skipped as an
+			// inaccessible parent and reported as not found.
+			body = `[{"id":10,"name":"sublocation"},{"id":11,"name":"sublocation"}]`
+			if size, err := strconv.Atoi(request.URL.Query().Get("pageSize")); err == nil && size < 2 {
+				body = `[{"id":10,"name":"sublocation"}]`
+			}
+		case "/oauth2/v1/token":
+		default:
+			statusCode = http.StatusNotFound
+			body = `{}`
+		}
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	sdkCfg.HTTPClient.Transport = transport
+	sdkCfg.ZIAHTTPClient.Transport = transport
+
+	service, err := zsdk.NewOneAPIClient(sdkCfg)
+	if err != nil {
+		t.Fatalf("NewOneAPIClient() error = %v, want nil", err)
+	}
+	t.Cleanup(service.Client.Close)
+
+	item, err := getZIASublocationByID(context.Background(), service, 99)
+	if !errors.Is(err, errPaginationValidation) {
+		t.Fatalf("getZIASublocationByID(99) error = %v, want pagination validation error", err)
+	}
+	if item != nil {
+		t.Errorf("getZIASublocationByID(99) result = %#v, want nil", item)
 	}
 }
 
@@ -1015,7 +1519,7 @@ func TestGetZIAURLFilteringRulesAllPages(t *testing.T) {
 	}
 }
 
-func newZIAURLFilteringRuleTestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
+func newZIATestService(t *testing.T, transport roundTripFunc) *zsdk.Service {
 	t.Helper()
 	cfg := newSDKConfiguration(context.Background(), validReaderConfig())
 	cfg.HTTPClient.Transport = transport
@@ -1051,7 +1555,7 @@ func TestGetZIAURLFilteringRulePreservesDirectDetail(t *testing.T) {
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1092,7 +1596,7 @@ func TestGetZIAURLFilteringRuleDoesNotEnrichIsolateWithoutProfileID(t *testing.T
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1160,7 +1664,7 @@ func TestGetZIAURLFilteringRuleEnrichesIsolateWithBoundedList(t *testing.T) {
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err != nil {
@@ -1260,7 +1764,7 @@ func TestGetZIAURLFilteringRuleFailsWhenIsolateEnrichmentIsIncomplete(t *testing
 				}, nil
 			})
 
-			service := newZIAURLFilteringRuleTestService(t, transport)
+			service := newZIATestService(t, transport)
 
 			rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 			if err == nil {
@@ -1298,7 +1802,7 @@ func TestGetZIAURLFilteringRulePreservesCanceledContextDuringEnrichment(t *testi
 		}, nil
 	})
 
-	service := newZIAURLFilteringRuleTestService(t, transport)
+	service := newZIATestService(t, transport)
 
 	rule, err := getZIAURLFilteringRule(context.Background(), service, 101)
 	if err == nil {
@@ -1346,5 +1850,285 @@ func TestZIAHighRecordEndpointsAvoidUnboundedSDKPagination(t *testing.T) {
 		if !strings.Contains(source, want) {
 			t.Errorf("reader_zia.go missing bounded paginator wiring: %q", want)
 		}
+	}
+}
+
+// TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored pins the failure mode
+// of an endpoint that caps each response and ignores the page parameter: page
+// 2 repeats page 1 and a smaller page size is honored, so page 1 may be
+// capped, and the walk returns an error and no categories instead of a
+// truncated list.
+func TestGetZIAURLCategoriesAllFailsClosedWhenPageIsIgnored(t *testing.T) {
+	service, _ := urlCategoryPageServer(t, 47, urlCategoriesCappedIgnoringPage)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err == nil {
+		t.Fatalf("getZIAURLCategoriesAll() = %d categories, want a repeated-page error", len(categories))
+	}
+	if !errors.Is(err, errPaginationValidation) {
+		t.Errorf("getZIAURLCategoriesAll() error = %v, want errPaginationValidation", err)
+	}
+	if categories != nil {
+		t.Errorf("getZIAURLCategoriesAll() returned %d categories with the error, want none", len(categories))
+	}
+}
+
+// TestGetZIAURLCategoriesAllReadsAnUnpagedEndpoint covers the live behavior:
+// the endpoint ignores page and pageSize and returns every category on each
+// request. Page 2 repeats page 1 and the smaller-size probe still returns
+// everything, so page 1 is the complete collection.
+func TestGetZIAURLCategoriesAllReadsAnUnpagedEndpoint(t *testing.T) {
+	service, requests := urlCategoryPageServer(t, 47, urlCategoriesUnpaged)
+
+	categories, err := getZIAURLCategoriesAll(context.Background(), service)
+	if err != nil {
+		t.Fatalf("getZIAURLCategoriesAll() error = %v, want nil", err)
+	}
+	if len(categories) != 47 {
+		t.Fatalf("getZIAURLCategoriesAll() = %d categories, want 47", len(categories))
+	}
+	// page 1, page 2 (repeat), then the page-size probe.
+	if got := len(*requests); got != 3 {
+		t.Errorf("urlCategories requests = %d, want 3", got)
+	}
+}
+
+// TestZIAPaginateRejectsRepeatWithSameIdentitiesButChangedContent keeps a
+// tenant change from passing for an endpoint that ignores paging: the same
+// record ids with different field values between requests fail closed rather
+// than returning page 1's stale values.
+func TestZIAPaginateRejectsRepeatWithSameIdentitiesButChangedContent(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	for name, pages := range map[string][3][]rec{
+		"multi-record": {
+			{{1, "a"}, {2, "a"}},
+			{{2, "b"}, {1, "b"}},
+			{{1, "b"}, {2, "b"}},
+		},
+		"one record": {
+			{{1, "a"}},
+			{{1, "b"}},
+			nil,
+		},
+	} {
+		pages := pages
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, page, size int) ([]rec, error) {
+				switch {
+				case page == 1 && size < 1000:
+					return pages[2], nil
+				case page == 1:
+					return pages[0], nil
+				case page == 2:
+					return pages[1], nil
+				}
+				return nil, nil
+			})
+			if !errors.Is(err, errPaginationValidation) {
+				t.Fatalf("ziaPaginate(same ids, changed content) error = %v, want pagination validation error", err)
+			}
+			if got != nil {
+				t.Errorf("ziaPaginate(same ids, changed content) = %v, want nil", got)
+			}
+		})
+	}
+}
+
+// TestZIAPaginateAcceptsReorderedUnpagedEndpoint covers the live
+// network-services behavior: every request returns the whole collection in a
+// different order. Same records per id, so page 1 is accepted.
+func TestZIAPaginateAcceptsReorderedUnpagedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	orders := [][]rec{{{1, "a"}, {2, "b"}, {3, "c"}}, {{3, "c"}, {1, "a"}, {2, "b"}}, {{2, "b"}, {3, "c"}, {1, "a"}}}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := orders[call%len(orders)]
+		call++
+		return out, nil
+	})
+	if err != nil {
+		t.Fatalf("ziaPaginate(reordered unpaged) error = %v, want nil", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("ziaPaginate(reordered unpaged) = %v, want the 3 records of page 1", got)
+	}
+}
+
+// TestZIAPaginateUnpagedEndpointLimits pins what the probe can and cannot
+// decide. A fixed window returned regardless of page and pageSize is accepted:
+// no client can read past it, and nothing in the response says it is partial.
+// An endpoint that ignores paging but returns at least the requested page size
+// still fails closed, because a full repeated page may be capped.
+func TestZIAPaginateUnpagedEndpointLimits(t *testing.T) {
+	t.Parallel()
+
+	window := []int{1, 2, 3}
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]int, error) {
+		return window, nil
+	})
+	if err != nil || len(got) != 3 {
+		t.Errorf("fixed window: ziaPaginate() = %v, %v; want the window accepted (documented ambiguity)", got, err)
+	}
+
+	got, err = ziaPaginate(context.Background(), 3, func(_ context.Context, _, _ int) ([]int, error) {
+		return window, nil
+	})
+	if !errors.Is(err, errPaginationValidation) || got != nil {
+		t.Errorf("collection >= page size: ziaPaginate() = %v, %v; want fail closed", got, err)
+	}
+}
+
+// TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder covers the live
+// networkServices behavior: the same records come back with their port lists
+// in another order on each request. List order is not a change; a different
+// port is.
+func TestZIAPaginateAcceptsUnpagedEndpointWhoseListsReorder(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID    int      `json:"id"`
+		Ports []string `json:"ports"`
+	}
+	responses := [][]rec{
+		{{1, []string{"80", "443"}}, {2, []string{"22"}}},
+		{{2, []string{"22"}}, {1, []string{"443", "80"}}},
+		{{1, []string{"443", "80"}}, {2, []string{"22"}}},
+	}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := responses[call%len(responses)]
+		call++
+		return out, nil
+	})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ziaPaginate(reordered lists) = %v, %v; want page 1 accepted", got, err)
+	}
+
+	changed := [][]rec{
+		{{1, []string{"80", "443"}}, {2, []string{"22"}}},
+		{{2, []string{"22"}}, {1, []string{"443", "8080"}}},
+	}
+	call = 0
+	got, err = ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := changed[call%len(changed)]
+		call++
+		return out, nil
+	})
+	if !errors.Is(err, errPaginationValidation) || got != nil {
+		t.Errorf("ziaPaginate(changed port) = %v, %v; want fail closed", got, err)
+	}
+}
+
+// TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages keeps the
+// order-insensitive comparison exact for numbers: two int64 values that a
+// float64 cannot tell apart are still a changed record.
+func TestZIAPaginateDistinguishesLargeNumbersInRepeatedPages(t *testing.T) {
+	t.Parallel()
+
+	type rec struct {
+		ID    int64   `json:"id"`
+		Value int64   `json:"value"`
+		Ports []int64 `json:"ports"`
+	}
+	responses := [][]rec{
+		{{1, 1_000_000_000_000_000_000, []int64{9_007_199_254_740_993}}, {2, 0, nil}},
+		{{2, 0, nil}, {1, 1_000_000_000_000_000_001, []int64{9_007_199_254_740_993}}},
+		{{1, 1_000_000_000_000_000_001, []int64{9_007_199_254_740_993}}, {2, 0, nil}},
+	}
+	call := 0
+	got, err := ziaPaginate(context.Background(), 1000, func(_ context.Context, _, _ int) ([]rec, error) {
+		out := responses[call%len(responses)]
+		call++
+		return out, nil
+	})
+	if !errors.Is(err, errPaginationValidation) || got != nil {
+		t.Fatalf("ziaPaginate(large number changed) = %v, %v; want fail closed", got, err)
+	}
+}
+
+// A get that scans a complete list and misses has no HTTP 404 to classify, so
+// it must carry ErrResourceNotFound itself (exit 4), not read as a live-access
+// failure (exit 5). A scan that skipped an unreadable parent is not complete,
+// so its miss is that parent's error, never not-found.
+func TestScanGetsReportMissesAsNotFound(t *testing.T) {
+	t.Parallel()
+	newService := func(t *testing.T, secondParentForbidden bool) *zsdk.Service {
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			status, body := http.StatusOK, `[]`
+			firstPage := request.URL.Query().Get("page") == "1" || request.URL.Query().Get("page") == ""
+			switch path := request.URL.Path; {
+			case path == "/oauth2/v1/token":
+				body = `{"access_token":"test-token","expires_in":60}`
+			case path == "/zia/api/v1/locations":
+				if firstPage {
+					body = `[{"id":1,"name":"parent"},{"id":2,"name":"second"}]`
+				}
+			case path == "/zia/api/v1/locations/2/sublocations" && secondParentForbidden:
+				status, body = http.StatusForbidden, `{"message":"forbidden"}`
+			case path == "/zia/api/v1/locations/1/sublocations", path == "/zia/api/v1/locations/2/sublocations",
+				path == "/zia/api/v1/deviceGroups/devices":
+				if firstPage {
+					body = `[{"id":5,"name":"other"}]`
+				}
+			case path == "/zia/api/v1/idmprofile/lite":
+				if firstPage {
+					body = `[{"profileId":5,"templateName":"other"}]`
+				}
+			case strings.HasSuffix(path, "/zpaprofiles"):
+				body = `[{"id":"5","name":"other"}]`
+			default:
+				status, body = http.StatusNotFound, `{}`
+			}
+			return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+		})
+		cfg := newSDKConfiguration(context.Background(), validReaderConfig())
+		for _, client := range []*http.Client{cfg.HTTPClient, cfg.ZIAHTTPClient, cfg.ZPAHTTPClient} {
+			client.Transport = transport
+		}
+		service, err := zsdk.NewOneAPIClient(cfg)
+		if err != nil {
+			t.Fatalf("NewOneAPIClient() error = %v", err)
+		}
+		t.Cleanup(service.Client.Close)
+		return service
+	}
+	handlers := func(service *zsdk.Service) map[resourceKey]resourceHandler {
+		m := make(map[resourceKey]resourceHandler)
+		client := sdkClient{services: fixedService{cfg: validReaderConfig(), sdkService: service}}
+		addZIAHandlers(m, client)
+		addZPAHandlers(m, client)
+		return m
+	}
+
+	complete := handlers(newService(t, false))
+	for _, key := range []resourceKey{
+		{product: resources.ProductZIA, name: resourceSublocations},
+		{product: resources.ProductZIA, name: resourceDevices},
+		{product: resources.ProductZIA, name: resourceDLPIDMLite},
+		{product: resources.ProductZPA, name: resourceZPACBIZPAProfs},
+	} {
+		if _, err := complete[key].Get(context.Background(), "99"); !errors.Is(err, ErrResourceNotFound) {
+			t.Errorf("%s/%s Get(missing) error = %v, want ErrResourceNotFound", key.product, key.name, err)
+		}
+		if _, err := complete[key].Get(context.Background(), "5"); err != nil {
+			t.Errorf("%s/%s Get(present) error = %v, want the record", key.product, key.name, err)
+		}
+	}
+
+	partial := handlers(newService(t, true))
+	_, err := partial[resourceKey{product: resources.ProductZIA, name: resourceSublocations}].Get(context.Background(), "99")
+	if err == nil || errors.Is(err, ErrResourceNotFound) {
+		t.Errorf("sublocations Get(missing, a parent forbidden) error = %v, want the parent's error, not ErrResourceNotFound", err)
 	}
 }

@@ -250,7 +250,8 @@ function completeRequest(transport: ReactiveTransport, frame: ClientFrame): void
       return;
     }
     case "dump.write/dump": {
-      const failure = { product: "zia", resource: "locations", phase: "list", kind: "list_failed" } as const;
+      // A classified failure: the warning and the summary carry the same detail.
+      const failure = { product: "zia", resource: "locations", phase: "list", kind: "list_failed", reason: "forbidden", status: 403 } as const;
       transport.send({ type: "progress", id, seq: 2, phase: "resource_started", current: 1, total: 1, product: "zia", resource: "locations" });
       transport.send({ type: "warning", id, seq: 3, warning: failure });
       transport.send({ type: "completed", id, seq: 4, result: {

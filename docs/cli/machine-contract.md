@@ -45,13 +45,14 @@ against it. Changing the supported manifest shape after 1.0 requires semver
 treatment.
 
 `zscalerctl introspect` is a separate supported CLI-surface contract, currently
-version `2`. Its top-level `read_only` field is tenant-scoped. Each command has
+version `3`. Its top-level `read_only` field is tenant-scoped. Each command has
 structured `effects` with a `kind`, an `always` or `flag_set` condition, and an
 optional flag name, plus `configuration_dependent` effects enabled by effective
 config, environment, provider choice, or platform. Local reads and configured
-provider process execution are explicit. The legacy `mutating` boolean remains
-as a conservative derived summary so older consumers fail closed; new consumers
-should evaluate the effect conditions directly. This metadata belongs to the
+provider process execution are explicit. Version `3` removed the derived
+`mutating` boolean: it was true for every command (any `--output` write or
+credential-provider execution counted), so it read as "changes the tenant";
+evaluate the effect conditions directly. This metadata belongs to the
 CLI adapter and does not change the transport-neutral `machine.v1`
 resource-read manifest.
 
@@ -88,7 +89,7 @@ stable compatibility surface.
 | Canceled | `canceled` | `canceled` | `1` | `context.Canceled` | `main.go` special-cases `machine.ErrorKindCanceled` to the internal error exit code. |
 | Partial dump | — | `partial_dump` | `6` | `cli.ErrPartialDump` | For non-JSON formats, `run` returns the code without writing the JSON envelope. |
 | Drift detected | — | `drift_detected` | `7` | `cli.ErrDriftDetected` | Set by `diff --fail-on-drift`. |
-| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. |
+| Invalid config | `invalid_config` for typed status/URL setup | `invalid_config` | `2` | `config.ErrInvalidConfig`; `zscaler.ErrInvalidSettings` | Typed engine boundaries discard raw config paths/backend text and preserve only the sentinel. A `zscaler.InvalidSettingsError` (unusable cloud, vanity domain or auth mode) keeps its message: one of a fixed set of reasons that never include the configured value. |
 | Invalid proxy config | `invalid_proxy_config` for typed status/URL setup | `invalid_proxy_config` | `2` | `zscaler.ErrInvalidProxyConfig` | Typed engine boundaries return static wording and preserve only the sentinel. |
 | Internal | `internal` | `internal` | `1` | `machine.ErrorKindInternal`; default branch | Executor wiring errors use machine `internal`; otherwise unmapped command errors fall through to internal. |
 
@@ -120,6 +121,13 @@ treatment as any other compatibility-affecting change.
 `scripts/verify-machine-contract.sh` keeps the internal machine JSON fixtures,
 machine manifest schema validation, strict `machineio` decode behavior, and
 projected-record reconstruction guard together as the mechanical contract gate.
+
+The `zia admin-audit-logs status` JSON document always includes `status`.
+`progress_items_complete` is included only when the upstream response supplies
+a non-null, non-negative count; an explicit zero remains `0`. Missing or null `status`, a
+top-level `null`, and an empty response body are live-access failures (exit
+`5`). The diagnostic performs one status operation; HTTP retries follow the
+shared SDK policy. It rejects NDJSON because it returns one document.
 
 ## Streaming And Progress Direction
 

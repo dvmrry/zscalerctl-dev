@@ -49,12 +49,12 @@ func zccPaginateWithSize[T any](
 	fetchPage func(ctx context.Context, page, pageSize int) ([]T, error),
 ) ([]T, error) {
 	if pageSize <= 0 {
-		return nil, fmt.Errorf("zcc pagination page size must be positive")
+		return nil, fmt.Errorf("%w: zcc pagination page size must be positive", errPaginationValidation)
 	}
 	var all []T
 	for page := 1; ; page++ {
 		if page > zccMaxPages {
-			return nil, fmt.Errorf("zcc pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", zccMaxPages, len(all))
+			return nil, fmt.Errorf("%w: zcc pagination exceeded the ceiling of %d pages (%d records); the endpoint kept returning full pages, so completeness cannot be guaranteed", errPaginationValidation, zccMaxPages, len(all))
 		}
 		items, err := fetchPage(ctx, page, pageSize)
 		if err != nil {
@@ -66,6 +66,71 @@ func zccPaginateWithSize[T any](
 		}
 	}
 	return all, nil
+}
+
+// zccPaginateWithTotalCount walks pages until their stable declared TotalCount
+// is collected. A short page with more records declared continues the walk;
+// count drift fails closed.
+func zccPaginateWithTotalCount[T any](
+	ctx context.Context,
+	fetchPage func(ctx context.Context, page, pageSize int) ([]T, int, error),
+) ([]T, error) {
+	var (
+		all                []T
+		expectedTotalCount = -1
+		pageFingerprints   = make(map[pageFingerprint]struct{})
+		recordIdentities   = make(map[string]struct{})
+	)
+	for page := 1; ; page++ {
+		if page > zccMaxPages {
+			return nil, fmt.Errorf("%w: zcc pagination exceeded the ceiling of %d pages (%d records); the declared totalCount was not reached", errPaginationValidation, zccMaxPages, len(all))
+		}
+		items, totalCount, err := fetchPage(ctx, page, zccPageSize)
+		if err != nil {
+			return nil, err
+		}
+		if totalCount < 0 {
+			return nil, fmt.Errorf("%w: zcc pagination returned invalid totalCount %d on page %d", errPaginationValidation, totalCount, page)
+		}
+		if expectedTotalCount < 0 {
+			expectedTotalCount = totalCount
+		} else if totalCount != expectedTotalCount {
+			return nil, fmt.Errorf("%w: zcc pagination totalCount changed from %d to %d on page %d", errPaginationValidation, expectedTotalCount, totalCount, page)
+		}
+
+		fingerprint, err := fingerprintPage(items)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fingerprint zcc page %d: %w", page, err)
+		}
+		if _, seen := pageFingerprints[fingerprint]; seen {
+			return nil, fmt.Errorf("%w: zcc pagination received repeated page content on page %d; completeness cannot be guaranteed", errPaginationValidation, page)
+		}
+		pageFingerprints[fingerprint] = struct{}{}
+		for _, item := range items {
+			identity, hasIdentity, err := paginationRecordIdentity(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to inspect zcc record identity on page %d: %w", page, err)
+			}
+			if !hasIdentity {
+				continue
+			}
+			if _, seen := recordIdentities[identity]; seen {
+				return nil, fmt.Errorf("%w: zcc pagination received duplicate record identity on page %d; completeness cannot be guaranteed", errPaginationValidation, page)
+			}
+			recordIdentities[identity] = struct{}{}
+		}
+
+		all = append(all, items...)
+		if len(all) > expectedTotalCount {
+			return nil, fmt.Errorf("%w: zcc pagination collected %d records, exceeding totalCount %d on page %d", errPaginationValidation, len(all), expectedTotalCount, page)
+		}
+		if len(all) == expectedTotalCount {
+			return all, nil
+		}
+		if len(items) == 0 {
+			return nil, fmt.Errorf("%w: zcc pagination ended at %d records, but totalCount declares %d", errPaginationValidation, len(all), expectedTotalCount)
+		}
+	}
 }
 
 func getZCCAllPages[T any](
@@ -125,12 +190,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCTrustedNets}: newListOnlyHandler(
 			resourceZCCTrustedNets,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zcctrustednet.TrustedNetwork, error) {
-				return zccPaginate(ctx, func(ctx context.Context, page, pageSize int) ([]zcctrustednet.TrustedNetwork, error) {
+				return zccPaginateWithTotalCount(ctx, func(ctx context.Context, page, pageSize int) ([]zcctrustednet.TrustedNetwork, int, error) {
 					resp, _, err := zcctrustednet.GetMultipleTrustedNetworks(ctx, service, "", "", &page, &pageSize)
 					if err != nil {
-						return nil, err
+						return nil, 0, err
 					}
-					return resp.TrustedNetworkContracts, nil
+					return resp.TrustedNetworkContracts, resp.TotalCount, nil
 				})
 			}),
 			structSourceRecord[zcctrustednet.TrustedNetwork],
@@ -147,12 +212,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCAppProfiles}: newListOnlyHandler(
 			resourceZCCAppProfiles,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccappprofiles.ApplicationProfile, error) {
-				return zccPaginate(ctx, func(ctx context.Context, page, pageSize int) ([]zccappprofiles.ApplicationProfile, error) {
+				return zccPaginateWithTotalCount(ctx, func(ctx context.Context, page, pageSize int) ([]zccappprofiles.ApplicationProfile, int, error) {
 					resp, _, err := zccappprofiles.GetApplicationProfiles(ctx, service, "", "", "", &page, &pageSize)
 					if err != nil {
-						return nil, err
+						return nil, 0, err
 					}
-					return resp.Policies, nil
+					return resp.Policies, resp.TotalCount, nil
 				})
 			}),
 			structSourceRecord[zccappprofiles.ApplicationProfile],
@@ -160,12 +225,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCCustomIPApps}: newListOnlyHandler(
 			resourceZCCCustomIPApps,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zcccustomip.CustomIPApp, error) {
-				return zccPaginate(ctx, func(ctx context.Context, page, pageSize int) ([]zcccustomip.CustomIPApp, error) {
+				return zccPaginateWithTotalCount(ctx, func(ctx context.Context, page, pageSize int) ([]zcccustomip.CustomIPApp, int, error) {
 					resp, _, err := zcccustomip.GetCustomIPApps(ctx, service, "", &page, &pageSize)
 					if err != nil {
-						return nil, err
+						return nil, 0, err
 					}
-					return resp.CustomAppContracts, nil
+					return resp.CustomAppContracts, resp.TotalCount, nil
 				})
 			}),
 			structSourceRecord[zcccustomip.CustomIPApp],
@@ -173,12 +238,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCPredefIPApps}: newListOnlyHandler(
 			resourceZCCPredefIPApps,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccpredefip.PredefinedIPApp, error) {
-				return zccPaginate(ctx, func(ctx context.Context, page, pageSize int) ([]zccpredefip.PredefinedIPApp, error) {
+				return zccPaginateWithTotalCount(ctx, func(ctx context.Context, page, pageSize int) ([]zccpredefip.PredefinedIPApp, int, error) {
 					resp, _, err := zccpredefip.GetPredefinedIPApps(ctx, service, "", &page, &pageSize)
 					if err != nil {
-						return nil, err
+						return nil, 0, err
 					}
-					return resp.AppServiceContracts, nil
+					return resp.AppServiceContracts, resp.TotalCount, nil
 				})
 			}),
 			structSourceRecord[zccpredefip.PredefinedIPApp],
@@ -186,12 +251,12 @@ func addZCCHandlers(m map[resourceKey]resourceHandler, client sdkClient) {
 		{product: resources.ProductZCC, name: resourceZCCProcessApps}: newListOnlyHandler(
 			resourceZCCProcessApps,
 			sdkProductList(resources.ProductZCC, client, func(ctx context.Context, service *zsdk.Service) ([]zccprocessapps.ProcessBasedApp, error) {
-				return zccPaginate(ctx, func(ctx context.Context, page, pageSize int) ([]zccprocessapps.ProcessBasedApp, error) {
+				return zccPaginateWithTotalCount(ctx, func(ctx context.Context, page, pageSize int) ([]zccprocessapps.ProcessBasedApp, int, error) {
 					resp, _, err := zccprocessapps.GetProcessBasedApps(ctx, service, "", &page, &pageSize)
 					if err != nil {
-						return nil, err
+						return nil, 0, err
 					}
-					return resp.AppIdentities, nil
+					return resp.AppIdentities, resp.TotalCount, nil
 				})
 			}),
 			structSourceRecord[zccprocessapps.ProcessBasedApp],

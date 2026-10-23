@@ -38,6 +38,10 @@ type profileData struct {
 type loadedProfile struct {
 	name string
 	data profileData
+	// count is the number of profiles in the file; defaultSource says how
+	// name was chosen when no profile was requested.
+	count         int
+	defaultSource ProfileSource
 }
 
 func loadProfileFile(path, requestedProfile string, explicit bool) (loadedProfile, bool, error) {
@@ -70,17 +74,19 @@ func loadProfileFile(path, requestedProfile string, explicit bool) (loadedProfil
 		return loadedProfile{}, false, fmt.Errorf("%w: config file has no profiles", ErrInvalidConfig)
 	}
 	name := requestedProfile
+	defaultSource := ProfileFromDefaultProfile
 	if name == "" {
 		name = model.DefaultProfile
 	}
 	if name == "" {
 		name = "default"
+		defaultSource = ProfileFromBuiltinDefault
 	}
 	data, ok := model.Profiles[name]
 	if !ok {
 		return loadedProfile{}, false, fmt.Errorf("%w: profile %q not found", ErrInvalidConfig, name)
 	}
-	return loadedProfile{name: name, data: data}, true, nil
+	return loadedProfile{name: name, data: data, count: len(model.Profiles), defaultSource: defaultSource}, true, nil
 }
 
 func readBoundedConfig(reader io.Reader) ([]byte, error) {

@@ -35,7 +35,17 @@ func ToOperationError(source error) ErrorConversion {
 			Missing: safeMissingCredentials(machineError.Missing),
 		}}
 	}
-	return ErrorConversion{Failure: enginewire.NonCredentialFailure{Kind: operationFailureKind(machineError.Kind)}}
+	failure := enginewire.NonCredentialFailure{Kind: operationFailureKind(machineError.Kind)}
+	if failure.Kind == enginewire.FailureLiveAccess {
+		// Only the closed, value-free detail crosses the wire.
+		failure.Reason = machineError.Detail.Reason
+		failure.Status = machineError.Detail.Status
+		failure.Retryable = machineError.Detail.Retryable
+		if failure.Validate() != nil {
+			failure = enginewire.NonCredentialFailure{Kind: enginewire.FailureLiveAccess}
+		}
+	}
+	return ErrorConversion{Failure: failure}
 }
 
 func asMachineError(source error) (machine.MachineError, bool) {

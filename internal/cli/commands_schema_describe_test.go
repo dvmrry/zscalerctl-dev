@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dvmrry/zscalerctl/internal/cli"
@@ -103,4 +104,26 @@ func TestSchemaDescribeAdvertisesExactArguments(t *testing.T) {
 		}
 	}
 	t.Fatal("schema describe missing from introspection")
+}
+
+// TestSchemaLookupsNameCoverageGaps pins that schema describe and schema
+// references say why a declared gap is not readable, and never echo an
+// undeclared name.
+func TestSchemaLookupsNameCoverageGaps(t *testing.T) {
+	t.Parallel()
+	for _, command := range []string{"describe", "references"} {
+		for resource, want := range map[string]string{
+			"policy-rules":   "zscalerctl does not read zpa/policy-rules (",
+			"no-such-canary": "resource is not in the catalog",
+		} {
+			app, _, _ := testConfigApp(t)
+			err := app.Run(context.Background(), []string{"--format", "json", "schema", command, "zpa", resource})
+			if !errors.Is(err, cli.ErrNotFound) || !strings.Contains(err.Error(), want) {
+				t.Errorf("schema %s zpa %s error = %v, want not found containing %q", command, resource, err, want)
+			}
+			if err != nil && strings.Contains(err.Error(), "canary") {
+				t.Errorf("schema %s error echoed the requested name: %v", command, err)
+			}
+		}
+	}
 }

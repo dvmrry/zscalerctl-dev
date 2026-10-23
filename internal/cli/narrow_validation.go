@@ -16,7 +16,7 @@ func validateProductNarrowing(
 	catalog resources.ResourceCatalog,
 	opts globalOptions,
 ) error {
-	if len(args) < 2 || (len(opts.fields) == 0 && len(opts.filters) == 0) {
+	if len(args) < 2 || (len(opts.fields) == 0 && len(opts.filters) == 0 && len(opts.countBy) == 0) {
 		return nil
 	}
 	op := args[1]
@@ -37,6 +37,10 @@ func validateProductNarrowing(
 			Value:     filter.value,
 			Substring: filter.substring,
 		})
+	}
+	if err := resources.ValidateCountByPaths(spec, opts.countBy); err != nil {
+		message, _ := redact.New(redact.ModeStandard).ScanRenderedString(err.Error())
+		return UsageError{Message: message}
 	}
 	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
 		Fields:  opts.fields,

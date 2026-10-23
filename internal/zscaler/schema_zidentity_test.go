@@ -5,10 +5,10 @@ import (
 
 	"github.com/dvmrry/zscalerctl/internal/resources"
 
-	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/common"
-	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/groups"
-	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/resource_servers"
-	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/zid/services/users"
+	zidcommon "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/common"
+	zidgroups "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/groups"
+	zidresourceservers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/resource_servers"
+	zidusers "github.com/zscaler/zscaler-sdk-go/v3/zscaler/ziam/services/users"
 )
 
 func reviewedSDKShapesZidentity() []sdkShapeReview {
@@ -59,7 +59,40 @@ func reviewedSDKShapesZidentity() []sdkShapeReview {
 				"department",
 				"idp",
 				"customAttrsInfo",
+				"title",
+				"division",
+				"costCenter",
+				"organization",
+				"skipMfaUntil",
+				"guest",
+				"belongInternalDomain",
+				"hostedIdp",
+				"entityType",
+				"groups",
 			},
+			ignoredFields: mergeIgnoredFields(
+				ignoredBecause("deliberate: personal contact data with no configuration value; never read into output",
+					"mobilePhone", "primaryPhone", "addresses"),
+				ignoredBecause("deliberate: per-user display preference with no configuration value",
+					"language", "timeZone"),
+				ignoredBecause("deliberate: org-chart relationship returned as a bare user id; not configuration",
+					"manager"),
+				ignoredBecause("deliberate: mirrors loginName on every user observed; loginName renders",
+					"name", "objectName"),
+			),
+		},
+		{
+			name:         "zidusers.UserGroup",
+			resource:     resources.ProductZidentity,
+			resourceName: resourceZidentityUsers,
+			typ:          reflect.TypeOf(zidusers.UserGroup{}),
+			catalogFields: []string{
+				"id",
+				"name",
+			},
+			ignoredFields: ignoredBecause("deliberate: group attributes belong to zidentity/groups; a user's membership renders id and name only",
+				"source", "status", "dynamicGroup", "emergencyGroup", "serviceEntitlementDisabled",
+				"adminEntitlementDisabled", "readOnly", "entityType", "objectName"),
 		},
 		{
 			name:         "zidcommon.IDNameDisplayName (users)",
@@ -106,9 +139,11 @@ func reviewedSDKShapesZidentity() []sdkShapeReview {
 				"id",
 				"name",
 				"displayName",
+				"externalName",
 				"cloudName",
 				"orgName",
 			},
+			ignoredFields: ignoredBecause("deliberate: undocumented flag whose meaning is unknown", "zapsOnboarded"),
 		},
 		{
 			name:         "zidresourceservers.Scopes",

@@ -102,6 +102,59 @@ profiles:
 	}
 }
 
+func TestLoadConfigRecordsHowTheProfileWasChosen(t *testing.T) {
+	t.Parallel()
+
+	two := writeConfig(t, `
+default_profile: prod
+profiles:
+  prod:
+    vanity_domain: prod-vanity
+  dev:
+    vanity_domain: dev-vanity
+`)
+	builtin := writeConfig(t, `
+profiles:
+  default:
+    vanity_domain: default-vanity
+  dev:
+    vanity_domain: dev-vanity
+`)
+	single := writeConfig(t, `
+profiles:
+  default:
+    vanity_domain: default-vanity
+`)
+	for _, tc := range []struct {
+		name         string
+		env          []string
+		opts         config.LoadOptions
+		wantProfile  string
+		wantSource   config.ProfileSource
+		wantCount    int
+		wantImplicit bool
+	}{
+		{"flag", nil, config.LoadOptions{ConfigPath: two, Profile: "dev"}, "dev", config.ProfileFromFlag, 2, false},
+		{"env", []string{config.EnvProfile + "=dev"}, config.LoadOptions{ConfigPath: two}, "dev", config.ProfileFromEnv, 2, false},
+		{"default_profile", nil, config.LoadOptions{ConfigPath: two}, "prod", config.ProfileFromDefaultProfile, 2, true},
+		{"builtin default", nil, config.LoadOptions{ConfigPath: builtin}, "default", config.ProfileFromBuiltinDefault, 2, true},
+		{"single profile", nil, config.LoadOptions{ConfigPath: single}, "default", config.ProfileFromBuiltinDefault, 1, false},
+	} {
+		cfg, err := config.LoadConfig(tc.env, tc.opts)
+		if err != nil {
+			t.Fatalf("%s: LoadConfig() error = %v, want nil", tc.name, err)
+		}
+		if cfg.Profile != tc.wantProfile || cfg.ProfileSource != tc.wantSource || cfg.ProfileCount != tc.wantCount {
+			t.Errorf("%s: profile/source/count = %q/%q/%d, want %q/%q/%d", tc.name,
+				cfg.Profile, cfg.ProfileSource, cfg.ProfileCount, tc.wantProfile, tc.wantSource, tc.wantCount)
+		}
+		if got := cfg.ImplicitProfileAmongMany(); got != tc.wantImplicit {
+			t.Errorf("%s: ImplicitProfileAmongMany() = %v, want %v", tc.name, got, tc.wantImplicit)
+		}
+	}
+
+}
+
 func TestLoadConfigInfersZIALegacyFromProfileCredentials(t *testing.T) {
 	t.Parallel()
 

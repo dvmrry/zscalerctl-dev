@@ -3,10 +3,10 @@ package zscaler
 // Wave-1 field-coverage tests for zia/ssl-inspection-rules. The mapper
 // (sslInspectionRuleSourceRecord) already emitted every reference list; this
 // wave promotes them in the catalog. Each test builds the SDK struct with a
-// distinctive value in every promoted field plus canaries in the secret
-// fields (lastModifiedBy, zpaAppSegments externalId), projects through the
-// catalog, and asserts the promoted fields render under the right keys per
-// mode while the canaries never survive. accessControl was promoted to
+// distinctive value in every promoted field plus canaries in the standard-only
+// values (the lastModifiedBy admin name, the zpaAppSegments externalId),
+// projects through the catalog, and asserts the promoted fields render under
+// the right keys per mode while the canaries never survive outside standard. accessControl was promoted to
 // operational (standard+share) in wave 4; its mode gating is asserted in
 // TestSSLInspectionRuleAccessControlModes below.
 //
@@ -54,7 +54,7 @@ func sslInspectionRuleWave1Fixture() sslinspection.SSLInspectionRules {
 		DeviceGroups:           []ziacommon.IDNameExtensions{{ID: 106, Name: "Managed laptops"}},
 		Devices:                []ziacommon.IDNameExtensions{{ID: 107, Name: "laptop-0042"}},
 		LastModifiedTime:       1717000000,
-		// Secret-classified admin identity: must never reach the projection.
+		// Admin audit reference: id in every mode, admin name standard-only.
 		LastModifiedBy: &ziacommon.IDNameExtensions{ID: 900, Name: sslWave1LastModifiedByCanary},
 		DestIpGroups:   []ziacommon.IDNameExtensions{{ID: 108, Name: "Payment processors"}},
 		SourceIPGroups: []ziacommon.IDNameExtensions{{ID: 109, Name: "Branch egress"}},
@@ -62,7 +62,7 @@ func sslInspectionRuleWave1Fixture() sslinspection.SSLInspectionRules {
 		Labels:         []ziacommon.IDNameExtensions{{ID: 111, Name: "pci"}},
 		TimeWindows:    []ziacommon.IDNameExtensions{{ID: 112, Name: "Work hours"}},
 		ZPAAppSegments: []ziacommon.ZPAAppSegments{
-			// externalId is secret-classified inside zpaAppSegments.
+			// externalId is the ZPA segment id; zpaAppSegments is standard-only.
 			{ID: 113, Name: "Internal ERP", ExternalID: sslWave1ExternalIDCanary},
 		},
 		WorkloadGroups: []ziacommon.IDName{{ID: 114, Name: "Prod workloads"}},
@@ -96,11 +96,10 @@ func TestSSLInspectionRulePromotedFieldsProjectInStandardMode(t *testing.T) {
 	rule := sslInspectionRuleWave1Fixture()
 	got := projectOneRecord(t, resources.ProductZIA, resourceSSLRules, []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)})
 
-	assertNoCanaries(t, "ssl-inspection-rules", got,
-		sslWave1LastModifiedByCanary,
-		sslWave1ExternalIDCanary,
-	)
-	assertFieldsAbsent(t, "ssl-inspection-rules", got, "lastModifiedBy")
+	lastModifiedBy := assertAuditRefID(t, "ssl-inspection-rules", got, "lastModifiedBy", 900)
+	if _, ok := lastModifiedBy["name"]; !ok {
+		t.Errorf("projected ssl-inspection-rules lastModifiedBy = %#v, want admin name in standard", lastModifiedBy)
+	}
 
 	for field, wantName := range sslWave1ReferenceListNames {
 		item := mustFirstProjectedItem(t, got, field)
@@ -112,9 +111,13 @@ func TestSSLInspectionRulePromotedFieldsProjectInStandardMode(t *testing.T) {
 		}
 	}
 
-	// Secret sub-fields inside promoted reference lists must be dropped.
+	// The secret extensions inside promoted reference lists must be dropped;
+	// the externalId (the ZPA segment id) renders.
 	zpaSegment := mustFirstProjectedItem(t, got, "zpaAppSegments")
-	assertFieldsAbsent(t, "ssl-inspection-rules zpaAppSegments[0]", zpaSegment, "externalId", "extensions")
+	assertFieldsAbsent(t, "ssl-inspection-rules zpaAppSegments[0]", zpaSegment, "extensions")
+	if _, ok := zpaSegment["externalId"]; !ok {
+		t.Errorf("projected ssl-inspection-rules zpaAppSegments[0] = %#v, want externalId", zpaSegment)
+	}
 
 	if got["roadWarriorForKerberos"] != true {
 		t.Errorf("projected ssl-inspection-rules roadWarriorForKerberos = %v, want true", got["roadWarriorForKerberos"])
@@ -135,10 +138,17 @@ func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 	rule := sslInspectionRuleWave1Fixture()
 	records := []resources.SourceRecord{sslInspectionRuleSourceRecord(rule)}
 
-	standardOnlyFields := []string{
-		"locations", "locationGroups", "groups", "departments", "users",
-		"deviceGroups", "devices", "destIpGroups", "sourceIpGroups",
-		"proxyGateways", "zpaAppSegments", "workloadGroups",
+	// Reference lists whose names are standard-only: share keeps their ids
+	// (never their names), paranoid drops them.
+	shareIDOnlyRefs := map[string]int{
+		"locations": 101, "locationGroups": 102, "groups": 103, "departments": 104,
+		"users": 105, "deviceGroups": 106, "devices": 107, "destIpGroups": 108,
+		"sourceIpGroups": 109, "proxyGateways": 110,
+	}
+	shareDroppedFields := []string{"zpaAppSegments", "workloadGroups"}
+	standardOnlyFields := append([]string{}, shareDroppedFields...)
+	for field := range shareIDOnlyRefs {
+		standardOnlyFields = append(standardOnlyFields, field)
 	}
 	standardShareFields := []string{"userAgentTypes", "deviceTrustLevels", "labels", "timeWindows"}
 
@@ -147,8 +157,12 @@ func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 		sslWave1LastModifiedByCanary,
 		sslWave1ExternalIDCanary,
 	)
-	assertFieldsAbsent(t, "ssl-inspection-rules share", share, "lastModifiedBy")
-	assertFieldsAbsent(t, "ssl-inspection-rules share", share, standardOnlyFields...)
+	assertAuditRefIDOnly(t, "ssl-inspection-rules share", share, "lastModifiedBy", 900)
+	assertFieldsAbsent(t, "ssl-inspection-rules share", share, shareDroppedFields...)
+	for field, wantID := range shareIDOnlyRefs {
+		assertRefListIDsOnly(t, "ssl-inspection-rules share", share, field, wantID)
+		assertNoCanaries(t, "ssl-inspection-rules share", share, sslWave1ReferenceListNames[field])
+	}
 	for _, field := range standardShareFields {
 		if _, ok := share[field]; !ok {
 			t.Errorf("projected ssl-inspection-rules share record missing %s, want present per standard+share modes", field)
@@ -167,7 +181,8 @@ func TestSSLInspectionRulePromotedFieldsAcrossModes(t *testing.T) {
 		sslWave1LastModifiedByCanary,
 		sslWave1ExternalIDCanary,
 	)
-	assertFieldsAbsent(t, "ssl-inspection-rules paranoid", paranoid, "accessControl", "lastModifiedBy")
+	assertFieldsAbsent(t, "ssl-inspection-rules paranoid", paranoid, "accessControl")
+	assertAuditRefIDOnly(t, "ssl-inspection-rules paranoid", paranoid, "lastModifiedBy", 900)
 	assertFieldsAbsent(t, "ssl-inspection-rules paranoid", paranoid, standardOnlyFields...)
 	assertFieldsAbsent(t, "ssl-inspection-rules paranoid", paranoid, standardShareFields...)
 	if paranoid["roadWarriorForKerberos"] != true {

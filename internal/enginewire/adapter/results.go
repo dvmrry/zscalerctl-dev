@@ -274,10 +274,7 @@ func ToDumpSummary(source machine.DumpResult) (enginewire.DumpSummary, error) {
 	errorsSource := source.Errors()
 	failures := make([]enginewire.DumpFailure, len(errorsSource))
 	for i, failure := range errorsSource {
-		failures[i] = enginewire.DumpFailure{
-			Product: enginewire.Product(failure.Product), Resource: failure.Resource,
-			Phase: string(failure.Operation), Kind: failure.Kind,
-		}
+		failures[i] = DumpFailure(failure.Product, failure.Resource, string(failure.Operation), failure.Kind, failure.Detail)
 		probe := enginewire.Warning{Type: "warning", ID: 1, Sequence: 1, Warning: failures[i]}
 		if err := probe.Validate(); err != nil {
 			return enginewire.DumpSummary{}, fmt.Errorf("convert dump failure: %w", err)
@@ -297,6 +294,21 @@ func ToDumpSummary(source machine.DumpResult) (enginewire.DumpSummary, error) {
 		return enginewire.DumpSummary{}, fmt.Errorf("convert dump summary: %w", err)
 	}
 	return summary, nil
+}
+
+// DumpFailure is the one conversion from a dump resource failure to its wire
+// form. The streamed warning and the completed summary must use it alike:
+// the host requires the two to be equal.
+func DumpFailure(product, resource, phase, kind string, detail machine.FailureDetail) enginewire.DumpFailure {
+	failure := enginewire.DumpFailure{
+		Product: enginewire.Product(product), Resource: resource, Phase: phase, Kind: kind,
+		Reason: detail.Reason, Status: detail.Status, Retryable: detail.Retryable,
+	}
+	if failure.Validate() != nil {
+		// Only a well-formed, value-free detail crosses the wire.
+		failure.Reason, failure.Status, failure.Retryable = "", 0, false
+	}
+	return failure
 }
 
 // SemanticItem pairs a diff payload with its exact wire discriminant.

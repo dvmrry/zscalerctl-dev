@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +35,16 @@ type App struct {
 	reader    ResourceReader
 	catalog   resources.ResourceCatalog
 	logger    *slog.Logger
+	// notices collects operator notices from live reads (the implicitly
+	// chosen profile). Run writes them to redacted stderr only when it
+	// succeeds, so a failure's stderr stays one error envelope.
+	notices bytes.Buffer
+	// catalogNotices collects notices built only from catalog names, modes
+	// and fixed text (noteOmittedFields). They are written after notices,
+	// on the same terms, but not scanned: the prose scan read long field
+	// names with digits (dnsResolutionOnTransparentProxyIPv6Apps) as tokens
+	// and replaced the very names the notice exists to give.
+	catalogNotices bytes.Buffer
 
 	machineRuntimeFactory machineRuntimeFactory
 }
@@ -177,10 +190,22 @@ func callWithSpinner[T any](a *App, opts globalOptions, msg string, fn func() (T
 	return fn()
 }
 
-func (a *App) Run(ctx context.Context, args []string) error {
+func (a *App) Run(ctx context.Context, args []string) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Live-read notices are written only when the whole run succeeds,
+	// including --output publication: a failing run's stderr is the single
+	// error envelope the caller writes after Run returns.
+	a.notices.Reset()
+	a.catalogNotices.Reset()
+	defer func() {
+		if err == nil {
+			a.writeNotices()
+			return
+		}
+		err = withProxyHint(err, a.env)
+	}()
 	// __complete / __completeNoDesc: Cobra's shell-completion protocol. These tokens
 	// must bypass parseGlobal entirely so that global flags appearing AFTER
 	// __complete (e.g. "__complete --log-level ''") are not consumed by the
@@ -213,6 +238,18 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.runParsed(ctx, opts, rest)
+}
+
+// writeNotices writes collected notices to stderr through the redactor.
+func (a *App) writeNotices() {
+	if a.notices.Len() > 0 {
+		w := redact.NewWriter(a.err, redact.ModeStandard)
+		_, _ = w.Write(a.notices.Bytes())
+		_ = w.Close()
+		a.notices.Reset()
+	}
+	_, _ = a.err.Write(a.catalogNotices.Bytes())
+	a.catalogNotices.Reset()
 }
 
 func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) error {
@@ -298,6 +335,9 @@ func (a *App) runParsed(ctx context.Context, opts globalOptions, rest []string) 
 	if err := validatePaginationInvocation(opts, rest, a.resourceCatalog()); err != nil {
 		return err
 	}
+	if err := validateCountByInvocation(opts); err != nil {
+		return err
+	}
 	if err := validateFromDumpInvocation(opts, rest, a.resourceCatalog()); err != nil {
 		return err
 	}
@@ -336,6 +376,11 @@ func validateFromDumpInvocation(
 	}
 	if opts.configPath != "" {
 		return UsageError{Message: "--from-dump cannot be used with --config"}
+	}
+	if len(rest) > 0 && rest[0] == "refs" {
+		// refs reads whole resources through the same saved-dump runtime;
+		// its own command validates the rest of the invocation.
+		return nil
 	}
 	if len(rest) < 3 || !knownProductCommand(rest[0], catalog) {
 		return UsageError{Message: "--from-dump applies only to resource read operations; use it with \"<product> <resource> list|get|show\""}
@@ -413,18 +458,22 @@ type globalOptions struct {
 	colorMode          output.ColorMode
 	logLevel           string
 	fields             []string
+	countBy            []string
 	filters            []recordFilter
 	search             string
 	help               bool
 	argTerminatorIndex int
 }
 
-// narrowingFlag names the first result-narrowing flag in use (--filter or
-// --search), or "" when neither is set. Used to scope both flags to list
-// operations with a usage error that names the offending flag.
+// narrowingFlag names the first list-only flag in use (--filter, --search or
+// --count-by), or "" when none is set. Used to scope them to list operations
+// with a usage error that names the offending flag.
 func (o globalOptions) narrowingFlag() string {
 	if len(o.filters) > 0 {
 		return "--filter"
+	}
+	if len(o.countBy) > 0 {
+		return "--count-by"
 	}
 	if o.search != "" {
 		return "--search"
@@ -496,6 +545,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	noColor := gp.noColor
 	logLevel := gp.logLevel
 	fieldsFlag := gp.fieldsFlag
+	countByFlag := gp.countBy
 	searchFlag := gp.searchFlag
 	globalArgs, rest, help, terminatorIndex, err := splitGlobalArgs(args)
 	if err != nil {
@@ -503,6 +553,9 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	}
 	if err := fs.Parse(globalArgs); err != nil {
 		return globalOptions{}, nil, UsageError{Message: err.Error()}
+	}
+	if err := validateCountByFlag(countByFlag); err != nil {
+		return globalOptions{}, nil, err
 	}
 	var fromDumpSet, limitSet, offsetSet bool
 	fs.Visit(func(f *flag.Flag) {
@@ -570,6 +623,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 		colorMode:          colorMode,
 		logLevel:           *logLevel,
 		fields:             parseFieldsList(*fieldsFlag),
+		countBy:            parseFieldsList(countByFlag.value),
 		filters:            filters,
 		search:             *searchFlag,
 		help:               help,
@@ -679,7 +733,7 @@ func (a *App) buildCommandTree(opts globalOptions) *cobra.Command {
 	configureHelp(root, a.style(opts))
 	root.AddCommand(a.newVersionCmd(opts), a.newDoctorCmd(opts), a.newDumpCmd(opts), a.newDiffCmd(opts),
 		a.newConfigCmd(opts), a.newSchemaCmd(opts), a.newAuthCmd(opts), a.newIntrospectCmd(opts),
-		a.newMachineCmd(opts))
+		a.newMachineCmd(opts), a.newRefsCmd(opts))
 	catalog := a.resourceCatalog()
 	for _, p := range knownProducts(catalog) {
 		root.AddCommand(a.newProductCmd(p, opts))
@@ -893,6 +947,9 @@ func (a *App) runProductWithRuntime(
 		var err error
 		rt, err = a.machineRuntime(ctx, cfg, opts)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return err
 		}
 	}
@@ -904,12 +961,21 @@ func (a *App) runProductWithRuntime(
 	if opts.fromDumpSet || opts.fromDump != "" {
 		message = "reading saved dump"
 	}
+	if len(opts.countBy) > 0 {
+		if err := resources.ValidateCountByPathsInMode(spec, rt.Redaction(), opts.countBy); err != nil {
+			return UsageError{Message: err.Error()}
+		}
+	}
 	projected, err := callWithSpinner(a, opts, message, func() (resources.ProjectedRecords, error) {
 		return a.executeMachineRead(ctx, spec, op, recordID, rt, opts)
 	})
 	if err != nil {
 		return err
 	}
+	if len(opts.countBy) > 0 {
+		return a.writeCounts(cfg, opts, projected)
+	}
+	a.noteOmittedFields(spec, rt.Redaction(), opts.fields, opts.fromDumpSet || opts.fromDump != "")
 	renderOpts := opts
 	// The machine/core path has already applied row narrowing. The render path
 	// only keeps fields for text-format presentation order.
@@ -955,6 +1021,7 @@ func (a *App) defaultMachineRuntime(ctx context.Context, cfg config.Config, opts
 		Timeout:    opts.timeout,
 		Catalog:    a.resourceCatalog(),
 		DiagLogger: a.sdkDiagLogger(opts),
+		Notices:    &a.notices,
 	})
 }
 
@@ -1038,45 +1105,109 @@ func isResourceReadInvocation(rest []string, catalog resources.ResourceCatalog) 
 	return false
 }
 
+func splitDestinationPath(path string) (string, string, error) {
+	// filepath.Split preserves the raw parent path. Keep symlink/.. components
+	// so os.OpenRoot resolves them in filesystem order.
+	parent, name := filepath.Split(path)
+	if name == "" || name == "." || name == ".." {
+		return "", "", errors.New("destination path must name a file")
+	}
+	if parent == "" {
+		parent = "."
+	}
+	return parent, name, nil
+}
+
 func writeOutputFile(path string, body []byte) error {
+	return writeOutputFileWithHook(path, body, nil)
+}
+
+func writeOutputFileWithHook(path string, body []byte, afterDestinationCheck func() error) error {
+	return writeOutputFileWithLstat(path, body, afterDestinationCheck, nil)
+}
+
+func writeOutputFileWithLstat(path string, body []byte, afterDestinationCheck func() error, inspect func(string) (os.FileInfo, error)) error {
 	if strings.TrimSpace(path) == "" {
 		return UsageError{Message: "--output requires a path"}
 	}
+	parent, name, err := splitDestinationPath(path)
+	if err != nil {
+		return UsageError{Message: fmt.Sprintf("--output: %v: %s", err, path)}
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil && !errors.Is(err, fs.ErrPermission) {
+		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", parent, pathErrorReason(err))}
+	}
+	// OpenRoot requires directory read permission; pathname writes can succeed
+	// with only write and search permission.
+	lstat := os.Lstat
+	remove := os.Remove
+	rename := os.Rename
+	destination := path
+	if root != nil {
+		defer root.Close()
+		lstat = root.Lstat
+		remove = root.Remove
+		rename = root.Rename
+		destination = name
+	}
+	if inspect != nil {
+		lstat = inspect
+	}
 	// Refuse to write through a symlink or replace a non-regular destination,
 	// while allowing an existing regular file to be overwritten. Lstat keeps the
-	// check itself from following a symlink; missing destinations are created by
-	// the same-directory temporary file below.
-	if info, err := os.Lstat(path); err == nil {
+	// check itself from following a symlink; publication uses the opened parent
+	// when available.
+	info, statErr := lstat(destination)
+	if root != nil && statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+		// Preserve pathname inspection when opening the entry through root fails.
+		// Windows data access and sharing restrictions can block root.Lstat.
+		info, statErr = os.Lstat(path)
+	}
+	if statErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return UsageError{Message: fmt.Sprintf("write --output: %s is a symlink", path)}
 		}
 		if !info.Mode().IsRegular() {
 			return UsageError{Message: fmt.Sprintf("write --output: %s is not a regular file", path)}
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return UsageError{Message: fmt.Sprintf("--output: cannot inspect %s: %v", path, pathErrorReason(err))}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return UsageError{Message: fmt.Sprintf("--output: cannot inspect %s: %v", path, pathErrorReason(statErr))}
+	}
+	if afterDestinationCheck != nil {
+		if err := afterDestinationCheck(); err != nil {
+			return err
+		}
 	}
 	// On Unix, write to a temp file in the same directory, fsync it, then
 	// atomically rename it over the destination, so an interrupted write never
 	// leaves a truncated file at the final path. Overwriting an existing regular
 	// file is still allowed (rename replaces it) so re-running a pipeline to the
-	// same path works; rename targets the path itself, never through a symlink.
+	// same path works; rename targets the entry itself, never through a symlink.
 	// On platforms where os.Rename does not provide replacement/atomicity
 	// guarantees (notably Windows), this same-directory temp file does not claim
 	// atomic replacement.
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
+	var tmp *os.File
+	var tmpName string
+	if root != nil {
+		tmp, tmpName, err = createRootTempFile(root, ".tmp-"+name+"-")
+	} else {
+		tmp, err = os.CreateTemp(parent, ".tmp-"+name+"-*")
+		if err == nil {
+			tmpName = tmp.Name()
+		}
+	}
 	if err != nil {
 		// The destination is a user-supplied argument, so an unwritable or
 		// missing directory is a usage error (documented exit 2). Report the
 		// directory the user gave, not the generated temp-file name, which is
 		// an implementation detail.
-		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", filepath.Dir(path), pathErrorReason(err))}
+		return UsageError{Message: fmt.Sprintf("--output: cannot write to %s: %v", parent, pathErrorReason(err))}
 	}
-	tmpPath := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpPath)
+			_ = remove(tmpName)
 		}
 	}()
 	if err := tmp.Chmod(0o600); err != nil {
@@ -1094,11 +1225,30 @@ func writeOutputFile(path string, body []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("write --output: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := rename(tmpName, destination); err != nil {
 		return fmt.Errorf("write --output: %w", err)
 	}
 	cleanup = false
 	return nil
+}
+
+// createRootTempFile creates prefix plus a random decimal suffix of at most ten
+// digits, the same length budget as os.CreateTemp, so destinations whose names
+// fit NAME_MAX with os.CreateTemp still fit here.
+func createRootTempFile(root *os.Root, prefix string) (*os.File, string, error) {
+	var suffix [4]byte
+	for attempt := 0; attempt < 100; attempt++ {
+		if _, err := rand.Read(suffix[:]); err != nil {
+			return nil, "", err
+		}
+		name := prefix + strconv.FormatUint(uint64(binary.BigEndian.Uint32(suffix[:])), 10)
+		file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return file, name, err
+	}
+	return nil, "", fs.ErrExist
 }
 
 // pathErrorReason extracts the underlying OS reason from a path error so the

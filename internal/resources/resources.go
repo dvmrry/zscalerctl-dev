@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ var (
 	ErrInvalidProjectedValue = errors.New("invalid projected value")
 	ErrUnexpectedField       = errors.New("unexpected rendered field")
 	ErrUnknownField          = errors.New("unknown projected field")
+	ErrSuppressedField       = errors.New("field is not rendered in the active redaction mode")
 	ErrUnknownResource       = errors.New("unknown browser resource")
 	ErrMissingID             = errors.New("browser resource id is required")
 	ErrInvalidResourceID     = errors.New("invalid zscaler resource id")
@@ -54,13 +56,56 @@ func (o Operation) Mutates() bool {
 }
 
 type FieldSpec struct {
-	Name                   string              `json:"name"`
-	JSONName               string              `json:"json_name,omitempty"`
-	Classification         FieldClassification `json:"classification"`
-	AllowedModes           []redact.Mode       `json:"allowed_modes,omitempty"`
-	Fields                 []FieldSpec         `json:"fields,omitempty"`
-	SensitiveNameReason    string              `json:"sensitive_name_reason,omitempty"`
-	StandardFreeTextReason string              `json:"standard_free_text_reason,omitempty"`
+	Name           string              `json:"name"`
+	JSONName       string              `json:"json_name,omitempty"`
+	Classification FieldClassification `json:"classification"`
+	// AllowedModes lists the modes that render the field. It is always
+	// emitted: a secret field renders in no mode and shows [], so a reader
+	// never mistakes a missing key for "unstated".
+	AllowedModes []redact.Mode `json:"allowed_modes"`
+	// Type is the JSON type zscalerctl emits for the field: string, integer,
+	// number, boolean, object, or array<T> of those. It is observed by
+	// sampling each reader's record mapper (field_types_gen.go) and empty
+	// where no fixed type is emitted.
+	Type   string      `json:"type,omitempty"`
+	Fields []FieldSpec `json:"fields,omitempty"`
+	// References names the catalog resources this field's id may belong to
+	// (usually one); see fieldReferences in references.go.
+	References             []ResourceRef `json:"references,omitempty"`
+	SensitiveNameReason    string        `json:"sensitive_name_reason,omitempty"`
+	StandardFreeTextReason string        `json:"standard_free_text_reason,omitempty"`
+	// SecretReason says why a secret field never renders. It is required on
+	// every secret field and forbidden elsewhere: secret means credential
+	// material, not "unreviewed" or "might be sensitive", so that link ids,
+	// settings and structure stay readable.
+	SecretReason SecretReason `json:"secret_reason,omitempty"`
+}
+
+// SecretReason is the closed set of reasons a field is secret.
+type SecretReason string
+
+const (
+	// SecretCredential: a password, pre-shared key, client secret or other
+	// value that authenticates as someone.
+	SecretCredential SecretReason = "credential"
+	// SecretToken: an access, session, policy or one-time token or passcode.
+	SecretToken SecretReason = "token"
+	// SecretKeyMaterial: private key or certificate key material.
+	SecretKeyMaterial SecretReason = "key_material"
+	// SecretOpaqueBlob: an encoded configuration blob that can embed any of
+	// the above and cannot be inspected field by field.
+	SecretOpaqueBlob SecretReason = "opaque_blob" // #nosec G101 -- secret reason name, not a credential
+	// SecretUnstructured: a free-form key/value map (such as "extensions")
+	// whose keys and values are not modeled, so nothing in it can be cleared.
+	SecretUnstructured SecretReason = "unstructured"
+)
+
+func validSecretReason(reason SecretReason) bool {
+	switch reason {
+	case SecretCredential, SecretToken, SecretKeyMaterial, SecretOpaqueBlob, SecretUnstructured:
+		return true
+	}
+	return false
 }
 
 type FieldClassification string
@@ -85,6 +130,15 @@ const (
 
 func standardFreeTextReason(subject string) string {
 	return subject + "; " + standardFreeTextControls
+}
+
+// MarshalJSON writes a nil AllowedModes as [] rather than null.
+func (f FieldSpec) MarshalJSON() ([]byte, error) {
+	type plain FieldSpec
+	if f.AllowedModes == nil {
+		f.AllowedModes = []redact.Mode{}
+	}
+	return json.Marshal(plain(f))
 }
 
 func (f FieldSpec) JSONField() string {
@@ -212,6 +266,81 @@ func NewSourceRecord(fields map[string]any) SourceRecord {
 	return SourceRecord{fields: copySourceMap(fields)}
 }
 
+// confirmedEmptyList marks a list the API itself returned as []. Projection
+// renders it as [] (in a mode that renders the field), so the output says
+// "none" only where the API did. Every other empty list, nil or not, is
+// skipped: a mapper's empty slice cannot tell "sent as []" from "not sent",
+// so a missing key means the list was not sent, not rendered, or not modeled.
+type confirmedEmptyList struct{}
+
+// isUnconfirmedEmptyList reports an empty slice or array that does not carry
+// the confirmed-empty marker; projection skips it.
+func isUnconfirmedEmptyList(value any) bool {
+	v := reflect.ValueOf(value)
+	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) && v.Len() == 0
+}
+
+// NewSourceRecordFromProjected rebuilds a source record from fields that are
+// already projected output, such as a saved dump record, for re-verification.
+// Projection rendered every empty list in them deliberately, so each counts as
+// confirmed and survives re-projection unchanged.
+func NewSourceRecordFromProjected(fields map[string]any) SourceRecord {
+	return SourceRecord{fields: confirmEmptyLists(copySourceMap(fields)).(map[string]any)}
+}
+
+func confirmEmptyLists(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, item := range v {
+			v[key] = confirmEmptyLists(item)
+		}
+		return v
+	case []any:
+		if len(v) == 0 {
+			return confirmedEmptyList{}
+		}
+		for i, item := range v {
+			v[i] = confirmEmptyLists(item)
+		}
+		return v
+	}
+	if isUnconfirmedEmptyList(value) {
+		return confirmedEmptyList{}
+	}
+	return value
+}
+
+// ListLen returns the length of the record's value for key when it is a list,
+// and -1 otherwise (absent or not a list).
+func (r SourceRecord) ListLen(key string) int {
+	v := reflect.ValueOf(r.fields[key])
+	if !v.IsValid() || (v.Kind() != reflect.Slice && v.Kind() != reflect.Array) {
+		return -1
+	}
+	return v.Len()
+}
+
+// Has reports whether the record has a value for key.
+func (r SourceRecord) Has(key string) bool {
+	_, ok := r.fields[key]
+	return ok
+}
+
+// WithConfirmedEmptyList returns a copy of r in which key holds a list the
+// API returned as []. A key that already holds a non-empty value is left
+// unchanged.
+func (r SourceRecord) WithConfirmedEmptyList(key string) SourceRecord {
+	if value, ok := r.fields[key]; ok && !isUnconfirmedEmptyList(value) {
+		return r
+	}
+	fields := make(map[string]any, len(r.fields))
+	for k, v := range r.fields {
+		fields[k] = v
+	}
+	fields[key] = confirmedEmptyList{}
+	return SourceRecord{fields: fields}
+}
+
 type ProjectedRecord struct {
 	fields map[string]any
 }
@@ -234,18 +363,137 @@ func (r ProjectedRecord) Value(key string) (any, bool) {
 	return copyAny(value), true
 }
 
-// Select returns a copy of the record narrowed to keys, in the given order,
-// including only keys that are present. It can only narrow the already-projected
-// field set; it never adds or resurrects a dropped or secret field, so it is
-// safe to apply after projection and redaction.
+// Select returns a copy of the record narrowed to keys, including only keys
+// that are present. A key is a top-level field or a dotted path through nested
+// fields ("groups.id"): a path keeps each object along it with only the
+// selected keys, and narrows every element of a list it crosses, so
+// "groups.id" turns groups into [{"id": ...}, ...] with one entry per group.
+// A key that selects a field whole wins over paths beneath it. Select can only
+// narrow the already-projected field set; it never adds or resurrects a
+// dropped or secret field, so it is safe to apply after projection and
+// redaction.
 func (r ProjectedRecord) Select(keys []string) ProjectedRecord {
-	out := make(map[string]any, len(keys))
-	for _, key := range keys {
+	tree := newSelectionTree(keys)
+	out := make(map[string]any, len(tree))
+	for key, sub := range tree {
 		if value, ok := r.fields[key]; ok {
-			out[key] = copyAny(value)
+			out[key] = selectProjectedValue(copyAny(value), sub)
 		}
 	}
 	return ProjectedRecord{fields: out}
+}
+
+// selectionTree maps a field to the selection beneath it; a nil subtree keeps
+// the field whole.
+type selectionTree map[string]selectionTree
+
+func newSelectionTree(keys []string) selectionTree {
+	root := selectionTree{}
+	for _, key := range keys {
+		node := root
+		segments := strings.Split(key, ".")
+		for i, segment := range segments {
+			sub, seen := node[segment]
+			if seen && sub == nil {
+				// An ancestor is already selected whole.
+				break
+			}
+			if i == len(segments)-1 {
+				node[segment] = nil
+				break
+			}
+			if sub == nil {
+				sub = selectionTree{}
+				node[segment] = sub
+			}
+			node = sub
+		}
+	}
+	return root
+}
+
+// selectProjectedValue narrows an owned projected value to tree. Objects keep
+// only the selected keys that are present (an object missing all of them
+// stays as {}, so list elements keep their positions); lists are narrowed
+// element by element; any other value has nothing beneath it to drop.
+func selectProjectedValue(value any, tree selectionTree) any {
+	if tree == nil {
+		return value
+	}
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(tree))
+		for key, sub := range tree {
+			if child, ok := v[key]; ok {
+				out[key] = selectProjectedValue(child, sub)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = selectProjectedValue(item, tree)
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, len(v))
+		for i, item := range v {
+			out[i], _ = selectProjectedValue(item, tree).(map[string]any)
+		}
+		return out
+	}
+	return value
+}
+
+// ProjectedPathValue returns the value a top-level field or dotted path
+// reaches in a projected record's fields, for column-oriented rendering. A
+// path through objects returns the value at its end; a path that crosses a
+// list returns a list of what it reaches in each element, skipping elements
+// that lack the key (a null leaf is reached, and renders as an empty slot).
+// Unlike Select's JSON, which keeps such elements as {}, the result does not
+// keep element positions. ok is false when the path reaches nothing.
+func ProjectedPathValue(fields map[string]any, path string) (any, bool) {
+	if value, ok := fields[path]; ok {
+		return value, true
+	}
+	if !strings.Contains(path, ".") {
+		return nil, false
+	}
+	return projectedPathValue(fields, strings.Split(path, "."))
+}
+
+func projectedPathValue(value any, path []string) (any, bool) {
+	if len(path) == 0 {
+		return value, true
+	}
+	var items []any
+	switch v := value.(type) {
+	case map[string]any:
+		next, ok := v[path[0]]
+		if !ok {
+			return nil, false
+		}
+		return projectedPathValue(next, path[1:])
+	case []any:
+		items = v
+	case []map[string]any:
+		items = make([]any, len(v))
+		for i, item := range v {
+			items[i] = item
+		}
+	default:
+		return nil, false
+	}
+	var out []any
+	for _, item := range items {
+		if reached, ok := projectedPathValue(item, path); ok {
+			out = append(out, reached)
+		}
+	}
+	if out == nil {
+		return nil, false
+	}
+	return out, true
 }
 
 type ProjectedRecords struct {
@@ -302,22 +550,20 @@ type NarrowOptions struct {
 }
 
 // ValidateNarrowOptions validates all catalog names used by --fields and
-// --filter before a caller performs any read. Validation is intentionally
-// independent of the active redaction mode: a catalog field that is known but
-// omitted from the mode remains valid, and later projection/filtering makes it
-// non-renderable and therefore non-matching. Empty names are left to the
-// adapter's request-shape validation, which owns parsing and required-value
-// errors.
+// --filter before a caller performs any read. A --fields name is a top-level
+// field or a dotted path through nested catalog fields ("groups.id"); a filter
+// name is the same, but a dotted filter path must end at a leaf
+// ("groups.name"). This
+// check is catalog-only, so it can run before configuration (and therefore the
+// redaction mode) is known; ValidateNarrowOptionsInMode adds the mode check
+// once it is. Empty names are left to the adapter's request-shape validation,
+// which owns parsing and required-value errors.
 func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
-	catalog := make(map[string]struct{}, len(spec.Fields))
-	for _, field := range spec.Fields {
-		catalog[field.JSONField()] = struct{}{}
-	}
 	for _, name := range opts.Fields {
 		if name == "" {
 			continue
 		}
-		if _, ok := catalog[name]; !ok {
+		if _, ok := FieldPathAvailability(spec, name); !ok {
 			return UnknownFieldError{
 				Product:  spec.Product,
 				Resource: spec.Name,
@@ -329,7 +575,7 @@ func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
 		if filter.Field == "" {
 			continue
 		}
-		if _, ok := catalog[filter.Field]; !ok {
+		if !validFilterPath(spec.Fields, filter.Field) {
 			return UnknownFilterError{
 				Product:  spec.Product,
 				Resource: spec.Name,
@@ -338,6 +584,204 @@ func ValidateNarrowOptions(spec ResourceSpec, opts NarrowOptions) error {
 		}
 	}
 	return nil
+}
+
+// PathAvailability says whether a catalog field or dotted filter path renders
+// in a redaction mode. A nested field renders only where every field above it
+// also renders, so RenderableIn is the intersection along the path.
+type PathAvailability struct {
+	Secret       bool
+	RenderableIn []redact.Mode
+}
+
+// RenderedIn reports whether the path renders in mode.
+func (a PathAvailability) RenderedIn(mode redact.Mode) bool {
+	mode = redact.EffectiveMode(mode)
+	for _, m := range a.RenderableIn {
+		if m == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// FieldPathAvailability returns the availability of a top-level field or a
+// dotted path whose segments are nested catalog fields. ok is false when the
+// name is not in the catalog.
+func FieldPathAvailability(spec ResourceSpec, name string) (PathAvailability, bool) {
+	chain := fieldChain(spec.Fields, name)
+	if chain == nil {
+		return PathAvailability{}, false
+	}
+	return availabilityAlong(chain), true
+}
+
+func availabilityAlong(chain []FieldSpec) PathAvailability {
+	var out PathAvailability
+	for _, field := range chain {
+		if field.Classification == ClassSecret {
+			out.Secret = true
+		}
+	}
+	for _, mode := range []redact.Mode{redact.ModeStandard, redact.ModeShare, redact.ModeParanoid} {
+		renders := true
+		for _, field := range chain {
+			if !field.AllowedIn(mode) {
+				renders = false
+				break
+			}
+		}
+		if renders {
+			out.RenderableIn = append(out.RenderableIn, mode)
+		}
+	}
+	return out
+}
+
+// SuppressedFieldError reports a --filter path naming a real catalog field
+// that the active mode never renders. Filtering on it could only match
+// nothing, which reads as a confident "no such records"; refusing it keeps an
+// omitted field from posing as an empty result.
+type SuppressedFieldError struct {
+	// Flag is the flag that named the field: "--filter" (the default) or
+	// "--count-by".
+	Flag         string
+	Product      Product
+	Resource     string
+	Field        string
+	Mode         redact.Mode
+	Secret       bool
+	RenderableIn []redact.Mode
+}
+
+func (e SuppressedFieldError) Error() string {
+	flag, use, consequence := "--filter", "filtered on", "so it could never match"
+	if e.Flag == "--count-by" {
+		flag, use, consequence = e.Flag, "counted", "so every record would count as missing"
+	}
+	if e.Secret {
+		return fmt.Sprintf("%s: %q of %s/%s is secret and never renders, so it cannot be %s",
+			flag, e.Field, e.Product, e.Resource, use)
+	}
+	if len(e.RenderableIn) == 0 {
+		return fmt.Sprintf("%s: %q of %s/%s renders in no redaction mode, so it cannot be %s",
+			flag, e.Field, e.Product, e.Resource, use)
+	}
+	return fmt.Sprintf("%s: %q of %s/%s is omitted in %s mode, %s; it renders with --redaction %s",
+		flag, e.Field, e.Product, e.Resource, redact.EffectiveMode(e.Mode), consequence, modeList(e.RenderableIn))
+}
+
+// Unwrap returns the sentinel error for errors.Is checks.
+func (e SuppressedFieldError) Unwrap() error { return ErrSuppressedField }
+
+func modeList(modes []redact.Mode) string {
+	names := make([]string, len(modes))
+	for i, m := range modes {
+		names[i] = string(m)
+	}
+	return strings.Join(names, " or ")
+}
+
+// ValidateNarrowOptionsInMode runs ValidateNarrowOptions and then rejects any
+// filter path the mode does not render. Requested --fields that the mode omits
+// stay valid, since the caller still gets the fields that do render;
+// OmittedFields reports them.
+func ValidateNarrowOptionsInMode(spec ResourceSpec, mode redact.Mode, opts NarrowOptions) error {
+	if err := ValidateNarrowOptions(spec, opts); err != nil {
+		return err
+	}
+	for _, filter := range opts.Filters {
+		if filter.Field == "" {
+			continue
+		}
+		availability, _ := FieldPathAvailability(spec, filter.Field)
+		if !availability.RenderedIn(mode) {
+			return SuppressedFieldError{
+				Product:      spec.Product,
+				Resource:     spec.Name,
+				Field:        filter.Field,
+				Mode:         mode,
+				Secret:       availability.Secret,
+				RenderableIn: availability.RenderableIn,
+			}
+		}
+	}
+	return nil
+}
+
+// OmittedFields lists the catalog fields a mode leaves out of output, as
+// top-level names or dotted paths for nested fields under a parent that does
+// render. With requested fields (or dotted paths) it covers only those and
+// what lies beneath them; without, every field. Secret fields never render in
+// any mode and the schema says so, so they are listed only when requested (a
+// path through a secret field counts), and then separately.
+func OmittedFields(spec ResourceSpec, mode redact.Mode, requested []string) (omitted []string, secret []string) {
+	if len(requested) == 0 {
+		return omittedPaths(spec.Fields, mode, ""), nil
+	}
+	for _, name := range requested {
+		chain := fieldChain(spec.Fields, name)
+		if chain == nil {
+			continue
+		}
+		availability := availabilityAlong(chain)
+		switch {
+		case availability.Secret:
+			secret = append(secret, name)
+		case !availability.RenderedIn(mode):
+			omitted = append(omitted, name)
+		default:
+			omitted = append(omitted, omittedPaths(chain[len(chain)-1].Fields, mode, name+".")...)
+		}
+	}
+	// Overlapping requests (groups and groups.name) reach the same paths.
+	return uniqueInOrder(omitted), uniqueInOrder(secret)
+}
+
+func uniqueInOrder(names []string) []string {
+	seen := make(map[string]bool, len(names))
+	out := names[:0]
+	for _, name := range names {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// fieldChain returns the catalog fields along a top-level name or dotted
+// path, or nil when the name is not in the catalog.
+func fieldChain(fields []FieldSpec, name string) []FieldSpec {
+	if field, ok := fieldByJSONName(fields, name); ok {
+		return []FieldSpec{field}
+	}
+	var chain []FieldSpec
+	for _, segment := range strings.Split(name, ".") {
+		field, ok := fieldByJSONName(fields, segment)
+		if !ok {
+			return nil
+		}
+		chain = append(chain, field)
+		fields = field.Fields
+	}
+	return chain
+}
+
+func omittedPaths(fields []FieldSpec, mode redact.Mode, prefix string) []string {
+	var out []string
+	for _, field := range fields {
+		if field.Classification == ClassSecret {
+			continue
+		}
+		path := prefix + field.JSONField()
+		if !field.AllowedIn(mode) {
+			out = append(out, path)
+			continue
+		}
+		out = append(out, omittedPaths(field.Fields, mode, path+".")...)
+	}
+	return out
 }
 
 func NewProjectedRecords(records []ProjectedRecord) ProjectedRecords {
@@ -435,9 +879,10 @@ func (rs ProjectedRecords) Records() []ProjectedRecord {
 }
 
 // EffectiveFields returns the renderable field order for a resource, optionally
-// narrowed to requested fields. Unknown fields are rejected. Known fields that
-// are not renderable in the active mode are silently omitted so callers cannot
-// widen projected output through field selection.
+// narrowed to requested fields or dotted paths. Unknown names are rejected.
+// Known names that do not render in the active mode (a path renders only when
+// every field along it does) are silently omitted so callers cannot widen
+// projected output through field selection.
 func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([]string, error) {
 	order := spec.FieldOrder(mode)
 	if len(requested) == 0 {
@@ -454,6 +899,13 @@ func EffectiveFields(spec ResourceSpec, mode redact.Mode, requested []string) ([
 	for _, name := range requested {
 		if _, ok := renderable[name]; ok {
 			out = append(out, name)
+			continue
+		}
+		if !strings.Contains(name, ".") {
+			continue
+		}
+		if availability, _ := FieldPathAvailability(spec, name); availability.RenderedIn(mode) {
+			out = append(out, name)
 		}
 	}
 	return out, nil
@@ -468,7 +920,7 @@ func NarrowProjectedRecords(
 	records ProjectedRecords,
 	opts NarrowOptions,
 ) (ProjectedRecords, error) {
-	if err := ValidateNarrowOptions(spec, opts); err != nil {
+	if err := ValidateNarrowOptionsInMode(spec, mode, opts); err != nil {
 		return ProjectedRecords{}, err
 	}
 	fields, err := EffectiveFields(spec, mode, opts.Fields)
@@ -508,18 +960,7 @@ func FilterProjectedRecords(
 
 func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, search string) bool {
 	for _, filter := range filters {
-		value, ok := fields[filter.Field]
-		if !ok {
-			return false
-		}
-		rendered := FormatProjectedValue(value)
-		if filter.Substring {
-			if !strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.Value)) {
-				return false
-			}
-			continue
-		}
-		if rendered != filter.Value {
+		if !projectedFilterMatches(fields, filter) {
 			return false
 		}
 	}
@@ -533,6 +974,113 @@ func projectedRecordMatches(fields map[string]any, filters []ProjectedFilter, se
 		}
 	}
 	return false
+}
+
+// projectedFilterMatches applies one filter. A top-level field matches on its
+// whole rendered value. A dotted path matches when any value it reaches does:
+// lists along the path, and a list at its end, are matched element by element,
+// so "groups.name=Eng" means some group is named exactly "Eng".
+func projectedFilterMatches(fields map[string]any, filter ProjectedFilter) bool {
+	values := []any(nil)
+	if value, ok := fields[filter.Field]; ok {
+		// A top-level key matches the whole rendered value, and a list also
+		// matches when any element does, as a dotted path into it would:
+		// --filter urlCategories=X keeps every rule that lists X.
+		values = append([]any{value}, topLevelElements(value)...)
+	} else if strings.Contains(filter.Field, ".") {
+		values = projectedPathValues(fields, strings.Split(filter.Field, "."))
+	}
+	for _, value := range values {
+		rendered := FormatProjectedValue(value)
+		if filter.Substring {
+			if strings.Contains(strings.ToLower(rendered), strings.ToLower(filter.Value)) {
+				return true
+			}
+			continue
+		}
+		if rendered == filter.Value {
+			return true
+		}
+	}
+	return false
+}
+
+// topLevelElements returns a list's own elements, one level deep (an inner
+// list is one element), or nothing for a non-list value.
+func topLevelElements(value any) []any {
+	switch v := value.(type) {
+	case []any:
+		return v
+	case []string:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	}
+	return nil
+}
+
+// projectedPathValues returns the values a dotted path reaches in a projected
+// value. Missing keys reach nothing, so fields dropped by projection or
+// redaction never match.
+func projectedPathValues(value any, path []string) []any {
+	switch v := value.(type) {
+	case []any:
+		var out []any
+		for _, item := range v {
+			out = append(out, projectedPathValues(item, path)...)
+		}
+		return out
+	case []string:
+		if len(path) > 0 {
+			return nil
+		}
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	}
+	if len(path) == 0 {
+		return []any{value}
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	next, ok := object[path[0]]
+	if !ok {
+		return nil
+	}
+	return projectedPathValues(next, path[1:])
+}
+
+// validFilterPath reports whether name is a top-level field or a dotted path
+// whose every segment is a catalog field nested in the one before it. A path
+// must end at a field without nested fields, so it always matches leaf
+// values rather than a rendered object.
+func validFilterPath(fields []FieldSpec, name string) bool {
+	if _, ok := fieldByJSONName(fields, name); ok {
+		return true
+	}
+	for _, segment := range strings.Split(name, ".") {
+		field, ok := fieldByJSONName(fields, segment)
+		if !ok {
+			return false
+		}
+		fields = field.Fields
+	}
+	return len(fields) == 0
+}
+
+func fieldByJSONName(fields []FieldSpec, name string) (FieldSpec, bool) {
+	for _, field := range fields {
+		if field.JSONField() == name {
+			return field, true
+		}
+	}
+	return FieldSpec{}, false
 }
 
 // FormatProjectedValue renders a projected value for filter and search
@@ -628,6 +1176,9 @@ func projectRecordCore(spec ResourceSpec, mode redact.Mode, record SourceRecord)
 	report := ProjectionReport{}
 
 	for key, value := range record.fields {
+		if isUnconfirmedEmptyList(value) {
+			continue
+		}
 		field, ok := allowed[key]
 		if !ok {
 			report.DroppedFields = append(report.DroppedFields, key)
@@ -668,6 +1219,9 @@ func projectValue(
 ) (any, bool, bool) {
 	if _, unsupported := value.(unsupportedProjectedValue); unsupported {
 		return unsupportedProjectedValue{}, false, true
+	}
+	if _, empty := value.(confirmedEmptyList); empty {
+		return []any{}, false, true
 	}
 	if len(field.Fields) > 0 {
 		return projectNestedValue(mode, field, value, path, report)
@@ -766,6 +1320,9 @@ func projectNestedMap(
 	redacted := false
 
 	for key, value := range values {
+		if isUnconfirmedEmptyList(value) {
+			continue
+		}
 		field, ok := allowed[key]
 		nestedPath := path + "." + key
 		if !ok {
@@ -1192,6 +1749,10 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		if jsonName == "" {
 			return fmt.Errorf("%w: %s/%s has field without name", ErrInvalidResourceSpec, product, resource)
 		}
+		// "." separates nested fields in --filter paths and projection reports.
+		if strings.Contains(jsonName, ".") {
+			return fmt.Errorf("%w: %s/%s field %s contains '.'", ErrInvalidResourceSpec, product, resource, path)
+		}
 		if _, ok := seen[jsonName]; ok {
 			return fmt.Errorf("%w: %s/%s duplicate field %s", ErrInvalidResourceSpec, product, resource, path)
 		}
@@ -1211,6 +1772,12 @@ func validateFields(product Product, resource, prefix string, fields []FieldSpec
 		}
 		if field.Classification == ClassSecret && len(field.AllowedModes) != 0 {
 			return fmt.Errorf("%w: %s/%s secret field %s cannot be allowed", ErrInvalidResourceSpec, product, resource, path)
+		}
+		if field.Classification == ClassSecret && !validSecretReason(field.SecretReason) {
+			return fmt.Errorf("%w: %s/%s secret field %s needs a SecretReason (credential, token, key_material, opaque_blob or unstructured)", ErrInvalidResourceSpec, product, resource, path)
+		}
+		if field.Classification != ClassSecret && field.SecretReason != "" {
+			return fmt.Errorf("%w: %s/%s field %s has a SecretReason but is not secret", ErrInvalidResourceSpec, product, resource, path)
 		}
 		if field.Classification != ClassSecret && len(field.AllowedModes) == 0 {
 			return fmt.Errorf("%w: %s/%s field %s has no allowed modes", ErrInvalidResourceSpec, product, resource, path)
@@ -1320,24 +1887,53 @@ func freeTextField(name string, subject string) FieldSpec {
 	}
 }
 
-func secretField(name string) FieldSpec {
-	return FieldSpec{
-		Name:           name,
-		Classification: ClassSecret,
-	}
+// Secret fields: credential material only, each with its reason.
+func credentialField(name string) FieldSpec { return secretWithReason(name, SecretCredential) }
+func tokenField(name string) FieldSpec      { return secretWithReason(name, SecretToken) }
+func opaqueBlobField(name string) FieldSpec { return secretWithReason(name, SecretOpaqueBlob) }
+func unstructuredField(name string) FieldSpec {
+	return secretWithReason(name, SecretUnstructured)
 }
 
-func idNameExtensionsField(name string, allowed []redact.Mode) FieldSpec {
+func secretWithReason(name string, reason SecretReason) FieldSpec {
+	return FieldSpec{Name: name, Classification: ClassSecret, SecretReason: reason}
+}
+
+// namedOperationalField is an operational field whose name looks sensitive
+// (passwordExpiry, provisioningKeyId) but whose value is not: reason says why.
+func namedOperationalField(name string, allowed []redact.Mode, reason string) FieldSpec {
+	field := operationalField(name, allowed)
+	field.SensitiveNameReason = reason
+	return field
+}
+
+// idNameExtensionsField is a reference list of {id, name, extensions}.
+// nameModes bounds the referenced object's name; the list itself, and so its
+// ids, also render in share mode, because reference ids are fine to share and
+// without them a rule's scope (users, groups, locations, ...) is invisible in
+// the default mode. Paranoid mode renders the ids only when nameModes does.
+func idNameExtensionsField(name string, nameModes []redact.Mode) FieldSpec {
 	return FieldSpec{
 		Name:           name,
 		Classification: ClassTenantConfig,
-		AllowedModes:   allowed,
+		AllowedModes:   withShareMode(nameModes),
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
-			tenantConfigField("name", standardShareModes()),
-			secretField("extensions"),
+			tenantConfigField("name", nameModes),
+			unstructuredField("extensions"),
 		},
 	}
+}
+
+// withShareMode returns modes plus share, keeping the canonical mode order.
+func withShareMode(modes []redact.Mode) []redact.Mode {
+	out := []redact.Mode{}
+	for _, mode := range allModes() {
+		if mode == redact.ModeShare || slices.Contains(modes, mode) {
+			out = append(out, mode)
+		}
+	}
+	return out
 }
 
 func idNameField(name string, allowed []redact.Mode) FieldSpec {
@@ -1348,7 +1944,6 @@ func idNameField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			secretField("parent"),
 		},
 	}
 }
@@ -1391,8 +1986,10 @@ func idNameExternalIDField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("id", allModes()),
 			tenantConfigField("name", standardShareModes()),
-			secretField("externalId"),
-			secretField("extensions"),
+			// The external id is the referenced object's id in the other
+			// product (a ZPA application segment id on a ZIA rule).
+			operationalField("externalId", allModes()),
+			unstructuredField("extensions"),
 		},
 	}
 }
@@ -1405,6 +2002,34 @@ func networkPortsField(name string, allowed []redact.Mode) FieldSpec {
 		Fields: []FieldSpec{
 			operationalField("start", allModes()),
 			operationalField("end", allModes()),
+		},
+	}
+}
+
+// portRangeListField is a list of {from, to} port ranges. Ports render in
+// standard mode only, like the flat tcpPortRanges/udpPortRanges beside them.
+func portRangeListField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   standardOnlyMode(),
+		Fields: []FieldSpec{
+			operationalField("from", standardOnlyMode()),
+			operationalField("to", standardOnlyMode()),
+		},
+	}
+}
+
+// idNameRefField is an {id, name} reference: the id renders in every mode
+// (ids are fine to share), the name in standard and share.
+func idNameRefField(name string) FieldSpec {
+	return FieldSpec{
+		Name:           name,
+		Classification: ClassTenantConfig,
+		AllowedModes:   allModes(),
+		Fields: []FieldSpec{
+			operationalField("id", allModes()),
+			tenantConfigField("name", standardShareModes()),
 		},
 	}
 }
@@ -1452,14 +2077,6 @@ func sensitiveIdentifierFields(names ...string) []FieldSpec {
 	return fields
 }
 
-func secretFields(names ...string) []FieldSpec {
-	fields := make([]FieldSpec, 0, len(names))
-	for _, name := range names {
-		fields = append(fields, secretField(name))
-	}
-	return fields
-}
-
 func Catalog() ResourceCatalog {
 	c := make(ResourceCatalog, 0)
 	c = append(c, catalogZIA()...)
@@ -1467,6 +2084,8 @@ func Catalog() ResourceCatalog {
 	c = append(c, catalogZTW()...)
 	c = append(c, catalogZCC()...)
 	c = append(c, catalogZidentity()...)
+	applyFieldReferences(c)
+	applyFieldTypes(c)
 	return c
 }
 
@@ -1504,6 +2123,8 @@ func copyAnyForDomain(value any, domain valueCopyDomain) any {
 		return nil
 	}
 	switch v := value.(type) {
+	case confirmedEmptyList:
+		return v
 	case []string:
 		return slices.Clone(v)
 	case []int:
@@ -1535,7 +2156,41 @@ func copyAnyForDomain(value any, domain valueCopyDomain) any {
 	if !ok {
 		return unsupportedProjectedValue{}
 	}
+	if !cloned.IsValid() {
+		// A nil struct pointer normalizes to JSON null.
+		return nil
+	}
 	return cloned.Interface()
+}
+
+// structShaped reports a struct, a pointer to one, or a slice/array of
+// either: SDK shapes that reach projection only through their JSON form.
+func structShaped(value reflect.Value) bool {
+	typ := value.Type()
+	if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		typ = typ.Elem()
+	}
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ.Kind() == reflect.Struct
+}
+
+func jsonNormalized(value reflect.Value) (any, bool) {
+	if !value.CanInterface() {
+		return nil, false
+	}
+	body, err := json.Marshal(value.Interface())
+	if err != nil {
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var out any
+	if err := decoder.Decode(&out); err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 type valueCopyDomain uint8
@@ -1579,6 +2234,17 @@ func cloneCompositeValue(
 			}
 			return value, true
 		}
+	}
+	if domain == sourceValueDomain && structShaped(value) {
+		// A reader may hand over an SDK struct (or a list of them) for a
+		// nested field. Copy it as the plain maps and lists its JSON encoding
+		// describes, numbers kept exact; the catalog still decides which keys
+		// render. Values JSON cannot encode stay unsupported.
+		normalized, ok := jsonNormalized(value)
+		if !ok {
+			return reflect.Value{}, false
+		}
+		return cloneCompositeValue(reflect.ValueOf(normalized), active, domain)
 	}
 	switch value.Kind() {
 	case reflect.Interface:

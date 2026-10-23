@@ -409,7 +409,7 @@ func (e Executor) validateRequestNarrowing(req Request, product, resource string
 	if !ok {
 		return &MachineError{
 			Kind:      ErrorKindUnknownResource,
-			Message:   "unknown resource",
+			Message:   unknownResourceMessage(product, resource),
 			Operation: req.Operation,
 			Product:   product,
 			Resource:  resource,
@@ -425,7 +425,7 @@ func (e Executor) validateRequestNarrowing(req Request, product, resource string
 			Resource:  resource,
 		}
 	}
-	if err := resources.ValidateNarrowOptions(spec, resources.NarrowOptions{
+	if err := resources.ValidateNarrowOptionsInMode(spec, e.Redaction, resources.NarrowOptions{
 		Fields:  fieldsFromInput(req.Input.Fields),
 		Filters: filters,
 	}); err != nil {
@@ -525,11 +525,12 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
+			Detail:    FailureDetailOf(err),
 		}
 	case errors.Is(err, resources.ErrUnknownResource):
 		return MachineError{
 			Kind:      ErrorKindUnknownResource,
-			Message:   "unknown resource",
+			Message:   unknownResourceMessage(product, resource),
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
@@ -551,7 +552,8 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Resource:  resource,
 			cause:     resources.ErrInvalidResourceID,
 		}
-	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField):
+	case errors.Is(err, resources.ErrMissingID), errors.Is(err, resources.ErrUnknownField),
+		errors.Is(err, resources.ErrSuppressedField):
 		return MachineError{
 			Kind:      ErrorKindUsage,
 			Message:   sanitizedMachineMessage(err.Error()),
@@ -568,13 +570,15 @@ func machineErrorFromLoadError(err error, op Operation, product, resource string
 			Resource:  resource,
 		}
 	default:
-		return MachineError{
+		machineErr := MachineError{
 			Kind:      ErrorKindLiveAccessFailed,
 			Message:   "resource read failed",
 			Operation: op,
 			Product:   product,
 			Resource:  resource,
 		}
+		machineErr.AttachFailure(err)
+		return machineErr
 	}
 }
 
@@ -590,4 +594,14 @@ func sanitizedMachineMessage(message string) string {
 func sanitizeMachineError(machineErr MachineError) MachineError {
 	machineErr.Message = sanitizedMachineMessage(machineErr.Message)
 	return machineErr
+}
+
+// unknownResourceMessage names a declared coverage gap, so a caller can tell
+// "zscalerctl cannot read this" from a mistyped name. It never echoes the
+// requested name.
+func unknownResourceMessage(product, resource string) string {
+	if gap, ok := resources.FindGap(resources.Product(product), resource); ok {
+		return resources.UnreadMessage(gap)
+	}
+	return "unknown resource"
 }

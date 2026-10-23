@@ -74,6 +74,30 @@ func FuzzScanStringPrefiltersMatchUnfilteredRules(f *testing.F) {
 		"{\"message\":\"Authorization: Bearer first-prefilter-canary\"}\n{\"message\":\"Authorization:\",\"clientSecret\":\"second-prefilter-canary\"}\n",
 		`Authorization: Token sk-supersecret-credential-value`,
 		`owner alice@example.com uses 192.0.2.10`,
+		`key: production`,
+		`POC key: Bearer A7b9C2d4E6f8J5k7`,
+		`POC key: 550e8400-e29b-41d4-a716-446655440000.`,
+		`{"key":"` + `A7b9C2d4E6f8G1h3J5k7","value":"x"}`,
+		strings.ReplaceAll(`{"k^u0065y":"Projects/2024/Q3-planning"}`, "^", "\x5c"),
+		`tag key: Projects/2024/Q3-planning`,
+		// Keys the structured scanner redacts by JSON context alone; the
+		// fast path must still let them through to the full scan.
+		`{"pwd":"A7b9C2d4E6f8G1h3"}`,
+		`{"passwd":"hunter2-canary"}`,
+		`{"bearer":"A7b9C2d4E6f8G1h3J5k7"}`,
+		`{"Password":"Hunter2Canary"}`,
+		`{"note":"rotate the pre-shared key"}`,
+		`{"description":"Kennwort: geheim123"}`,
+		// A marker makes the full scan re-encode the string, so the fast path
+		// must not skip it.
+		"{\"a\":\"<REDACTED:EMAIL>\u2028\"}",
+		"{\"a\":\"<REDACTED:IP>\xff\"}",
+		// A string that is itself a JSON document is scanned as one, with the
+		// value-type rule for secret keys.
+		`{"a":"{\"userPassword\":5}"}`,
+		`{"a":"{\"refreshKerberosToken\":5}"}`,
+		`{"a":"{\"password\":{\"v\":\"x\"}}"}`,
+		`{"a":"{\"refreshKerberosToken\":true}"}`,
 	} {
 		f.Add(seed)
 	}
@@ -138,7 +162,15 @@ func FuzzJSONSensitiveKeyClassificationMatchesLegacyAssignments(f *testing.F) {
 }
 
 func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
-	scanString := func(value string) (string, Report) {
+	var scanString jsonStringScanner
+	scanString = func(value string) (string, Report) {
+		// As scanJSONString: a string that is itself a JSON document is
+		// scanned as one.
+		if nestedJSONDocumentCandidate(value) {
+			if out, report, ok := scanStructuredDocuments(value, scanString, true); ok {
+				return out, report
+			}
+		}
 		out, report := scanRulesWithoutPrefilters(value, Report{}, baseRules)
 		if mode == ModeShare || mode == ModeParanoid {
 			out, report = scanRulesWithoutPrefilters(out, report, shareRules)
@@ -160,6 +192,12 @@ func scanStringWithoutPrefilters(mode Mode, in string) (string, Report) {
 
 func scanRulesWithoutPrefilters(out string, report Report, rules []rule) (string, Report) {
 	for _, rule := range rules {
+		if rule.custom != nil {
+			// Custom scanner rules share replacement semantics with
+			// production; this oracle only removes the prefilter gate.
+			out, report = scanCustomRule(out, report, rule, &prefilterText{})
+			continue
+		}
 		count := len(rule.re.FindAllStringIndex(out, -1))
 		if count == 0 {
 			continue
