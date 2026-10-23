@@ -28,7 +28,7 @@ const (
 	GapPrivacyReview GapReason = "privacy_review"
 	// GapCredentialMaterial: keys, passwords, certificates or enrollment
 	// material. Never read.
-	GapCredentialMaterial GapReason = "credential_material"
+	GapCredentialMaterial GapReason = "credential_material" // #nosec G101 -- gap reason name, not a credential
 	// GapAction: mutating or executing actions (activate, submit, move,
 	// remove). Never invoked by a read-only tool.
 	GapAction GapReason = "action"

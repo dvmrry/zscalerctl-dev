@@ -94,7 +94,7 @@ const (
 	SecretKeyMaterial SecretReason = "key_material"
 	// SecretOpaqueBlob: an encoded configuration blob that can embed any of
 	// the above and cannot be inspected field by field.
-	SecretOpaqueBlob SecretReason = "opaque_blob"
+	SecretOpaqueBlob SecretReason = "opaque_blob" // #nosec G101 -- secret reason name, not a credential
 	// SecretUnstructured: a free-form key/value map (such as "extensions")
 	// whose keys and values are not modeled, so nothing in it can be cleared.
 	SecretUnstructured SecretReason = "unstructured"
@@ -333,7 +333,7 @@ func (r SourceRecord) WithConfirmedEmptyList(key string) SourceRecord {
 	if value, ok := r.fields[key]; ok && !isUnconfirmedEmptyList(value) {
 		return r
 	}
-	fields := make(map[string]any, len(r.fields)+1)
+	fields := make(map[string]any, len(r.fields))
 	for k, v := range r.fields {
 		fields[k] = v
 	}

@@ -1990,8 +1990,8 @@ func scanGenericCredentialLabels(in string) (string, int) {
 // Wrapper punctuation around a value ("<key>", "(key)", typographic quotes) is
 // not part of it. Trailing sentence periods are not part of it either.
 const (
-	credentialValueOpeners = "*_\"'([<{`‘’‚‛“”„‟«»‹›"
-	credentialValueClosers = "*_.\"')]>}`‘’‚‛“”„‟«»‹›"
+	credentialValueOpeners = "*_\"'([<{`‘’‚‛“”„‟«»‹›"  // #nosec G101 -- punctuation set, not a credential
+	credentialValueClosers = "*_.\"')]>}`‘’‚‛“”„‟«»‹›" // #nosec G101 -- punctuation set, not a credential
 )
 
 // camelCaseLabelStart reports whether a label word at i ends a CamelCase or

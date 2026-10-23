@@ -56,7 +56,7 @@ func openPathEntry(path string, want os.FileInfo) (*os.File, error) {
 	if hook := openRootEntryAfterLstatTestHook; hook != nil {
 		hook(path)
 	}
-	file, err := os.OpenFile(path, os.O_RDONLY|rootEntryOpenFlags(want.IsDir()), 0)
+	file, err := os.OpenFile(path, os.O_RDONLY|rootEntryOpenFlags(want.IsDir()), 0) // #nosec G304 -- operator-supplied dump, quarantine, staging or parent-ancestry path; the handle is checked against the earlier Lstat identity.
 	if err != nil {
 		return nil, err
 	}

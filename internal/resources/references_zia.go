@@ -228,7 +228,7 @@ var ziaUnmappedReferences = map[string]map[string]string{
 		"extranetIpPool": "no extranet resource in the catalog",
 		"subLocAccIds":   "cloud account ids for the sublocation scope, not catalog records",
 	},
-	"zia/nss-feeds": {
+	"zia/nss-feeds": { // #nosec G101 -- API field names and reasons; gosec flags the whole block
 		"buckets":               "no cloud storage bucket resource in the catalog",
 		"buckets.getlId":        "target not documented in the SDK",
 		"casbTenant":            "no SDK evidence its ids are casb-tenants tenantIds",

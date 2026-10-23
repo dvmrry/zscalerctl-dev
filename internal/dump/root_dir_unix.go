@@ -18,7 +18,7 @@ func openRootDirectory(path string, followSymlinks bool) (*os.Root, error) {
 	if !followSymlinks {
 		flags |= unix.O_NOFOLLOW
 	}
-	dir, err := os.OpenFile(path, flags, 0)
+	dir, err := os.OpenFile(path, flags, 0) // #nosec G304 -- operator-supplied dump root; opened O_DIRECTORY (and O_NOFOLLOW unless following symlinks) and checked on the handle.
 	if err != nil {
 		return nil, err
 	}
