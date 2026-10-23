@@ -289,6 +289,11 @@ refused (the client ID and secret, or legacy ZIA username, password and API
 key, are wrong, or the account or its API access is disabled): fix the
 configuration, do not retry. `rate_limited`, `server_error`, `transport` and
 `timeout` are retryable: back off, and raise `--timeout` for `timeout`.
+If a command's top-level error message contains `HTTPS_PROXY is set but not
+used`, the network likely needs that proxy and retries will keep failing:
+check the proxy line of `zscalerctl doctor`, and report that the operator
+must set `ZSCALERCTL_PROXY_FROM_ENV=true` or `ZSCALERCTL_PROXY_URL` rather
+than retrying. Dump `errors.ndjson` records do not carry this hint.
 `pagination_incomplete` means the CLI refused a list it could not prove
 complete; `decode_failed` means the response did not match the expected shape.
 A dump's `errors.ndjson` records carry the same three fields, and so do
