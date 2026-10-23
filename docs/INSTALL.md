@@ -82,7 +82,7 @@ gh attestation verify ./zscalerctl_<version>_<goos>_<goarch>.tar.gz \
 
 ## Build From A Checkout
 
-Source builds require Go 1.26.9 or newer; the module rejects older patch
+Source builds require Go 1.26.10 or newer; the module rejects older patch
 releases so the shipped binary cannot be built with a standard library that is
 missing required security fixes.
 
