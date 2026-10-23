@@ -133,8 +133,9 @@ The adapter is responsible for:
   files.
 - Explicit HTTP client and request timeouts.
 - Direct outbound HTTP by default. The adapter disables ambient
-  `HTTP_PROXY`/`HTTPS_PROXY` discovery; proxy support must be added as an
-  explicit `zscalerctl` setting if it becomes necessary.
+  `HTTP_PROXY`/`HTTPS_PROXY` discovery; a proxy is used only when the
+  operator opts in with `ZSCALERCTL_PROXY_FROM_ENV=true` or sets
+  `ZSCALERCTL_PROXY_URL` (see [INSTALL.md](INSTALL.md)).
 - Finite retry behavior, including rate-limit handling (see Rate Limits And
   Pacing below).
 - Context cancellation.

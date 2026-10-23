@@ -248,6 +248,11 @@ environment, provider choice, and platform are reviewed and pinned.
   retry can succeed, while forbidden, unauthorized and not_subscribed mean the
   API role or licence does not allow the resource. credentials_rejected means
   the sign-in itself was refused: fix the configured credentials or account.
+- Live reads ignore `HTTPS_PROXY`/`HTTP_PROXY` unless
+  `ZSCALERCTL_PROXY_FROM_ENV=true` (or `ZSCALERCTL_PROXY_URL` is set). When
+  `HTTPS_PROXY` is set but unused, a `timeout` or `transport` failure's
+  message ends with a hint saying so; on a network that requires the proxy,
+  opt in rather than retrying.
 - Exit codes are a stable contract: `0` ok, `1` internal, `2` usage or an
   unusable setting (`invalid_config`), `3` credentials missing (unset,
   incomplete, or a secret that could not be resolved; credentials the API
